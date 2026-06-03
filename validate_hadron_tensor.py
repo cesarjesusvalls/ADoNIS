@@ -38,12 +38,13 @@ chk("d^2_{0,0}", wigner_d_int(2, 0, 0, c, s), (3 * x ** 2 - 1) / 2)
 chk("d^2_{1,0}", wigner_d_int(2, 1, 0, c, s), -np.sqrt(1.5) * np.sin(th) * np.cos(th))
 
 print("Associated Legendre / Y_l^m(theta,0):")
+sin_th = np.sin(th)                 # full-angle sine (NOT the half-angle s above)
 bl, L = legendre_ylm(4, x), 4
 chk("Y_0^0", bl[0, L], np.sqrt(1 / (4 * np.pi)))
 chk("Y_1^0", bl[1, L], np.sqrt(3 / (4 * np.pi)) * x)
-chk("Y_1^1", bl[1, 1 + L], -np.sqrt(3 / (8 * np.pi)) * s)
+chk("Y_1^1", bl[1, 1 + L], -np.sqrt(3 / (8 * np.pi)) * sin_th)
 chk("Y_2^0", bl[2, L], np.sqrt(5 / (16 * np.pi)) * (3 * x ** 2 - 1))
-chk("Y_2^2", bl[2, 2 + L], np.sqrt(15 / (32 * np.pi)) * s ** 2)
+chk("Y_2^2", bl[2, 2 + L], np.sqrt(15 / (32 * np.pi)) * sin_th ** 2)
 
 print("Clebsch-Gordan (hand-checked + isospin-relevant):")
 chk("<1/2,1/2;1/2,-1/2|0,0>", cbg(.5, .5, .5, -.5, 0, 0), 1 / np.sqrt(2))
