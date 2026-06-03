@@ -143,24 +143,39 @@ the extracted data+covariance.
 
 ---
 
-## Build status: ACHILLES oracle BUILT (Phase-2 enabler)
+## Build status: ACHILLES oracle BUILT AND RUNS (Phase-2 enabler)
 
-ACHILLES is built and runnable at `Achilles/build/bin/achilles`. Working recipe
-(macOS, conda `default` env; cmake/gfortran/g++ present):
+ACHILLES builds AND runs end-to-end at `Achilles/build/bin/achilles` (verified:
+`achilles run.yml` integrates xsec, generates events, writes `achilles.hepmc`,
+"Event Run Concluded - Success!"). Working recipe (macOS, conda `default` env;
+cmake/gfortran/g++ present):
 
 ```bash
 cd Achilles && mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DACHILLES_ENABLE_TESTING=OFF \
-         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+         -DCMAKE_CXX_FLAGS="-fno-visibility-inlines-hidden"
 make -j8 achilles
 ```
 
 Notes:
 - `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` is required: the `docopt` dependency declares
   `cmake_minimum_required(<3.5)`, which modern CMake rejects without it.
+- **`-DCMAKE_CXX_FLAGS="-fno-visibility-inlines-hidden"` is REQUIRED to run (not just
+  build).** Without it ACHILLES builds fine but crashes at startup —
+  `std::out_of_range: map::at` from `Factory<Potential>::Initialize` (or a SIGSEGV on
+  other configs). Cause: the conda clang injects `-fvisibility-inlines-hidden`, which
+  makes the self-registering factories' function-local static registry maps
+  `weak PRIVATE external` — so each dylib gets its OWN copy of the registry. Types
+  register into `libutilities`'s map (Potential.cc), but the lookup runs in
+  `libevent_gen`'s separate, empty map → key-not-found. The override flag (appended
+  after the conda flag, wins) restores `weak external` so dyld coalesces all dylibs'
+  registries into one. Verify with: `nm -m build/lib/libutilities.dylib | grep
+  Potential.*Registry.*registry` → must say "weak external", NOT "private external".
+  This was MISDIAGNOSED earlier as a homebrew-vs-conda dylib conflict — it is not; the
+  liblzma/libbz2/libhdf5 "built for newer macOS version" linker warnings are benign.
 - Sherpa/BSM and ROOT are OFF by default; HepMC3/NuHepMC/fmt/spdlog/docopt are
-  auto-fetched via CPM. Only benign macOS-version linker warnings (homebrew vs conda
-  liblzma/libbz2/libhdf5).
+  auto-fetched via CPM.
 - This unblocks the oracle workflow: drive ACHILLES to emit single-pion-production
   cross sections / per-partial-wave decomposition, then build an exact differentiable
   sigma(knobs) that matches it (the cross section is bilinear in our knob-scaled DCC
