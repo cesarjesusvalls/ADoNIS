@@ -80,13 +80,22 @@ Legend: ✅ in the clone (path given) · 🔨 obtainable locally (build/run ACHI
    MicroBooNE (`microboone.root`, yaml), MINERvA (`MINERvA_ME_Flux_*.root`, dat).
    Flux folding inputs are covered.
 
-10. ❌ **Measured differential cross sections + covariance matrices** — **NOT in the
-    clone** (`examples/` holds only ACHILLES run configs). These are the actual fit
-    targets and must be fetched per experiment:
-    - MINERvA CC0π STV (MINERvA:2018hba), T2K CC1π⁺/CC0π (T2K:2021naz, T2K:2018rnz),
-      e4ν (CLAS), MicroBooNE, JLab inclusive (Murphy:2019wed).
-    - Source: experiment data releases / **NUISANCE** (which packages data+covariance
-      +flux in a common format). **This is the one thing to go get.**
+10. ✅ **Measured differential cross sections + covariance** — **in the NUISANCE clone**
+    at `/Users/cjesus/Software/DiffSinglePiProd/nuisance`. The NUISANCE sample names
+    match the ACHILLES paper figures exactly (ACHILLES uses NUISANCE sample defs):
+    - **MINERvA CC0π STV** (MINERvA:2018hba): `data/MINERvA/CC0pi/CC0pi_STV/MINERvA_DataRelease_Updated.root`
+      — directories `muonmomentum/muontheta/protonmomentum/protontheta/dalphat/dpt/dphit`,
+      each a TList with `xsec_with_total_errors` (TH1D data) + a `TMatrixT<double>`
+      (covariance). Class: `src/MINERvA/MINERvA_CC0pinp_STV_XSec_1D_nu.cxx`.
+    - **T2K CC1π⁺ STV** (T2K:2021naz): `data/T2K/CC1pipNp_STV/xsec_daT.txt` (+ dpTT, pN)
+      — **plain text** with bin edges, data xsec, full + shape covariance, AND the flux.
+    - **T2K CC0π STV** (T2K:2018rnz): `T2K_CC0pinp_STV_XSec_1Ddphit/dat/dpt_nu` classes + data.
+    - **e4ν**: `data/Electron/12C.dat`, `16O.dat`. **MicroBooNE**: `data/MicroBooNE/CC1Mu*`.
+    - Extraction: plain-text parse (T2K STV, e4ν) or `uproot` (MINERvA/MicroBooNE ROOT —
+      verified `uproot 5.6.2` reads the data hist + TMatrix covariance). What we still
+      transcribe from the NUISANCE C++ sample classes: the **signal definition** (cuts/
+      topology) and the **binning/flux-folding** recipe, so our model prediction is
+      computed comparably. Flux is bundled (in the T2K txt; `flux/` ROOT for others).
 
 ---
 
@@ -122,7 +131,12 @@ Oset, fluxes) are **all in the clone**. The build order is now unblocked:
 4. **Forward-fidelity gate** (F11) — build/run ACHILLES, match histograms.
 5. **Only then** fetch one **data+covariance** release (E10) via NUISANCE and fit.
 
-**The single external action item is E10** — obtaining one experiment's measured
-cross sections + covariance (everything else is local). Until that arrives we can
-do 1–4 entirely against the clone, plus the self-contained uncertainty-
-quantification work.
+**There are now ZERO external dependencies.** The measured cross sections +
+covariance (E10) are in the NUISANCE clone, extractable with `uproot` (verified) or
+plain-text parsing. Every physics input, every data target, the fluxes, and the
+generator itself are all local. The whole Phase-2/3 program can proceed offline.
+
+What we still *write* (not fetch): the JAX loaders for the ACHILLES data files, the
+transcription of NUISANCE **signal definitions + binning** (from the C++ sample
+classes) so our model prediction matches theirs, and the differentiable χ² against
+the extracted data+covariance.
