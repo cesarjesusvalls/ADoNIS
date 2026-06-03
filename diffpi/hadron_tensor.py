@@ -73,3 +73,116 @@ AXIAL_IDX = (1, 2, 3, 7)       # adds igm1 = 2 (charge/time, PCAC)
 
 PW_LABELS = ("s11", "s31", "p11", "p13", "p31", "p33",
              "d13", "d15", "d33", "d35", "f15", "f17", "f35", "f37")
+
+
+# --- Wigner-d functions (port of setdfun + fblmmx) --------------------------- #
+from math import factorial as _fact, sqrt as _sqrt
+
+
+def wigner_d_int(l, mf, mi, cc, ss):
+    """Integer Wigner small-d d^l_{mf,mi} via the explicit sum (Fortran fblmmx).
+    cc=cos(theta/2), ss=sin(theta/2).  h(k)=sqrt(k!) in the Fortran common block."""
+    if l < 0 or abs(mf) > l or abs(mi) > l:
+        return 0.0
+    jmip, jmim, jmfp, jmfm = l + mi, l - mi, l + mf, l - mf
+    mfmim = mf - mi
+    iicos, iisin = 2 * l - mfmim, mfmim
+    kmin, kmax = max(0, -mfmim), min(jmip, jmfm)
+    num = _sqrt(_fact(jmip) * _fact(jmim) * _fact(jmfp) * _fact(jmfm))
+    s = 0.0
+    for k in range(kmin, kmax + 1):
+        den = _fact(jmip - k) * _fact(k) * _fact(jmfm - k) * _fact(k + mfmim)
+        s += (-1) ** (mfmim + k) * num / den * cc ** (iicos - 2 * k) * ss ** (iisin + 2 * k)
+    return s
+
+
+def wigner_d_half(two_j, two_mf, two_mi, x):
+    """Half-integer Wigner small-d d^{J}_{mf,mi}(theta) with J=two_j/2,
+    mf=two_mf/2, mi=two_mi/2, x=cos(theta).  Port of setdfun's per-(lx,mf,mi) build
+    (lx=two_j, mf=two_mf, mi=two_mi in the Fortran 2*projection convention)."""
+    lx, mf, mi = two_j, two_mf, two_mi
+    ss = _sqrt((1.0 - x) / 2.0)
+    cc = _sqrt((1.0 + x) / 2.0)
+    jj = (lx - 1) // 2
+    mfm, mfp = (mf - 1) // 2, (mf + 1) // 2
+    mim, mip = (mi - 1) // 2, (mi + 1) // 2
+    out = 0.0
+    if jj >= abs(mfm) and jj >= abs(mim):
+        out += wigner_d_int(jj, mfm, mim, cc, ss) * _sqrt((lx + mf) * (lx + mi)) / (2 * lx) * cc
+    if jj >= abs(mfp) and jj >= abs(mip):
+        out += wigner_d_int(jj, mfp, mip, cc, ss) * _sqrt((lx - mf) * (lx - mi)) / (2 * lx) * cc
+    if jj >= abs(mfm) and jj >= abs(mip):
+        out += -wigner_d_int(jj, mfm, mip, cc, ss) * _sqrt((lx + mf) * (lx - mi)) / (2 * lx) * ss
+    if jj >= abs(mfp) and jj >= abs(mim):
+        out += wigner_d_int(jj, mfp, mim, cc, ss) * _sqrt((lx - mf) * (lx + mi)) / (2 * lx) * ss
+    return out
+
+
+def _bb(n, k):
+    """n!/k! -- ylmsub's LOCAL bb table (bc(k1)/bc(k2))."""
+    return _fact(n) / _fact(k)
+
+
+def _comb(n, k):
+    if k < 0 or k > n:
+        return 0
+    return _fact(n) // (_fact(k) * _fact(n - k))
+
+
+def _bbg(p, q):
+    """The /fdbn/ bb table used by cbg (bifc): C(p,q) if p>=q, else sqrt(C(q,p))."""
+    if p >= q:
+        return float(_comb(p, q))
+    return _sqrt(_comb(q, p))
+
+
+def cbg(a, x, b, y, c, z):
+    """Clebsch-Gordan <a x; b y | c z> (port of Fortran cbg; a,b,c,x,y,z may be
+    half-integer). Returns 0 if the selection rules fail."""
+    de = 0.01
+    if max(abs(a - b) - c, c - a - b, abs(x + y - z), x - a, -x - a, y - b, -y - b) > de:
+        return 0.0
+    ja, jb, jc = int(a + de - x), int(b + de + y), int(c + de + z)
+    ka, kb, kc = int(a + de + a), int(b + de + b), int(c + de + c)
+    iss = int(a + de + b + c)
+    ia, ib, ic = iss - ka, iss - kb, iss - kc
+    lmin, lmax = max(0, ja - ib, jb - ia), min(ic, ja, jb)
+    s = 0.0
+    for l in range(lmin, lmax + 1):
+        s += (-1) ** l * _bbg(ic, l) * _bbg(ib, ja - l) * _bbg(ia, jb - l)
+    s *= (_sqrt((kc + 1.0) / (iss + 1.0)) * _bbg(ib, kc) * _bbg(ic, ka)
+          / (_bbg(kb, iss) * _bbg(ja, ka) * _bbg(jb, kb) * _bbg(jc, kc)))
+    return s
+
+
+def legendre_ylm(lmax, z):
+    """Normalized associated Legendre / real spherical-harmonic theta-part
+    Y_l^m(theta, 0) for l=0..lmax, m=-l..l (port of Fortran ylmsub).  z=cos(theta).
+    Returns bleg[l, m] indexed as bleg[l, m_index] with m_index in 0..2*lmax (m=m_index-lmax)."""
+    import numpy as _np
+    bleg = _np.zeros((lmax + 1, 2 * lmax + 1))
+
+    def setb(l, m, v):
+        bleg[l, m + lmax] = v
+
+    def getb(l, m):
+        return bleg[l, m + lmax]
+
+    z1 = _sqrt(1.0 - z ** 2) + 1e-20
+    z2 = z / z1
+    setb(0, 0, 1.0)
+    for l in range(1, lmax + 1):
+        setb(l, l, z1 ** l / (2 ** l) * _bb(2 * l, l))
+        setb(l, l - 1, z2 * getb(l, l))
+        if l == 1:
+            continue
+        for m in range(l - 2, -1, -1):
+            setb(l, m, (-getb(l, m + 2) + 2 * (m + 1) * z2 * getb(l, m + 1))
+                  / ((l - m) * (l + m + 1)))
+    import math as _m
+    for l in range(lmax + 1):
+        for m in range(l + 1):
+            fac = _sqrt((2 * l + 1) / (4.0 * _m.pi) * _bb(l - m, l + m)) * (-1) ** m
+            setb(l, m, getb(l, m) * fac)
+            setb(l, -m, getb(l, m) * (-1) ** m)
+    return bleg
