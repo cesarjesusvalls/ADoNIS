@@ -151,13 +151,17 @@ class Closure(NamedTuple):
 
 def run_closure(loss_fn, to_params, init_unconstrained, key,
                 iterations=300, learning_rate=0.1, theta_true=None, verbose=True,
-                clip_norm=None):
+                clip_norm=None, final_lr_frac=1.0):
     """Fit unconstrained parameters by Adam on `loss_fn(unconstrained, key)`.
 
     `to_params(unconstrained)` maps to the physical parameters for reporting.
     `clip_norm`, if set, clips the global gradient norm each step -- this keeps a
     high-variance stochastic gradient from kicking the parameters into pathological
     regions (e.g. mean free paths so short the fixed bounce budget can't deplete).
+    `final_lr_frac < 1` exponentially anneals the learning rate from `learning_rate`
+    to `learning_rate * final_lr_frac` over the run -- needed when a parameter sits
+    in a shallow basin whose restoring force is comparable to the gradient noise, so
+    a constant step lets it wander (and drift under Adam momentum) instead of settle.
     Returns the fit history; closure is asserted by the caller against theta_true.
     """
     theta = jnp.asarray(init_unconstrained, dtype=jnp.float64)
@@ -174,6 +178,7 @@ def run_closure(loss_fn, to_params, init_unconstrained, key,
     loss_hist, param_hist = [], []
     for it in range(iterations):
         key, sub = jax.random.split(key)
+        opt.lr = learning_rate * (final_lr_frac ** (it / max(iterations - 1, 1)))
         loss_value, grads = value_and_grad(theta, sub)
         grads = _clip(jax.tree_util.tree_map(jnp.nan_to_num, grads))
         theta, opt_state = opt.update(theta, grads, opt_state)

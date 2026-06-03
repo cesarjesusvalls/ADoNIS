@@ -65,8 +65,8 @@ class ConfigBC:
     n_p: int = 24                        # momentum bins; bin n_p = absorbed overflow
     n_bounces: int = 16
     n_data: int = 400_000
-    n_model: int = 200_000
-    iterations: int = 400
+    n_model: int = 300_000
+    iterations: int = 500
     learning_rate: float = 0.03
     data_seed: int = 1
     fit_seed: int = 2

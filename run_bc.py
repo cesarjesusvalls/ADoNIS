@@ -73,7 +73,7 @@ def main():
         to_params=to_params, init_unconstrained=theta0,
         key=jax.random.PRNGKey(cfg.fit_seed),
         iterations=cfg.iterations, learning_rate=cfg.learning_rate,
-        theta_true=np.array(true_p), clip_norm=5.0e7,
+        theta_true=np.array(true_p), clip_norm=5.0e7, final_lr_frac=0.05,
     )
     err = np.abs(np.asarray(clo.theta_fit) - np.asarray(true_p))
     print("    recovered:")
