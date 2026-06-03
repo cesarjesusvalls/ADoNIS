@@ -89,10 +89,16 @@ def parse_dcc_ew(path=DEFAULT_PATH) -> DCCTable:
     Q2 = np.array([float(lines[p + i].split()[0]) for i in range(mxq2)]); p += mxq2
     namp = [int(x) for x in lines[p].split()[:3]]; p += 1
 
-    # discover the component (idx) and channel (igmb) ranges from the first block
-    head = np.loadtxt(io.StringIO("".join(lines[p:p + namp[0]])), usecols=(2, 4))
-    n_idx = int(head[:, 0].max())
-    n_gmb = int(head[:, 1].max())
+    # The component index `idx` is the Fortran ixi1 = photon-polarization x nucleon-
+    # helicity (zampv/zmtx first dimension, size 8; see amp_dcc_sl.f read_amp):
+    #   ismi(ixi1)=[1,1,0,0,-1,-1,2,2] -> photon pol igm1 in {+1,0,-1,2(charge/time)}
+    #   isbi(ixi1)=[1,-1,1,-1,1,-1,1,-1] -> nucleon helicity sign
+    # Stored sparsely: vec/isv use idx={1,2,3}, AXIAL adds idx=7 (the charge/PCAC
+    # induced-pseudoscalar piece). Sizing n_idx to the vec block's max (3) would
+    # silently DROP the axial idx=7 -> always size to the full ixi1 range (8).
+    n_idx = 8
+    head = np.loadtxt(io.StringIO("".join(lines[p:p + namp[0]])), usecols=(4,))
+    n_gmb = int(head.max())          # meson-baryon channel (only piN=1 populated)
     dims = (mxq2, maxw, n_idx, njLs, n_gmb)
 
     vec, p = _read_block(lines, p, namp[0], dims)
