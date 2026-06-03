@@ -1,139 +1,128 @@
-# External inputs needed to go from toy to real
+# External inputs — re-evaluated against the ACHILLES clone
 
-The differentiable chain (`diffpi/`) is complete in toy form: every physics piece
-recovers its parameters from a histogram, and the full A→(C+B+D)→G chain tunes
-vertex + FSI knobs jointly. To make it *real* (Phase 2) and fit *data* (Phase 3) we
-need the external inputs below. Each entry lists: **what** it is, the **form** we
-need it in, the **source** (paper ref / who holds it), and what it **unlocks**.
+ACHILLES is cloned at `/Users/cjesus/Software/DiffSinglePiProd/Achilles`. After
+inspecting it, **almost every physics input is already present locally** — the
+DCC amplitude tables, form factors, spectral functions, meson-baryon amplitudes,
+the Oset coefficients (hardcoded), the propagating-Δ couplings, and the fluxes.
+The *only* genuinely external dependency is the **experimental measurement data
+(central values + covariance)** used as fit targets in Phase 3.
 
-Legend: ⭐ = gating (unlocks the most, hardest to substitute) · ○ = substitutable
-with a public/parameterized stand-in or digitization.
-
----
-
-## A. Hard interaction vertex (electroweak single-pion production)
-
-1. ⭐ **ANL-Osaka DCC electroweak amplitudes.** The tabulated partial-wave
-   amplitudes for `γ*/W*/Z* N → π N` in the helicity–LSJ representation
-   (Kamano:2013iva), for EM, CC, and NC, as functions of (W, Q²) and partial wave
-   (L, J, I), per meson-baryon channel.
-   - Form: complex amplitude grids vs (W, Q²); the resolution/axes of the tables,
-     plus the convention doc to reconstruct ⟨p_π p|j^μ|N⟩.
-   - Source: ANL-Osaka group (Kamano, Nakamura, Lee, Sato); in ACHILLES these are
-     read via the Fortran90 wrapper (Isaacson:2022cwh). Likely bundled with the
-     ACHILLES distribution or obtainable from the authors.
-   - Unlocks: the real hard vertex (replaces our toy F_A²·BW). The single most
-     important input.
-
-2. ○ **Vector & axial form-factor inputs.** Vector transition form factors from
-   pion electroproduction (DCC1, DCC2); axial part from PCAC. If the DCC tables
-   already include these, this is subsumed by (A1); otherwise we need the form
-   factors separately.
-   - Unlocks: the M_A / form-factor knobs attaching to the real amplitudes.
+Legend: ✅ in the clone (path given) · 🔨 obtainable locally (build/run ACHILLES) ·
+❌ external (must be fetched).
 
 ---
 
-## B. Initial state (nuclear structure)
+## A. Hard interaction vertex
 
-3. ⭐ **Hole spectral functions S_t(k, E).** Probability of removing a nucleon of
-   momentum k and removal energy E, normalized to Z (protons) / N (neutrons).
-   - Form: 2-D tabulated grids per nucleus per isospin.
-   - Source: ¹²C — Rocco:2019gfb (correlated-basis) and/or Benhar CBF; ⁴⁰Ar
-     proton+neutron — Nikolakopoulos:2024mjj (from JLab (e,e′p)).
-   - Unlocks: realistic lepton kinematics / the convolution in the hadron tensor;
-     currently absent in the toy.
+1. ✅ **DCC electroweak amplitudes** — `Achilles/data/dcc_EW.dat` (40 MB, **ASCII**).
+   - Format: header `njLs` (14 partial waves) with quantum numbers per wave
+     `jpind=2J, Lpind=2L, ispind=2Iπ, itpind=2It`; then `maxw,mxq2` (67×28) grids
+     for W (1076.957–1480 MeV) and Q² (MeV²); then amplitude blocks
+     `ie iq idx ipw igmb ils  za(1) za(2) za(3)` where `za` = (bare, dressed,
+     non-resonant) complex amplitudes. Indices `idx`=current component (1–7
+     vector/axial), `ipw`=partial wave (1–14), `igmb`=meson-baryon channel.
+   - Reference parser: `src/Achilles/fortran/amp_dcc_sl.f` (`amplitude()`,
+     `interpolate_amp()`). We re-implement parsing + bilinear (W,Q²) interpolation
+     in JAX. **The keystone input — and it's text we can parse.**
 
-4. ○ **Nuclear density / configuration inputs for the cascade geometry.** Correlated
-   proton/neutron spatial distributions: ¹²C from GFMC (Carlson:2014vla); ⁴⁰Ar from
-   single-proton/neutron densities (Isaacson:2020wlx).
-   - Form: sampled configurations or density profiles ρ_p(r), ρ_n(r).
-   - Unlocks: the impact-parameter interaction-probability model (our toy uses a
-     uniform sphere / fixed bump).
-
----
-
-## C. Final-state interactions (the cascade)
-
-5. ⭐ **DCC meson-baryon scattering amplitudes.** Same DCC source as (A1), but the
-   strong τ^{L,±,I}(s) for πN → {πN, ηN, KΛ, KΣ}, used for total + angular cross
-   sections (App. "Meson-baryon scattering amplitudes").
-   - Unlocks: the real Component-B angular distributions in the cascade.
-
-6. ○ **Oset absorption parameterization.** Coefficient functions C_Q, C_A2, C_A3 and
-   exponents α, β, γ vs pion kinetic energy T_π (Oset:1987re; Salcedo:1987md), plus
-   the s-wave piece and the isospin factors for 2N absorption (VicenteVacas:1993bk).
-   - Form: the published fit functions / tables (valid to 350 MeV).
-   - Unlocks: real Component-D absorption (our toy uses ad-hoc g2/g3 shapes).
-
-7. ○ **Propagating-Δ (GiBUU) model constants.** One-pion-exchange matrix elements
-   for NN→NΔ (Dmitriev:1986st) and NΔ→NΔ; couplings f_NNπ, f_NΔπ, f_ΔΔπ; form-factor
-   cutoff Λ=0.63 GeV; κ=0.2 GeV; Δ width Γ=112 MeV; NΔ→NΔ isospin factors (paper
-   Tab.); detailed-balance relation; density-suppression α (Song:2014xza). Branching
-   ratios for decays.
-   - Form: all published numbers/formulas — mostly transcription, no data files.
-   - Unlocks: real Component-E propagating-Δ mode.
+2. ✅ **Form factors** — `Achilles/FormFactors.yml` + `src/Achilles/FormFactor.cc`.
+   - Vector = Kelly; Axial = AxialZExpansion with **`MA: 1.000`**, `tcut=9mπ²`,
+     `t0=-0.28`, and the z-expansion `CC Params` (9 coeffs). These are exactly the
+     tunable knobs (axial mass / z-expansion coefficients, vector params).
 
 ---
 
-## D. Kinematics & constants (mostly transcription, not data files)
+## B. Initial state
 
-8. ○ **Particle masses, widths, couplings** (m_N, m_π, m_η, m_K, m_Λ, m_Σ, m_Δ,
-   lepton masses; Δ width). From the PDG / the paper.
-9. ○ **Phase-space & boost machinery.** Höche/Byckling 2→2 / 1→2 building blocks,
-   Källén functions, Lorentz boosts, Wigner spin rotations, Clebsch-Gordan/isospin
-   tables. All formulas — we implement, no external files.
+3. ✅ **Spectral functions** — `Achilles/data/Spectral_Functions/pke{12,16,40}{p,n}_{tot,MF,bg,asym}.data`
+   (¹²C, ¹⁶O, ⁴⁰Ar; proton & neutron). Format: header `ne np` (e.g. 200×40), norm
+   constant, then per momentum p a block of `(E, S(p,E))` pairs. Reader:
+   `src/Achilles/SpectralFunction.cc` (Interp2D). Covered.
 
----
-
-## E. Experimental data (Phase 3 — the actual fit)
-
-For each target observable we need three things together: **central values +
-covariance + the neutrino flux** (for flux folding). Per the paper's comparisons:
-
-10. ⭐ **One experiment's data release to start** (recommend MINERvA CC0π STV or T2K
-    CC1π⁺): differential cross sections (e.g. dσ/dδp_T, dσ/dp_π, dσ/dθ),
-    the **full covariance matrix**, and the **flux**.
-    - Source: MINERvA:2018hba; T2K:2021naz / T2K:2018rnz — public data releases
-      (experiment data portals / arXiv ancillary / NUISANCE).
-11. ○ **Additional experiments** for the joint fit: e4ν (CLAS), MicroBooNE,
-    more T2K/MINERvA channels; JLab inclusive (e,e′) (Murphy:2019wed).
-12. ○ **FSI-validation data** (not a fit target, but for forward fidelity): π-nucleus
-    scattering cross sections; πN→πN SAID database (cns_dac); NN→NNπ cross sections
-    (GiBUU parameterizations, Buss:2011mx).
+4. ✅ **Nuclear densities / configurations** — `Achilles/data/densities/`,
+   `Achilles/densities/`, plus `data/configurations/` (correlated configs).
 
 ---
 
-## F. Forward-fidelity validation references
+## C. Final-state interactions
 
-13. ⭐ **ACHILLES forward outputs at published parameters** — histograms from the
-    actual generator (or the digitized paper figures) for the same observables, so
-    we can prove the differentiable forward model reproduces ACHILLES *before*
-    tuning. ACHILLES is a public C++ generator; ideally we run it or get its output.
-    - Unlocks: the non-gradient forward-fidelity gate (Strategy §4).
+5. ✅ **DCC meson-baryon amplitudes** — `Achilles/data/MesonBaryonAmplitudes/ANL/ANL_{i}-{f}.dat`
+   (16 files for the 4×4 channels πN=0, ηN=1, KΛ=2, KΣ=3), plus `pwa-piDelta-pin.dat`.
+   - Format: comment lines, then `W[MeV]` + 40 columns = 20 partial waves ×
+     (Re,Im). Wave order S11,S31,P11,P13,P31,P33,D13,D15,D33,D35,F15,F17,F35,F37,
+     G17,G19,G37,G39,H19,H39 with `twoJ_vec/L_vec/twoI_vec` given in
+     `src/Achilles/MesonBaryonAmplitudes.cc`. Cross sections via partial-wave sum +
+     Legendre (matches paper App. Eq. for dσ/dΩ). Covered.
+
+6. ✅ **Oset absorption coefficients** — hardcoded in `src/Achilles/OsetCrossSections.cc`:
+   `fCoefCQ={-5.19,15.35,2.06}`, `fCoefCA2={1.06,-6.64,22.66}`,
+   `fCoefCA3={-13.46,46.17,-20.34}`, `fCoefAlpha={0.382,-1.322,1.466}`,
+   `fCoefBeta={-0.038,0.204,0.613}`, `ImB0=0.035`, plus s-wave QE coeffs. Each is a
+   quadratic in `x=T_π/mπ`. Direct transcription — no file fetch.
+
+7. ✅ **Propagating-Δ (GiBUU) constants** — `src/Achilles/ResonanceHelper.cc` /
+   `CascadeInteractions/DeltaInteractions.cc`: `fps=2.202, fp=1.008, λ²=0.63², κ²=0.2²,
+   gA=1.267, fπ=92.4 MeV`; Dmitriev-Sushkov NN→NΔ matrix element; Blatt-Weisskopf
+   energy-dependent width; Δ spectral BW. Decays: `data/decays.yml`. Transcription.
 
 ---
 
-## G. Parameter priors (for regularized fits)
+## D. Kinematics & constants
 
-14. ○ **Published central values + uncertainties** for every tunable knob (M_A,
-    couplings, resonance masses/widths, Oset coefficients, α, Λ, κ) — used as priors
-    / regularization in Phase 3. From the respective references.
+8. ✅ Masses/PIDs/widths — `Achilles/data/Particles.yml`, `parameters.dat`,
+   `data/decays.yml`. Phase-space/boost formulas we implement ourselves.
 
 ---
 
-## Minimal gating subset (to make real progress on ONE channel)
+## E. Experimental data (Phase 3 — the fit targets)
 
-To stand up the first *real* end-to-end fit on a single experiment, the smallest
-sufficient set is:
+9. ✅ **Fluxes** — `Achilles/flux/`: DUNE (`flux_dune_neutrino_ND.root`),
+   MicroBooNE (`microboone.root`, yaml), MINERvA (`MINERvA_ME_Flux_*.root`, dat).
+   Flux folding inputs are covered.
 
-- **A1** DCC electroweak amplitude tables (hard vertex),
-- **B3** one spectral function (e.g. ¹²C or ⁴⁰Ar),
-- **C5** DCC meson-baryon amplitudes + **C6** Oset parameterization (FSI),
-- **E10** one experiment's data + covariance + flux,
-- **F13** ACHILLES output (or digitized figures) for the forward-fidelity check.
+10. ❌ **Measured differential cross sections + covariance matrices** — **NOT in the
+    clone** (`examples/` holds only ACHILLES run configs). These are the actual fit
+    targets and must be fetched per experiment:
+    - MINERvA CC0π STV (MINERvA:2018hba), T2K CC1π⁺/CC0π (T2K:2021naz, T2K:2018rnz),
+      e4ν (CLAS), MicroBooNE, JLab inclusive (Murphy:2019wed).
+    - Source: experiment data releases / **NUISANCE** (which packages data+covariance
+      +flux in a common format). **This is the one thing to go get.**
 
-Everything in groups **D** and **G**, and the formulas in **C7**, are transcription
-we can do without external files. The hard dependencies are the **DCC amplitude
-tables (A1/C5)**, the **spectral functions (B3)**, and a **data+covariance+flux
-release (E10)** — all three are held by the ACHILLES authors / ANL-Osaka group /
-the experiments, and are the things to request first.
+---
+
+## F. Forward-fidelity validation
+
+11. 🔨 **ACHILLES reference output** — the generator itself is the clone; we can
+    **build and run it** (see `examples/run_*.yml`, `cascade.yml`, `run.yml`) to
+    produce reference histograms at published parameters and validate that the
+    differentiable forward model reproduces ACHILLES *before* tuning. No external
+    fetch — just a build (CMake) + run.
+
+---
+
+## G. Parameter priors
+
+12. ✅ Published central values for every knob are in `FormFactors.yml`,
+    `parameters.dat`, and the hardcoded constants above; uncertainties from the
+    cited papers when we add priors.
+
+---
+
+## Bottom line (revised)
+
+The previously-"gating" inputs (DCC amplitudes, spectral functions, MB amplitudes,
+Oset, fluxes) are **all in the clone**. The build order is now unblocked:
+
+1. **Differentiable DCC loader** (A1) — parse `dcc_EW.dat`, JAX interpolation in
+   (W,Q²), with knobs; mirror `amp_dcc_sl.f`. *The keystone, fully local.*
+2. **Differentiable form factors** (A2) — port `FormFactor.cc` Kelly + axial
+   z-expansion with `MA` and z-coeffs as the tunable parameters.
+3. **MB amplitudes + Oset** (C5/C6) — port the ANL partial-wave → cross-section
+   path and the Oset quadratics into the cascade.
+4. **Forward-fidelity gate** (F11) — build/run ACHILLES, match histograms.
+5. **Only then** fetch one **data+covariance** release (E10) via NUISANCE and fit.
+
+**The single external action item is E10** — obtaining one experiment's measured
+cross sections + covariance (everything else is local). Until that arrives we can
+do 1–4 entirely against the clone, plus the self-contained uncertainty-
+quantification work.
