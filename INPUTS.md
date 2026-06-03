@@ -140,3 +140,28 @@ What we still *write* (not fetch): the JAX loaders for the ACHILLES data files, 
 transcription of NUISANCE **signal definitions + binning** (from the C++ sample
 classes) so our model prediction matches theirs, and the differentiable χ² against
 the extracted data+covariance.
+
+---
+
+## Build status: ACHILLES oracle BUILT (Phase-2 enabler)
+
+ACHILLES is built and runnable at `Achilles/build/bin/achilles`. Working recipe
+(macOS, conda `default` env; cmake/gfortran/g++ present):
+
+```bash
+cd Achilles && mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DACHILLES_ENABLE_TESTING=OFF \
+         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+make -j8 achilles
+```
+
+Notes:
+- `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` is required: the `docopt` dependency declares
+  `cmake_minimum_required(<3.5)`, which modern CMake rejects without it.
+- Sherpa/BSM and ROOT are OFF by default; HepMC3/NuHepMC/fmt/spdlog/docopt are
+  auto-fetched via CPM. Only benign macOS-version linker warnings (homebrew vs conda
+  liblzma/libbz2/libhdf5).
+- This unblocks the oracle workflow: drive ACHILLES to emit single-pion-production
+  cross sections / per-partial-wave decomposition, then build an exact differentiable
+  sigma(knobs) that matches it (the cross section is bilinear in our knob-scaled DCC
+  amplitudes from diffpi/dcc.py).
