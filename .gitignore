@@ -11,3 +11,6 @@ __pycache__/
 # JAX / OS
 .DS_Store
 .jax_cache/
+
+# DCC parse cache
+*.npz
