@@ -36,6 +36,7 @@ import jax
 import jax.numpy as jnp
 
 from .dcc import DCCAmplitudes, DCCKnobs
+from .form_factors import axial_reweight_dipole
 
 M_N = 938.272      # nucleon mass [MeV]
 M_PI = 138.0       # representative pion mass [MeV] (pi0/pi+- average)
@@ -85,13 +86,15 @@ class DCCCrossSection:
         incoherent -- a placeholder for the weak case pending a neutrino oracle).
         """
         vec, isv, axial = self.D.amplitudes(W, Q2, knobs)     # each (n_idx, n_pw)
+        # axial-mass reweight (Q^2-dependent); ==1 at MA nominal. Applied to |A|^2.
+        r_ax = axial_reweight_dipole(Q2, knobs.axial_MA) ** 2
         if current == "vec":
             amp2 = jnp.sum(jnp.abs(vec) ** 2, axis=0)          # sum idx -> (n_pw,)
         elif current == "axial":
-            amp2 = jnp.sum(jnp.abs(axial) ** 2, axis=0)
+            amp2 = r_ax * jnp.sum(jnp.abs(axial) ** 2, axis=0)
         else:
             amp2 = (jnp.sum(jnp.abs(vec) ** 2, axis=0)
-                    + jnp.sum(jnp.abs(axial) ** 2, axis=0))
+                    + r_ax * jnp.sum(jnp.abs(axial) ** 2, axis=0))
         diag = jnp.sum(self.twoJ1 * amp2)                      # diagonal PW sum
         return self.K * phase_space(W) * diag
 

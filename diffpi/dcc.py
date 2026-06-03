@@ -28,6 +28,9 @@ from .dcc_loader import load_cached, PW_LABELS
 class DCCKnobs:
     axial_strength: float = 1.0
     pw_norm: tuple = ()                 # () -> all zeros (no rescale); else length 14
+    axial_MA: float = 1.000             # axial mass [GeV]; Q^2-dependent reweight of
+                                        # the axial block (see form_factors.py). The
+                                        # reweight is applied in dcc_xsec (needs Q^2).
 
 
 class DCCAmplitudes:
