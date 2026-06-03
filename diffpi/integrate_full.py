@@ -68,10 +68,15 @@ class ConfigFull:
     init_sigma_abs: float = 0.35
     n_Q2: int = 16
     n_ppi: int = 18
-    n_data: int = 500_000
-    n_model: int = 150_000
-    iterations: int = 250
-    learning_rate: float = 0.05
+    # Recommended full-chain settings (chi-square loss): cheap noisy gradients
+    # (small n_model) + small LR + many iterations + hard-frozen tail. The small
+    # LR averages the per-step noise smoothly; final_lr_frac freezes the tail.
+    n_data: int = 5_000_000
+    n_model: int = 25_000
+    iterations: int = 1000
+    learning_rate: float = 0.01
+    final_lr_frac: float = 0.01      # exponential LR anneal: LR -> LR*final_lr_frac
+    clip_norm: float = 40.0          # engages at the chi-square gradient scale (~15-50)
     data_seed: int = 1
     fit_seed: int = 2
 

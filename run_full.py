@@ -29,17 +29,27 @@ def to_params(theta):
 
 
 def make_loss(cfg, data, renorm, n_model=None):
+    """Unbiased, variance-weighted (chi-square) two-replica loss.
+
+    mean((m1-data)*(m2-data) / (data+1)): two independent replicas keep it
+    unbiased for the squared bias (the model-variance term cancels), and the
+    1/(data+1) Poisson weighting down-weights high-occupancy bins by their
+    variance -- so the dominant CC0pi (absorbed) bin no longer drives the loss
+    and the gradient scale becomes portable (O(1-10) regardless of n_data), which
+    lets a single fixed clip/LR work across all n_model choices.
+    """
+    inv_var = 1.0 / (data + 1.0)
     def loss(theta, key):
         p = unpack(theta)
         k1, k2 = jax.random.split(key)
         m1 = weighted_histogram(p, k1, cfg, n_model) * renorm
         m2 = weighted_histogram(p, k2, cfg, n_model) * renorm
-        return jnp.mean((m1 - data) * (m2 - data))
+        return jnp.mean((m1 - data) * (m2 - data) * inv_var)
     return loss
 
 
 def main():
-    cfg = ConfigFull()
+    cfg = ConfigFull()           # recommended settings now live in ConfigFull
     renorm = cfg.n_data / cfg.n_model
     true_p = (cfg.true_MA, cfg.true_mDelta, cfg.true_GammaDelta,
               cfg.true_sigma_scatter, cfg.true_sigma_abs)
@@ -72,7 +82,7 @@ def main():
         make_loss(cfg, data, renorm), to_params=to_params, init_unconstrained=theta0,
         key=jax.random.PRNGKey(cfg.fit_seed),
         iterations=cfg.iterations, learning_rate=cfg.learning_rate,
-        theta_true=np.array(true_p), clip_norm=5.0e7, final_lr_frac=0.25,
+        theta_true=np.array(true_p), clip_norm=cfg.clip_norm, final_lr_frac=cfg.final_lr_frac,
     )
     err = np.abs(np.asarray(clo.theta_fit) - np.asarray(true_p))
     print("    recovered:")
