@@ -84,7 +84,10 @@ def check_expected_jacobian(hist_fn, theta, key, eps=3e-3, tol=5e-2,
     def mean_hist(t):
         return jnp.mean(jnp.stack([hist_fn(t, k) for k in keys]), axis=0)
 
-    jac_fn = jax.jit(jax.jacobian(lambda t, k: hist_fn(t, k)))
+    # forward-mode: with few parameters and many output bins this is far cheaper
+    # (and far lighter on memory) than reverse-mode, which would vmap one cotangent
+    # per bin through the whole trajectory graph.
+    jac_fn = jax.jit(jax.jacfwd(lambda t, k: hist_fn(t, k)))
     J_ad = np.mean([np.asarray(jac_fn(theta, k)) for k in keys], axis=0)  # (n_bins, n_params)
 
     base = np.asarray(theta, dtype=float)
