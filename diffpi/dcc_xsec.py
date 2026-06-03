@@ -67,8 +67,14 @@ def e_gamma(W):
 
 
 def phase_space(W):
-    """Transverse phase-space/flux factor PS(W) = k_pi / (E_gamma * W)."""
-    return pion_cm_momentum(W) / (e_gamma(W) * W)
+    """Transverse phase-space/flux factor PS(W) = k_pi / (E_gamma * W).
+
+    Exactly zero below the piN threshold (W <= M_N + M_PI): there k_pi is unphysical
+    and E_gamma flips sign, which would otherwise yield a spurious NEGATIVE xsec for
+    below-threshold events (e.g. Fermi-smeared draws clipped to tiny W in the fold)."""
+    thr = M_N + M_PI
+    ps = pion_cm_momentum(W) / (e_gamma(W) * W)
+    return jnp.where(W > thr, ps, 0.0)
 
 
 class DCCCrossSection:

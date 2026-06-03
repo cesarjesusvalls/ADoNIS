@@ -1,0 +1,52 @@
+# Neutrino CC single-pion-production (RES_Spectral_Func) oracle config.
+# nu_e (12) -> e- (11) CC on 12C, monochromatic 1500 MeV; exercises the WEAK
+# (vector + AXIAL) DCC current -> validates the axial path + M_A knob.
+# Run from the Achilles root:  ./build/bin/achilles <path>/res_1pi_12C_nu.yml
+Main:
+  NEvents: 1000000
+  HardCuts: false
+  EventCuts: false
+  DoRotate: false
+  RunDecays: False
+  Output:
+      Format: NuHepMC
+      Name: res_1pi_12C_nu.hepmc
+      Zipped: False
+
+SherpaOptions: !include "data/default/SherpaOptions.yml"
+
+Processes:
+  - Leptons: [12, [11]]
+
+Beams:
+  - Beam:
+      PID: 12
+      Beam Params:
+        Type: Monochromatic
+        Energy: 1500
+
+Cascade:
+  Run: False
+  Interactions: !include "data/default/VirtResInteractions.yml"
+  Step: 0.04
+  Probability: Cylinder
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+
+NuclearModels:
+- NuclearModel:
+   Model: FortranModel
+   Name: RES_Spectral_Func
+   ConfigFile: data/info_C12_pke.data
+   FormFactorFile: "FormFactors.yml"
+   Ward: None
+
+Nuclei:
+  - Nucleus: !include "data/default/12C.yml"
+
+Options: !include "data/default/OptionDefaults.yml"
+
+Backend:
+  Name: Default
+  Options: []
