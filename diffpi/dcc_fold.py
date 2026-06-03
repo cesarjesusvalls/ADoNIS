@@ -56,21 +56,23 @@ def leptonic_kinematics(theta, Ep):
     return Q2, omega, q3, q4
 
 
-def fold_dsigma_dW(knobs: DCCKnobs, W_edges, key, n=200000, sf="pke12p_tot.data",
-                   xs: DCCCrossSection | None = None, mode="EM", e_beam=E_BEAM,
-                   ep_lo=EP_LO, ep_hi=EP_HI, theta_max_deg=None):
-    """Differentiable nuclear dsigma/dW histogram (knobs enter via the xsec weight).
+def fold_events(knobs: DCCKnobs, key, n=200000, sf="pke12p_tot.data",
+                xs: DCCCrossSection | None = None, mode="EM", e_beam=E_BEAM,
+                ep_lo=EP_LO, ep_hi=EP_HI, theta_max_deg=None):
+    """Event-level fold: return (W [MeV], Q2 [MeV^2], w_evt) for n sampled events.
+
+    W, Q2 are DETACHED (fixed proposal); w_evt = leptonic-flux * sigma(knobs) carries
+    the knob dependence smoothly (kind-1 reweighting -> exact gradients).
 
     mode='EM'  -> electron scattering: vector current, 1/Q^2 photon flux, narrow
                   angular acceptance (THETA_LO..THETA_HI).
     mode='CC'  -> neutrino CC: vec+axial current, FLAT W-propagator weight (no
-                  1/Q^2), full angular phase space (0..theta_max_deg)."""
+                  1/Q^2), full forward hemisphere (0..theta_max_deg)."""
     xs = xs or DCCCrossSection()
     sampler = SpectralSampler(load_spectral(sf))
     klep, ksf, kth = jax.random.split(key, 3)
     Ep = ep_lo + (ep_hi - ep_lo) * jax.random.uniform(klep, (n,))
     if mode == "CC":
-        # full forward hemisphere; sin(theta) phase-space weight folded into Gamma
         tmax = jnp.deg2rad(theta_max_deg if theta_max_deg is not None else 60.0)
         theta = tmax * jax.random.uniform(kth, (n,))
         current = "all"
@@ -78,7 +80,6 @@ def fold_dsigma_dW(knobs: DCCKnobs, W_edges, key, n=200000, sf="pke12p_tot.data"
         theta = jnp.deg2rad(THETA_LO + (THETA_HI - THETA_LO) * jax.random.uniform(kth, (n,)))
         current = "vec"
     Ep = jax.lax.stop_gradient(Ep); theta = jax.lax.stop_gradient(theta)
-    # leptonic kinematics with this beam energy
     s2 = jnp.sin(theta / 2) ** 2
     Q2 = 4.0 * e_beam * Ep * s2
     omega = e_beam - Ep
@@ -91,20 +92,39 @@ def fold_dsigma_dW(knobs: DCCKnobs, W_edges, key, n=200000, sf="pke12p_tot.data"
     W2 = tot[:, 0] ** 2 - jnp.sum(tot[:, 1:] ** 2, axis=1)
     W = jnp.sqrt(jnp.clip(W2, 1.0, None))
     if mode == "CC":
-        # CC weak weight: W-boson propagator is flat (Q^2 << M_W^2), so no 1/Q^2.
-        # sin(theta) is the d(cos theta) phase-space measure for the sampled angle.
         Gamma = (Ep / e_beam) * jnp.sin(theta)
     else:
         eps = 1.0 / (1.0 + 2.0 * (q3 ** 2 / Q2) * (s2 / jnp.clip(1 - s2, 1e-9, None)))
         K = jnp.clip((W ** 2 - M_N ** 2) / (2 * M_N), 0.0, None)
         Gamma = (ALPHA / (2 * jnp.pi ** 2)) * (Ep / e_beam) * (K / Q2) / jnp.clip(1 - eps, 1e-6, None)
     sig = jax.vmap(lambda w, q: xs.sigma(w, q, knobs, current))(W, Q2)
-    w_evt = Gamma * sig
-    # histogram (differentiable via soft assignment is unnecessary: bins fixed,
-    # weight smooth -> plain np-style bincount with detached indices)
-    idx = jnp.clip(jnp.searchsorted(W_edges, W) - 1, 0, W_edges.shape[0] - 2)
-    idx = jax.lax.stop_gradient(idx)
-    nb = W_edges.shape[0] - 1
-    hist = jax.ops.segment_sum(w_evt, idx, num_segments=nb)
-    width = jnp.diff(W_edges)
-    return hist / width        # dsigma/dW [arb, calibrated downstream]
+    W = jax.lax.stop_gradient(W); Q2 = jax.lax.stop_gradient(Q2)
+    return W, Q2, Gamma * sig
+
+
+def _hist1d(vals, w, edges):
+    idx = jax.lax.stop_gradient(jnp.clip(jnp.searchsorted(edges, vals) - 1, 0, edges.shape[0] - 2))
+    h = jax.ops.segment_sum(w, idx, num_segments=edges.shape[0] - 1)
+    return h / jnp.diff(edges)
+
+
+def fold_dsigma_dW(knobs: DCCKnobs, W_edges, key, n=200000, sf="pke12p_tot.data",
+                   xs: DCCCrossSection | None = None, mode="EM", e_beam=E_BEAM,
+                   ep_lo=EP_LO, ep_hi=EP_HI, theta_max_deg=None):
+    """Differentiable nuclear dsigma/dW histogram (thin wrapper over fold_events)."""
+    W, Q2, w = fold_events(knobs, key, n, sf, xs, mode, e_beam, ep_lo, ep_hi, theta_max_deg)
+    return _hist1d(W, w, W_edges)
+
+
+def fold_hist2d(knobs: DCCKnobs, W_edges, Q2_edges, key, n=200000, sf="pke12p_tot.data",
+                xs: DCCCrossSection | None = None, mode="CC", e_beam=E_BEAM,
+                ep_lo=EP_LO, ep_hi=EP_HI, theta_max_deg=None):
+    """Differentiable joint (W, Q2) histogram -- both knobs identifiable (pw_norm
+    localises in W, M_A shapes Q2). Returns (nW, nQ2) array of summed weights."""
+    W, Q2, w = fold_events(knobs, key, n, sf, xs, mode, e_beam, ep_lo, ep_hi, theta_max_deg)
+    iw = jnp.clip(jnp.searchsorted(W_edges, W) - 1, 0, W_edges.shape[0] - 2)
+    iq = jnp.clip(jnp.searchsorted(Q2_edges, Q2) - 1, 0, Q2_edges.shape[0] - 2)
+    flat = jax.lax.stop_gradient(iw * (Q2_edges.shape[0] - 1) + iq)
+    nb = (W_edges.shape[0] - 1) * (Q2_edges.shape[0] - 1)
+    return jax.ops.segment_sum(w, flat, num_segments=nb).reshape(
+        W_edges.shape[0] - 1, Q2_edges.shape[0] - 1)
