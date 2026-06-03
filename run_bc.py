@@ -94,7 +94,49 @@ def main():
     print(f"    (Jacobian diag weighted-rel-err = {jc.weighted_rel_err:.2f}, FD-noise-dominated.)")
 
     _plot(cfg, data, clo, renorm, true_p)
+    _plot_sensitivity(cfg, data, clo, renorm)
     return passed
+
+
+def _plot_sensitivity(cfg, data, clo, renorm):
+    """Show how the escaped-pion spectrum responds to a +/-10% change in each
+    parameter, one at a time, about the converged fit. Common random numbers (one
+    fixed key) are used for every curve so differences are pure parameter effect,
+    not Monte-Carlo noise. The size of the response = how identifiable the
+    parameter is from this observable."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    key = jax.random.PRNGKey(2024)                       # common random numbers
+    fit_p = tuple(float(x) for x in clo.theta_fit)
+    nominal = np.asarray(weighted_histogram(fit_p, key, cfg)) * renorm
+    pc = cfg.p_min + (np.arange(cfg.n_p) + 0.5) * (cfg.p_max - cfg.p_min) / cfg.n_p
+    names = ["p_prod", "A_abs", "A_sc"]
+
+    def abs_frac(h):
+        return h[cfg.n_p] / h.sum()
+
+    fig, ax = plt.subplots(1, 3, figsize=(15, 4.2), sharey=True)
+    for i, nm in enumerate(names):
+        ax[i].step(pc, np.asarray(data)[:cfg.n_p], where="mid", color="k",
+                   lw=1.0, label="data")
+        ax[i].step(pc, nominal[:cfg.n_p], where="mid", color="tab:blue", lw=2.0,
+                   label=f"fit ({nm}={fit_p[i]:.3f})")
+        for frac, color in [(+0.10, "tab:red"), (-0.10, "tab:green")]:
+            pv = list(fit_p); pv[i] = pv[i] * (1 + frac)
+            h = np.asarray(weighted_histogram(tuple(pv), key, cfg)) * renorm
+            ax[i].step(pc, h[:cfg.n_p], where="mid", color=color, ls="--", lw=1.5,
+                       label=f"{nm} {frac:+.0%}  (abs={abs_frac(h):.3f})")
+        ax[i].axvline(cfg.p_res, color="0.5", ls=":", alpha=0.7)
+        ax[i].set(xlabel="escaped pion |p| [GeV/c]",
+                  title=f"vary {nm} by ±10%  (nominal abs={abs_frac(nominal):.3f})")
+        ax[i].legend(fontsize=7.5, loc="upper left")
+    ax[0].set_ylabel("events")
+    fig.suptitle("B→C→G sensitivity: response of the escaped spectrum to ±10% per parameter "
+                 "(common random numbers). Big response = well constrained; flat = degenerate.")
+    fig.tight_layout(); fig.savefig("bc_sensitivity.png", dpi=110)
+    print("wrote bc_sensitivity.png")
 
 
 def _plot(cfg, data, clo, renorm, true_p):
