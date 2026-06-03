@@ -47,10 +47,31 @@ Milestone 6a DECODE (from read_amp + amplitude() in amp_dcc_sl.f):
   For neutrino CC the photon flux is replaced by the V-A lepton tensor (with the
   vector-axial INTERFERENCE term, absent from the diagonal approximation).
 
-STILL TO PORT (6b/6c): Wigner-d (setdfun/dfun), the two frame rotations (rspin ->
-zmxpi/zmxpf), isospin Clebsch-Gordan (cbg), associated Legendre (ylmsub/bleg) and
-the azimuthal phases, the helicity->spin conversion, the Lorentz boost, and the
-lepton-tensor contraction (sigma_T + sigma_L; V-A for CC).
+DONE (6b): the knob-independent angular primitives below -- wigner_d_half/int,
+cbg, legendre_ylm -- validated vs closed forms (validate_hadron_tensor.py).
+
+interpolate_amp DECODE (the zampv -> zmtx step, lines 588-960; for 6c):
+ (1) EW isospin combination: from the stored vector (zampv) and isoscalar-vector
+     (zampv_is), form  isovector=(V-IS)/2, isoscalar=(V+IS)/2  (per idx,pw,gmb).
+ (2) Current conservation (vector only): the charge/time component (idx 7,8) is
+     DERIVED from the longitudinal (idx 3,4) via V_z = V_0 * omega_cm/q_cm
+     (xxx=qc0/qc, qc0=(W^2-m^2-Q^2)/2W). Hence vector stores only idx={1,2,3};
+     axial is NOT conserved so it stores idx=7 explicitly (PCAC).
+ (3) Parity/helicity symmetry fill: id1=(1,2,3,7) <-> id2=(6,5,4,8) -- the negative-
+     photon-helicity / opposite-nucleon-helicity components (idx 4,5,6,8) are filled
+     from the stored (idx 1,2,3,7) with a parity phase (zmtx(idxx)=zzz*pha).
+ (4) (W,Q^2) bilinear interpolation onto the event point.
+
+STILL TO PORT (6c): interpolate_amp (1)-(4) above; the assembly loop (zfac_a isospin
+CG x zmtx, zzz = spin-orbit CG x Legendre x azimuth, accumulate zcrnt); zjx_mu
+helicity->Cartesian; the lepton-tensor contraction (sigma_T + sigma_L; V-A for CC).
+SIMPLIFICATIONS for the unpolarized, angle-integrated xsec (dsigma/dW,dQ^2): the spin
+rotations rspin + the irot_q nucleon-helicity rotation are UNITARY and CANCEL in the
+spin sum; dsigma/dW,dQ^2 are Lorentz-invariant so the lab boost (lorentz_trans) is
+unneeded -> work in piN-CM with photon along z (irot_q=0 branch). Then
+  W^{mu,nu}(W,Q2) = sum_{pw,pw'} A_pw^* G^{mu,nu}_{pw,pw'} A_pw'
+with G a knob-independent kernel = integral over Omega_pi of the (validated) angular
+functions; off-diagonal pw interference vanishes on angle-integration.
 
 VALIDATION (6d): integrated over the pion solid angle, this MUST collapse to the
 diagonal-bilinear assembly in dcc_xsec (the regression check), and then close the
