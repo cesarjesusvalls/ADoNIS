@@ -49,14 +49,23 @@ dropped when building the tensor directly; with the real lepton tensor carrying 
 flux, the hadronic factor is the BARE k_pi/W (not k_pi/(E_gamma W) — that double-counts
 the EM flux). This — not any binding/W-scale shift — was the ~10 MeV peak offset.
 
-### Pending exactness (next): match ACHILLES kinematics bit-for-bit
-Verified vs `currents_pi_dcc.f90` / `res_spectral_model.f90`. Still to align in the fold:
-- cuts: W∈[1076.957, 2000] MeV and Q2∈[0, 5 GeV²] (hard current=0 in ACHILLES); drop
-  the extraneous ω>0 cut. (`achilles_const`)
-- evaluate the amplitude/structure-fns at the **on-shell-rebalanced** Q2_adj = |q⃗|²−q'_0²
-  (q'_0 = ω − E_removal − T_N from `current_init`), not the bare leptonic Q2; the lepton
-  tensor keeps the true leptonic q. Matters for the M_A fit (M_A enters via Q²).
-- exact masses mqe=938.919, m_π=138.04 (`achilles_const`).
+### ACHILLES-exact kinematics (DONE) + the EW-isospin fix
+`dcc_fold_full.py` matches ACHILLES (verified vs `currents_pi_dcc.f90` /
+`res_spectral_model.f90`): off-shell E_struck=mqe−E_removal (mqe=938.919); amplitude at
+the on-shell-rebalanced **Q2_adj**=|q⃗|²−(ω−E_removal−T_N)², observable binned in the true
+leptonic Q2; hard cuts W∈[1076.957,2000], Q2∈[0,5 GeV²]; full angular coverage (θ→180°,
+needed for the dσ/dQ² reach); m_π=138.04 (`achilles_const`). FResV/FResA are Q²-CONSTANT.
+
+**EW-isospin fix** (the Δ-vs-second-resonance balance): `interpolate_amp` rotates the
+weak I=1/2 vector current to the isovector **(V−IS)/2** (I=3/2 stays raw); `build_zmtx`
+now does this. Channel fractions then match the oracle to <1% (p→pπ⁺ .664/.661, n→pπ⁰
+.192/.193, n→nπ⁺ .144/.146). Result (`validate_fold_full.py`, vs 200k event-level oracle):
+**dσ/dW relL2 6.5e-4, dσ/dQ² relL2 6.8e-4, peak 1218 exact, Q² reach 1.47 exact, M_A
+gradient autodiff==finite-diff.** Residual: ~3% at the lowest-Q² bin (open).
+
+## Phase 3 — fit REAL data (next)
+The faithful, differentiable forward model is ready. Remaining for a NUISANCE fit:
+neutrino flux fold, FSI cascade, lab-frame STV observable + cuts, χ² vs data+covariance.
 
 ## Phase 3 — fit REAL data (NOT STARTED)
 To fit a NUISANCE release (MINERvA CC0π STV / T2K CC1π STV) we need the full event

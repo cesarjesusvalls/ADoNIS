@@ -93,12 +93,17 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
             zmtx = zmtx.at[7].add(-qc * zm)
 
     # ---- vector current: idxp=1,2,3 (idx 1,2,3) + current conservation ------ #
-    # neutron EM I=1/2 uses the isoscalar block; weak / I=3/2 use the isovector.
+    # EW isospin rotation (interpolate_amp, lines 585-604): for the WEAK case (mode<10)
+    # the I=1/2 partial waves are rotated 1/2p,1/2n -> 1/2v,1/2s, and the current uses
+    # the ISOVECTOR  (V-IS)/2;  the I=3/2 waves stay as the raw (isovector) block. EM
+    # (mode>=10) keeps the raw blocks: proton -> vec, neutron I=1/2 -> isoscalar isv.
     for ipw in range(npw):
         is_I32 = int(two_I[ipw]) == 3
-        if itiz == -1 and mode >= 10 and not is_I32:
+        if mode < 10:                              # weak (CC/NC)
+            src_block = vec if is_I32 else 0.5 * (vec - isv)
+        elif itiz == -1 and not is_I32:            # EM neutron, I=1/2 -> isoscalar
             src_block = isv
-        else:
+        else:                                      # EM proton, or EM I=3/2
             src_block = vec
         for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3)), start=1):
             vz = vfac * src_block[src, ipw]
