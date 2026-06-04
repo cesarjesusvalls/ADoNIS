@@ -27,8 +27,7 @@ from .dcc import DCCAmplitudes, DCCKnobs
 from .dcc_loader import load_cached
 from .hadron_assembly import build_zmtx, angular_kernel, current_and_tensor
 from .form_factors import axial_reweight_dipole
-
-M_N, M_PI = 938.272, 138.0
+from .achilles_const import MQE as M_N, M_PI    # exact ACHILLES masses (938.919, 138.04)
 
 
 @dataclass(frozen=True)
