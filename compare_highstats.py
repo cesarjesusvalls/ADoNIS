@@ -1,45 +1,66 @@
-"""Compare the faithful full-port fold to the neutrino oracle at a configurable bin
-resolution, with PROPER per-bin statistical errors propagated to the ratio.
+"""Compare the faithful full-port fold to the neutrino oracle with PROPER per-bin
+statistical errors propagated to the ratio.
 
-Both sides are weighted Monte-Carlo, so the per-bin statistical error is the weighted
-standard error sigma = sqrt(sum_i w_i^2) (NOT sqrt(N)). Both are stored EVENT-LEVEL
-(oracle_nu_events.npz = 200k ACHILLES events; model_nu_events.npz = diffpi fold, run
-make_model_events.py first), so we re-bin both identically at any NBINS. The unit-area
-ratio R = d_model/d_oracle carries  sigma_R/R = sqrt((sigma_m/raw_m)^2+(sigma_o/raw_o)^2).
+Oracle: the accumulated high-statistics histograms (oracle/oracle_highstats.npz, sum w
+and sum w^2 on a fine grid; run make_oracle_highstats.py) -- falls back to the 200k
+event-level oracle if absent. Model: diffpi fold events (model_nu_events.npz, run
+make_model_events.py). Both carry the weighted error sqrt(sum w^2); the fine oracle grid
+is re-binned (grouped) to the comparison binning, and the model events are binned on the
+SAME edges. The unit-area ratio R=d_m/d_o carries sigma_R/R=sqrt((s_m/r_m)^2+(s_o/r_o)^2).
 
-Run:  python make_model_events.py   # once, to produce model_nu_events.npz
-      python compare_highstats.py   # bins + plots (set NBINS below)
+Run:  python compare_highstats.py
 """
+import os
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-NBINS = 50
-W_RANGE = (1080.0, 1655.0)
-Q2_RANGE = (0.0, 1.58e6)
+RW, RQ = 6, 4              # group this many fine oracle bins per comparison bin
 
-oe = np.load("oracle/oracle_nu_events.npz")
 me = np.load("model_nu_events.npz")
-Wo, Q2o, wo = oe["W"], oe["Q2"], oe["w_nb"]
 Wm, Q2m, wm = me["W"], me["Q2"], me["w"]
-print(f"oracle: {len(wo):,} events   model: {len(wm):,} events")
 
-We = np.linspace(*W_RANGE, NBINS + 1); Wc = 0.5 * (We[:-1] + We[1:])
-Q2e = np.linspace(*Q2_RANGE, NBINS + 1); Q2c = 0.5 * (Q2e[:-1] + Q2e[1:])
+
+def group_edges(edges, r):
+    n = (len(edges) - 1) // r * r
+    return edges[: n + 1: r]
+
+
+def regroup(h, r):
+    n = len(h) // r * r
+    return h[:n].reshape(-1, r).sum(1)
 
 
 def hist_sw(v, w, edges):
-    raw = np.histogram(v, bins=edges, weights=w)[0]
-    sw2 = np.histogram(v, bins=edges, weights=w ** 2)[0]
-    return raw, np.sqrt(sw2)
+    return (np.histogram(v, bins=edges, weights=w)[0],
+            np.histogram(v, bins=edges, weights=w ** 2)[0])
+
+
+# ---- oracle: high-stats accumulated histograms (preferred) or 200k events ----- #
+if os.path.exists("oracle/oracle_highstats.npz"):
+    hsd = np.load("oracle/oracle_highstats.npz")
+    N_ORACLE = int(hsd["n_events"])
+    We = group_edges(hsd["We"], RW); Q2e = group_edges(hsd["Q2e"], RQ)
+    oW_raw, oW_sw2 = regroup(hsd["swW"], RW), regroup(hsd["sw2W"], RW)
+    oQ_raw, oQ_sw2 = regroup(hsd["swQ"], RQ), regroup(hsd["sw2Q"], RQ)
+    osrc = "accum. hist"
+else:
+    oe = np.load("oracle/oracle_nu_events.npz")
+    N_ORACLE = len(oe["w_nb"])
+    We = np.linspace(1080.0, 1655.0, 51); Q2e = np.linspace(0.0, 1.58e6, 51)
+    oW_raw, oW_sw2 = hist_sw(oe["W"], oe["w_nb"], We)
+    oQ_raw, oQ_sw2 = hist_sw(oe["Q2"], oe["w_nb"], Q2e)
+    osrc = "events"
+oW_err, oQ_err = np.sqrt(oW_sw2), np.sqrt(oQ_sw2)
+Wc = 0.5 * (We[:-1] + We[1:]); Q2c = 0.5 * (Q2e[:-1] + Q2e[1:])
+print(f"oracle: {N_ORACLE:,} events ({osrc})   model: {len(wm):,} events")
 
 
 def normalize(raw, err, edges):
     dx = np.diff(edges); S = raw.sum()
     rel = np.divide(err, raw, out=np.zeros_like(err), where=raw > 0)
-    dens = raw / dx / S
-    return dens, dens * rel
+    return raw / dx / S, (raw / dx / S) * rel
 
 
 def ratio_with_err(m_raw, m_err, o_raw, o_err):
@@ -56,21 +77,19 @@ def chi2_ndf(R, Re):
     return float(np.sum(((R[m] - 1) / Re[m]) ** 2)), int(m.sum())
 
 
-Mlbl = f"diffpi fold ({len(wm)/1e6:.1f}M evt)"
-Olbl = f"ACHILLES oracle ({len(wo)/1e3:.0f}k evt)"
+Mlbl = f"diffpi fold ({len(wm)/1e6:.1f}M)"
+Olbl = f"ACHILLES oracle ({N_ORACLE/1e6:.1f}M)" if N_ORACLE >= 1e6 else f"ACHILLES oracle ({N_ORACLE/1e3:.0f}k)"
 fig, ax = plt.subplots(2, 2, figsize=(12, 6.5), sharex="col",
                        gridspec_kw={"height_ratios": [3, 1], "hspace": 0.04})
 
 
-def panel(col, vo, vm, edges, x, xlabel, ylabel, title, scale=1.0):
-    o_raw, o_err = hist_sw(vo, wo, edges)
-    m_raw, m_err = hist_sw(vm, wm, edges)
+def panel(col, vm, edges, x, o_raw, o_err, xlabel, ylabel, title, scale=1.0):
+    m_raw, m_sw2 = hist_sw(vm, wm, edges); m_err = np.sqrt(m_sw2)
     do, edo = normalize(o_raw, o_err, edges)
     dm, edm = normalize(m_raw, m_err, edges)
     R, Re = ratio_with_err(m_raw, m_err, o_raw, o_err)
     c2, ndf = chi2_ndf(R, Re)
     top, bot = ax[0, col], ax[1, col]
-    # SAME x (bin centres) for top and ratio; markers on both so alignment is explicit
     top.errorbar(x, do * scale, yerr=edo * scale, fmt="o", ms=3.5, color="C1",
                  capsize=2, lw=1, label=Olbl, zorder=3)
     top.errorbar(x, dm * scale, yerr=edm * scale, fmt="s-", ms=2.5, color="C3",
@@ -78,17 +97,16 @@ def panel(col, vo, vm, edges, x, xlabel, ylabel, title, scale=1.0):
     top.set_ylabel(ylabel); top.set_title(title); top.legend()
     bot.axhline(1.0, color="0.5", lw=0.8)
     bot.errorbar(x, R, yerr=Re, fmt="o", ms=3.5, color="C3", capsize=2, lw=1)
-    bot.set_ylim(0.85, 1.15); bot.set_xlabel(xlabel)
-    bot.set_ylabel("model / oracle")
+    bot.set_ylim(0.9, 1.1); bot.set_xlabel(xlabel); bot.set_ylabel("model / oracle")
     bot.text(0.02, 0.07, f"$\\chi^2$/ndf = {c2:.0f}/{ndf} = {c2/ndf:.2f}",
              transform=bot.transAxes, fontsize=9, va="bottom")
     print(f"{title}: chi2/ndf = {c2:.1f}/{ndf} = {c2/ndf:.2f}")
 
 
-panel(0, Wo, Wm, We, Wc, "W [MeV]", "norm d$\\sigma$/dW", "d$\\sigma$/dW")
-panel(1, Q2o, Q2m, Q2e, Q2c / 1e6, r"$Q^2$ [GeV$^2$]", "norm d$\\sigma$/d$Q^2$",
-      "d$\\sigma$/d$Q^2$", scale=1e6)
-fig.suptitle(f"diffpi fold vs ACHILLES neutrino oracle -- {NBINS} bins, stat. errors on ratio")
+panel(0, Wm, We, Wc, oW_raw, oW_err, "W [MeV]", "norm d$\\sigma$/dW", "d$\\sigma$/dW")
+panel(1, Q2m, Q2e, Q2c / 1e6, oQ_raw, oQ_err, r"$Q^2$ [GeV$^2$]",
+      "norm d$\\sigma$/d$Q^2$", "d$\\sigma$/d$Q^2$", scale=1e6)
+fig.suptitle("diffpi fold vs ACHILLES neutrino oracle -- statistical errors on ratio")
 fig.subplots_adjust(left=0.07, right=0.98, top=0.91, bottom=0.08, wspace=0.18)
 fig.savefig("fold_full_highstats.png", dpi=120)
 print("saved -> fold_full_highstats.png")

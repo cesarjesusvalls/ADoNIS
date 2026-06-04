@@ -53,7 +53,10 @@ class HadronStructure:
     """Full-hadron-tensor structure functions W_T, W_L on the (Q2,W) grid."""
 
     def __init__(self, amp: DCCAmplitudes | None = None, channels=CC_CHANNELS,
-                 n_theta=12, n_phi=12, subsample_w=1):
+                 n_theta=12, n_phi=12, subsample_w=1, spline=True):
+        # spline=True: ACHILLES-faithful FMM cubic interp (~0.3% vs bilinear, slower +
+        # heavier memory). spline=False: fast bilinear, for high-statistics studies.
+        self.spline = spline
         t = load_cached()
         self.amp = amp or DCCAmplitudes(t)
         self.twoJ = np.asarray(t.pw_2J); self.twoL = np.asarray(t.pw_2L)
@@ -115,13 +118,19 @@ class HadronStructure:
         Uses ACHILLES's FMM cubic spline (see spline.py)."""
         WTg, WLg = self._tensor_grid(knobs)
         g = jnp.stack([WTg, WLg], axis=-1)                # (nq,nw,2)
-        out = interp2d_spline(g, self.Wg, self.Q2g, W, Q2)
+        out = self._interp2d(g, W, Q2)
         return out[:, 0], out[:, 1]
+
+    def _interp2d(self, grid, W, Q2):
+        """(nq,nw,C) grid -> (N,C): ACHILLES FMM cubic spline, or fast bilinear."""
+        if self.spline:
+            return interp2d_spline(grid, self.Wg, self.Q2g, W, Q2)
+        return jax.vmap(lambda w, q: self._interp(grid, w, q))(W, Q2)
 
     def tensor_at(self, W, Q2, knobs: DCCKnobs):
         """Full complex W^{mu,nu}[event,4,4] at event kinematics (batched),
-        differentiable in knobs. ACHILLES FMM cubic spline in (W,Q2)."""
+        differentiable in knobs. Interp: FMM cubic spline (spline=True) or bilinear."""
         Wg = self._full_grid(knobs)                       # (nq,nw,4,4) complex
         flat = Wg.reshape(Wg.shape[0], Wg.shape[1], 16)
-        out = interp2d_spline(flat, self.Wg, self.Q2g, W, Q2)   # (N,16)
+        out = self._interp2d(flat, W, Q2)                 # (N,16)
         return out.reshape(-1, 4, 4)

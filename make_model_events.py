@@ -17,10 +17,12 @@ from diffpi.dcc_fold_full import fold_full_events
 
 jax.config.update("jax_enable_x64", True)
 
-N_CHUNK, N_CHUNKS = 250_000, 10            # 2.5M (spline gather ~1GB/chunk); scale up freely
+N_CHUNK, N_CHUNKS = 1_000_000, 25          # 25M generated (~10M physical after cuts)
 OUT = "model_nu_events.npz"
 
-hs = HadronStructure(n_theta=16, n_phi=16)
+# bilinear interp (fast, low memory) for high-stats studies; spline is only ~0.3% and
+# does not affect the statistical comparison (see spline.py finding).
+hs = HadronStructure(n_theta=16, n_phi=16, spline=False)
 Ws, Q2s, ws = [], [], []
 for c in range(N_CHUNKS):
     W, Q2, w = fold_full_events(DCCKnobs(), jax.random.PRNGKey(1000 + c), n=N_CHUNK, hs=hs)
