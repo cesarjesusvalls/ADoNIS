@@ -99,14 +99,21 @@ class SpectralSampler:
         p_vec = jnp.stack([p_mag * sth * jnp.cos(phi),
                            p_mag * sth * jnp.sin(phi),
                            p_mag * cth], axis=-1)
-        # removal energy E | p via the per-momentum energy CDF (nearest p row), INTERPOLATED
+        # removal energy E | p: interpolate the CONDITIONAL between the two bracketing
+        # momentum rows (p_idx-1, p_idx) by the same `frac`. The p-E correlation is steep
+        # in the high-|p| tail, so snapping to the upper row biases E high there (quantile
+        # interpolation: blend the two inverse-CDF draws -> <E|p> linear in |p|).
         ue = jax.random.uniform(ke, (n,))
-        row = jnp.clip(p_idx, 0, self.e_cdf.shape[0] - 1)
-        e_cdf_rows = self.e_cdf[row]                         # (n, ne)
-        ei = jax.vmap(lambda c, u: jnp.searchsorted(c, u))(e_cdf_rows, ue)
-        ei = jnp.clip(ei, 1, self.energy.shape[0] - 1)
-        d0 = jnp.take_along_axis(e_cdf_rows, (ei - 1)[:, None], 1)[:, 0]
-        d1 = jnp.take_along_axis(e_cdf_rows, ei[:, None], 1)[:, 0]
-        efrac = jnp.clip((ue - d0) / (d1 - d0 + 1e-30), 0, 1)
-        E_rm = self.energy[ei - 1] + efrac * (self.energy[ei] - self.energy[ei - 1])
+        E_lo = self._einterp(self.e_cdf[p_idx - 1], ue)
+        E_hi = self._einterp(self.e_cdf[p_idx], ue)
+        E_rm = (1 - frac) * E_lo + frac * E_hi
         return jax.lax.stop_gradient(p_vec), jax.lax.stop_gradient(E_rm)
+
+    def _einterp(self, cdf_rows, ue):
+        """Interpolated inverse-CDF draw of removal energy on the per-event rows."""
+        ei = jax.vmap(lambda c, u: jnp.searchsorted(c, u))(cdf_rows, ue)
+        ei = jnp.clip(ei, 1, self.energy.shape[0] - 1)
+        d0 = jnp.take_along_axis(cdf_rows, (ei - 1)[:, None], 1)[:, 0]
+        d1 = jnp.take_along_axis(cdf_rows, ei[:, None], 1)[:, 0]
+        ef = jnp.clip((ue - d0) / (d1 - d0 + 1e-30), 0, 1)
+        return self.energy[ei - 1] + ef * (self.energy[ei] - self.energy[ei - 1])
