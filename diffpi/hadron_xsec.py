@@ -27,6 +27,7 @@ from .dcc import DCCAmplitudes, DCCKnobs
 from .dcc_loader import load_cached
 from .hadron_assembly import build_zmtx, angular_kernel, current_and_tensor
 from .form_factors import axial_reweight_dipole
+from .spline import interp2d_spline
 from .achilles_const import MQE as M_N, M_PI    # exact ACHILLES masses (938.919, 138.04)
 
 
@@ -110,16 +111,17 @@ class HadronStructure:
                 + tq * ((1 - tw) * v10 + tw * v11))
 
     def structures_at(self, W, Q2, knobs: DCCKnobs):
-        """(W_T, W_L) at event kinematics W,Q2 (batched), differentiable in knobs."""
+        """(W_T, W_L) at event kinematics W,Q2 (batched), differentiable in knobs.
+        Uses ACHILLES's FMM cubic spline (see spline.py)."""
         WTg, WLg = self._tensor_grid(knobs)
-        WT = jax.vmap(lambda w, q: self._interp(WTg, w, q))(W, Q2)
-        WL = jax.vmap(lambda w, q: self._interp(WLg, w, q))(W, Q2)
-        return WT, WL
+        g = jnp.stack([WTg, WLg], axis=-1)                # (nq,nw,2)
+        out = interp2d_spline(g, self.Wg, self.Q2g, W, Q2)
+        return out[:, 0], out[:, 1]
 
     def tensor_at(self, W, Q2, knobs: DCCKnobs):
         """Full complex W^{mu,nu}[event,4,4] at event kinematics (batched),
-        differentiable in knobs. For contraction with the lepton tensor."""
-        Wg = self._full_grid(knobs)                       # (Q2,W,4,4)
+        differentiable in knobs. ACHILLES FMM cubic spline in (W,Q2)."""
+        Wg = self._full_grid(knobs)                       # (nq,nw,4,4) complex
         flat = Wg.reshape(Wg.shape[0], Wg.shape[1], 16)
-        out = jax.vmap(lambda w, q: self._interp(flat, w, q))(W, Q2)
+        out = interp2d_spline(flat, self.Wg, self.Q2g, W, Q2)   # (N,16)
         return out.reshape(-1, 4, 4)

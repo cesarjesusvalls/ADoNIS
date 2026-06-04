@@ -62,6 +62,20 @@ class DCCAmplitudes:
         return ((1 - tq) * ((1 - tw) * v00 + tw * v01)
                 + tq * ((1 - tw) * v10 + tw * v11))
 
+    def amplitudes_spline(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
+        """Batched (N,) spline amplitude interpolation matching ACHILLES (FMM cubic in
+        W and Q2). Returns vec, isv, axial each (N, n_idx, n_pw) complex, knobs applied."""
+        from .spline import interp2d_spline
+        ni, npw = self.vec.shape[2], self.vec.shape[3]
+        def sp(block):
+            flat = block.reshape(block.shape[0], block.shape[1], ni * npw)
+            return interp2d_spline(flat, self.W, self.Q2, W, Q2).reshape(-1, ni, npw)
+        vec, isv, axial = sp(self.vec), sp(self.isv), sp(self.axial) * knobs.axial_strength
+        if knobs.pw_norm != ():
+            scale = 1.0 + jnp.asarray(knobs.pw_norm)
+            vec = vec * scale; isv = isv * scale; axial = axial * scale
+        return vec, isv, axial
+
     def amplitudes(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
         """Interpolate the (vec, isv, axial) amplitudes at (W [MeV], Q2 [MeV^2]),
         with knobs applied. Each returned array is (n_idx, n_pw) complex.
