@@ -17,6 +17,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 RW, RQ = 6, 4              # group this many fine oracle bins per comparison bin
+ORACLE_NPZ = os.environ.get("ORACLE_NPZ", "oracle/oracle_highstats.npz")
+OUT_PNG = os.environ.get("OUT_PNG", "fold_full_highstats.png")
 
 me = np.load("model_nu_events.npz")
 Wm, Q2m, wm = me["W"], me["Q2"], me["w"]
@@ -38,8 +40,8 @@ def hist_sw(v, w, edges):
 
 
 # ---- oracle: high-stats accumulated histograms (preferred) or 200k events ----- #
-if os.path.exists("oracle/oracle_highstats.npz"):
-    hsd = np.load("oracle/oracle_highstats.npz")
+if os.path.exists(ORACLE_NPZ):
+    hsd = np.load(ORACLE_NPZ)
     N_ORACLE = int(hsd["n_events"])
     We = group_edges(hsd["We"], RW); Q2e = group_edges(hsd["Q2e"], RQ)
     oW_raw, oW_sw2 = regroup(hsd["swW"], RW), regroup(hsd["sw2W"], RW)
@@ -108,5 +110,5 @@ panel(1, Q2m, Q2e, Q2c / 1e6, oQ_raw, oQ_err, r"$Q^2$ [GeV$^2$]",
       "norm d$\\sigma$/d$Q^2$", "d$\\sigma$/d$Q^2$", scale=1e6)
 fig.suptitle("diffpi fold vs ACHILLES neutrino oracle -- statistical errors on ratio")
 fig.subplots_adjust(left=0.07, right=0.98, top=0.91, bottom=0.08, wspace=0.18)
-fig.savefig("fold_full_highstats.png", dpi=120)
-print("saved -> fold_full_highstats.png")
+fig.savefig(OUT_PNG, dpi=120)
+print(f"saved -> {OUT_PNG}")

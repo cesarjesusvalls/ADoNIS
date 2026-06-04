@@ -17,12 +17,12 @@ from diffpi.dcc_fold_full import fold_full_events
 
 jax.config.update("jax_enable_x64", True)
 
-N_CHUNK, N_CHUNKS = 1_000_000, 25          # 25M generated (~10M physical after cuts)
+N_CHUNK, N_CHUNKS = 250_000, 40            # 10M generated (~3.9M physical after cuts)
 OUT = "model_nu_events.npz"
 
-# bilinear interp (fast, low memory) for high-stats studies; spline is only ~0.3% and
-# does not affect the statistical comparison (see spline.py finding).
-hs = HadronStructure(n_theta=16, n_phi=16, spline=False)
+# spline=True: ACHILLES-faithful FMM cubic interp (bit-for-bit vs the oracle; ~3.5x
+# slower than bilinear, needs the smaller 250k chunk for the 4x4-block gather memory).
+hs = HadronStructure(n_theta=16, n_phi=16, spline=True)
 Ws, Q2s, ws = [], [], []
 for c in range(N_CHUNKS):
     W, Q2, w = fold_full_events(DCCKnobs(), jax.random.PRNGKey(1000 + c), n=N_CHUNK, hs=hs)

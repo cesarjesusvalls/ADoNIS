@@ -55,29 +55,40 @@ def load_spectral(name: str = "pke12p_tot.data") -> SpectralTable:
     return SpectralTable(mom, energy, S, n_p, norm)
 
 
+def _trapz_cdf(rho):
+    """Normalised cumulative-trapezoid CDF of a tabulated density `rho` on a uniform
+    grid: N points, CDF[0]=0, CDF[-1]=1 (grid spacing cancels in the normalisation)."""
+    rho = np.clip(np.asarray(rho, dtype=float), 0.0, None)
+    cdf = np.concatenate([[0.0], np.cumsum(0.5 * (rho[:-1] + rho[1:]))])
+    tot = cdf[-1]
+    return cdf / tot if tot > 0 else np.linspace(0.0, 1.0, len(rho))
+
+
 class SpectralSampler:
     """Differentiable-friendly (detached) sampler over the spectral function."""
 
     def __init__(self, table: SpectralTable):
         self.t = table
-        # momentum-magnitude pdf rho(p) ~ p^2 n(p); build a CDF on the grid
-        rho = table.mom ** 2 * np.clip(table.n_p, 0, None)
-        self.p_cdf = jnp.asarray(np.cumsum(rho) / np.sum(rho))
         self.mom = jnp.asarray(table.mom)
         self.energy = jnp.asarray(table.energy)
-        # per-momentum energy CDF (np, ne)
+        # momentum-magnitude pdf rho(p) ~ p^2 n(p). Build the CDF by the TRAPEZOIDAL
+        # rule (mass per interval = (rho_i+rho_{i+1})/2), so inverse-CDF interpolation
+        # samples |p| unbiased -- a point-mass cumsum biases |p| ~half a grid-spacing
+        # low (the grid is coarse, 20 MeV).
+        rho = table.mom ** 2 * np.clip(table.n_p, 0, None)
+        self.p_cdf = jnp.asarray(_trapz_cdf(rho))
+        # per-momentum energy CDF, trapezoidal; sampled WITH interpolation (the old code
+        # snapped E to the nearest grid node -> biased E ~half a 5 MeV spacing high).
         Sclip = np.clip(table.S, 0, None)
-        ecdf = np.cumsum(Sclip, axis=1)
-        ecdf = ecdf / np.clip(ecdf[:, -1:], 1e-300, None)
-        self.e_cdf = jnp.asarray(ecdf)
+        ecdf = np.stack([_trapz_cdf(Sclip[j]) for j in range(Sclip.shape[0])])
+        self.e_cdf = jnp.asarray(ecdf)                       # (np, ne), each 0..1
 
     def sample(self, key, n):
         """Return (p_vec [n,3] MeV, E_removal [n] MeV), all detached draws."""
         kp, kth, kph, ke = jax.random.split(key, 4)
-        # |p| via inverse-CDF interpolation
+        # |p| via trapezoidal inverse-CDF interpolation
         up = jax.random.uniform(kp, (n,))
-        p_idx = jnp.searchsorted(self.p_cdf, up)
-        p_idx = jnp.clip(p_idx, 1, self.mom.shape[0] - 1)
+        p_idx = jnp.clip(jnp.searchsorted(self.p_cdf, up), 1, self.mom.shape[0] - 1)
         c0, c1 = self.p_cdf[p_idx - 1], self.p_cdf[p_idx]
         frac = jnp.clip((up - c0) / (c1 - c0 + 1e-30), 0, 1)
         p_mag = self.mom[p_idx - 1] + frac * (self.mom[p_idx] - self.mom[p_idx - 1])
@@ -88,11 +99,14 @@ class SpectralSampler:
         p_vec = jnp.stack([p_mag * sth * jnp.cos(phi),
                            p_mag * sth * jnp.sin(phi),
                            p_mag * cth], axis=-1)
-        # removal energy E | p  via the per-momentum energy CDF (nearest p row)
+        # removal energy E | p via the per-momentum energy CDF (nearest p row), INTERPOLATED
         ue = jax.random.uniform(ke, (n,))
         row = jnp.clip(p_idx, 0, self.e_cdf.shape[0] - 1)
         e_cdf_rows = self.e_cdf[row]                         # (n, ne)
-        e_idx = jax.vmap(lambda c, u: jnp.searchsorted(c, u))(e_cdf_rows, ue)
-        e_idx = jnp.clip(e_idx, 0, self.energy.shape[0] - 1)
-        E_rm = self.energy[e_idx]
+        ei = jax.vmap(lambda c, u: jnp.searchsorted(c, u))(e_cdf_rows, ue)
+        ei = jnp.clip(ei, 1, self.energy.shape[0] - 1)
+        d0 = jnp.take_along_axis(e_cdf_rows, (ei - 1)[:, None], 1)[:, 0]
+        d1 = jnp.take_along_axis(e_cdf_rows, ei[:, None], 1)[:, 0]
+        efrac = jnp.clip((ue - d0) / (d1 - d0 + 1e-30), 0, 1)
+        E_rm = self.energy[ei - 1] + efrac * (self.energy[ei] - self.energy[ei - 1])
         return jax.lax.stop_gradient(p_vec), jax.lax.stop_gradient(E_rm)
