@@ -71,22 +71,27 @@ class HadronStructure:
         self._Wf = jnp.asarray(WW.ravel()); self._Q2f = jnp.asarray(QQ.ravel())
         self._shape = WW.shape
 
-    def _tensor_grid(self, knobs: DCCKnobs):
-        """W_T, W_L on the (Q2,W) grid for the given knobs (summed over channels)."""
+    def _full_grid(self, knobs: DCCKnobs):
+        """Full complex hadron tensor W^{mu,nu}[Q2,W,4,4] (summed over channels)."""
         def per_point(Wv, Q2v):
             vec, isv, axial = self.amp.amplitudes(Wv, Q2v, knobs)
             r_ax = axial_reweight_dipole(Q2v, knobs.axial_MA)
-            WT = jnp.zeros((), jnp.float64); WL = jnp.zeros((), jnp.float64)
+            Wmn = jnp.zeros((4, 4), jnp.complex128)
             for c, ker in zip(self.channels, self.kers):
                 zmtx = build_zmtx(vec, isv, axial, Wv, Q2v, self.twoJ, self.twoL,
                                   self.twoI, mode=c.mode, itiz=c.itiz, m_N=M_N,
                                   m_pi=M_PI, r_axial=r_ax)
-                Wmn = current_and_tensor(zmtx, ker)
-                WT = WT + c.mult * (Wmn[1, 1] + Wmn[2, 2]).real
-                WL = WL + c.mult * Wmn[3, 3].real
-            return WT, WL
-        WT, WL = jax.vmap(per_point)(self._Wf, self._Q2f)
-        return WT.reshape(self._shape), WL.reshape(self._shape)
+                Wmn = Wmn + c.mult * current_and_tensor(zmtx, ker)
+            return Wmn
+        Wmn = jax.vmap(per_point)(self._Wf, self._Q2f)
+        return Wmn.reshape(self._shape + (4, 4))
+
+    def _tensor_grid(self, knobs: DCCKnobs):
+        """W_T, W_L on the (Q2,W) grid for the given knobs (summed over channels)."""
+        Wmn = self._full_grid(knobs)
+        WT = (Wmn[..., 1, 1] + Wmn[..., 2, 2]).real
+        WL = Wmn[..., 3, 3].real
+        return WT, WL
 
     def structure_grid(self, knobs: DCCKnobs):
         """Return (W_T, W_L) grids (Q2,W) plus the axes for interpolation."""
@@ -111,3 +116,11 @@ class HadronStructure:
         WT = jax.vmap(lambda w, q: self._interp(WTg, w, q))(W, Q2)
         WL = jax.vmap(lambda w, q: self._interp(WLg, w, q))(W, Q2)
         return WT, WL
+
+    def tensor_at(self, W, Q2, knobs: DCCKnobs):
+        """Full complex W^{mu,nu}[event,4,4] at event kinematics (batched),
+        differentiable in knobs. For contraction with the lepton tensor."""
+        Wg = self._full_grid(knobs)                       # (Q2,W,4,4)
+        flat = Wg.reshape(Wg.shape[0], Wg.shape[1], 16)
+        out = jax.vmap(lambda w, q: self._interp(flat, w, q))(W, Q2)
+        return out.reshape(-1, 4, 4)
