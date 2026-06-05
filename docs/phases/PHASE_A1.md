@@ -49,9 +49,22 @@ A1 builds the EM path in the full-tensor framework instead.)
 
 ## Build plan (oracle-anchored, like A3)
 - ☑ **A1.0** `lepton_tensor_em` written.
-- ☐ **A1.1** Define `EM_CHANNELS` (mode=10, tcrz=0, the 4 channels) in `structure.py`;
+- ◐ **A1.1** Define `EM_CHANNELS` (mode=10, tcrz=0, the 4 channels) in `structure.py`;
   decide whether `angular_kernel` needs an EM isoscalar variant — **verify against the
   oracle channel ratios**.
+  - **Finding (the crux): naive EM channel defs do NOT reproduce the EM proton ratio.**
+    With `Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz={0,1}, tcrz=0, mode=10)` for the two
+    proton channels, the model's per-channel structure-function proxy gives
+    **π⁰/π⁺ ≈ 1.21**, but ACHILLES has **325.3/355.9 ≈ 0.91** (π⁺ > π⁰). A ~30% flip → the
+    EM isospin coupling is wrong as-is. `build_zmtx` mode=10 routes the isoscalar via the
+    `isv` block, but `angular_kernel` hardcodes the **isovector** Clebsch `cbg(1.0,tcrz,…)`
+    and never adds the isoscalar `cbg(0,0,…)` piece — so the photon's I=0+I=1 interference
+    is missing. **Next:** port the EM isospin from the Fortran `interpolate_amp` EM branch
+    (the isoscalar/isovector current decomposition) into an EM-specific `angular_kernel`
+    (or channel coupling), and re-check against 0.91 (and the `1N` neutron channels).
+    *(Caveat: the proxy ignores the 1/Q⁴ weighting + angle cut, which could shift the ratio
+    somewhat; the full EM weight (A1.2) is the definitive test — but a 1.21-vs-0.91 flip is
+    almost certainly a real isospin issue, not a proxy artifact.)*
 - ☐ **A1.2** EM weight path: a `current="EM"` switch (GenConfig) selecting `lepton_tensor_em`
   + the `e⁴/Q⁴` factor + EM channels; a `sigma_enu`-style σ(E_e) scan.
 - ☐ **A1.3** Closure: grad of σ wrt a **vector-FF / pw_norm** knob (the EM analog of A3's
