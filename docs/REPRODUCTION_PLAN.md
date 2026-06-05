@@ -65,7 +65,7 @@ Reuses the proven differentiable vertex machinery → lowest risk.
 
 ## Phase B — QE channel + inclusive (e,e′)
 
-- ☐ **B1 — QE 1-nucleon vertex** W^{μν}_{1N} (+ SF fold). closure: grad wrt QE FF. oracle: inclusive QE peak.
+- ◐ **B1 — QE 1-nucleon vertex** W^{μν}_{1N} (+ SF fold). closure: grad wrt QE FF. oracle: inclusive QE peak. — *free-nucleon CCQE DONE: Llewellyn-Smith σ(E_ν) with Kelly FFs, physical absolute units, reproduces ACHILLES QE to ≤3.2% (absolute, no constant), dσ/dM_A exact. SF fold for the inclusive peak (B2) remains. See `docs/phases/PHASE_B.md`.*
 - ☐ **B2 — EM inclusive fold** dσ/dω = QE + 1π. oracle: vs JLab-config ACHILLES, ¹²C. **→ Fig 1 (¹²C)**
 - ☐ **B3 — ⁴⁰Ar spectral function** (NuclearModel swap). closure: sampler check. oracle: Ar inclusive. **→ Fig 1 (⁴⁰Ar)**
   - external: ⁴⁰Ar p/n spectral functions.
