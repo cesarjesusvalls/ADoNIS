@@ -26,27 +26,24 @@ from adonis.primary.dcc.sigma_enu import em_sigma_channels_at
 
 ROOT = Path(__file__).resolve().parents[1]
 N = int(os.environ.get("ADONIS_A1_N", "150000"))
-# Validated comparison set: the two proton channels + the neutron TOTAL (the neutron
-# pi0/pi- split is a known open EM-isospin item -- see docs/phases/PHASE_A1.md).
-LABELS = [r"$e p\to e p\,\pi^0$", r"$e p\to e n\,\pi^+$", r"$e n\to e N\pi$ (total)"]
-COL = ["tab:green", "tab:blue", "tab:purple"]
+LABELS = [r"$e p\to e p\,\pi^0$", r"$e p\to e n\,\pi^+$",
+          r"$e n\to e n\,\pi^0$", r"$e n\to e p\,\pi^-$"]
+COL = ["tab:green", "tab:blue", "tab:olive", "tab:red"]
 
 ref = np.loadtxt(ROOT / "data" / "oracle" / "freenucleon_em_sigma.csv")
-E, ach4 = ref[:, 0], ref[:, 1:5]
-ach = np.stack([ach4[:, 0], ach4[:, 1], ach4[:, 2] + ach4[:, 3]], axis=1)
+E, ach = ref[:, 0], ref[:, 1:5]
 
-mod4 = np.zeros_like(ach4)
+mod = np.zeros_like(ach)
 for i, e in enumerate(E):
     _, sc = em_sigma_channels_at(PhysicsParams(), jax.random.fold_in(jax.random.PRNGKey(7), i),
                                  float(e), N, chunk=50_000)
-    mod4[i] = np.asarray(sc)
-mod = np.stack([mod4[:, 0], mod4[:, 1], mod4[:, 2] + mod4[:, 3]], axis=1)
+    mod[i] = np.asarray(sc)
 c = float(np.exp(np.mean(np.log(ach / mod))))
 pred = c * mod
 rel = np.abs(pred - ach) / ach
 
 fig, (ax, axr) = plt.subplots(2, 1, figsize=(6, 6), height_ratios=[3, 1], sharex=True)
-for ci in range(3):
+for ci in range(4):
     ax.plot(E / 1000, ach[:, ci], "o", color=COL[ci], ms=5, label=f"ACHILLES {LABELS[ci]}")
     ax.plot(E / 1000, pred[:, ci], "-", color=COL[ci], lw=1.5, label=f"ADoNIS {LABELS[ci]}")
     axr.plot(E / 1000, 100 * (pred[:, ci] - ach[:, ci]) / ach[:, ci], "o-", color=COL[ci], ms=3)

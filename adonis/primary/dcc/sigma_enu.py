@@ -230,11 +230,8 @@ def em_sigma_oracle(csv=None, key=None, n=120_000, knobs=None, rel_max=0.06,
     channels, AngleTheta cut). Same single-universal-constant bridge as the CC oracle.
 
     CSV columns: E_e[MeV], ch0 (p->p pi0), ch1 (p->n pi+), ch2 (n->n pi0), ch3 (n->p pi-).
-
-    Validation set: the two proton channels + the neutron TOTAL (ch2+ch3).  The neutron
-    pi0-vs-pi- SPLIT is intentionally excluded: the model's neutron total is right (<2%),
-    but the internal I=1/2 isoscalar/isovector branching between n pi0 and p pi- is not yet
-    correct (an open EM-isospin refinement -- see docs/phases/PHASE_A1.md)."""
+    Gates all FOUR channels (the neutron pi0/pi- split is now correct -- the isign=-1
+    neutron-amplitude phase, amp_dcc_sl_module.f:644)."""
     from pathlib import Path
     from adonis.core.validation import TestResult
     key = jax.random.PRNGKey(7) if key is None else key
@@ -242,23 +239,20 @@ def em_sigma_oracle(csv=None, key=None, n=120_000, knobs=None, rel_max=0.06,
     if csv is None:
         csv = Path(__file__).resolve().parents[3] / "data" / "oracle" / "freenucleon_em_sigma.csv"
     ref = np.loadtxt(csv)
-    E, ach4 = ref[:, 0], ref[:, 1:5]
-    mod4 = np.zeros_like(ach4)
+    E, ach = ref[:, 0], ref[:, 1:5]
+    mod = np.zeros_like(ach)
     for i, e in enumerate(E):
         _, sc = em_sigma_channels_at(knobs, jax.random.fold_in(key, i), float(e), n,
                                      theta_min_deg=theta_min_deg, theta_max_deg=theta_max_deg,
                                      chunk=chunk)
-        mod4[i] = np.asarray(sc)
-    # compare proton channels individually + neutron total (split excluded, see docstring)
-    ach = np.stack([ach4[:, 0], ach4[:, 1], ach4[:, 2] + ach4[:, 3]], axis=1)
-    mod = np.stack([mod4[:, 0], mod4[:, 1], mod4[:, 2] + mod4[:, 3]], axis=1)
+        mod[i] = np.asarray(sc)
     c = float(np.exp(np.mean(np.log(ach / mod))))
     cells = ach / mod / c
     rel = np.abs(c * mod - ach) / ach
     passed = bool(rel.max() < rel_max and cells.std() < std_max)
     return TestResult(
         "EM.sigma.oracle", "oracle", passed, False,
-        f"EM σ (p-channels + n-total) vs ACHILLES: max rel {rel.max():.3f} "
+        f"EM σ 4-channel vs ACHILLES: max rel {rel.max():.3f} "
         f"mean {rel.mean():.3f}, c-spread std {cells.std():.3f} (tol rel<{rel_max}, std<{std_max})",
         {"rel_max": float(rel.max()), "rel_mean": float(rel.mean()),
          "c_spread_std": float(cells.std()), "c": c, "n_cells": int(ach.size)})

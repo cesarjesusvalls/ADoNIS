@@ -203,7 +203,9 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
     if mode < 10:
         src_block = is_I32[None, None, :] * vec + (1.0 - is_I32[None, None, :]) * 0.5 * (vec - isv)
     elif itiz == -1:                                         # EM neutron: I=1/2 -> isoscalar
-        src_block = is_I32[None, None, :] * vec + (1.0 - is_I32[None, None, :]) * isv
+        # isign=-1: the neutron-amplitude phase (amp_dcc_sl_module.f:644, applied to the
+        # zampv_is block for EM only; our loader stores isv without it).
+        src_block = is_I32[None, None, :] * vec - (1.0 - is_I32[None, None, :]) * isv
     else:                                                    # EM proton, or EM I=3/2
         src_block = vec
     for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3)), start=1):

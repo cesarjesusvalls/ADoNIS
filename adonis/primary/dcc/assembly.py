@@ -102,7 +102,7 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
         if mode < 10:                              # weak (CC/NC)
             src_block = vec if is_I32 else 0.5 * (vec - isv)
         elif itiz == -1 and not is_I32:            # EM neutron, I=1/2 -> isoscalar
-            src_block = isv
+            src_block = -isv                       # isign=-1 neutron phase (amp_dcc_sl_module.f:644)
         else:                                      # EM proton, or EM I=3/2
             src_block = vec
         for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3)), start=1):

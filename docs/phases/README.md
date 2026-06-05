@@ -9,6 +9,6 @@ before continuing that phase.
 |---|---|---|
 | [PHASE0.md](PHASE0.md) | 0 — inventory & oracle-mode verification | ☑ done (inventory + mode matrix) |
 | [PHASE_A3.md](PHASE_A3.md) | A3 — free-nucleon σ(E_ν) → Fig 2 | ◐ vertex+oracle+muon+units done (ν_e & ν_μ ≤3% vs ACHILLES, c_μ/c_e=0.998, physical nb); only the external ANL/BNL data overlay remains |
-| [PHASE_A1.md](PHASE_A1.md) | A1 — EM 1π current (electron probe) | ◐ EM current validated ≤3% vs ACHILLES (proton channels + neutron total), closure exact; open: neutron π⁰/π⁻ split |
+| [PHASE_A1.md](PHASE_A1.md) | A1 — EM 1π current (electron probe) | ☑ done — EM current validated ≤3% vs ACHILLES (all 4 channels; neutron split fixed via isign=-1), closure exact |
 
 Legend: ☐ todo · ◐ partial · ☑ done.
