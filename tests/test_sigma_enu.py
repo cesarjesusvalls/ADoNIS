@@ -13,8 +13,9 @@ import jax
 
 from adonis.params import PhysicsParams, GenConfig
 from adonis.nuclear.free import FreeNucleon
-from adonis.primary.dcc.sigma_enu import (sigma_vs_enu, sigma_channels_at,
-                                          dsigma_dMA_closure, freenucleon_sigma_oracle)
+from adonis.primary.dcc.sigma_enu import (sigma_vs_enu, sigma_vs_enu_nb, sigma_channels_at,
+                                          dsigma_dMA_closure, freenucleon_sigma_oracle,
+                                          CM2_1E38_PER_NB)
 
 N = 8_000 if os.environ.get("ADONIS_CI_FAST") else 40_000
 N_ORACLE = 100_000 if os.environ.get("ADONIS_CI_FAST") else 150_000
@@ -73,6 +74,15 @@ def test_freenucleon_sigma_oracle_muon():
                                  key=jax.random.PRNGKey(11), n=N_ORACLE, m_lep=M_MU)
     assert not r.skipped
     assert r.passed, r.detail
+
+
+def test_physical_absolute_scale():
+    """A3.5 (units): with the calibrated model→nb constant, the free-proton CC1π⁺ cross
+    section sits at the known physical scale ~0.6–0.9 ×10⁻³⁸ cm² at the high-energy
+    plateau (matching the paper's Fig-2 axis)."""
+    _, perch = sigma_vs_enu_nb(PhysicsParams(), jax.random.PRNGKey(11), [2000.], n=N_ORACLE)
+    sigma_ppi_cm2 = float(perch[0, 2]) * CM2_1E38_PER_NB     # p->p pi+ in 10^-38 cm^2
+    assert 0.5 < sigma_ppi_cm2 < 1.0, sigma_ppi_cm2
 
 
 def test_muon_electron_constant_consistency():

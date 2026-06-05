@@ -37,6 +37,15 @@ from adonis.params import GenConfig, DCCKnobs
 from adonis.primary.dcc.channel import DCCSinglePion
 from adonis.nuclear.free import FreeNucleon
 
+# Calibrated model→nb scale.  The relative weight omits the universal CC prefactor
+# (G_F²cos²θ_c and the proposal-measure/flux bookkeeping); this ONE constant — fit against
+# the ACHILLES free-nucleon oracle, which reports nb (Constants.hh HBARC2=0.38938 mb·GeV²) —
+# converts the model's relative σ to physical nb.  It is unit bookkeeping, NOT a physics
+# tune: energy- and channel-independent, and the SAME for ν_e and ν_μ to 0.2% (see
+# `freenucleon_sigma_oracle`, which re-fits it each call rather than relying on this value).
+SIGMA_UNIT_NB = 2.569e-14        # nb per (model relative unit); ~0.2% calibration spread
+CM2_1E38_PER_NB = 1.0e5          # 1 nb = 1e5 × 10⁻³⁸ cm²  (the Fig-2 σ axis)
+
 
 def _channel_for(e_nu, cfg, nuclear, m_lep):
     """A DCCSinglePion configured for a stationary-target σ(E_ν) point: lepton energy
@@ -133,6 +142,15 @@ def freenucleon_sigma_oracle(csv=None, key=None, n=120_000, knobs=None,
         f"c-spread std {cells.std():.3f} (tol rel<{rel_max}, std<{std_max})",
         {"rel_max": float(rel.max()), "rel_mean": float(rel.mean()),
          "c_spread_std": float(cells.std()), "c": c, "n_cells": int(ach.size)})
+
+
+def sigma_vs_enu_nb(knobs, key, energies, n=60_000, cfg=GenConfig(spline=False),
+                    nuclear=None, m_lep=0.0):
+    """σ(E_ν) in **physical nb** (= relative σ × SIGMA_UNIT_NB). Returns
+    (sigma_total[E], sigma_per_channel[E, n_ch]). Multiply by `CM2_1E38_PER_NB` for
+    10⁻³⁸ cm² (the paper's Fig-2 units)."""
+    tot, perch = sigma_vs_enu(knobs, key, energies, n=n, cfg=cfg, nuclear=nuclear, m_lep=m_lep)
+    return tot * SIGMA_UNIT_NB, perch * SIGMA_UNIT_NB
 
 
 def dsigma_dMA_closure(key=None, e_nu=1500.0, n=40_000, eps=2e-3, tol=1e-3,
