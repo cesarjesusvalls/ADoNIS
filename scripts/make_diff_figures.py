@@ -32,7 +32,9 @@ os.makedirs("figures", exist_ok=True)
 # N kept modest: the autodiff-vs-FD match is per-bin EXACT on the shared sample regardless
 # of statistics, and the spline amplitude interp under jacfwd is memory-heavy at large N.
 hs = HadronStructure(n_theta=16, n_phi=16, spline=False)
-N = 50_000
+# the autodiff-vs-FD match is per-bin EXACT on the shared sample regardless of N, so a
+# small N suffices (and keeps jacfwd memory low on a constrained CI runner)
+N = int(os.environ.get("ADONIS_DIFF_N", 50_000))
 MA0, EPS, MA_HI = 1.0, 5e-3, 1.2
 
 print("sampling fixed proposal once ...", flush=True)

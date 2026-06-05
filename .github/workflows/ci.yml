@@ -104,8 +104,8 @@ jobs:
 
       - name: Verification figures (reduced statistics)
         run: |
-          python scripts/make_diff_figures.py
-          ADONIS_NDATA=150000 ADONIS_NMODEL=50000 ADONIS_DATA_CHUNK=75000 ADONIS_ITERS=80 \
+          ADONIS_DIFF_N=15000 python scripts/make_diff_figures.py
+          ADONIS_NDATA=80000 ADONIS_NMODEL=30000 ADONIS_DATA_CHUNK=40000 ADONIS_ITERS=80 \
             python scripts/make_ma_fit.py
           if [ -f data/oracle/oracle_finalstate.npz ]; then
             FS_CHUNK=40000 FS_NCHUNK=3 python scripts/validate_final_state.py
