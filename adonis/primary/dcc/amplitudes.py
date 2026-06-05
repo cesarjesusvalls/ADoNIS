@@ -15,22 +15,12 @@ kinematics (W,Q^2) -- for a reparameterised phase space -- and in the knobs.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 import jax
 import jax.numpy as jnp
 
-from .dcc_loader import load_cached, PW_LABELS
-
-
-@dataclass(frozen=True)
-class DCCKnobs:
-    axial_strength: float = 1.0
-    pw_norm: tuple = ()                 # () -> all zeros (no rescale); else length 14
-    axial_MA: float = 1.000             # axial mass [GeV]; Q^2-dependent reweight of
-                                        # the axial block (see form_factors.py). The
-                                        # reweight is applied in dcc_xsec (needs Q^2).
+from adonis.primary.dcc.loader import load_cached, PW_LABELS
+from adonis.params import PhysicsParams, DCCKnobs    # DCCKnobs is an alias of PhysicsParams
 
 
 class DCCAmplitudes:
@@ -65,12 +55,34 @@ class DCCAmplitudes:
     def amplitudes_spline(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
         """Batched (N,) spline amplitude interpolation matching ACHILLES (FMM cubic in
         W and Q2). Returns vec, isv, axial each (N, n_idx, n_pw) complex, knobs applied."""
-        from .spline import interp2d_spline
+        from adonis.primary.dcc.spline import interp2d_spline
         ni, npw = self.vec.shape[2], self.vec.shape[3]
         def sp(block):
             flat = block.reshape(block.shape[0], block.shape[1], ni * npw)
             return interp2d_spline(flat, self.W, self.Q2, W, Q2).reshape(-1, ni, npw)
         vec, isv, axial = sp(self.vec), sp(self.isv), sp(self.axial) * knobs.axial_strength
+        if knobs.pw_norm != ():
+            scale = 1.0 + jnp.asarray(knobs.pw_norm)
+            vec = vec * scale; isv = isv * scale; axial = axial * scale
+        return vec, isv, axial
+
+    def amplitudes_bilinear(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
+        """Batched (N,) BILINEAR amplitude interpolation -- ~3.5x faster / lighter than the
+        spline (used for closures/fits where the ~0.3% spline-vs-bilinear difference cancels
+        between data and model). Returns vec, isv, axial each (N, n_idx, n_pw), knobs applied."""
+        gw, gq = self.W, self.Q2
+        nw, nq = gw.shape[0], gq.shape[0]
+        iw = jnp.clip(jnp.searchsorted(gw, W) - 1, 0, nw - 2)
+        iq = jnp.clip(jnp.searchsorted(gq, Q2) - 1, 0, nq - 2)
+        tw = ((W - gw[iw]) / (gw[iw + 1] - gw[iw]))[:, None, None]
+        tq = ((Q2 - gq[iq]) / (gq[iq + 1] - gq[iq]))[:, None, None]
+
+        def bil(block):                                    # block (nq,nw,ni,npw)
+            v00, v01 = block[iq, iw], block[iq, iw + 1]
+            v10, v11 = block[iq + 1, iw], block[iq + 1, iw + 1]
+            return (1 - tq) * ((1 - tw) * v00 + tw * v01) + tq * ((1 - tw) * v10 + tw * v11)
+
+        vec, isv, axial = bil(self.vec), bil(self.isv), bil(self.axial) * knobs.axial_strength
         if knobs.pw_norm != ():
             scale = 1.0 + jnp.asarray(knobs.pw_norm)
             vec = vec * scale; isv = isv * scale; axial = axial * scale

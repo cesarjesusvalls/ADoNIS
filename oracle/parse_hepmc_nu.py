@@ -45,6 +45,60 @@ def event_kin(evt):
     return Q2, W, p_pi_mag
 
 
+def _boost_to_rest(P, a):
+    """Boost 4-vector a=(E,px,py,pz) into the rest frame of P (matches
+    diffpi.lepton_tensor.boost_to_rest / observables.cos_theta_star)."""
+    M = np.sqrt(max(minkowski2(P), 1e-9))
+    gamma = P[0] / M
+    beta = P[1:] / P[0]
+    b2 = max(np.sum(beta ** 2), 1e-30)
+    bda = np.dot(beta, a[1:])
+    a0 = gamma * (a[0] - bda)
+    avec = a[1:] + ((gamma - 1.0) * bda / b2 - gamma * a[0]) * beta
+    return np.concatenate([[a0], avec])
+
+
+def event_kin_full(evt):
+    """Full final-state kinematics for the differentiable-fold comparison.  Returns a
+    dict of observables (matching diffpi.observables) or None.  Final recoil nucleon is
+    the status-1 nucleon; initial struck nucleon is the status-2 nucleon."""
+    k_in = k_out = p_pi = p_struck = p_N = None
+    for pid, status, p4 in evt["parts"]:
+        if pid in NU_PIDS and status == 4:
+            k_in = p4
+        elif pid in CHG_LEP and status == 1:
+            k_out = p4
+        elif pid in PI_PIDS and status == 1:
+            p_pi = p4
+        elif abs(pid) in (2112, 2212) and status == 2:
+            p_struck = p4
+        elif abs(pid) in (2112, 2212) and status == 1:
+            p_N = p4
+    if k_in is None or k_out is None or p_pi is None or p_struck is None:
+        return None
+    q = k_in - k_out
+    P = q + p_struck
+    Q2 = -minkowski2(q)
+    W = np.sqrt(max(minkowski2(P), 0.0))
+    ppi_mag = np.sqrt(np.sum(p_pi[1:] ** 2))
+    # pion in the piN-CM (rest frame of q+p_struck), relative to q
+    pi_r = _boost_to_rest(P, p_pi)[1:]
+    q_r = _boost_to_rest(P, q)[1:]
+    kp_r = _boost_to_rest(P, k_out)[1:]
+    e3 = q_r / (np.linalg.norm(q_r) + 1e-12)
+    cos_ts = float(np.dot(pi_r, e3) / (np.linalg.norm(pi_r) + 1e-12))
+    kp_perp = kp_r - np.dot(kp_r, e3) * e3
+    e1 = kp_perp / (np.linalg.norm(kp_perp) + 1e-12)
+    e2 = np.cross(e3, e1)
+    phi_s = float(np.arctan2(np.dot(pi_r, e2), np.dot(pi_r, e1)))
+    lep_E = float(k_out[0])
+    lep_cth = float(np.dot(k_out[1:], k_in[1:]) / (np.linalg.norm(k_out[1:]) * np.linalg.norm(k_in[1:]) + 1e-12))
+    nuc_mom = float(np.sqrt(np.sum(p_N[1:] ** 2))) if p_N is not None else np.nan
+    return {"Q2": Q2, "W": W, "ppi_mag": ppi_mag, "cos_theta_star": cos_ts,
+            "phi_star": phi_s, "lepton_energy": lep_E, "lepton_costheta": lep_cth,
+            "nucleon_mom": nuc_mom, "w": evt["w"]}
+
+
 def main():
     if not HEPMC.exists():
         sys.exit(f"hepmc not found: {HEPMC}")
