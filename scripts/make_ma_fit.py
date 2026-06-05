@@ -48,9 +48,14 @@ def log(msg):
 os.makedirs("figures", exist_ok=True)
 hs = HadronStructure(spline=False)
 MA_TRUE, MA_INIT = 1.20, 0.90
-NDATA, NMODEL, DATA_CHUNK = 1_000_000, 100_000, 100_000   # high-stats data (chunked), 100k pred
+# stats overridable via env (e.g. ADONIS_NDATA=120000 ADONIS_NMODEL=40000 ADONIS_ITERS=80
+# for a quick low-stats look); defaults are the high-stats configuration.
+NDATA = int(os.environ.get("ADONIS_NDATA", 1_000_000))
+NMODEL = int(os.environ.get("ADONIS_NMODEL", 100_000))
+DATA_CHUNK = min(int(os.environ.get("ADONIS_DATA_CHUNK", 100_000)), NDATA)
+ITERS = int(os.environ.get("ADONIS_ITERS", 200))
 CACHE = "figures/_ma_fit_cache.npz"
-CKEY = f"{NDATA}_{NMODEL}_{MA_TRUE}_{MA_INIT}"
+CKEY = f"{NDATA}_{NMODEL}_{MA_TRUE}_{MA_INIT}_{ITERS}"
 
 EDGES = {
     "W": np.linspace(1080, 1640, 29), "Q2": np.linspace(0, 1.6e6, 25),
@@ -98,7 +103,7 @@ def make_loss(obs_names):
     return loss
 
 
-def fit(obs_names, lr=0.05, iters=200, final_lr_frac=0.02):
+def fit(obs_names, lr=0.05, iters=ITERS, final_lr_frac=0.02):
     loss = make_loss(obs_names)
     vg = jax.jit(lambda MA: jax.jvp(loss, (MA,), (1.0,)))      # forward-mode value+grad
     log(f"[{'/'.join(obs_names)}] compiling forward value+grad (first call) ...")
