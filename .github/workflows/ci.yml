@@ -84,13 +84,21 @@ jobs:
       - name: Per-module self-tests (closure + oracle)
         run: |
           set -o pipefail
-          # -v prints each test id as it starts, so an OOM-killed step still shows
-          # which test was running; the tee'd log is uploaded even on failure.
-          python -m pytest tests/ -v -ra --durations=15 2>&1 | tee pytest.log
-
-      - name: Memory after tests (diagnostic)
-        if: always()
-        run: free -h || true
+          # Run each test file in its OWN process. These modules do heavy float64 JAX
+          # work at IMPORT time, so collecting them all in one process stacks every
+          # file's memory and OOM-kills the 7.8 GB runner during collection. Isolating
+          # per file bounds peak memory to a single file; we log `free -h` after each
+          # and keep going on failure so pytest.log captures the full picture.
+          rc=0
+          : > pytest.log
+          for f in tests/test_*.py; do
+            echo "::group::$f"
+            python -m pytest "$f" -v -ra --durations=10 2>&1 | tee -a pytest.log || rc=1
+            echo "--- free after $f ---" | tee -a pytest.log
+            free -h | tee -a pytest.log
+            echo "::endgroup::"
+          done
+          exit $rc
 
       - name: Verification figures (reduced statistics)
         run: |
