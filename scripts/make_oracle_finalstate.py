@@ -6,7 +6,7 @@ W, Q2, |p_pi|) needed to validate the differentiable full-final-state fold
 (fold_final_state).  Runs ACHILLES in batches, histograms each batch (sum w, sum w^2 per
 bin), deletes each hepmc, and saves the combined histograms with per-bin errors.
 
-Run (from the diffpi dir):  python make_oracle_finalstate.py
+Run (from the repo root):  python scripts/make_oracle_finalstate.py
 """
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
