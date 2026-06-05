@@ -14,17 +14,17 @@ before continuing that phase.
 | [PHASE_B.md](PHASE_B.md) | B — QE vertex + inclusive (e,e′) | ◐ B1 done — free-nucleon CCQE (Llewellyn-Smith) reproduces ACHILLES QE to ≤3% (absolute, no constant); inclusive fold (Fig 1) remains |
 | [PHASE_D.md](PHASE_D.md) | D — FSI scaffold & differentiability proof (toy) | ◐ toy cascade recovered + verified (forward-unbiased, 5-param differentiable); FSIModel port + full joint closure remain |
 | [PHASE_E.md](PHASE_E.md) | E — meson-baryon scattering (DCC PWA) | ◐ E1 πN σ(W): π⁺p Δ(1232) peak reproduced (208 mb @ 1220 MeV); π⁻p/ηN/KΛ channels + angular dσ/dΩ remain |
+| [PHASE_G.md](PHASE_G.md) | G — cascade engine + Virtual mode | ◐ cascade-enabled image BUILT (`docker/Dockerfile.cascade` → `achilles-cascade`); resolves the build showstopper; oracle gen + cascade FSIModel follow |
 
 Legend: ☐ todo · ◐ partial · ☑ done.
 
-## Confirmed showstoppers (autonomous, this environment)
-- **Standalone π–nucleus cascade σ oracle** (Fig c12_ar40, Phases G2/H2): the image lacks
-  the `achilles-cascade` binary (`ACHILLES_ENABLE_CASCADE_TEST` OFF) **and** this environment
-  has no `cmake`/`gfortran` to build it. So the standalone π-A reaction/absorption cross
-  sections can't be oracle-gated here. *Mitigation:* cascade-as-FSI inside event generation
-  (`Cascade: Run: True`) still works → Phase-I FSI-on observables are NOT blocked; only the
-  standalone π-A σ figures are. Needs a cascade-enabled image rebuild (packages:write) or a
-  machine with the C++/Fortran toolchain.
+## Showstoppers (autonomous, this environment)
+- **Standalone π–nucleus cascade σ oracle** (Fig c12_ar40, Phases G2/H2): the published image
+  lacks the `achilles-cascade` binary and the host has no `cmake`/`gfortran`. **RESOLVED by
+  building a cascade-enabled image inside Docker** (`docker/Dockerfile.cascade`, toolchain in
+  the container) → `achilles:cascade` with the `achilles-cascade` binary. See `PHASE_G.md`.
+  (Remaining: a segfault in the cascade interaction setup on the first build — the
+  factory-registry/visibility issue, addressed by adding `-fno-visibility-inlines-hidden`.)
 - **A3 ANL/BNL data overlay** (#6): the paper's σ(E_ν) points are the external Wilkinson-2014
   reanalysis (not in the `../nuisance` clone, which has dσ/dQ²); `uproot` isn't installed.
   Soft-blocked — and not the model's job (the model↔ACHILLES validation is done).

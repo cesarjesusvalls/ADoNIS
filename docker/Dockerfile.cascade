@@ -1,0 +1,26 @@
+FROM alpine AS build
+
+RUN apk update && apk add g++ gcc musl-dev cmake hdf5-dev make git gfortran python3
+
+COPY . /achilles_src
+
+# Same as the base image, plus ACHILLES_ENABLE_CASCADE_TEST=ON so the standalone
+# achilles-cascade binary (CascadeMain.cc + RunCascade.cc) is built -- this is what the
+# published :oracle image is missing (the standalone pi-nucleus cross-section driver).
+# -fno-visibility-inlines-hidden: keep the self-registering factory maps coalescing across
+# the shared libs (docs/CONTAINER.md / docs/INPUTS.md: "REQUIRED to run"). The event-gen
+# binary happens to work without it, but the separately-linked achilles-cascade binary
+# segfaults in the interaction/factory setup unless the registries are shared.
+RUN cmake -S achilles_src -B achilles \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DACHILLES_ENABLE_CASCADE_TEST=ON \
+        -DCMAKE_CXX_FLAGS="-fno-visibility-inlines-hidden" \
+    && cmake --build achilles -j
+
+FROM alpine AS main
+
+RUN apk update && apk add --no-cache hdf5-dev libstdc++ libgfortran
+COPY --from=build /achilles /achilles
+WORKDIR /achilles
+ENTRYPOINT ["./bin/achilles"]
+CMD ["run.yml"]
