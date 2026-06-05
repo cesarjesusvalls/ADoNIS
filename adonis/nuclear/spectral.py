@@ -24,7 +24,9 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-SF_DIR = Path("/Users/cjesus/Software/DiffSinglePiProd/Achilles/data/Spectral_Functions")
+from adonis.paths import achilles_data_root
+
+SF_DIR = achilles_data_root() / "Spectral_Functions"
 
 
 @dataclass(frozen=True)

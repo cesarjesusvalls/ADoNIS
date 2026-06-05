@@ -35,7 +35,9 @@ from adonis import observables as obs
 
 os.makedirs("figures", exist_ok=True)
 os.makedirs("data/cache", exist_ok=True)
-CHUNK, NCHUNK = 50_000, 40                     # 2.0M events (match the 2M oracle)
+# 2.0M events by default (match the 2M oracle); override via env for fast CI runs.
+CHUNK = int(os.environ.get("FS_CHUNK", 50_000))
+NCHUNK = int(os.environ.get("FS_NCHUNK", 40))
 ORACLE = "data/oracle/oracle_finalstate.npz"
 hs = HadronStructure(n_theta=16, n_phi=16, spline=False)
 

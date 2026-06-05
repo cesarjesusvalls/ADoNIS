@@ -57,3 +57,8 @@ MAf, hist, losses, rel = fit_scalar(loss, MA_INIT, lr=0.05, iters=60, label="Q2"
 print(f"M_A_true={MA_TRUE}  init={MA_INIT}  ->  recovered {MAf:.4f}  (grad AD/FD rel {rel:.1e})")
 ok = abs(MAf - MA_TRUE) < 0.1 and rel < 1e-3
 print("PASS" if ok else "FAIL")
+
+
+def test_ma_recovered():
+    assert abs(MAf - MA_TRUE) < 0.1, f"recovered {MAf}"
+    assert rel < 1e-3, f"grad AD/FD rel {rel}"

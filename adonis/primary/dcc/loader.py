@@ -34,7 +34,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-DEFAULT_PATH = "/Users/cjesus/Software/DiffSinglePiProd/Achilles/data/dcc_EW.dat"
+from adonis.paths import achilles_data_root
+
+DEFAULT_PATH = str(achilles_data_root() / "dcc_EW.dat")
 PW_LABELS = ["s11", "s31", "p11", "p13", "p31", "p33", "d13", "d15",
              "d33", "d35", "f15", "f17", "f35", "f37"]
 

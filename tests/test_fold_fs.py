@@ -55,3 +55,24 @@ print(f"W(p_pi+p_N) vs W(q+p_struck) max|d| (kept): {np.max(np.abs(W_had-W_true)
 cts = np.asarray(obs.cos_theta_star(ev))[keep]
 print(f"cos_theta* range [{cts.min():.3f},{cts.max():.3f}]  mean {np.average(cts, weights=wm[keep]):.3f}")
 print(f"channel fractions (weighted): {[float(np.sum(wm[(np.asarray(ev.channel)==c)&keep])/wm[keep].sum()) for c in range(3)]}")
+
+
+def test_unintegration_unbiased():
+    # The un-integration is unbiased in EXPECTATION; at finite N the FS fold and the
+    # integrated fold are two estimators with independent downstream variance, so the
+    # per-bin shapes scatter.  Gate the total weight tightly, and the dsigma/dW,
+    # dsigma/dQ2 shapes by the MEDIAN relative deviation over well-populated bins
+    # (robust to a few noisy tail bins), with a generous max guard.
+    assert 0.95 < wm.sum() / wf.sum() < 1.05
+    for dm, df in ((dWm, dWf), (dQm, dQf)):
+        sel = df > 0.10 * df.max()
+        rel = np.abs(dm - df)[sel] / df[sel]
+        assert np.median(rel) < 0.08, np.median(rel)
+        assert np.max(rel) < 0.30, np.max(rel)
+
+
+def test_final_state_onshell():
+    # reconstructed pion/nucleon masses, and W from (p_pi+p_N) vs (q+p_struck)
+    assert abs(np.sqrt(np.asarray(mpi2)[keep]).mean() - M_PI) < 1.0
+    assert abs(np.sqrt(np.asarray(mN2)[keep]).mean() - MQE) < 1.0
+    assert np.max(np.abs(W_had - W_true)[keep]) < 1e-3

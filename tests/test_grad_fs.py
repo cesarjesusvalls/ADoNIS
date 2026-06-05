@@ -29,10 +29,20 @@ def dsig_dW_bin(MA, lo=1180.0, hi=1240.0):
     return jnp.sum(jnp.where(insel, ev.w, 0.0))
 
 
-for name, f in [("total xsec", total_xsec), ("dsig/dW peak bin", dsig_dW_bin)]:
+def _rel(f):
     g_ad = float(jax.grad(f)(1.0))
     eps = 2e-3
     g_fd = float((f(1.0 + eps) - f(1.0 - eps)) / (2 * eps))
     rel = abs(g_ad - g_fd) / (abs(g_ad) + abs(g_fd) + 1e-30)
+    return g_ad, g_fd, rel
+
+
+for name, f in [("total xsec", total_xsec), ("dsig/dW peak bin", dsig_dW_bin)]:
+    g_ad, g_fd, rel = _rel(f)
     print(f"{name:18s}  d/dMA: autodiff {g_ad:+.6e}  finite-diff {g_fd:+.6e}  rel {rel:.2e}  "
           f"{'OK' if rel < 1e-3 else 'CHECK'}")
+
+
+def test_grad_matches_fd():
+    for f in (total_xsec, dsig_dW_bin):
+        assert _rel(f)[2] < 1e-3
