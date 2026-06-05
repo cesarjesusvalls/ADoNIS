@@ -65,6 +65,16 @@ A1 builds the EM path in the full-tensor framework instead.)
     *(Caveat: the proxy ignores the 1/Q⁴ weighting + angle cut, which could shift the ratio
     somewhat; the full EM weight (A1.2) is the definitive test — but a 1.21-vs-0.91 flip is
     almost certainly a real isospin issue, not a proxy artifact.)*
+  - **Tested one fix hypothesis — WRONG direction (reverted).** Fortran detail: the EM branch
+    uses `zampv` (isovector) for I=3/2 and `zampv_is` (isoscalar) for I=1/2 waves
+    (`amp_dcc_sl_module.f` 925/962). Hypothesis: route *all* EM I=1/2 (proton too) to the
+    isoscalar `isv` block. Result: proxy ratio → **2.40** (worse; target 0.91). So it is NOT
+    a simple block-swap; reverted (CC path verified unchanged). **Two lessons:** (1) EM I=1/2
+    likely needs the isovector AND isoscalar pieces *each with their isospin Clebsch*
+    (cbg(1,0,…) + the isoscalar coupling), combined — port the full Fortran EM current, don't
+    guess a single block; (2) **drop the crude `sum|W_T+W_L|` proxy** — it ignores 1/Q⁴ and
+    the angle cut and may mislead. Build the real EM weight first (A1.2), generate the EM
+    oracle (`1H`+`1N`, angle-cut, ~60 s/run), and judge channel ratios from the actual σ.
 - ☐ **A1.2** EM weight path: a `current="EM"` switch (GenConfig) selecting `lepton_tensor_em`
   + the `e⁴/Q⁴` factor + EM channels; a `sigma_enu`-style σ(E_e) scan.
 - ☐ **A1.3** Closure: grad of σ wrt a **vector-FF / pw_norm** knob (the EM analog of A3's
