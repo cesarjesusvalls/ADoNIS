@@ -206,6 +206,78 @@ def em_sigma_channels_at(knobs, key, e_e, n, theta_min_deg=10.0, theta_max_deg=9
     return jnp.sum(sigma_c), sigma_c
 
 
+# --------------------------------------------------------------------------- #
+#  NC (neutral-current neutrino) single-pion -- Phase A2
+# --------------------------------------------------------------------------- #
+_NC_HS = {}
+
+
+def _nc_hs(spline=False):
+    from adonis.primary.dcc.structure import HadronStructure, NC_CHANNELS
+    if spline not in _NC_HS:
+        _NC_HS[spline] = HadronStructure(channels=NC_CHANNELS, n_theta=12, n_phi=12, spline=spline)
+    return _NC_HS[spline]
+
+
+def nc_sigma_channels_at(knobs, key, e_nu, n, nuclear=None, chunk=None):
+    """Per-channel NC single-pion cross section at neutrino energy `e_nu` [MeV], four
+    channels (p->p pi0, p->n pi+, n->n pi0, n->p pi-).  NC current = sin^2(theta_W)-weighted
+    vector + axial (no pion pole), via mode=-1 channels; the leptonic side is the same V-A
+    massless-neutrino tensor as CC (no 1/Q^4, no angle cut -- the Z propagator is ~constant).
+    Returns (sigma_total, sigma_per_channel[4]); differentiable in `knobs`."""
+    from adonis.primary.dcc.channel import sample_final_state, weight_from_sample
+    nuclear = FreeNucleon() if nuclear is None else nuclear
+    hs = _nc_hs()
+    V = float(e_nu) * np.deg2rad(180.0)                     # lepton proposal volume (theta in [0,pi])
+
+    def terms(k, m):
+        S = sample_final_state(k, m, hs=hs, e_nu=float(e_nu), ep_lo=0.0, ep_hi=float(e_nu),
+                               theta_max_deg=180.0, nuclear=nuclear, m_lep=0.0, current="CC")
+        _, LWc = weight_from_sample(knobs, S, use_spline=False)
+        return jnp.where(S["cut"][:, None], 1.0, 0.0) * (
+            S["prefac"][:, None] * (4.0 * jnp.pi) * S["mult"][None, :] * LWc) * V
+
+    if not chunk or chunk >= n:
+        sigma_c = jnp.mean(terms(key, n), axis=0)
+        return jnp.sum(sigma_c), sigma_c
+    acc, done, i = None, 0, 0
+    while done < n:
+        m = min(chunk, n - done)
+        s = jnp.sum(terms(jax.random.fold_in(key, i), m), axis=0)
+        acc = s if acc is None else acc + s
+        done += m; i += 1
+    sigma_c = acc / done
+    return jnp.sum(sigma_c), sigma_c
+
+
+def nc_sigma_oracle(csv=None, key=None, n=120_000, knobs=None, rel_max=0.06,
+                    std_max=0.03, chunk=25_000):
+    """NC oracle gate (A2): NC single-pion σ(E_ν), four channels vs ACHILLES (nu on 1H+1N).
+    CSV columns: E_nu[MeV], ch0 (p->p pi0), ch1 (p->n pi+), ch2 (n->n pi0), ch3 (n->p pi-)."""
+    from pathlib import Path
+    from adonis.core.validation import TestResult
+    key = jax.random.PRNGKey(3) if key is None else key
+    knobs = DCCKnobs() if knobs is None else knobs
+    if csv is None:
+        csv = Path(__file__).resolve().parents[3] / "data" / "oracle" / "freenucleon_nc_sigma.csv"
+    ref = np.loadtxt(csv)
+    E, ach = ref[:, 0], ref[:, 1:5]
+    mod = np.zeros_like(ach)
+    for i, e in enumerate(E):
+        _, sc = nc_sigma_channels_at(knobs, jax.random.fold_in(key, i), float(e), n, chunk=chunk)
+        mod[i] = np.asarray(sc)
+    c = float(np.exp(np.mean(np.log(ach / mod))))
+    cells = ach / mod / c
+    rel = np.abs(c * mod - ach) / ach
+    passed = bool(rel.max() < rel_max and cells.std() < std_max)
+    return TestResult(
+        "NC.sigma.oracle", "oracle", passed, False,
+        f"NC σ 4-channel vs ACHILLES: max rel {rel.max():.3f} mean {rel.mean():.3f}, "
+        f"c-spread std {cells.std():.3f} (tol rel<{rel_max}, std<{std_max})",
+        {"rel_max": float(rel.max()), "rel_mean": float(rel.mean()),
+         "c_spread_std": float(cells.std()), "c": c, "n_cells": int(ach.size)})
+
+
 def em_dsigma_dpw_closure(key=None, e_e=1500.0, n=30_000, pw_index=5, eps=2e-3, tol=1e-3):
     """EM closure (A1): d(total EM σ)/d(vector-FF knob), autodiff vs central FD.
 

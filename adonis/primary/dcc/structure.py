@@ -58,6 +58,17 @@ EM_CHANNELS = (
     Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=-1.0, mult=1.0, tcrz=0.0, mode=10), # n -> p pi-
 )
 
+# NC (Z exchange) channels: current isospin_z tcrz=0, mode=-1.  Same four final states as
+# EM (the lepton charge is unchanged -> hadronic charge conserved per nucleon), but the
+# hadronic current carries the sin^2(theta_W) weak-mixing couplings (build_zmtx mode<=-1)
+# plus the axial current (no pion pole).
+NC_CHANNELS = (
+    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=-1),  # p -> p pi0
+    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=1.0, mult=1.0, tcrz=0.0, mode=-1),  # p -> n pi+
+    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=-1),  # n -> n pi0
+    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=-1.0, mult=1.0, tcrz=0.0, mode=-1), # n -> p pi-
+)
+
 
 class HadronStructure:
     """Full-hadron-tensor structure functions W_T, W_L on the (Q2,W) grid."""

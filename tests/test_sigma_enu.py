@@ -133,3 +133,43 @@ def test_em_sigma_oracle():
     assert r.passed, r.detail
     assert r.metrics["rel_max"] < 0.06
     assert r.metrics["n_cells"] == 20            # 5 energies x 4 channels
+
+
+# ---------------------------------------------------------------------------- #
+#  Phase A2 — NC single-pion (neutral-current neutrino)
+# ---------------------------------------------------------------------------- #
+def test_nc_closure_dMA():
+    """NC differentiability: d(total NC σ)/dM_A, autodiff == FD (NC keeps the axial)."""
+    import jax.numpy as jnp
+    from adonis.params import DCCKnobs
+    from adonis.primary.dcc.sigma_enu import nc_sigma_channels_at
+    from adonis.core.validation import grad_closure
+    key = jax.random.PRNGKey(0)
+    def total_nc(MA):
+        tot, _ = nc_sigma_channels_at(DCCKnobs(axial_MA=MA), key, 1500.0, N)
+        return tot
+    r = grad_closure(total_nc, "NC.sigma.closure", x0=1.0, eps=2e-3, tol=1e-3)
+    assert r.passed, r.detail
+    assert r.metrics["rel_err"] < 1e-3
+
+
+def test_nc_proton_channel_ratio():
+    """NC proton ratio σ(ν p->ν p π0)/σ(ν p->ν n π+) ≈ 1.67 (ACHILLES 1.209/0.724) --
+    validates the sin^2(theta_W) NC vector couplings (isovector x(1-2sw2) + isoscalar
+    x vvfac)."""
+    from adonis.primary.dcc.sigma_enu import nc_sigma_channels_at
+    _, sc = nc_sigma_channels_at(PhysicsParams(), jax.random.PRNGKey(7), 1500.0, N)
+    sc = np.asarray(sc)
+    ratio = sc[0] / sc[1]
+    assert 1.55 < ratio < 1.80, (ratio, sc)
+
+
+def test_nc_sigma_oracle():
+    """A2 oracle: NC σ(E_ν) vs ACHILLES (nu on 1H+1N), all 4 channels, single-constant
+    bridge. The neutron π0/π- split is correct without the EM phase (NC isign=+1)."""
+    from adonis.primary.dcc.sigma_enu import nc_sigma_oracle
+    r = nc_sigma_oracle(key=jax.random.PRNGKey(3), n=N_ORACLE)
+    assert not r.skipped
+    assert r.passed, r.detail
+    assert r.metrics["rel_max"] < 0.06
+    assert r.metrics["n_cells"] == 20

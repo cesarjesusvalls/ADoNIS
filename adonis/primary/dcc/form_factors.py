@@ -30,6 +30,45 @@ M_PI_GEV = 0.13957
 M_N_GEV = 0.938272
 
 
+# --- Kelly vector form factors (FormFactor.cc::Kelly, FormFactors.yml) -------- #
+# Sachs G_E, G_M -> Dirac/Pauli F1, F2 for proton and neutron.  Used by the QE
+# 1-nucleon current (Phase B) and as the EM/NC vector input.
+KELLY_LAMBDASQ = 0.7174       # [GeV^2] (Galster Gen)
+MU_P = 2.79278
+MU_N = -1.91315
+KELLY_GEP = (-0.24, 10.98, 12.82, 21.97)
+KELLY_GEN = (1.70, 3.30)      # Galster: (A, B)
+KELLY_GMP = (0.12, 10.97, 18.86, 6.55)
+KELLY_GMN = (2.33, 14.72, 24.20, 84.1)
+
+
+def _kelly_param(terms, tau):
+    """Kelly rational form (1 + a1 tau) / (1 + b1 tau + b2 tau^2 + b3 tau^3)."""
+    a1, b1, b2, b3 = terms
+    return (1.0 + a1 * tau) / (1.0 + b1 * tau + b2 * tau ** 2 + b3 * tau ** 3)
+
+
+def kelly_sachs(Q2_GeV2):
+    """Sachs (Gep, Gen, Gmp, Gmn) at Q^2 [GeV^2] -- Kelly (p) + Galster (Gen)."""
+    tau = Q2_GeV2 / (4.0 * M_N_GEV ** 2)
+    gep = _kelly_param(KELLY_GEP, tau)
+    gmp = MU_P * _kelly_param(KELLY_GMP, tau)
+    gmn = MU_N * _kelly_param(KELLY_GMN, tau)
+    gen = (1.0 / (1.0 + Q2_GeV2 / KELLY_LAMBDASQ) ** 2) * KELLY_GEN[0] * tau / (1.0 + KELLY_GEN[1] * tau)
+    return gep, gen, gmp, gmn
+
+
+def kelly_dirac_pauli(Q2_GeV2):
+    """Dirac/Pauli (F1p, F1n, F2p, F2n) from the Sachs FFs (FormFactorImpl::Fill)."""
+    gep, gen, gmp, gmn = kelly_sachs(Q2_GeV2)
+    tau = Q2_GeV2 / (4.0 * M_N_GEV ** 2)
+    f1p = (gep + tau * gmp) / (1.0 + tau)
+    f1n = (gen + tau * gmn) / (1.0 + tau)
+    f2p = (gmp - gep) / (1.0 + tau)
+    f2n = (gmn - gen) / (1.0 + tau)
+    return f1p, f1n, f2p, f2n
+
+
 # --- axial form factors ----------------------------------------------------- #
 def axial_dipole(Q2_GeV2, MA=MA_NOMINAL, gan1=GAN1):
     """F_A(Q^2) = -g_A / (1 + Q^2/M_A^2)^2   (FormFactor.cc::AxialDipole)."""
