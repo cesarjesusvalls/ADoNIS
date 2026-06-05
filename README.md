@@ -64,6 +64,24 @@ finite-difference ~1e-5), and M_A is recovered by gradient descent (high-stats c
 on the truth). See `docs/STATUS.md` for the full history and `../STRATEGY.md` for the plan.
 
 Each module carries a closure test (standalone differentiability) and, where applicable, an
-oracle test (physics validity). New channels / nuclear models / FSI subclass the respective
-ABCs (`adonis.core.process.Channel`, `adonis.nuclear.base.NuclearModel`,
-`adonis.fsi.base.FSIModel`).
+oracle test (physics validity), exposed uniformly as `module.closure_test()` /
+`module.oracle_test()` (defaults skip where not applicable). New channels / nuclear models /
+FSI subclass the respective ABCs (`adonis.core.process.Channel`,
+`adonis.nuclear.base.NuclearModel`, `adonis.fsi.base.FSIModel`).
+
+## Continuous integration
+
+The ACHILLES oracle is published as a public container image,
+`ghcr.io/cesarjesusvalls/achilles:oracle` (built from a pinned ACHILLES commit; see
+`../Achilles/CONTAINER.md`). It is the single source of truth for CI — both the `achilles`
+binary that generates the oracle and the data tables (`dcc_EW.dat`, the spectral function)
+the ADoNIS model side reads. The loaders resolve those via the `ACHILLES_DATA` env var.
+
+- **`.github/workflows/ci.yml`** (push / PR): runs the per-module closure + oracle pytest
+  gates and regenerates the verification figures (uploaded as build artifacts). It extracts
+  the data tables from the image (cached) and fetches the oracle from the `oracle-data`
+  release if present (oracle gates skip otherwise).
+- **`.github/workflows/oracle.yml`** (manual / monthly): runs the image to generate
+  neutrino-CC hepmc, parses it to `oracle_finalstate.npz`, validates the model against it,
+  and publishes it as the `oracle-data` release asset (overwritten in place — kept out of
+  git history). Trigger from the Actions tab; for a quick check use small `nevents`/`nbatches`.
