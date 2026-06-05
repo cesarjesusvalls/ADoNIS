@@ -153,6 +153,109 @@ def sigma_vs_enu_nb(knobs, key, energies, n=60_000, cfg=GenConfig(spline=False),
     return tot * SIGMA_UNIT_NB, perch * SIGMA_UNIT_NB
 
 
+# --------------------------------------------------------------------------- #
+#  EM (electron probe) single-pion -- Phase A1
+# --------------------------------------------------------------------------- #
+_EM_HS = {}
+
+
+def _em_hs(spline=False):
+    """Cached EM HadronStructure (channels=EM_CHANNELS, mode=10). Building the angular
+    kernels is expensive, so reuse across energies."""
+    from adonis.primary.dcc.structure import HadronStructure, EM_CHANNELS
+    key = spline
+    if key not in _EM_HS:
+        _EM_HS[key] = HadronStructure(channels=EM_CHANNELS, n_theta=12, n_phi=12, spline=spline)
+    return _EM_HS[key]
+
+
+def em_sigma_channels_at(knobs, key, e_e, n, theta_min_deg=10.0, theta_max_deg=90.0,
+                         nuclear=None, chunk=None):
+    """Per-channel EM single-pion cross section within the lepton angular acceptance
+    [theta_min, theta_max] at electron energy `e_e` [MeV], for the four EM channels
+    (p->p pi0, p->n pi+, n->n pi0, n->p pi-).  Reuses the validated sample/weight machinery
+    with current='EM' (lepton_tensor_em x 1/Q^4) and EM_CHANNELS.  Returns
+    (sigma_total, sigma_per_channel[4]) in relative units; differentiable in `knobs`.
+
+    Unlike the CC total, the EM total is 1/Q^4-divergent at forward angles, so a finite
+    angular acceptance (theta_min>0) is REQUIRED (matches ACHILLES's AngleTheta cut)."""
+    from adonis.primary.dcc.channel import sample_final_state, weight_from_sample
+    nuclear = FreeNucleon() if nuclear is None else nuclear
+    hs = _em_hs()
+    V = (float(e_e) - 0.0) * (np.deg2rad(theta_max_deg) - np.deg2rad(theta_min_deg))
+
+    def terms(k, m):
+        S = sample_final_state(k, m, hs=hs, e_nu=float(e_e), ep_lo=0.0, ep_hi=float(e_e),
+                               theta_min_deg=theta_min_deg, theta_max_deg=theta_max_deg,
+                               nuclear=nuclear, m_lep=0.0, current="EM")
+        _, LWc = weight_from_sample(knobs, S, use_spline=False)
+        wc = jnp.where(S["cut"][:, None], 1.0, 0.0) * (
+            S["prefac"][:, None] * (4.0 * jnp.pi) * S["mult"][None, :] * LWc) * V
+        return wc
+
+    if not chunk or chunk >= n:
+        sigma_c = jnp.mean(terms(key, n), axis=0)
+        return jnp.sum(sigma_c), sigma_c
+    acc, done, i = None, 0, 0
+    while done < n:
+        m = min(chunk, n - done)
+        s = jnp.sum(terms(jax.random.fold_in(key, i), m), axis=0)
+        acc = s if acc is None else acc + s
+        done += m; i += 1
+    sigma_c = acc / done
+    return jnp.sum(sigma_c), sigma_c
+
+
+def em_dsigma_dpw_closure(key=None, e_e=1500.0, n=30_000, pw_index=5, eps=2e-3, tol=1e-3):
+    """EM closure (A1): d(total EM σ)/d(vector-FF knob), autodiff vs central FD.
+
+    EM has no axial current, so the differentiable handle is the per-partial-wave
+    normalisation `pw_norm` (here on the P33/Δ wave, index 5) -- the EM analog of A3's
+    dσ/dM_A. The proposal is sampled once and reweighted, so the gradient is exact."""
+    from adonis.core.validation import grad_closure
+    key = jax.random.PRNGKey(0) if key is None else key
+
+    def total_em(scale):
+        pw = tuple(jnp.where(jnp.arange(14) == pw_index, scale, 0.0))
+        tot, _ = em_sigma_channels_at(DCCKnobs(pw_norm=pw), key, e_e, n)
+        return tot
+
+    return grad_closure(total_em, "EM.sigma.closure", x0=0.0, eps=eps, tol=tol)
+
+
+def em_sigma_oracle(csv=None, key=None, n=120_000, knobs=None, rel_max=0.06,
+                    std_max=0.03, chunk=25_000, theta_min_deg=10.0, theta_max_deg=90.0):
+    """EM oracle gate (A1): EM single-pion σ within the [theta_min,theta_max] acceptance
+    for the four channels vs ACHILLES (electron on 1H proton channels + 1N neutron
+    channels, AngleTheta cut). Same single-universal-constant bridge as the CC oracle.
+
+    CSV columns: E_e[MeV], ch0 (p->p pi0), ch1 (p->n pi+), ch2 (n->n pi0), ch3 (n->p pi-)."""
+    from pathlib import Path
+    from adonis.core.validation import TestResult
+    key = jax.random.PRNGKey(7) if key is None else key
+    knobs = DCCKnobs() if knobs is None else knobs
+    if csv is None:
+        csv = Path(__file__).resolve().parents[3] / "data" / "oracle" / "freenucleon_em_sigma.csv"
+    ref = np.loadtxt(csv)
+    E, ach = ref[:, 0], ref[:, 1:5]
+    mod = np.zeros_like(ach)
+    for i, e in enumerate(E):
+        _, sc = em_sigma_channels_at(knobs, jax.random.fold_in(key, i), float(e), n,
+                                     theta_min_deg=theta_min_deg, theta_max_deg=theta_max_deg,
+                                     chunk=chunk)
+        mod[i] = np.asarray(sc)
+    c = float(np.exp(np.mean(np.log(ach / mod))))
+    cells = ach / mod / c
+    rel = np.abs(c * mod - ach) / ach
+    passed = bool(rel.max() < rel_max and cells.std() < std_max)
+    return TestResult(
+        "EM.sigma.oracle", "oracle", passed, False,
+        f"EM σ 4-channel vs ACHILLES: max rel {rel.max():.3f} mean {rel.mean():.3f}, "
+        f"c-spread std {cells.std():.3f} (tol rel<{rel_max}, std<{std_max})",
+        {"rel_max": float(rel.max()), "rel_mean": float(rel.mean()),
+         "c_spread_std": float(cells.std()), "c": c, "n_cells": int(ach.size)})
+
+
 def dsigma_dMA_closure(key=None, e_nu=1500.0, n=40_000, eps=2e-3, tol=1e-3,
                        cfg=GenConfig(spline=False), nuclear=None, m_lep=0.0):
     """Closure: d(total σ)/dM_A, autodiff vs central finite difference at fixed key.

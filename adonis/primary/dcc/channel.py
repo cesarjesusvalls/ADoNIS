@@ -36,7 +36,7 @@ import jax.numpy as jnp
 from adonis.primary.dcc.amplitudes import DCCKnobs
 from adonis.nuclear.spectral import load_spectral, SpectralSampler
 from adonis.primary.dcc.structure import HadronStructure
-from adonis.primary.dcc.lepton import cm_lepton_momenta, lepton_tensor_cc, contract
+from adonis.primary.dcc.lepton import cm_lepton_momenta, lepton_tensor_cc, lepton_tensor_em, contract
 from adonis.primary.dcc.form_factors import axial_reweight_dipole
 from adonis.constants import MQE, M_PI, W_THR, W_MAX, Q2_MAX
 from adonis.primary.dcc.differential import (precompute_diff_coeffs, angular_factor,
@@ -64,7 +64,8 @@ def _diff_coeffs(hs: HadronStructure):
 
 def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
                        sf="pke12p_tot.data", e_nu=E_NU_DEFAULT, ep_lo=50.0, ep_hi=1480.0,
-                       theta_max_deg=180.0, m_pi=M_PI, m_N=MQE, nuclear=None, m_lep=0.0):
+                       theta_max_deg=180.0, m_pi=M_PI, m_N=MQE, nuclear=None, m_lep=0.0,
+                       current="CC", theta_min_deg=0.0):
     """Draw the FIXED detached proposal (all kinematics + the precomputed angular kernels,
     lepton tensor, cuts, phase-space factors, lab final-state momenta).  Nothing here
     depends on the physics knobs -- so `weight_from_sample(knobs, S)` can be re-evaluated
@@ -83,7 +84,8 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
 
     klep, kth, ksf, kpi_a, kpi_p, kphi, kch = jax.random.split(key, 7)
     Ep = sg(ep_lo + (ep_hi - ep_lo) * jax.random.uniform(klep, (n,)))
-    theta = sg(jnp.deg2rad(theta_max_deg) * jax.random.uniform(kth, (n,)))
+    th_lo = jnp.deg2rad(theta_min_deg)
+    theta = sg(th_lo + (jnp.deg2rad(theta_max_deg) - th_lo) * jax.random.uniform(kth, (n,)))
     cos_ts = sg(2.0 * jax.random.uniform(kpi_a, (n,)) - 1.0)        # pion cos(theta*)
     phi_s = sg(2.0 * jnp.pi * jax.random.uniform(kpi_p, (n,)))       # pion phi*
     phi_lep = sg(2.0 * jnp.pi * jax.random.uniform(kphi, (n,)))      # lepton azimuth
@@ -112,8 +114,12 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     cut = (W > W_THR) & (W < W_MAX) & (Q2_adj > 0.0) & (Q2_adj < Q2_MAX) & (Ep >= m_lep)
 
     k_cm, kp_cm = cm_lepton_momenta(k_lab, kp_lab, p_struck)
-    Lmn = sg(lepton_tensor_cc(k_cm, kp_cm))
+    is_em = (current == "EM")
+    Lmn = sg(lepton_tensor_em(k_cm, kp_cm) if is_em else lepton_tensor_cc(k_cm, kp_cm))
     e1, e2, e3, P = cm_basis(k_lab, kp_lab, p_struck)
+    # EM photon propagator 1/Q^4 (true leptonic Q^2); CC W-propagator is ~constant -> 1.
+    Q2_lep = q_vec2 - omega ** 2
+    em_prop = (1.0 / jnp.clip(Q2_lep, 1.0, None) ** 2) if is_em else 1.0
 
     # per-channel angular kernels at the sampled pion angle (detached numpy -> jnp)
     theta_pi = np.arccos(np.asarray(cos_ts)); phi_np = np.asarray(phi_s)
@@ -124,7 +130,7 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     # E'/E_nu: for a massless lepton |p'|=E' so this is unchanged, but for the muon the
     # momentum magnitude `plep` (not the energy Ep) is what enters d^3p'/(2E').
     p_pi, p_N = two_body_lab(P, e1, e2, e3, jnp.clip(W, 1.0, None), cos_ts, phi_s, m_pi, m_N)
-    prefac = (plep / e_nu) * jnp.sin(theta) * (pion_cm_momentum(W) / jnp.clip(W, 1.0, None))
+    prefac = (plep / e_nu) * jnp.sin(theta) * (pion_cm_momentum(W) / jnp.clip(W, 1.0, None)) * em_prop
     return dict(
         hs=hs, n=n, m_pi=m_pi, m_N=m_N, kch=kch,
         Wc=jnp.clip(W, 1.0, None), Q2c=jnp.clip(Q2_adj, 1.0, None), W=W, Q2_adj=Q2_adj,

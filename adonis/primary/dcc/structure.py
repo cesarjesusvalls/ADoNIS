@@ -48,6 +48,16 @@ CC_CHANNELS = (
     Channel(itiz=+1, tiz=+0.5, tpinz=1.5, tpiz=1.0, mult=6.0),   # p -> p pi+
 )
 
+# EM (photon) channels: current isospin_z tcrz=0, mode=10.  Four channels (vs 3 CC):
+# the photon doesn't change the nucleon charge, so each nucleon has two pion channels.
+# tpinz (total piN isospin_z) = tiz + tpiz: proton -> +1/2, neutron -> -1/2.
+EM_CHANNELS = (
+    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=10),  # p -> p pi0
+    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=1.0, mult=1.0, tcrz=0.0, mode=10),  # p -> n pi+
+    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=10),  # n -> n pi0
+    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=-1.0, mult=1.0, tcrz=0.0, mode=10), # n -> p pi-
+)
+
 
 class HadronStructure:
     """Full-hadron-tensor structure functions W_T, W_L on the (Q2,W) grid."""

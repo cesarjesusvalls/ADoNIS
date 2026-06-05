@@ -15,7 +15,8 @@ from adonis.params import PhysicsParams, GenConfig
 from adonis.nuclear.free import FreeNucleon
 from adonis.primary.dcc.sigma_enu import (sigma_vs_enu, sigma_vs_enu_nb, sigma_channels_at,
                                           dsigma_dMA_closure, freenucleon_sigma_oracle,
-                                          CM2_1E38_PER_NB)
+                                          CM2_1E38_PER_NB, em_sigma_channels_at,
+                                          em_dsigma_dpw_closure)
 
 N = 8_000 if os.environ.get("ADONIS_CI_FAST") else 40_000
 N_ORACLE = 100_000 if os.environ.get("ADONIS_CI_FAST") else 150_000
@@ -96,3 +97,27 @@ def test_muon_electron_constant_consistency():
                                     key=jax.random.PRNGKey(11), n=n, m_lep=M_MU)
     ratio = r_mu.metrics["c"] / r_e.metrics["c"]
     assert abs(ratio - 1.0) < 0.02, f"c_mu/c_e = {ratio:.4f}"
+
+
+# ---------------------------------------------------------------------------- #
+#  Phase A1 — EM single-pion (electron probe)
+# ---------------------------------------------------------------------------- #
+def test_em_closure_dpw():
+    """EM differentiability: d(total EM σ)/d(vector-FF pw_norm), autodiff == FD.
+    (EM has no axial; the pw_norm wave-normalisation is the differentiable handle.)"""
+    r = em_dsigma_dpw_closure(key=jax.random.PRNGKey(0), n=N)
+    assert not r.skipped
+    assert r.passed, r.detail
+    assert r.metrics["rel_err"] < 1e-3
+
+
+def test_em_proton_channel_ratio():
+    """EM proton channel ratio σ(e p->e p π0)/σ(e p->e n π+) ≈ 0.91, matching ACHILLES
+    (325.3/355.9 = 0.914) within the [10,90] acceptance — validates the EM isospin +
+    1/Q^4 weight (the crude structure-function proxy got this wrong; the real weight nails
+    it)."""
+    _, sc = em_sigma_channels_at(PhysicsParams(), jax.random.PRNGKey(7), 1500.0, N,
+                                 theta_min_deg=10.0, theta_max_deg=90.0)
+    sc = np.asarray(sc)
+    ratio = sc[0] / sc[1]                              # p->p pi0 / p->n pi+
+    assert 0.85 < ratio < 0.98, (ratio, sc)
