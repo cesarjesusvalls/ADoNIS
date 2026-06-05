@@ -60,3 +60,8 @@ print(f"[1] build_zmtx batched vs scalar  max|d| = {max_zmtx:.3e}")
 print(f"[2] grid-summed differential vs integrated  max rel = {max_rel:.3e}")
 ok = max_zmtx < 1e-10 and max_rel < 1e-9
 print("PASS" if ok else "FAIL")
+
+
+def test_angular_diff_consistency():
+    assert max_zmtx < 1e-10, max_zmtx           # batched == scalar build_zmtx
+    assert max_rel < 1e-9, max_rel              # grid-summed differential == integrated

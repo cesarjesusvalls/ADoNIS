@@ -93,8 +93,10 @@ jobs:
           : > pytest.log
           for f in tests/test_*.py; do
             echo "::group::$f"
-            python -m pytest "$f" -v -ra --durations=10 2>&1 | tee -a pytest.log || rc=1
-            echo "--- free after $f ---" | tee -a pytest.log
+            python -m pytest "$f" -v -ra --durations=10 2>&1 | tee -a pytest.log
+            code=$?   # pipefail -> pytest's exit code; 5 = "no tests collected" (OK)
+            [ $code -eq 0 ] || [ $code -eq 5 ] || rc=1
+            echo "--- free after $f (pytest exit $code) ---" | tee -a pytest.log
             free -h | tee -a pytest.log
             echo "::endgroup::"
           done
