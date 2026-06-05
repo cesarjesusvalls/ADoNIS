@@ -16,7 +16,8 @@ from adonis.analysis.fit import fit_scalar
 
 cfg = GenConfig(spline=False)
 ch = DCCSinglePion(cfg)
-N, MA_TRUE, MA_INIT = 40_000, 1.20, 0.90
+N = 20_000 if _os.environ.get("ADONIS_CI_FAST") else 40_000
+MA_TRUE, MA_INIT = 1.20, 0.90
 edges = np.linspace(0, 1.6e6, 25)
 nb = len(edges) - 1
 

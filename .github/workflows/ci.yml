@@ -23,10 +23,16 @@ env:
   DATA_CACHE_KEY: achilles-data-oracle-a4f761ea
   ACHILLES_DATA: ${{ github.workspace }}/achilles_data
   ADONIS_CI_FAST: "1"
+  # keep the float64 JAX folds from spiking memory on a ~7 GB hosted runner
+  JAX_PLATFORMS: cpu
+  OMP_NUM_THREADS: "2"
+  OPENBLAS_NUM_THREADS: "2"
+  MALLOC_ARENA_MAX: "2"
 
 jobs:
   test-and-figures:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +63,13 @@ jobs:
           docker rm "$cid"
           ls -la achilles_data achilles_data/Spectral_Functions
 
+      - name: Runner resources (diagnostic)
+        run: |
+          echo "cores: $(nproc)"
+          free -h || cat /proc/meminfo | head -3
+          df -h / | tail -1
+          python -c "import jax, jaxlib; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__); print('devices', jax.devices())"
+
       - name: Fetch oracle data (if published)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -69,15 +82,23 @@ jobs:
           fi
 
       - name: Per-module self-tests (closure + oracle)
-        run: python -m pytest tests/ -q
+        run: |
+          set -o pipefail
+          # -v prints each test id as it starts, so an OOM-killed step still shows
+          # which test was running; the tee'd log is uploaded even on failure.
+          python -m pytest tests/ -v -ra --durations=15 2>&1 | tee pytest.log
+
+      - name: Memory after tests (diagnostic)
+        if: always()
+        run: free -h || true
 
       - name: Verification figures (reduced statistics)
         run: |
           python scripts/make_diff_figures.py
-          ADONIS_NDATA=200000 ADONIS_NMODEL=50000 ADONIS_DATA_CHUNK=100000 ADONIS_ITERS=80 \
+          ADONIS_NDATA=150000 ADONIS_NMODEL=50000 ADONIS_DATA_CHUNK=75000 ADONIS_ITERS=80 \
             python scripts/make_ma_fit.py
           if [ -f data/oracle/oracle_finalstate.npz ]; then
-            FS_CHUNK=50000 FS_NCHUNK=4 python scripts/validate_final_state.py
+            FS_CHUNK=40000 FS_NCHUNK=3 python scripts/validate_final_state.py
           else
             echo "skipping final-state oracle figure (no oracle data)"
           fi
@@ -88,3 +109,10 @@ jobs:
         with:
           name: figures
           path: figures/
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log
+          path: pytest.log

@@ -13,7 +13,9 @@ from adonis.primary.dcc.channel import fold_final_state
 from adonis import observables as obs
 
 hs = HadronStructure(n_theta=16, n_phi=16, spline=False)   # bilinear = faster for the test
-n = 200_000
+# Two folds at this n run back-to-back; trim hard under ADONIS_CI_FAST so the hosted
+# runner (~7 GB) does not OOM (the per-channel angular array scales with n).
+n = 80_000 if _os.environ.get("ADONIS_CI_FAST") else 200_000
 key = jax.random.PRNGKey(7)
 
 # integrated fold (reference)

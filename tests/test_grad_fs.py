@@ -13,7 +13,7 @@ from adonis.primary.dcc.channel import fold_final_state
 from adonis import observables as obs
 
 hs = HadronStructure(n_theta=12, n_phi=12, spline=False)
-N = 30_000
+N = 15_000 if _os.environ.get("ADONIS_CI_FAST") else 30_000
 key = jax.random.PRNGKey(3)
 
 
