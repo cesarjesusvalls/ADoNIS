@@ -1,0 +1,90 @@
+name: CI
+
+# Fast PR/push gate: per-module closure + oracle self-tests, and the verification
+# figures.  The ACHILLES data tables (DCC amplitudes + spectral function) are
+# extracted from the published oracle image so the model side matches the oracle;
+# the oracle npz itself is fetched from the `oracle-data` release if it exists
+# (otherwise the oracle gates skip).  See .github/workflows/oracle.yml for the
+# image-backed oracle regeneration.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  IMAGE: ghcr.io/cesarjesusvalls/achilles:oracle
+  # bump the suffix whenever the oracle image is rebuilt, to refresh the table cache
+  DATA_CACHE_KEY: achilles-data-oracle-a4f761ea
+  ACHILLES_DATA: ${{ github.workspace }}/achilles_data
+  ADONIS_CI_FAST: "1"
+
+jobs:
+  test-and-figures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Cache ACHILLES data tables
+        id: dcache
+        uses: actions/cache@v4
+        with:
+          path: achilles_data
+          key: ${{ env.DATA_CACHE_KEY }}
+
+      - name: Extract ACHILLES data tables from image
+        if: steps.dcache.outputs.cache-hit != 'true'
+        run: |
+          docker pull "$IMAGE"
+          cid=$(docker create "$IMAGE")
+          mkdir -p achilles_data/Spectral_Functions
+          docker cp "$cid:/achilles/data/dcc_EW.dat" achilles_data/dcc_EW.dat
+          docker cp "$cid:/achilles/data/Spectral_Functions/pke12p_tot.data" \
+                    achilles_data/Spectral_Functions/pke12p_tot.data
+          docker rm "$cid"
+          ls -la achilles_data achilles_data/Spectral_Functions
+
+      - name: Fetch oracle data (if published)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p data/oracle
+          if gh release download oracle-data -p oracle_finalstate.npz -D data/oracle/ 2>/dev/null; then
+            echo "fetched oracle_finalstate.npz from the oracle-data release"
+          else
+            echo "no oracle-data release yet -> oracle gates will skip"
+          fi
+
+      - name: Per-module self-tests (closure + oracle)
+        run: python -m pytest tests/ -q
+
+      - name: Verification figures (reduced statistics)
+        run: |
+          python scripts/make_diff_figures.py
+          ADONIS_NDATA=200000 ADONIS_NMODEL=50000 ADONIS_DATA_CHUNK=100000 ADONIS_ITERS=80 \
+            python scripts/make_ma_fit.py
+          if [ -f data/oracle/oracle_finalstate.npz ]; then
+            FS_CHUNK=50000 FS_NCHUNK=4 python scripts/validate_final_state.py
+          else
+            echo "skipping final-state oracle figure (no oracle data)"
+          fi
+
+      - name: Upload figures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: figures
+          path: figures/

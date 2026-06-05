@@ -1,0 +1,91 @@
+name: Oracle
+
+# Image-backed regeneration of the ACHILLES final-state oracle.  Runs the published
+# container image to generate neutrino-CC single-pion hepmc, parses it into
+# oracle_finalstate.npz (shared binning), validates the ADoNIS model against it, and
+# publishes the npz as the `oracle-data` release asset (overwritten in place, so its
+# history never piles up in git).  Manual, with a monthly drift check.
+
+on:
+  workflow_dispatch:
+    inputs:
+      nevents:
+        description: events per batch
+        default: "250000"
+      nbatches:
+        description: number of batches (distinct seeds)
+        default: "4"
+  schedule:
+    - cron: "0 6 1 * *"   # 06:00 UTC on the 1st of each month
+
+permissions:
+  contents: write     # to publish the release asset
+  packages: read
+
+env:
+  IMAGE: ghcr.io/cesarjesusvalls/achilles:oracle
+  ACHILLES_DATA: ${{ github.workspace }}/achilles_data
+  BASE_YML: data/oracle/res_1pi_12C_nu.yml
+  NEVENTS: ${{ github.event.inputs.nevents || '250000' }}
+  NBATCHES: ${{ github.event.inputs.nbatches || '4' }}
+
+jobs:
+  oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Pull image and extract data tables
+        run: |
+          docker pull "$IMAGE"
+          cid=$(docker create "$IMAGE")
+          mkdir -p achilles_data/Spectral_Functions
+          docker cp "$cid:/achilles/data/dcc_EW.dat" achilles_data/dcc_EW.dat
+          docker cp "$cid:/achilles/data/Spectral_Functions/pke12p_tot.data" \
+                    achilles_data/Spectral_Functions/pke12p_tot.data
+          docker rm "$cid"
+
+      - name: Generate hepmc batches via the image
+        run: |
+          mkdir -p _oracle_out
+          for s in $(seq 1 "$NBATCHES"); do
+            seed=$((7000 + s))
+            python scripts/write_oracle_config.py "$BASE_YML" \
+              "_oracle_out/nu_${s}.yml" "$NEVENTS" "$seed" "/out/nu_${s}.hepmc"
+            echo "::group::achilles batch $s (seed $seed, $NEVENTS events)"
+            docker run --rm -v "$PWD/_oracle_out":/out "$IMAGE" "/out/nu_${s}.yml"
+            echo "::endgroup::"
+          done
+          ls -la _oracle_out/*.hepmc
+
+      - name: Parse hepmc -> oracle_finalstate.npz
+        run: |
+          mkdir -p data/oracle
+          python scripts/oracle_from_hepmc.py data/oracle/oracle_finalstate.npz \
+            _oracle_out/*.hepmc
+
+      - name: Validate the model against the fresh oracle
+        run: python -m pytest tests/test_module_selftests.py -q -k oracle
+
+      - name: Upload oracle as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oracle_finalstate
+          path: data/oracle/oracle_finalstate.npz
+
+      - name: Publish as the oracle-data release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view oracle-data >/dev/null 2>&1 \
+            || gh release create oracle-data --title "ACHILLES oracle data" \
+                 --notes "Final-state oracle histograms (oracle_finalstate.npz). Overwritten in place by the Oracle workflow; not versioned in git."
+          gh release upload oracle-data data/oracle/oracle_finalstate.npz --clobber
