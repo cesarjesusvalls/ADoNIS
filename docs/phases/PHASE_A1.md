@@ -18,13 +18,19 @@ the **e4ν** comparisons (Phase I1).
   free nucleon works (same 1H/1N stationary-target trick as A3).
 
 ## The two physics pieces A1 must get right
-1. **The 1/Q⁴ photon propagator.** Unlike the ~constant CC W-propagator (Q²≪M_W²), the EM
-   cross section carries an explicit `e⁴/Q⁴` that strongly weights low Q². This must be a
-   factor in the EM weight (Q²-dependent — it does NOT cancel into the calibration
-   constant). It also makes the σ integral sharply low-Q²-peaked → **ACHILLES EM runs are
-   much slower to converge than CC** (observed: minutes vs seconds at the default
-   `Accuracy 5e-3`; use a looser `Accuracy` (e.g. 5e-2) for oracle generation, or a Q²
-   floor).
+1. **The 1/Q⁴ photon propagator → the total σ is forward-divergent.** Unlike the ~constant
+   CC W-propagator (Q²≪M_W²), the EM cross section carries an explicit `e⁴/Q⁴` that
+   strongly weights low Q². On a free nucleon with no angular cut this makes the **total σ
+   formally divergent** as Q²→0 (forward scattering) — which is why ACHILLES's electron
+   example configs (`run_electron_*`) all use `HardCuts: true` with
+   `AngleTheta PIDs:11 range:[10,90]`. **Consequence for A1:** there is no clean "total
+   σ(E_e)" to compare (an un-cut EM run never converges — confirmed: a free-proton EM run
+   with `HardCuts:false` ran for minutes with no result). The EM comparison must be at a
+   **fixed scattering angle / within an angular acceptance** — i.e. dσ/dΩdE′ — which is
+   exactly what (e,e′) experiments and the paper's **Fig 1** (JLab, θ_e′=15.541°) measure.
+   So A1's natural gate is dσ/dΩdE′ (or a σ-within-acceptance) at a fixed angle, not an
+   inclusive total. The `e⁴/Q⁴` factor (Q²-dependent) must be in the EM weight regardless;
+   it does NOT cancel into the calibration constant.
 2. **EM isospin coupling.** `angular_kernel` currently hardcodes an **isovector** current
    `cbg(1.0, tcrz, …)`. The photon is isoscalar **+** isovector; `build_zmtx` routes the
    isoscalar piece via the `isv` block, but whether the existing `angular_kernel`
@@ -53,7 +59,16 @@ A1 builds the EM path in the full-tensor framework instead.)
 - ☐ **A1.4** Oracle: ACHILLES electron on 1H/1N (loose `Accuracy`), σ(E_e) per channel;
   the same single-constant bridge test as A3. **→ building block for Fig 1 / e4ν.**
 
-## Open data point (anchor)
-EM 1H (e⁻ p → e⁻ p π⁰ / e⁻ n π⁺) σ at E_e=1.5 GeV: _to be filled from the loose-Accuracy
-probe_ (`_oracle_out/em_1H_fast.yml`). The CC-vs-EM σ ratio and the proton channel split
-will anchor A1.1/A1.2.
+## Anchor data (ACHILLES, e⁻ on 1H, E_e=1.5 GeV, `AngleTheta[10,90]`, nb-in-acceptance)
+Confirmed the 1/Q⁴ story: **un-cut diverges (never converges); WITH the angle cut it
+converges in ~60 s** at `Accuracy 5e-3`. Per-process σ (ACHILLES process order):
+- `e⁻ p → e⁻ p π⁰` : **325.3 nb**
+- `e⁻ p → e⁻ n π⁺` : **355.9 nb**
+- `e⁻ n → e⁻ n π⁰` , `e⁻ n → e⁻ p π⁻` : 0 (hydrogen has no neutron — use `1N` for these)
+- Total (in acceptance): **681.2 nb** (±0.2%)
+
+Note the EM isospin structure differs from CC: here the π⁺ and π⁰ proton channels are
+**comparable** (355.9 vs 325.3), whereas CC was strongly `p→pπ⁺`-dominated. This per-channel
+split is the key thing A1.1's EM channel/coupling definitions must reproduce — validate the
+candidate `EM_CHANNELS` against these ratios (and the `1N` neutron-channel run) the same way
+A3 validated the CC channels. EM oracle generation is tractable: ~60 s/run with the angle cut.
