@@ -29,7 +29,8 @@ from pathlib import Path
 
 import numpy as np
 
-HEPMC = Path("/Users/cjesus/Software/DiffSinglePiProd/Achilles/res_1pi_12C.hepmc")
+# default for standalone parsing only; the pipeline passes explicit hepmc paths
+HEPMC = Path("res_1pi_12C.hepmc")
 OUT = Path("data/oracle/oracle_distributions.npz")
 
 PI_PIDS = {111, 211, -211}

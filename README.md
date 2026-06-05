@@ -37,7 +37,11 @@ archive/                legacy Phase-1 toy code + the pre-refactor diffpi packag
 
 ```bash
 pip install -r requirements.txt          # jax, numpy, matplotlib
+python scripts/fetch_achilles_data.py    # populate ./achilles_data/ from the oracle image
 ```
+The model reads two ACHILLES tables (DCC amplitudes + spectral function) resolved via
+`ACHILLES_DATA` (default `./achilles_data/`); the fetch step pulls them from the public
+oracle image (see `docs/CONTAINER.md`), or point `ACHILLES_DATA` at a local ACHILLES `data/`.
 ```python
 import jax
 from adonis import GenConfig, DCCSinglePion, Generator, PhysicsParams, observables as obs
@@ -61,7 +65,7 @@ The full differentiable final state is validated against the ACHILLES neutrino-C
 (per-observable χ²/ndf ≈ 1 for the exclusive distributions; cosθ*_π, |p_π|, lepton/nucleon
 kinematics), the predictions are differentiable in M_A with an exact gradient (autodiff vs
 finite-difference ~1e-5), and M_A is recovered by gradient descent (high-stats closure lands
-on the truth). See `docs/STATUS.md` for the full history and `../STRATEGY.md` for the plan.
+on the truth). See `docs/STATUS.md` for the full history and `docs/STRATEGY.md` for the plan.
 
 Each module carries a closure test (standalone differentiability) and, where applicable, an
 oracle test (physics validity), exposed uniformly as `module.closure_test()` /
@@ -73,7 +77,7 @@ FSI subclass the respective ABCs (`adonis.core.process.Channel`,
 
 The ACHILLES oracle is published as a public container image,
 `ghcr.io/cesarjesusvalls/achilles:oracle` (built from a pinned ACHILLES commit; see
-`../Achilles/CONTAINER.md`). It is the single source of truth for CI — both the `achilles`
+`docs/CONTAINER.md`). It is the single source of truth for CI — both the `achilles`
 binary that generates the oracle and the data tables (`dcc_EW.dat`, the spectral function)
 the ADoNIS model side reads. The loaders resolve those via the `ACHILLES_DATA` env var.
 

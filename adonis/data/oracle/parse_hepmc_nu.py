@@ -15,7 +15,8 @@ import numpy as np
 
 from adonis.data.oracle.parse_hepmc import parse_events, minkowski2
 
-HEPMC = Path("/Users/cjesus/Software/DiffSinglePiProd/Achilles/res_1pi_12C_nu.hepmc")
+# default for standalone parsing only; the pipeline passes explicit hepmc paths
+HEPMC = Path("res_1pi_12C_nu.hepmc")
 OUT = Path("data/oracle/oracle_distributions_nu.npz")
 REF_TOTAL_NB = 4.943360e-05      # /tmp/nu1M.log Total xsec (CC, 1500 MeV nu_e on 12C)
 

@@ -20,7 +20,11 @@ import numpy as np
 from adonis.data.oracle.finalstate import (ORACLE_EDGES as EDGES, new_accumulator,
                                            accumulate_hepmc, save_oracle)  # noqa: E402
 
-ACHILLES = Path("/Users/cjesus/Software/DiffSinglePiProd/Achilles")
+# Local ACHILLES checkout/build (for the high-statistics oracle). Override with
+# ACHILLES_ROOT; defaults to a sibling clone. CI uses the container instead
+# (scripts/oracle_from_hepmc.py + .github/workflows/oracle.yml) -- see docs/CONTAINER.md.
+ACHILLES = Path(os.environ.get(
+    "ACHILLES_ROOT", Path(__file__).resolve().parents[2] / "Achilles"))
 BASE_YML = Path("data/oracle/res_1pi_12C_nu.yml").resolve()
 OUT = Path("data/oracle/oracle_finalstate.npz")
 

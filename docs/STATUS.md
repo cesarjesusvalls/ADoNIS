@@ -1,7 +1,8 @@
 # diffpi status
 
 Differentiable ACHILLES single-pion production for gradient-based tuning of the
-underlying physics parameters to data. See `STRATEGY.md` (parent dir) for the plan.
+underlying physics parameters to data. See `docs/STRATEGY.md` for the plan and
+`docs/CONTAINER.md` for the ACHILLES oracle image / CI.
 
 ## Phase 1 — toy differentiable components (COMPLETE)
 Validated score-function / reweighting machinery on toy analogues, then a full

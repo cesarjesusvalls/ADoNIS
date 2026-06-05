@@ -17,3 +17,4 @@ __pycache__/
 
 # ACHILLES event output
 *.hepmc
+achilles_data/

@@ -1,9 +1,13 @@
 # External inputs — re-evaluated against the ACHILLES clone
 
-ACHILLES is cloned at `/Users/cjesus/Software/DiffSinglePiProd/Achilles`. After
-inspecting it, **almost every physics input is already present locally** — the
-DCC amplitude tables, form factors, spectral functions, meson-baryon amplitudes,
-the Oset coefficients (hardcoded), the propagating-Δ couplings, and the fluxes.
+Paths below are relative to the **ACHILLES source tree** (the public generator;
+packaged for this project as the container image in `docs/CONTAINER.md`, where the
+tree lives at `/achilles`). After inspecting it, **almost every physics input is
+already present** — the DCC amplitude tables, form factors, spectral functions,
+meson-baryon amplitudes, the Oset coefficients (hardcoded), the propagating-Δ
+couplings, and the fluxes. The two tables ADoNIS reads at runtime (`dcc_EW.dat`,
+`Spectral_Functions/pke12p_tot.data`) are fetched from the image into
+`achilles_data/` (`python scripts/fetch_achilles_data.py`).
 The *only* genuinely external dependency is the **experimental measurement data
 (central values + covariance)** used as fit targets in Phase 3.
 
@@ -80,8 +84,8 @@ Legend: ✅ in the clone (path given) · 🔨 obtainable locally (build/run ACHI
    MicroBooNE (`microboone.root`, yaml), MINERvA (`MINERvA_ME_Flux_*.root`, dat).
    Flux folding inputs are covered.
 
-10. ✅ **Measured differential cross sections + covariance** — **in the NUISANCE clone**
-    at `/Users/cjesus/Software/DiffSinglePiProd/nuisance`. The NUISANCE sample names
+10. ✅ **Measured differential cross sections + covariance** — **in the NUISANCE
+    source tree** (data-release ROOT files). The NUISANCE sample names
     match the ACHILLES paper figures exactly (ACHILLES uses NUISANCE sample defs):
     - **MINERvA CC0π STV** (MINERvA:2018hba): `data/MINERvA/CC0pi/CC0pi_STV/MINERvA_DataRelease_Updated.root`
       — directories `muonmomentum/muontheta/protonmomentum/protontheta/dalphat/dpt/dphit`,
@@ -144,6 +148,10 @@ the extracted data+covariance.
 ---
 
 ## Build status: ACHILLES oracle BUILT AND RUNS (Phase-2 enabler)
+
+> The reproducible, portable build is the **container** (`docs/CONTAINER.md`,
+> published as `ghcr.io/cesarjesusvalls/achilles:oracle`); the recipe below is the
+> local macOS dev build and its hard-won gotcha.
 
 ACHILLES builds AND runs end-to-end at `Achilles/build/bin/achilles` (verified:
 `achilles run.yml` integrates xsec, generates events, writes `achilles.hepmc`,

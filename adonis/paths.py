@@ -13,7 +13,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-DEFAULT_ACHILLES_DATA = "/Users/cjesus/Software/DiffSinglePiProd/Achilles/data"
+# Default to a repo-local (git-ignored) directory so a fresh clone works on any
+# machine: populate it with `python scripts/fetch_achilles_data.py` (pulls the
+# tables from the public oracle image) or point ACHILLES_DATA at a local ACHILLES
+# `data/` directory.  See docs/CONTAINER.md.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_ACHILLES_DATA = str(_REPO_ROOT / "achilles_data")
 
 
 def achilles_data_root() -> Path:

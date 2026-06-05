@@ -1,0 +1,75 @@
+# ACHILLES oracle container
+
+ADoNIS validates its differentiable model against **ACHILLES**, the reference
+neutrino event generator. To make this reproducible from a fresh clone on any
+machine — and in CI — ACHILLES is published as a public container image:
+
+```
+ghcr.io/cesarjesusvalls/achilles:oracle
+```
+
+It is the **single source of truth**: it provides both the `achilles` binary that
+generates the oracle events *and* the two data tables the ADoNIS model side reads
+(`dcc_EW.dat`, the DCC electroweak amplitudes; `Spectral_Functions/pke12p_tot.data`,
+the ¹²C spectral function). The binary, the tables, and the oracle therefore can
+never drift apart.
+
+- **Base / build:** `debian:bookworm-slim` (glibc), `linux/amd64`, Release, with
+  Sherpa/ROOT off and GZIP on. HepMC3 + deps are fetched via CPM at build time.
+- **Provenance:** built from ACHILLES commit **`a4f761ea`** (`git describe`
+  → `v0.3.0-1-ga4f761ea`, "feat: Begin move from NuHepMC-v0.9 to NuHepMC-v1.0").
+  `.git/` is excluded from the image, so the commit is only recorded here — update
+  it whenever the image is rebuilt (and bump `DATA_CACHE_KEY` in `ci.yml`).
+- **Size:** ~425 MB. Verified to run the neutrino-CC single-pion config end-to-end.
+
+## Use the image
+
+GitHub Actions runners are amd64, so the image runs natively there (no `--platform`).
+On Apple Silicon it runs under emulation (slower); pass `--platform linux/amd64`.
+
+```bash
+docker pull ghcr.io/cesarjesusvalls/achilles:oracle
+
+# generate events: mount an output dir and point the config's Output->Name at it
+docker run --rm -v "$PWD/out":/out ghcr.io/cesarjesusvalls/achilles:oracle /out/run.yml
+# -> ./out/<name>.hepmc   (the config's data/... includes resolve from /achilles)
+```
+
+The working directory inside the image is `/achilles`; a run config's `data/...`
+includes resolve relative to it, so keep the workdir at `/achilles` (the default)
+and write output to a **mounted** directory via an **absolute** path under `/out`.
+
+## Get the data tables locally
+
+The two tables are **not** committed to this repo (one is ~38 MB). ADoNIS resolves
+their location from the `ACHILLES_DATA` environment variable, which defaults to
+`./achilles_data/` at the repo root (git-ignored). Populate it once:
+
+```bash
+python scripts/fetch_achilles_data.py        # docker-cp the tables from the image
+# or, if you have a local ACHILLES checkout/build:
+export ACHILLES_DATA=/path/to/Achilles/data
+```
+
+After that, everything (closure tests, figures, fits) runs from the clone alone.
+
+## How CI uses it
+
+- `.github/workflows/ci.yml` extracts the two tables from the image (cached on
+  `DATA_CACHE_KEY`) into `achilles_data/`, sets `ACHILLES_DATA`, runs the
+  per-module closure + oracle gates, and regenerates the figures. It fetches the
+  oracle histograms from the `oracle-data` GitHub Release if present (the oracle
+  gates skip otherwise).
+- `.github/workflows/oracle.yml` runs the image to generate neutrino-CC hepmc,
+  parses it to `oracle_finalstate.npz` (`scripts/oracle_from_hepmc.py`), validates
+  the model against it, and publishes the npz as the `oracle-data` release asset
+  (overwritten in place, so it is never versioned in git).
+
+## Rebuilding the image
+
+The Dockerfile (`Dockerfile.debian`) and the full build recipe live in the
+ACHILLES source tree, not in this repo. Two flags are required/defensive:
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5` (docopt declares an ancient
+`cmake_minimum_required`) and `-DCMAKE_CXX_FLAGS="-fno-visibility-inlines-hidden"`
+(keeps the self-registering factory maps coalescing across the shared libs). After
+a rebuild, update the provenance commit above and bump `DATA_CACHE_KEY` in `ci.yml`.
