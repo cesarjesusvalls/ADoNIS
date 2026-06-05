@@ -1,0 +1,11 @@
+# ACHILLES EM (electron) single-pion cross section sigma(E_e) WITHIN the [10,90] deg lepton
+# angular acceptance (HardCuts AngleTheta PIDs:11 range:[10,90]).  The EM total is
+# 1/Q^4-divergent forward, so the comparison is sigma-in-acceptance, not an inclusive total.
+# From ghcr.io/cesarjesusvalls/achilles:oracle, RES_Spectral_Func on stationary nucleons:
+# Name:1H (proton channels) + Name:1N (free neutron channels). nb (ACHILLES units).
+# Columns: E_e[MeV], ch0 (e p->e p pi0), ch1 (e p->e n pi+), ch2 (e n->e n pi0), ch3 (e n->e p pi-)
+700   565.9590438995301  654.4496908691415  567.0542186173666  753.3699943343854
+1000  478.59005382858663 550.7362079986564  476.41060502717136 585.1323502521768
+1300  380.4202135054074  426.25714077279764 374.85640517068066 428.0543574579259
+1700  275.6769962087701  296.74834651051333 269.6356862846296  283.06000099256767
+2200  177.45671697249233 187.18104172289574 170.44510457288706 164.75054521355642

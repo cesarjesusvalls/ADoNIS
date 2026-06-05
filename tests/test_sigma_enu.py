@@ -121,3 +121,14 @@ def test_em_proton_channel_ratio():
     sc = np.asarray(sc)
     ratio = sc[0] / sc[1]                              # p->p pi0 / p->n pi+
     assert 0.85 < ratio < 0.98, (ratio, sc)
+
+
+def test_em_sigma_oracle():
+    """A1 oracle: EM σ(E_e) in the [10,90] acceptance vs ACHILLES (electron on 1H+1N),
+    proton channels + neutron total, single-constant bridge. (The neutron π0/π- split is
+    excluded -- a known open EM-isospin refinement; the neutron total is right to <2%.)"""
+    from adonis.primary.dcc.sigma_enu import em_sigma_oracle
+    r = em_sigma_oracle(key=jax.random.PRNGKey(7), n=N_ORACLE)
+    assert not r.skipped
+    assert r.passed, r.detail
+    assert r.metrics["rel_max"] < 0.06

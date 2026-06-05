@@ -47,11 +47,20 @@ e⁻ on a free nucleon, photon (Δq_charge=0):
 (STATUS.md's Phase-2 "EM oracle, 4 channels, 122.8 nb" used the older diagonal `dcc_xsec`;
 A1 builds the EM path in the full-tensor framework instead.)
 
+## RESOLVED: the EM current works — the proxy was the problem, not the physics
+Building the **real EM weight** (`lepton_tensor_em` × 1/Q⁴ × angle cut, `current="EM"`)
+reproduces the EM physics: the proton channel ratio σ(e p→e p π⁰)/σ(e p→e n π⁺) =
+**0.908** vs ACHILLES **0.914** (<1%). So `build_zmtx` mode=10's EM isospin and the
+`EM_CHANNELS` were correct all along — the misleading thing was the crude `sum|W_T+W_L|`
+proxy, which ignored the 1/Q⁴ weighting (it shifts each channel's Q² distribution
+differently). EM closure (dσ/d pw_norm) is exact (autodiff==FD, 2e-14). The remaining
+work is just the multi-energy oracle bridge test + figure (oracle scan generating).
+
 ## Build plan (oracle-anchored, like A3)
 - ☑ **A1.0** `lepton_tensor_em` written.
-- ◐ **A1.1** Define `EM_CHANNELS` (mode=10, tcrz=0, the 4 channels) in `structure.py`;
-  decide whether `angular_kernel` needs an EM isoscalar variant — **verify against the
-  oracle channel ratios**.
+- ☑ **A1.1** `EM_CHANNELS` (mode=10, tcrz=0, 4 channels) in `structure.py` — validated:
+  proton π⁰/π⁺ = 0.908 vs ACHILLES 0.914. No `angular_kernel` change needed.
+  - **(superseded) earlier dead-end with the structure-function proxy:**
   - **Finding (the crux): naive EM channel defs do NOT reproduce the EM proton ratio.**
     With `Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz={0,1}, tcrz=0, mode=10)` for the two
     proton channels, the model's per-channel structure-function proxy gives
@@ -75,12 +84,30 @@ A1 builds the EM path in the full-tensor framework instead.)
     guess a single block; (2) **drop the crude `sum|W_T+W_L|` proxy** — it ignores 1/Q⁴ and
     the angle cut and may mislead. Build the real EM weight first (A1.2), generate the EM
     oracle (`1H`+`1N`, angle-cut, ~60 s/run), and judge channel ratios from the actual σ.
-- ☐ **A1.2** EM weight path: a `current="EM"` switch (GenConfig) selecting `lepton_tensor_em`
-  + the `e⁴/Q⁴` factor + EM channels; a `sigma_enu`-style σ(E_e) scan.
-- ☐ **A1.3** Closure: grad of σ wrt a **vector-FF / pw_norm** knob (the EM analog of A3's
-  dσ/dM_A), autodiff==FD.
-- ☐ **A1.4** Oracle: ACHILLES electron on 1H/1N (loose `Accuracy`), σ(E_e) per channel;
-  the same single-constant bridge test as A3. **→ building block for Fig 1 / e4ν.**
+- ☑ **A1.2** EM weight path: `current="EM"` in `sample_final_state` (lepton_tensor_em +
+  `1/Q⁴` + angle range); `em_sigma_channels_at` (per-channel σ-in-acceptance, chunked).
+- ☑ **A1.3** Closure: `em_dsigma_dpw_closure` (grad of EM σ wrt the P33 `pw_norm` vector-FF
+  knob), autodiff==FD to 2e-14. Gate: `test_em_closure_dpw`.
+- ☑ **A1.4** Oracle: `em_sigma_oracle` vs ACHILLES (electron on 1H+1N, `[10,90]` cut,
+  5 energies 0.7–2.2 GeV, `data/oracle/freenucleon_em_sigma.csv`). **Validated set: the two
+  proton channels + the neutron total**, single-constant bridge → **max rel 2.6%, mean 1.3%,
+  c-spread 1.6%** (gate `test_em_sigma_oracle`; figure `scripts/make_a1_em_figure.py` →
+  `figures/a1_em_sigma.png`). The proton π⁰/π⁺ ratio matches at every energy
+  (0.865/0.866 … 0.948/0.947). **→ building block for Fig 1 / e4ν.**
+- ◐ **A1.5 (open) — the neutron π⁰/π⁻ split.** The neutron *total* σ (nπ⁰+pπ⁻) is right to
+  <2%, but the **internal branching** between `e n→e n π⁰` and `e n→e p π⁻` is misallocated
+  (model: nπ⁰ too high, pπ⁻ too low; anti-correlated, summing correctly). This is the EM
+  **isoscalar/isovector interference** in the I=1/2 neutron final state (the proton is
+  insensitive to it; the neutron isn't). Likely needs the relative isoscalar(`isv`)–isovector
+  (`vec`) sign/normalisation per the Fortran `interpolate_amp` EM branch
+  (`zampv`/`zampv_is`, lines 925/962) carried into the I=1/2 πN Clebsch. Isolated and
+  non-blocking (proton channels + neutron total already gated).
+
+## Validation result (A1 essentially complete)
+The EM single-pion current reproduces ACHILLES to **≤3%** for the proton channels and the
+neutron total, fully differentiable (EM closure autodiff==FD to 2e-14). The one open item
+is the neutron π⁰/π⁻ split (A1.5) — a localized isospin refinement that does not affect the
+proton channels (the e4ν / Fig-1-relevant ones) or the neutron inclusive rate.
 
 ## Anchor data (ACHILLES, e⁻ on 1H, E_e=1.5 GeV, `AngleTheta[10,90]`, nb-in-acceptance)
 Confirmed the 1/Q⁴ story: **un-cut diverges (never converges); WITH the angle cut it

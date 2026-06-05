@@ -59,7 +59,7 @@ OFF) is **not** in it, so Figs c12_ar40 (G2/H2) need a cascade-enabled build lat
 
 Reuses the proven differentiable vertex machinery → lowest risk.
 
-- ☐ **A1 — EM 1π current** (electron probe). closure: grad wrt vector-FF knobs. oracle: vs ACHILLES EM 1π. *(prereq for Fig 1, e4ν)*
+- ◐ **A1 — EM 1π current** (electron probe). closure: grad wrt vector-FF knobs. oracle: vs ACHILLES EM 1π. *(prereq for Fig 1, e4ν)* — *EM current built (`lepton_tensor_em` + 1/Q⁴ + EM channels); closure exact; σ(E_e)-in-acceptance reproduces ACHILLES to ≤3% for proton channels + neutron total. Open: neutron π⁰/π⁻ split (isoscalar/isovector interference). See `docs/phases/PHASE_A1.md`.*
 - ☐ **A2 — NC 1π current**. closure + oracle vs ACHILLES NC 1π. *(prereq for MicroBooNE NC π⁰)*
 - ◐ **A3 — Free-nucleon target** (bare nucleon, no SF), 3 isospin channels νp→μ⁻pπ⁺, νn→μ⁻nπ⁺, νn→μ⁻pπ⁰ as σ(E_ν). closure: grad wrt M_A. oracle: vs ACHILLES nucleon run + ANL/BNL reanalyzed data. **→ Fig 2 (ANL/BNL)** — *vertex+muon DONE: `FreeNucleon` model + σ(E_ν) scan, closure dσ/dM_A exact; σ(E_ν) for all 3 channels reproduces ACHILLES to ≤3% for BOTH ν_e and ν_μ (muon mass added), with one common constant (c_μ/c_e=0.998). Remaining: physical absolute units + ANL/BNL data overlay. See `docs/phases/PHASE_A3.md`.*
 
