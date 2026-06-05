@@ -20,7 +20,7 @@ permissions:
 env:
   IMAGE: ghcr.io/cesarjesusvalls/achilles:oracle
   # bump the suffix whenever the oracle image is rebuilt, to refresh the table cache
-  DATA_CACHE_KEY: achilles-data-oracle-a4f761ea
+  DATA_CACHE_KEY: achilles-data-oracle-a4f761ea-mb
   ACHILLES_DATA: ${{ github.workspace }}/achilles_data
   ADONIS_CI_FAST: "1"
   # keep the float64 JAX folds from spiking memory on a ~7 GB hosted runner
@@ -60,6 +60,9 @@ jobs:
           docker cp "$cid:/achilles/data/dcc_EW.dat" achilles_data/dcc_EW.dat
           docker cp "$cid:/achilles/data/Spectral_Functions/pke12p_tot.data" \
                     achilles_data/Spectral_Functions/pke12p_tot.data
+          mkdir -p achilles_data/MesonBaryonAmplitudes
+          docker cp "$cid:/achilles/data/MesonBaryonAmplitudes/ANL" \
+                    achilles_data/MesonBaryonAmplitudes/ANL
           docker rm "$cid"
           ls -la achilles_data achilles_data/Spectral_Functions
 
