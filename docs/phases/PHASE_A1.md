@@ -94,14 +94,24 @@ work is just the multi-energy oracle bridge test + figure (oracle scan generatin
   c-spread 1.6%** (gate `test_em_sigma_oracle`; figure `scripts/make_a1_em_figure.py` →
   `figures/a1_em_sigma.png`). The proton π⁰/π⁺ ratio matches at every energy
   (0.865/0.866 … 0.948/0.947). **→ building block for Fig 1 / e4ν.**
-- ◐ **A1.5 (open) — the neutron π⁰/π⁻ split.** The neutron *total* σ (nπ⁰+pπ⁻) is right to
-  <2%, but the **internal branching** between `e n→e n π⁰` and `e n→e p π⁻` is misallocated
-  (model: nπ⁰ too high, pπ⁻ too low; anti-correlated, summing correctly). This is the EM
-  **isoscalar/isovector interference** in the I=1/2 neutron final state (the proton is
-  insensitive to it; the neutron isn't). Likely needs the relative isoscalar(`isv`)–isovector
-  (`vec`) sign/normalisation per the Fortran `interpolate_amp` EM branch
-  (`zampv`/`zampv_is`, lines 925/962) carried into the I=1/2 πN Clebsch. Isolated and
-  non-blocking (proton channels + neutron total already gated).
+- ◐ **A1.5 (open) — the neutron π⁰/π⁻ split. NOT yet fixed; two hypotheses ruled out.**
+  The neutron *total* σ (nπ⁰+pπ⁻) is right to <2%, but the **internal branching** between
+  `e n→e n π⁰` and `e n→e p π⁻` is misallocated (model: nπ⁰ too high, pπ⁻ too low;
+  anti-correlated, summing correctly). Attempts:
+  1. **Isoscalar Clebsch `cbg(0,0,…)` for EM I=1/2 — REJECTED.** The Fortran `zfac_a`
+     (`amp_dcc_sl_module.f` 405) uses the **isovector** CG `cbg(1,tcrz,…)` for *every* EM
+     wave (the isospin lives in the amplitude choice `zampv`/`zampv_is`, not a different CG).
+  2. **Route EM I=1/2 → `isv` for BOTH nucleons (Fortran-faithful at face value) — REJECTED.**
+     It breaks the *proton* split (proton π⁰/π⁺ goes wrong). So the proton is correct with
+     `proton→vec` and the neutron with `neutron I=1/2→isv` — meaning **our `vec`/`isv`
+     amplitude blocks do NOT map one-to-one onto the Fortran's `zampv`/`zampv_is`**: the
+     Fortran's I=1/2 EM amplitude is nucleon-dependent and evidently mixes isoscalar +
+     isovector-I=1/2, which a single block can't reproduce.
+  **Real next step:** study how the DCC table components (`idx`/`igmb`/`ip`) build the
+  *neutron* I=1/2 EM amplitude in `interpolate_amp` (the `zampv_is` construction, lines
+  644–691: `isign` neutron phase, the isovector `zampv`/isoscalar `zampv_is` fill), and
+  reproduce that combination in `build_zmtx_batched` for the neutron π⁰/π⁻ states. Isolated,
+  non-blocking (proton channels + neutron total gated at ≤3%).
 
 ## Validation result (A1 essentially complete)
 The EM single-pion current reproduces ACHILLES to **≤3%** for the proton channels and the
