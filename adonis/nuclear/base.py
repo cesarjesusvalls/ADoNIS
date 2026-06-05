@@ -9,9 +9,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from adonis.core.validation import SelfTestMixin
 
-class NuclearModel(ABC):
+
+class NuclearModel(SelfTestMixin, ABC):
     @abstractmethod
     def sample_nucleon(self, key, n):
         """Return (p_vec [n,3] MeV, E_removal [n] MeV) -- detached draws."""
         raise NotImplementedError
+
+    # closure_test (no differentiable params -> skipped) / oracle_test inherited
+    # from SelfTestMixin; concrete models override oracle_test (e.g. the spectral
+    # function compares its sampled momentum marginal to the input table).

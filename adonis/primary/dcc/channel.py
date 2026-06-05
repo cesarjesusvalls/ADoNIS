@@ -205,3 +205,74 @@ class DCCSinglePion(Channel):
     def event_record(self, params, sample):
         w, LWc = self.weight(params, sample)
         return assemble_event(sample, w, LWc)
+
+    # -- per-module self-tests ------------------------------------------------- #
+    def closure_test(self, key=None, n=20_000, tol=1e-3, eps=2e-3, **kw):
+        """Standalone differentiability: d(total xsec)/dM_A, autodiff vs central FD.
+
+        The proposal is sampled ONCE (detached) and reweighted at M_A +/- eps, so
+        this is the exact kind-1 gradient gate -- they must agree to ~`tol`."""
+        from adonis.core.validation import grad_closure
+        key = jax.random.PRNGKey(0) if key is None else key
+        S = self.sample(key, n)
+
+        def total_xsec(MA):
+            w, _ = self.weight(DCCKnobs(axial_MA=MA), S)
+            return jnp.sum(w)
+
+        return grad_closure(total_xsec, f"{type(self).__name__}.closure",
+                            x0=1.0, eps=eps, tol=tol)
+
+    def oracle_test(self, oracle, key=None, n=200_000, chunk=50_000,
+                    observables=("cos_theta_star", "ppi_mag", "Q2", "lepton_costheta"),
+                    gate=("cos_theta_star", "ppi_mag", "Q2"), group=None,
+                    chi2_ndf_max=3.0, params=None, **kw):
+        """Physics validity vs the ACHILLES oracle: per-observable chi2/ndf of the
+        normalised model final state against `oracle` (path or loaded npz dict).
+
+        Model events are generated in chunks and histogrammed on an EXACT integer
+        coarsening of the oracle's fine edges (avoids rebinning aliasing).  Passes
+        when every observable in `gate` has chi2/ndf <= `chi2_ndf_max`.  `W` is
+        intentionally not gated by default (a known near-threshold residual)."""
+        from adonis.core.validation import TestResult, chi2_ndf
+        from adonis import observables as obs
+        od = np.load(oracle) if isinstance(oracle, (str, bytes)) else oracle
+        key = jax.random.PRNGKey(5000) if key is None else key
+        params = DCCKnobs() if params is None else params
+        group = group or {"W": 6, "Q2": 5, "cos_theta_star": 5, "ppi_mag": 5,
+                          "phi_star": 2, "lepton_energy": 5, "lepton_costheta": 5,
+                          "nucleon_mom": 6}
+
+        names = [o for o in observables if f"edges_{o}" in od]
+        edges, o_sw, o_sw2 = {}, {}, {}
+        for nm in names:
+            G = group.get(nm, 1)
+            fe = od[f"edges_{nm}"]
+            assert (len(fe) - 1) % G == 0, f"{nm}: fine bins not divisible by {G}"
+            edges[nm] = fe[::G]
+            o_sw[nm] = od[f"sw_{nm}"].reshape(-1, G).sum(1)
+            o_sw2[nm] = od[f"sw2_{nm}"].reshape(-1, G).sum(1)
+
+        m_sw = {nm: np.zeros(len(edges[nm]) - 1) for nm in names}
+        m_sw2 = {nm: np.zeros(len(edges[nm]) - 1) for nm in names}
+        done = 0
+        ci = 0
+        while done < n:
+            nc = min(chunk, n - done)
+            ev = self.event_record(params, self.sample(jax.random.fold_in(key, ci), nc))
+            w = np.asarray(ev.w)
+            for nm in names:
+                v = np.asarray(obs.OBSERVABLES[nm](ev))
+                m_sw[nm] += np.histogram(v, bins=edges[nm], weights=w)[0]
+                m_sw2[nm] += np.histogram(v, bins=edges[nm], weights=w ** 2)[0]
+            done += nc; ci += 1
+
+        metrics = {}
+        for nm in names:
+            chi2, ndf = chi2_ndf(m_sw[nm], np.sqrt(m_sw2[nm]), o_sw[nm], np.sqrt(o_sw2[nm]))
+            metrics[nm] = {"chi2": chi2, "ndf": ndf, "chi2_ndf": chi2 / max(ndf, 1)}
+        gated = [nm for nm in gate if nm in metrics]
+        passed = all(metrics[nm]["chi2_ndf"] <= chi2_ndf_max for nm in gated)
+        detail = "  ".join(f"{nm} {metrics[nm]['chi2_ndf']:.2f}" for nm in names)
+        return TestResult(f"{type(self).__name__}.oracle", "oracle", bool(passed),
+                          False, f"chi2/ndf  {detail}  (gate<={chi2_ndf_max})", metrics)

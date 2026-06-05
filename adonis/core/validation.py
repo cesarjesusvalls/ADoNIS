@@ -24,6 +24,81 @@ import jax.numpy as jnp
 from adonis.core.autodiff import Adam
 
 
+# --- per-module self-test contract ------------------------------------------- #
+# Every module (Channel, NuclearModel, FluxModel, FSIModel) exposes two uniform
+# self-tests so the chain can be validated component-by-component (and from CI):
+#   closure_test() -- the module's standalone differentiability (autodiff == FD
+#                     on its differentiable output), and
+#   oracle_test()  -- its physics validity vs the ACHILLES oracle, where applicable.
+# Modules with no differentiable parameter (a detached sampler) or no oracle return
+# a SKIPPED result rather than failing, so the contract is uniform across the tree.
+class TestResult(NamedTuple):
+    name: str            # e.g. "DCCSinglePion.closure"
+    kind: str            # "closure" | "oracle"
+    passed: bool         # True if it ran and met tolerance (True when skipped)
+    skipped: bool        # True if not applicable to this module
+    detail: str          # one-line human summary
+    metrics: dict        # raw numbers (rel errors, chi2/ndf, ...)
+
+    def __bool__(self):
+        return self.passed
+
+
+def skipped_result(name, kind, reason) -> TestResult:
+    return TestResult(name, kind, True, True, f"SKIPPED: {reason}", {})
+
+
+class SelfTestMixin:
+    """Default (skipped) self-tests, so every module in the chain exposes the same
+    `closure_test` / `oracle_test` contract.  Concrete modules override the ones
+    that are meaningful for them."""
+
+    def closure_test(self, key=None, **kw) -> "TestResult":
+        return skipped_result(f"{type(self).__name__}.closure", "closure",
+                              "no closure_test for this module")
+
+    def oracle_test(self, oracle=None, key=None, **kw) -> "TestResult":
+        return skipped_result(f"{type(self).__name__}.oracle", "oracle",
+                              "no oracle_test for this module")
+
+
+def grad_closure(f: Callable[[float], float], name, *, x0=1.0, eps=2e-3,
+                 tol=1e-3) -> TestResult:
+    """Closure for a scalar differentiable output: autodiff d f/dx vs central FD.
+
+    `f` maps a single physics knob (e.g. M_A) to a scalar (e.g. total xsec, or a
+    bin yield).  In the kind-1 reweighting estimator the proposal is detached, so
+    the two must agree to ~machine-times-conditioning -- a tight `tol` is expected.
+    """
+    g_ad = float(jax.grad(lambda x: f(x))(x0))
+    g_fd = float((f(x0 + eps) - f(x0 - eps)) / (2 * eps))
+    rel = abs(g_ad - g_fd) / (abs(g_ad) + abs(g_fd) + 1e-30)
+    return TestResult(
+        name, "closure", bool(rel < tol), False,
+        f"d/dx autodiff {g_ad:+.4e} vs FD {g_fd:+.4e}  rel {rel:.2e} "
+        f"(tol {tol:.0e})",
+        {"autodiff": g_ad, "finite_diff": g_fd, "rel_err": rel, "tol": tol},
+    )
+
+
+def chi2_ndf(model, model_err, oracle, oracle_err, *, floor=0.0):
+    """Per-bin chi2 and ndf of a normalised model vs oracle, with combined errors.
+
+    Both histograms are normalised to unit area first (shape comparison).  Bins
+    with oracle density <= `floor` (relative to the max) are dropped from the ndf.
+    """
+    m = np.asarray(model, float); me = np.asarray(model_err, float)
+    o = np.asarray(oracle, float); oe = np.asarray(oracle_err, float)
+    Sm, So = m.sum(), o.sum()
+    m, me = m / Sm, me / Sm
+    o, oe = o / So, oe / So
+    good = o > floor * (o.max() if o.size else 0.0)
+    err2 = me ** 2 + oe ** 2
+    good &= err2 > 0
+    chi2 = float(np.sum((m[good] - o[good]) ** 2 / err2[good]))
+    return chi2, int(good.sum())
+
+
 # --- (F) forward agreement --------------------------------------------------- #
 class ForwardAgreement(NamedTuple):
     max_abs_diff: float

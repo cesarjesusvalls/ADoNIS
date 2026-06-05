@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from adonis.core.validation import SelfTestMixin
 
-class FSIModel(ABC):
+
+class FSIModel(SelfTestMixin, ABC):
     @abstractmethod
     def apply(self, params, event):
         """EventRecord -> EventRecord (differentiable in params)."""

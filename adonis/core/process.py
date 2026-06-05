@@ -13,8 +13,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from adonis.core.validation import SelfTestMixin
 
-class Channel(ABC):
+
+class Channel(SelfTestMixin, ABC):
     @abstractmethod
     def sample(self, key, n):
         """Detached Sample bundle of `n` events."""
@@ -26,3 +28,6 @@ class Channel(ABC):
     @abstractmethod
     def event_record(self, params, sample):
         """Full EventRecord (lab final state + weight + channel/PDG)."""
+
+    # closure_test / oracle_test inherited from SelfTestMixin; overridden by
+    # concrete channels (e.g. DCCSinglePion) with the real grad + oracle gates.

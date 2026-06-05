@@ -137,3 +137,24 @@ class SpectralFunction(NuclearModel):
 
     def sample_nucleon(self, key, n):
         return self.sampler.sample(key, n)
+
+    # -- per-module self-tests ------------------------------------------------- #
+    # closure_test inherited (skipped: a detached sampler has no differentiable
+    # parameter).  oracle_test checks the sampled momentum marginal reproduces the
+    # input spectral-function table -- the table IS the reference physics here.
+    def oracle_test(self, oracle=None, key=None, n=200_000, ks_max=0.02, **kw):
+        from adonis.core.validation import TestResult
+        key = jax.random.PRNGKey(0) if key is None else key
+        p_vec, E_rm = self.sample_nucleon(key, n)
+        pmag = np.sort(np.linalg.norm(np.asarray(p_vec), axis=1))
+        # KS distance between the empirical |p| CDF and the table's inverse-CDF target
+        F_tab = np.interp(pmag, np.asarray(self.table.mom), np.asarray(self.sampler.p_cdf))
+        F_emp = np.arange(1, n + 1) / n
+        ks = float(np.max(np.abs(F_emp - F_tab)))
+        passed = ks <= ks_max
+        return TestResult(
+            f"{type(self).__name__}.oracle", "oracle", bool(passed), False,
+            f"|p| KS distance {ks:.4f} vs table (max {ks_max})  "
+            f"<E_rm>={float(np.mean(np.asarray(E_rm))):.1f} MeV",
+            {"ks_pmag": ks, "ks_max": ks_max, "mean_E_removal": float(np.mean(np.asarray(E_rm)))},
+        )
