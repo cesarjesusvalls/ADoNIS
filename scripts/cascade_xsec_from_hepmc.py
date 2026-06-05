@@ -30,13 +30,17 @@ def events(path):
                     yield p_in, w
                 w, p_in = None, None
             elif t == "W ":
-                w = float(line.split()[1])
+                # HepMC3: "W CV" is the weight-names line; "W <value>" is the value.
+                tok = line.split()
+                try:
+                    w = float(tok[1])
+                except (IndexError, ValueError):
+                    pass
             elif t == "P ":
                 f = line.split()
                 pid, status = int(f[3]), int(f[9])
-                # the beam test pion: a pion with an incoming/beam status (4) or the
-                # largest-|pz| pion; take the first beam-status pion.
-                if abs(pid) in (211, 111) and status in (4, 11) and p_in is None:
+                # the incoming test pion: status 29 (external_test) -> beam momentum along z.
+                if abs(pid) in (211, 111) and status == 29 and p_in is None:
                     px, py, pz = float(f[4]), float(f[5]), float(f[6])
                     p_in = (px * px + py * py + pz * pz) ** 0.5
     if w is not None:

@@ -4,13 +4,33 @@ RUN apk update && apk add g++ gcc musl-dev cmake hdf5-dev make git gfortran pyth
 
 COPY . /achilles_src
 
-# Fix: achilles-cascade does not link AchillesCascadeInteractions (the shared lib whose
-# static initializers self-register NucleonNucleon/PionInteraction/... ), so the interaction
-# registry is empty -> name lookup fails -> GetSuggestion() segfaults. Link it with
-# --no-as-needed (and plugin_manager/dl, as the event-gen binary does) so the registrations
-# run.  (Upstream src/Achilles/CMakeLists.txt has a TODO for exactly this.)
-RUN sed -i 's#PUBLIC event_gen docopt::docopt cmake_git_version_tracking)#PUBLIC event_gen docopt::docopt cmake_git_version_tracking dl plugin_manager -Wl,--no-as-needed AchillesCascadeInteractions -Wl,--as-needed)#' \
-        /achilles_src/src/Achilles/CMakeLists.txt
+# Fix the achilles-cascade segfault: the cascade interactions (NucleonNucleon/PionInteraction
+# /...) are registered at runtime by a Plugin::Manager that dlopens the plugin libs -- but
+# CascadeMain.cc (unlike main.cc) never creates one, so the interaction registry is empty,
+# the name lookup fails, and GetSuggestion() segfaults. (a) link plugin_manager + dl into
+# achilles-cascade; (b) instantiate a Plugin::Manager in CascadeMain.cc before RunCascade.
+RUN python3 - <<'PYEOF'
+cm = "/achilles_src/src/Achilles/CMakeLists.txt"
+s = open(cm).read()
+# link the interaction lib (its static initializers self-register NucleonNucleon/... ) plus
+# plugin_manager+dl, and force --no-as-needed so the shared lib is loaded (and thus its
+# initializers run) even though achilles-cascade references no symbols from it.
+s = s.replace("PUBLIC event_gen docopt::docopt cmake_git_version_tracking)",
+              "PUBLIC event_gen docopt::docopt cmake_git_version_tracking dl plugin_manager AchillesCascadeInteractions)")
+s = s.replace("    list(APPEND achilles_targets achilles-cascade)",
+              "    target_link_options(achilles-cascade PRIVATE \"LINKER:--no-as-needed\")\n    list(APPEND achilles_targets achilles-cascade)")
+open(cm, "w").write(s)
+assert 'target_link_options(achilles-cascade' in open(cm).read()
+mn = "/achilles_src/src/Achilles/CascadeMain.cc"
+s = open(mn).read()
+s = s.replace('#include "Achilles/Version.hh"',
+              '#include "Achilles/Version.hh"\n#include "Plugins/Manager/PluginManager.hh"')
+s = s.replace("    achilles::CascadeTest::RunCascade(runcard);",
+              "    achilles::Plugin::Manager plugin_manager;\n    achilles::CascadeTest::RunCascade(runcard);")
+open(mn, "w").write(s)
+assert "plugin_manager)" in open(cm).read() and "Plugin::Manager plugin_manager;" in open(mn).read()
+print("patched CMakeLists + CascadeMain")
+PYEOF
 
 # Same as the base image, plus ACHILLES_ENABLE_CASCADE_TEST=ON so the standalone
 # achilles-cascade binary (CascadeMain.cc + RunCascade.cc) is built -- this is what the

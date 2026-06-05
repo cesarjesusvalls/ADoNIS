@@ -49,13 +49,28 @@ this). The event-gen `achilles` binary works because it links `plugin_manager` (
 cascade binary doesn't, so no registrations run. (It is **not** the visibility flag — adding
 `-fno-visibility-inlines-hidden` did not fix it.)
 
-**Fix** (`docker/Dockerfile.cascade`, a `sed` patch before cmake): link
-`AchillesCascadeInteractions` into `achilles-cascade` with `-Wl,--no-as-needed` (so the
-shared lib's registrations run even though no symbols are referenced), plus `dl plugin_manager`.
+**Fix** (`docker/Dockerfile.cascade`, a Python patch before cmake): (a) instantiate a
+`Plugin::Manager` in `CascadeMain.cc` (as `main.cc` does) + link `plugin_manager`/`dl`;
+(b) **force-link `AchillesCascadeInteractions` with `--no-as-needed`** (the actual fix —
+the interactions self-register via that shared lib's static initializers, which only run if
+the lib is a NEEDED dependency). After this the registry is populated and the cascade runs.
 
-## Status
-☑ Showstopper resolved: cascade-enabled image **built**; the missing-registry segfault
-**diagnosed and patched** in the build recipe (`docker/Dockerfile.cascade`). σ(p) parser +
-self-contained config recipe ready. Cascade-oracle generation (π⁺–C/π⁺–Ar reaction σ →
-Fig c12_ar40) + the model-side cascade FSIModel (Phase D de-risks the differentiability on
-toy physics) are the remaining steps.
+## Status — the cascade RUNS
+With the patched image, `achilles-cascade` on the Virtual π⁺–¹²C config prints
+**"Cascade running in CrossSection mode"**, propagates pions through ¹²C, and **writes a
+NuHepMC** (verified: 1182 events in a partial run). The showstopper is resolved — a
+cascade-enabled image that *runs the intranuclear cascade* now exists (`docker/Dockerfile.cascade`).
+
+Two refinements remain before the Fig-c12_ar40 oracle is final:
+1. **A sporadic mid-run SIGSEGV** (~500 hits in) — a specific event/kinematic edge case in
+   the cascade physics; work around with smaller `NEvents` batches (the achieved 1182-event
+   file is already usable) or bisect the offending event.
+2. **σ(p) extraction semantics**: `InitCrossSection` weights a "hit" by πR² [nb] and a miss
+   by 0, so σ_reaction(p)=⟨weight⟩ needs BOTH hits and misses; the partial file shows only
+   non-zero (hit) weights, so confirm whether misses are written (then ⟨w⟩ is direct) or the
+   miss count must come from `generated_events` vs total attempts. Parser:
+   `scripts/cascade_xsec_from_hepmc.py` (reads the named `W CV`/`W <val>` weight + the
+   status-29 incoming test pion).
+
+The model-side cascade FSIModel (whose differentiability Phase D de-risks on toy physics)
+is the parallel build.
