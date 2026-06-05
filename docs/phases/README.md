@@ -15,3 +15,15 @@ before continuing that phase.
 | [PHASE_D.md](PHASE_D.md) | D — FSI scaffold & differentiability proof (toy) | ◐ toy cascade recovered + verified (forward-unbiased, 5-param differentiable); FSIModel port + full joint closure remain |
 
 Legend: ☐ todo · ◐ partial · ☑ done.
+
+## Confirmed showstoppers (autonomous, this environment)
+- **Standalone π–nucleus cascade σ oracle** (Fig c12_ar40, Phases G2/H2): the image lacks
+  the `achilles-cascade` binary (`ACHILLES_ENABLE_CASCADE_TEST` OFF) **and** this environment
+  has no `cmake`/`gfortran` to build it. So the standalone π-A reaction/absorption cross
+  sections can't be oracle-gated here. *Mitigation:* cascade-as-FSI inside event generation
+  (`Cascade: Run: True`) still works → Phase-I FSI-on observables are NOT blocked; only the
+  standalone π-A σ figures are. Needs a cascade-enabled image rebuild (packages:write) or a
+  machine with the C++/Fortran toolchain.
+- **A3 ANL/BNL data overlay** (#6): the paper's σ(E_ν) points are the external Wilkinson-2014
+  reanalysis (not in the `../nuisance` clone, which has dσ/dQ²); `uproot` isn't installed.
+  Soft-blocked — and not the model's job (the model↔ACHILLES validation is done).

@@ -14,12 +14,11 @@ kinematic Q² range → σ(E_ν).
   the known free-nucleon CCQE value.
 - **Oracle (absolute)**: vs ACHILLES `QE_Spectral_Func` on a stationary neutron (ν_μ on
   `1N`), `data/oracle/freenucleon_ccqe_sigma.csv`. Since both sides are absolute nb, the
-  gate checks **model/ACHILLES ≈ 1 directly** (no bridging constant):
-  **1.01–1.03 across 0.5–3 GeV, max 3.2%**.
-- **Closure**: dσ/dM_A autodiff==FD (analytic, exact). Gates: `tests/test_ccqe.py`.
-- *Note:* the consistent ~2–3% (model slightly high) is the **dipole** axial FF vs
-  ACHILLES's default **z-expansion** (`axial_zexpansion` already in `form_factors.py`) and/or
-  the spectral S(0,E) weight; swapping in the z-expansion FF is the obvious refinement.
+  gate checks **model/ACHILLES ≈ 1 directly** (no bridging constant). With ACHILLES's
+  default **z-expansion** axial FF (`ff="zexp"`): **0.997–1.002 across 0.5–3 GeV, max 0.3%**.
+  (With the **dipole** FF the model is 1.01–1.03, max 3.2% — the dipole is kept as the
+  M_A-tunable closure handle; the z-exp matches ACHILLES's FF choice.)
+- **Closure**: dσ/dM_A autodiff==FD (analytic, exact; dipole FF). Gates: `tests/test_ccqe.py`.
 
 ## Remaining
 - ☐ **B1b** Optional: z-expansion axial FF in the LS σ (close the ~3%); EM/NC elastic

@@ -25,7 +25,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.primary.dcc.form_factors import kelly_dirac_pauli, axial_dipole, M_N_GEV, M_PI_GEV
+from adonis.primary.dcc.form_factors import (kelly_dirac_pauli, axial_dipole,
+                                             axial_zexpansion, M_N_GEV, M_PI_GEV)
 
 # weak constants
 GF = 1.1663787e-5            # [GeV^-2]
@@ -41,11 +42,17 @@ def _vector_isovector(Q2_GeV2):
     return f1p - f1n, f2p - f2n
 
 
-def ls_dsigma_dQ2(Q2_GeV2, E_nu_GeV, MA=1.0, m_l=M_MU_GEV, anti=False):
-    """Llewellyn-Smith dsigma/dQ^2 [nb/GeV^2] at (Q^2, E_nu). Differentiable in MA."""
+def _axial_ff(Q2_GeV2, MA, ff):
+    """Axial form factor F_A(Q^2): 'dipole' (M_A tunable) or 'zexp' (ACHILLES default
+    z-expansion fit to deuterium; M_A-independent, so the closure uses 'dipole')."""
+    return axial_zexpansion(Q2_GeV2) if ff == "zexp" else axial_dipole(Q2_GeV2, MA)
+
+
+def ls_dsigma_dQ2(Q2_GeV2, E_nu_GeV, MA=1.0, m_l=M_MU_GEV, anti=False, ff="dipole"):
+    """Llewellyn-Smith dsigma/dQ^2 [nb/GeV^2] at (Q^2, E_nu). Differentiable in MA (ff='dipole')."""
     tau = Q2_GeV2 / (4.0 * M ** 2)
     F1, F2 = _vector_isovector(Q2_GeV2)
-    FA = axial_dipole(Q2_GeV2, MA)                  # = -g_A/(1+Q^2/MA^2)^2  (negative)
+    FA = _axial_ff(Q2_GeV2, MA, ff)                 # = -g_A/(1+Q^2/MA^2)^2  (negative)
     FP = 2.0 * M ** 2 * FA / (Q2_GeV2 + M_PI_GEV ** 2)
     ml2 = m_l ** 2
     A = ((ml2 + Q2_GeV2) / M ** 2) * (
@@ -74,23 +81,23 @@ def _Q2_limits(E_nu_GeV, m_l=M_MU_GEV):
     return jnp.clip(Q2_min, 0.0, None), Q2_max
 
 
-def ccqe_sigma(E_nu_GeV, MA=1.0, m_l=M_MU_GEV, anti=False, nq=400):
+def ccqe_sigma(E_nu_GeV, MA=1.0, m_l=M_MU_GEV, anti=False, nq=400, ff="dipole"):
     """Total CCQE cross section sigma(E_nu) [nb] by integrating dsigma/dQ^2 over the
     allowed Q^2 range. Differentiable in MA (the Q^2 grid is detached)."""
     q2lo, q2hi = _Q2_limits(E_nu_GeV, m_l)
     x = (jnp.arange(nq) + 0.5) / nq
     Q2 = jax.lax.stop_gradient(q2lo + (q2hi - q2lo) * x)
     dQ2 = jax.lax.stop_gradient((q2hi - q2lo) / nq)
-    vals = jax.vmap(lambda q: ls_dsigma_dQ2(q, E_nu_GeV, MA, m_l, anti))(Q2)
+    vals = jax.vmap(lambda q: ls_dsigma_dQ2(q, E_nu_GeV, MA, m_l, anti, ff))(Q2)
     return jnp.sum(vals) * dQ2
 
 
-def ccqe_sigma_vs_enu(energies_GeV, MA=1.0, m_l=M_MU_GEV, anti=False):
+def ccqe_sigma_vs_enu(energies_GeV, MA=1.0, m_l=M_MU_GEV, anti=False, ff="dipole"):
     """sigma(E_nu) [nb] over a list of beam energies."""
-    return np.array([float(ccqe_sigma(float(e), MA, m_l, anti)) for e in energies_GeV])
+    return np.array([float(ccqe_sigma(float(e), MA, m_l, anti, ff=ff)) for e in energies_GeV])
 
 
-def ccqe_sigma_oracle(csv=None, MA=1.0, rel_max=0.06):
+def ccqe_sigma_oracle(csv=None, MA=1.0, rel_max=0.06, ff="zexp"):
     """B1 oracle: free-nucleon CCQE sigma(E_nu) vs ACHILLES QE_Spectral_Func (nu_mu on a
     stationary neutron). Both sides are ABSOLUTE nb (the LS prefactor is G_F^2 cos^2 theta_c,
     no fit), so this checks the absolute agreement directly -- |model/ACH - 1| < rel_max at
@@ -101,7 +108,7 @@ def ccqe_sigma_oracle(csv=None, MA=1.0, rel_max=0.06):
         csv = Path(__file__).resolve().parents[3] / "data" / "oracle" / "freenucleon_ccqe_sigma.csv"
     ref = np.loadtxt(csv)
     E_MeV, ach = ref[:, 0], ref[:, 1]
-    mod = ccqe_sigma_vs_enu(E_MeV / 1000.0, MA)
+    mod = ccqe_sigma_vs_enu(E_MeV / 1000.0, MA, ff=ff)
     rel = np.abs(mod - ach) / ach
     passed = bool(rel.max() < rel_max)
     detail = "  ".join(f"{e/1000:.1f}GeV {mod[i]/ach[i]:.3f}" for i, e in enumerate(E_MeV))
