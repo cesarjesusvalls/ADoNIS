@@ -41,9 +41,16 @@ Legend: ☐ todo · ◐ partial · ☑ done.
 
 ## Phase 0 — Inventory & oracle-matrix infrastructure (prerequisite)
 
-- ☐ Inventory every external input the paper needs and mark present-in-image / present-in-NUISANCE-clone / missing:
-  ⁴⁰Ar p/n spectral functions, GFMC ¹²C nuclear configurations, ⁴⁰Ar densities, DCC meson-baryon PWA tables, Oset coefficient tables, GiBUU Δ constants, experiment fluxes (T2K, MINERvA, MicroBooNE-BNB), the MicroBooNE A_C smearing matrix, NUISANCE/HepData data releases.
-- ☐ Generalize `oracle.yml` into a **config matrix**: one ACHILLES run card per experiment/observable → per-target oracle npz published as release assets (same image, same parse pipeline).
+**See `docs/phases/PHASE0.md` for the full inventory + run-mode verification matrix.**
+Headline: every *physics* input (incl. ⁴⁰Ar SF, DCC MB PWA tables, densities/configs,
+all fluxes) is already in the oracle image; only the NUISANCE data releases (Phase-3
+fit targets) are external. The image binary does **event generation only** — the
+standalone π–nucleus cascade (`achilles-cascade`, behind `ACHILLES_ENABLE_CASCADE_TEST`,
+OFF) is **not** in it, so Figs c12_ar40 (G2/H2) need a cascade-enabled build later.
+
+- ☑ Inventory every external input the paper needs (present-in-image / NUISANCE-clone / missing) — done in `docs/phases/PHASE0.md §1`.
+- ☑ Verify the image actually runs each needed mode (EM/CC/free-nucleon ✅ ran; NC to verify; standalone cascade ❌ needs a rebuild) — `PHASE0.md §2–3`.
+- ☐ Generalize `oracle.yml` into a **config matrix**: one ACHILLES run card per experiment/observable → per-target oracle npz published as release assets (same image, same parse pipeline). *(design note in `PHASE0.md §5`)*
 - ☐ Decide native-vs-NUISANCE for signal/binning: **reimplement signal defs + binning natively** (for differentiability); use NUISANCE/HepData **data releases only as comparison targets**.
 
 ---

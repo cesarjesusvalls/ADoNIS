@@ -18,3 +18,4 @@ __pycache__/
 # ACHILLES event output
 *.hepmc
 achilles_data/
+_oracle_out/
