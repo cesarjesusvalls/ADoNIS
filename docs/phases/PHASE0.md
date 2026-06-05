@@ -151,4 +151,3 @@ as a release asset under the same `oracle-data` release, reusing
 > amd64** (~125 s fixed warm-up + per-event cost). Generate oracles locally at modest
 > statistics for gating; reserve high-statistics regeneration for the CI `oracle.yml`
 > (native amd64 runners) when a phase is otherwise green.
-</content>

@@ -17,6 +17,7 @@ from adonis.core.chain import Generator                              # noqa: F40
 from adonis.primary.dcc.channel import DCCSinglePion                 # noqa: F401
 from adonis.fsi.none import NoFSI                                    # noqa: F401
 from adonis.nuclear.spectral import SpectralFunction                 # noqa: F401
+from adonis.nuclear.free import FreeNucleon                          # noqa: F401
 from adonis.flux.mono import Monochromatic                           # noqa: F401
 from adonis import observables                                       # noqa: F401
 from adonis.analysis import fit                                      # noqa: F401

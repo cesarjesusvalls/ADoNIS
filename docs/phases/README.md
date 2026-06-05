@@ -10,4 +10,3 @@ before continuing that phase.
 | [PHASE0.md](PHASE0.md) | 0 — inventory & oracle-mode verification | ☑ done (inventory + mode matrix) |
 
 Legend: ☐ todo · ◐ partial · ☑ done.
-</content>
