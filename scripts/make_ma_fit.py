@@ -46,6 +46,7 @@ def log(msg):
     print(f"[{time.time()-_T0:6.1f}s] {msg}", flush=True)
 
 os.makedirs("figures", exist_ok=True)
+os.makedirs("data/cache", exist_ok=True)
 hs = HadronStructure(spline=False)
 MA_TRUE, MA_INIT = 1.20, 0.90
 # stats overridable via env (e.g. ADONIS_NDATA=120000 ADONIS_NMODEL=40000 ADONIS_ITERS=80
@@ -54,7 +55,7 @@ NDATA = int(os.environ.get("ADONIS_NDATA", 1_000_000))
 NMODEL = int(os.environ.get("ADONIS_NMODEL", 100_000))
 DATA_CHUNK = min(int(os.environ.get("ADONIS_DATA_CHUNK", 100_000)), NDATA)
 ITERS = int(os.environ.get("ADONIS_ITERS", 200))
-CACHE = "figures/_ma_fit_cache.npz"
+CACHE = "data/cache/_ma_fit_cache.npz"
 CKEY = f"{NDATA}_{NMODEL}_{MA_TRUE}_{MA_INIT}_{ITERS}"
 
 EDGES = {

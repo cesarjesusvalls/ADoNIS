@@ -19,8 +19,10 @@ from adonis.primary.dcc.fold_integrated import fold_full_events
 
 jax.config.update("jax_enable_x64", True)
 
+import os
 N_CHUNK, N_CHUNKS = 250_000, 40            # 10M generated (~3.9M physical after cuts)
-OUT = "model_nu_events.npz"
+os.makedirs("data/model", exist_ok=True)
+OUT = "data/model/model_nu_events.npz"
 
 # spline=True: ACHILLES-faithful FMM cubic interp (bit-for-bit vs the oracle; ~3.5x
 # slower than bilinear, needs the smaller 250k chunk for the 4x4-block gather memory).

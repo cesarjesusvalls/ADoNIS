@@ -13,11 +13,10 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from parse_hepmc import parse_events, minkowski2
+from adonis.data.oracle.parse_hepmc import parse_events, minkowski2
 
 HEPMC = Path("/Users/cjesus/Software/DiffSinglePiProd/Achilles/res_1pi_12C_nu.hepmc")
-OUT = Path(__file__).resolve().parent / "oracle_distributions_nu.npz"
+OUT = Path("data/oracle/oracle_distributions_nu.npz")
 REF_TOTAL_NB = 4.943360e-05      # /tmp/nu1M.log Total xsec (CC, 1500 MeV nu_e on 12C)
 
 PI_PIDS = {111, 211, -211}

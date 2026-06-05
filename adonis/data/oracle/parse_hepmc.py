@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 
 HEPMC = Path("/Users/cjesus/Software/DiffSinglePiProd/Achilles/res_1pi_12C.hepmc")
-OUT = Path(__file__).resolve().parent / "oracle_distributions.npz"
+OUT = Path("data/oracle/oracle_distributions.npz")
 
 PI_PIDS = {111, 211, -211}
 LEPTON = 11  # e-

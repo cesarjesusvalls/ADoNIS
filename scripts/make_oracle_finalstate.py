@@ -17,13 +17,12 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, "oracle")
-from parse_hepmc import parse_events                       # noqa: E402
-from parse_hepmc_nu import event_kin_full, REF_TOTAL_NB    # noqa: E402
+from adonis.data.oracle.parse_hepmc import parse_events             # noqa: E402
+from adonis.data.oracle.parse_hepmc_nu import event_kin_full, REF_TOTAL_NB  # noqa: E402
 
 ACHILLES = Path("/Users/cjesus/Software/DiffSinglePiProd/Achilles")
-BASE_YML = Path("oracle/res_1pi_12C_nu.yml").resolve()
-OUT = Path("oracle/oracle_finalstate.npz")
+BASE_YML = Path("data/oracle/res_1pi_12C_nu.yml").resolve()
+OUT = Path("data/oracle/oracle_finalstate.npz")
 
 N_PER_BATCH = 250_000
 N_BATCHES = 8

@@ -34,8 +34,9 @@ from adonis.primary.dcc.channel import fold_final_state
 from adonis import observables as obs
 
 os.makedirs("figures", exist_ok=True)
+os.makedirs("data/cache", exist_ok=True)
 CHUNK, NCHUNK = 50_000, 40                     # 2.0M events (match the 2M oracle)
-ORACLE = "oracle/oracle_finalstate.npz"
+ORACLE = "data/oracle/oracle_finalstate.npz"
 hs = HadronStructure(n_theta=16, n_phi=16, spline=False)
 
 od = np.load(ORACLE)
@@ -71,7 +72,7 @@ def add(accd, pre, name, v, w):
 # Cache the accumulated model/integrated histograms so COSMETIC plot edits don't re-pay
 # the ~1-min generation.  Re-generate only when the cache is missing or FS_REGEN=1 is set
 # (or the binning/stats changed -> cache key mismatch).
-CACHE = "figures/_fs_val_cache.npz"
+CACHE = "data/cache/_fs_val_cache.npz"
 KEY = f"{CHUNK}x{NCHUNK}_" + "_".join(f"{k}{GROUP[k]}" for k in sorted(GROUP))
 
 
