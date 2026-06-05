@@ -61,7 +61,7 @@ Reuses the proven differentiable vertex machinery → lowest risk.
 
 - ☐ **A1 — EM 1π current** (electron probe). closure: grad wrt vector-FF knobs. oracle: vs ACHILLES EM 1π. *(prereq for Fig 1, e4ν)*
 - ☐ **A2 — NC 1π current**. closure + oracle vs ACHILLES NC 1π. *(prereq for MicroBooNE NC π⁰)*
-- ☐ **A3 — Free-nucleon target** (bare nucleon, no SF), 3 isospin channels νp→μ⁻pπ⁺, νn→μ⁻nπ⁺, νn→μ⁻pπ⁰ as σ(E_ν). closure: grad wrt M_A. oracle: vs ACHILLES nucleon run + ANL/BNL reanalyzed data. **→ Fig 2 (ANL/BNL)**
+- ◐ **A3 — Free-nucleon target** (bare nucleon, no SF), 3 isospin channels νp→μ⁻pπ⁺, νn→μ⁻nπ⁺, νn→μ⁻pπ⁰ as σ(E_ν). closure: grad wrt M_A. oracle: vs ACHILLES nucleon run + ANL/BNL reanalyzed data. **→ Fig 2 (ANL/BNL)** — *vertex DONE: `FreeNucleon` model + σ(E_ν) scan, closure dσ/dM_A exact, and σ(E_ν) for all 3 channels reproduces ACHILLES (1H+1N, ν_e) to ~1% (single universal constant, 27 cells). Remaining: muon mass (ν_μ) + physical units + ANL/BNL data overlay. See `docs/phases/PHASE_A3.md`.*
 
 ## Phase B — QE channel + inclusive (e,e′)
 

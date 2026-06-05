@@ -11,9 +11,11 @@ import jax
 
 from adonis.params import PhysicsParams, GenConfig
 from adonis.nuclear.free import FreeNucleon
-from adonis.primary.dcc.sigma_enu import sigma_vs_enu, sigma_channels_at, dsigma_dMA_closure
+from adonis.primary.dcc.sigma_enu import (sigma_vs_enu, sigma_channels_at,
+                                          dsigma_dMA_closure, freenucleon_sigma_oracle)
 
 N = 8_000 if os.environ.get("ADONIS_CI_FAST") else 40_000
+N_ORACLE = 100_000 if os.environ.get("ADONIS_CI_FAST") else 150_000
 
 
 def test_sigma_closure_dMA():
@@ -45,3 +47,13 @@ def test_sigma_rises_and_plateaus():
     # high-energy flattening: last step's fractional increase < the first step's
     fr = np.diff(tot) / tot[:-1]
     assert fr[-1] < fr[0], fr
+
+
+def test_freenucleon_sigma_oracle():
+    """A3.4 oracle: σ(E_ν) for all 3 CC channels vs ACHILLES on stationary nucleons
+    (1H + 1N), bridged by a single universal constant. Tight residual + c-spread."""
+    r = freenucleon_sigma_oracle(key=jax.random.PRNGKey(11), n=N_ORACLE)
+    assert not r.skipped
+    assert r.passed, r.detail
+    assert r.metrics["rel_max"] < 0.06
+    assert r.metrics["c_spread_std"] < 0.03
