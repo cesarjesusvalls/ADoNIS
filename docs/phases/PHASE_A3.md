@@ -72,8 +72,19 @@ The three isospin channels already live in the channel
     `scripts/make_a3_sigma_figure.py` → `figures/a3_freenucleon_sigma.png` (Fig-2 shape).
   - Gives c = ACH/model ≈ 2.57e-14 (model→ACHILLES units) — the A3.5 bridge.
 
-- ☐ **A3.3 Muon-mass extension** (deferred; see above) — needed to switch the oracle/data
-  comparison to ν_μ (ANL/BNL is ν_μ). Validate the massless limit against the ν_e gate above.
+- ☑ **A3.3 Muon-mass extension** — DONE. `GenConfig.m_lep` (default 0; muon = 105.658 MeV)
+  threaded into `sample_final_state`. The CC lepton-tensor *form* is unchanged (the (1∓γ5)
+  projectors kill the m_ℓ terms), so the muon mass enters **only kinematically**: (a) the
+  outgoing lepton momentum |p'|=√(E'²−m²), and (b) — the catch — the leptonic phase-space
+  factor in the weight is |p'|/E_ν (the standard |k'|/|k| ratio), **not** E'/E_ν. Both now
+  use `plep`; m_lep=0 is bit-identical to the validated ν_e path (no regression).
+  - Validated vs an ACHILLES **ν_μ** free-nucleon oracle (`data/oracle/freenucleon_numu_sigma.csv`,
+    `Leptons:[14,[13]]` on 1H/1N): **max rel 2.9%, mean 1.1%** over 7 energies × 3 channels.
+  - **Decisive cross-check:** the bridging constant is the SAME for ν_e and ν_μ —
+    **c_μ/c_e = 0.9975** (they share the CC coupling, so the muon mass must be purely
+    kinematic). Gates: `test_freenucleon_sigma_oracle_muon`,
+    `test_muon_electron_constant_consistency`. (This also fixed a latent E'-vs-|p'|
+    phase-space bug that was harmless for massless leptons but matters for B/I muons.)
 
 - ☐ **A3.5 Physical absolute units + ANL/BNL data overlay.** Model↔ACHILLES is done (c
   above). Remaining: ACHILLES-units → physical nb/10⁻³⁸cm² (derive from the C++/Fortran

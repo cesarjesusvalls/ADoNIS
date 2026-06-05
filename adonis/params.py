@@ -42,6 +42,7 @@ class GenConfig:
     theta_max_deg: float = 180.0      # lepton polar-angle proposal cap [deg]
     m_pi: float = M_PI                # final-state pion mass [MeV]
     m_N: float = MQE                  # final-state nucleon mass [MeV]
+    m_lep: float = 0.0                # outgoing charged-lepton mass [MeV] (0=massless e/nu_e; muon=105.658)
     spline: bool = True               # amplitude interp fidelity: True=FMM spline, False=bilinear
     n_theta: int = 16                 # angular-quadrature grid (for the integrated reference)
     n_phi: int = 16

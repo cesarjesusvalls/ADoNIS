@@ -43,7 +43,7 @@ def _channel_for(e_nu, cfg, nuclear, m_lep):
     proposal spans [m_lep, e_nu] (the kinematic range for a nucleon at rest)."""
     ep_lo = float(m_lep)
     ep_hi = float(e_nu)
-    c = replace(cfg, e_nu=float(e_nu), ep_lo=ep_lo, ep_hi=ep_hi)
+    c = replace(cfg, e_nu=float(e_nu), ep_lo=ep_lo, ep_hi=ep_hi, m_lep=float(m_lep))
     return DCCSinglePion(c, flux=None, nuclear=nuclear), ep_lo, ep_hi
 
 
@@ -98,7 +98,7 @@ def sigma_vs_enu(knobs, key, energies, n=60_000, cfg=GenConfig(spline=False),
 
 
 def freenucleon_sigma_oracle(csv=None, key=None, n=120_000, knobs=None,
-                             rel_max=0.06, std_max=0.03, chunk=25_000):
+                             rel_max=0.06, std_max=0.03, chunk=25_000, m_lep=0.0):
     """Oracle gate (A3.4): the free-nucleon σ(E_ν) for all three CC isospin channels
     vs ACHILLES on stationary nucleons (1H proton + 1N free neutron).
 
@@ -120,7 +120,7 @@ def freenucleon_sigma_oracle(csv=None, key=None, n=120_000, knobs=None,
     mod = np.zeros_like(ach)
     for i, e in enumerate(E):
         _, sc = sigma_channels_at(knobs, jax.random.fold_in(key, i), float(e), n,
-                                  chunk=chunk)
+                                  chunk=chunk, m_lep=m_lep)
         mod[i] = np.asarray(sc)
     # single bridging constant in log space (geometric-mean of ACH/model)
     c = float(np.exp(np.mean(np.log(ach / mod))))

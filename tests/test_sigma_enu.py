@@ -6,6 +6,8 @@ The absolute-normalisation / ACHILLES-oracle / ANL-BNL gates land with A3.4–A3
 (see docs/phases/PHASE_A3.md).
 """
 import os
+from pathlib import Path
+
 import numpy as np
 import jax
 
@@ -16,6 +18,7 @@ from adonis.primary.dcc.sigma_enu import (sigma_vs_enu, sigma_channels_at,
 
 N = 8_000 if os.environ.get("ADONIS_CI_FAST") else 40_000
 N_ORACLE = 100_000 if os.environ.get("ADONIS_CI_FAST") else 150_000
+_CSV = Path(__file__).resolve().parent.parent / "data" / "oracle"
 
 
 def test_sigma_closure_dMA():
@@ -57,3 +60,29 @@ def test_freenucleon_sigma_oracle():
     assert r.passed, r.detail
     assert r.metrics["rel_max"] < 0.06
     assert r.metrics["c_spread_std"] < 0.03
+
+
+M_MU = 105.658
+
+
+def test_freenucleon_sigma_oracle_muon():
+    """A3.3 oracle: the SAME vs ACHILLES with the muon mass (ν_μ → μ⁻). Validates that
+    the muon-mass kinematics (|p'| in both the lepton momentum and the leptonic
+    phase-space factor) are faithful."""
+    r = freenucleon_sigma_oracle(csv=_CSV / "freenucleon_numu_sigma.csv",
+                                 key=jax.random.PRNGKey(11), n=N_ORACLE, m_lep=M_MU)
+    assert not r.skipped
+    assert r.passed, r.detail
+
+
+def test_muon_electron_constant_consistency():
+    """The model→ACHILLES bridging constant is the SAME for ν_e (massless) and ν_μ
+    (massive) — they share the CC coupling, so the muon mass must be purely kinematic.
+    Agreement of c_μ and c_e is a strong check of the muon-mass implementation."""
+    n = max(N_ORACLE, 80_000)
+    r_e = freenucleon_sigma_oracle(csv=_CSV / "freenucleon_nue_sigma.csv",
+                                   key=jax.random.PRNGKey(11), n=n, m_lep=0.0)
+    r_mu = freenucleon_sigma_oracle(csv=_CSV / "freenucleon_numu_sigma.csv",
+                                    key=jax.random.PRNGKey(11), n=n, m_lep=M_MU)
+    ratio = r_mu.metrics["c"] / r_e.metrics["c"]
+    assert abs(ratio - 1.0) < 0.02, f"c_mu/c_e = {ratio:.4f}"

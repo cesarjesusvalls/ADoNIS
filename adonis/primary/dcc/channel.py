@@ -64,7 +64,7 @@ def _diff_coeffs(hs: HadronStructure):
 
 def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
                        sf="pke12p_tot.data", e_nu=E_NU_DEFAULT, ep_lo=50.0, ep_hi=1480.0,
-                       theta_max_deg=180.0, m_pi=M_PI, m_N=MQE, nuclear=None):
+                       theta_max_deg=180.0, m_pi=M_PI, m_N=MQE, nuclear=None, m_lep=0.0):
     """Draw the FIXED detached proposal (all kinematics + the precomputed angular kernels,
     lepton tensor, cuts, phase-space factors, lab final-state momenta).  Nothing here
     depends on the physics knobs -- so `weight_from_sample(knobs, S)` can be re-evaluated
@@ -89,12 +89,17 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     phi_lep = sg(2.0 * jnp.pi * jax.random.uniform(kphi, (n,)))      # lepton azimuth
 
     omega = e_nu - Ep
-    qx = -Ep * jnp.sin(theta)
-    qz = e_nu - Ep * jnp.cos(theta)
+    # outgoing-lepton 3-momentum magnitude: |p'| = sqrt(E'^2 - m_lep^2). m_lep=0 reproduces
+    # the massless path bit-for-bit; m_lep>0 (e.g. the muon) shifts q, W, Q2 self-consistently.
+    # The CC lepton tensor form is unchanged: the (1∓γ5) projectors kill the m_lep terms, so
+    # the mass enters ONLY through this kinematic magnitude.
+    plep = jnp.sqrt(jnp.clip(Ep ** 2 - m_lep ** 2, 0.0, None))
+    qx = -plep * jnp.sin(theta)
+    qz = e_nu - plep * jnp.cos(theta)
     q_vec2 = qx ** 2 + qz ** 2
     k_lab = jnp.stack([jnp.full((n,), e_nu), jnp.zeros((n,)), jnp.zeros((n,)),
                        jnp.full((n,), e_nu)], axis=-1)
-    kp_lab = jnp.stack([Ep, Ep * jnp.sin(theta), jnp.zeros((n,)), Ep * jnp.cos(theta)], axis=-1)
+    kp_lab = jnp.stack([Ep, plep * jnp.sin(theta), jnp.zeros((n,)), plep * jnp.cos(theta)], axis=-1)
 
     p_vec, E_rm = nuclear.sample_nucleon(ksf, n)
     p2 = jnp.sum(p_vec ** 2, axis=1)
@@ -104,7 +109,7 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     W = sg(jnp.sqrt(jnp.clip(tot[:, 0] ** 2 - jnp.sum(tot[:, 1:] ** 2, axis=1), 1.0, None)))
     T_N = jnp.sqrt(p2 + MQE ** 2) - MQE
     Q2_adj = sg(q_vec2 - (omega - E_rm - T_N) ** 2)
-    cut = (W > W_THR) & (W < W_MAX) & (Q2_adj > 0.0) & (Q2_adj < Q2_MAX)
+    cut = (W > W_THR) & (W < W_MAX) & (Q2_adj > 0.0) & (Q2_adj < Q2_MAX) & (Ep >= m_lep)
 
     k_cm, kp_cm = cm_lepton_momenta(k_lab, kp_lab, p_struck)
     Lmn = sg(lepton_tensor_cc(k_cm, kp_cm))
@@ -114,9 +119,12 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     theta_pi = np.arccos(np.asarray(cos_ts)); phi_np = np.asarray(phi_s)
     Kfac = [jnp.asarray(angular_factor(theta_pi, phi_np, pre[c])) for c in range(len(hs.channels))]
 
-    # lab final state (knob-independent) + leptonic/phase-space prefactor
+    # lab final state (knob-independent) + leptonic/phase-space prefactor.
+    # The leptonic factor is |p'|/E_nu (the standard |k'|/|k| flux/phase-space ratio), NOT
+    # E'/E_nu: for a massless lepton |p'|=E' so this is unchanged, but for the muon the
+    # momentum magnitude `plep` (not the energy Ep) is what enters d^3p'/(2E').
     p_pi, p_N = two_body_lab(P, e1, e2, e3, jnp.clip(W, 1.0, None), cos_ts, phi_s, m_pi, m_N)
-    prefac = (Ep / e_nu) * jnp.sin(theta) * (pion_cm_momentum(W) / jnp.clip(W, 1.0, None))
+    prefac = (plep / e_nu) * jnp.sin(theta) * (pion_cm_momentum(W) / jnp.clip(W, 1.0, None))
     return dict(
         hs=hs, n=n, m_pi=m_pi, m_N=m_N, kch=kch,
         Wc=jnp.clip(W, 1.0, None), Q2c=jnp.clip(Q2_adj, 1.0, None), W=W, Q2_adj=Q2_adj,
@@ -197,7 +205,7 @@ class DCCSinglePion(Channel):
         c = self.cfg
         return sample_final_state(key, n, hs=self.hs, sf=c.sf, e_nu=self.flux.e_nu_nominal,
                                   ep_lo=c.ep_lo, ep_hi=c.ep_hi, theta_max_deg=c.theta_max_deg,
-                                  m_pi=c.m_pi, m_N=c.m_N, nuclear=self.nuclear)
+                                  m_pi=c.m_pi, m_N=c.m_N, nuclear=self.nuclear, m_lep=c.m_lep)
 
     def weight(self, params, sample):
         return weight_from_sample(params, sample, use_spline=self.cfg.spline)
