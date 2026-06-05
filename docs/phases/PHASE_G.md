@@ -36,11 +36,26 @@ The two modes: **Virtual (G)** = `VirtResInteractions.yml` (NucleonNucleon GiBUU
 ResonanceMode:Decay + PionInteraction[MesonBaryon + PionAbsorptionOneStep]); **Propagating
 (H)** = `PropResInteractions.yml` (ResonanceMode:Propagate + DeltaInteraction SWaveAbsorption).
 
+## The cascade segfault — diagnosed & fixed (an upstream ACHILLES build bug)
+The first cascade runs segfaulted (SIGSEGV) during the `Cascade` interaction parse. gdb
+backtrace pinned it: `GetSuggestion()` (`Utilities.cc:274`, the "did you mean?" helper)
+called from `InteractionHandler::decode` — i.e. the interaction name (even `NucleonNucleon`)
+**was not in the registry**, and the empty-registry error path crashes.
+
+**Root cause:** `achilles-cascade` links `event_gen docopt cmake_git_version_tracking` but
+**not** `AchillesCascadeInteractions` — the shared lib whose static initializers self-register
+the cascade interactions (`src/Achilles/CMakeLists.txt:172`, which has a literal TODO about
+this). The event-gen `achilles` binary works because it links `plugin_manager` (+`dl`); the
+cascade binary doesn't, so no registrations run. (It is **not** the visibility flag — adding
+`-fno-visibility-inlines-hidden` did not fix it.)
+
+**Fix** (`docker/Dockerfile.cascade`, a `sed` patch before cmake): link
+`AchillesCascadeInteractions` into `achilles-cascade` with `-Wl,--no-as-needed` (so the
+shared lib's registrations run even though no symbols are referenced), plus `dl plugin_manager`.
+
 ## Status
-☑ Showstopper resolved: cascade-enabled image **built** and the `achilles-cascade` binary
-runs (version, full settings validation, interaction/decay setup). Build recipe committed
-(`docker/Dockerfile.cascade`); the σ(p) parser + config recipe are ready.
-_(The first build, without `-fno-visibility-inlines-hidden`, segfaulted in the cascade
-interaction setup even on a minimal NucleonNucleon config — the documented factory-registry
-issue; the rebuild adds the flag. Cascade-oracle generation + the model-side cascade
-FSIModel (which Phase D de-risks on toy physics) follow.)_
+☑ Showstopper resolved: cascade-enabled image **built**; the missing-registry segfault
+**diagnosed and patched** in the build recipe (`docker/Dockerfile.cascade`). σ(p) parser +
+self-contained config recipe ready. Cascade-oracle generation (π⁺–C/π⁺–Ar reaction σ →
+Fig c12_ar40) + the model-side cascade FSIModel (Phase D de-risks the differentiability on
+toy physics) are the remaining steps.

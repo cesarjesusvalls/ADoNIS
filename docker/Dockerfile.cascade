@@ -4,6 +4,14 @@ RUN apk update && apk add g++ gcc musl-dev cmake hdf5-dev make git gfortran pyth
 
 COPY . /achilles_src
 
+# Fix: achilles-cascade does not link AchillesCascadeInteractions (the shared lib whose
+# static initializers self-register NucleonNucleon/PionInteraction/... ), so the interaction
+# registry is empty -> name lookup fails -> GetSuggestion() segfaults. Link it with
+# --no-as-needed (and plugin_manager/dl, as the event-gen binary does) so the registrations
+# run.  (Upstream src/Achilles/CMakeLists.txt has a TODO for exactly this.)
+RUN sed -i 's#PUBLIC event_gen docopt::docopt cmake_git_version_tracking)#PUBLIC event_gen docopt::docopt cmake_git_version_tracking dl plugin_manager -Wl,--no-as-needed AchillesCascadeInteractions -Wl,--as-needed)#' \
+        /achilles_src/src/Achilles/CMakeLists.txt
+
 # Same as the base image, plus ACHILLES_ENABLE_CASCADE_TEST=ON so the standalone
 # achilles-cascade binary (CascadeMain.cc + RunCascade.cc) is built -- this is what the
 # published :oracle image is missing (the standalone pi-nucleus cross-section driver).
