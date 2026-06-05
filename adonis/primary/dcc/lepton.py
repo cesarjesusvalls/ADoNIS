@@ -85,6 +85,22 @@ def lepton_tensor_cc(k, kp, anti=False):
     return 8.0 * (sym + sign * 1j * asym)
 
 
+def lepton_tensor_em(k, kp):
+    """EM (electron) lepton tensor L^{mu,nu} for one-photon exchange, massless e,
+    batched (...,4).  Pure QED current (vector only): the SYMMETRIC tensor with no
+    axial / V-A antisymmetric term --
+
+        L^{mu,nu} = 2[ k^mu k'^nu + k'^mu k^nu - g^{mu nu} (k.k') ].
+
+    Real and symmetric, so it contracts only with the (Hermitian) symmetric part of the
+    hadron tensor.  The photon propagator 1/Q^4 and coupling e^4 are applied separately
+    in the EM weight (they are Q^2-dependent, unlike the ~constant CC W-propagator)."""
+    kk = _mink_dot(k, kp)[..., None, None]
+    sym = (k[..., :, None] * kp[..., None, :] + kp[..., :, None] * k[..., None, :]
+           - jnp.diag(ETA)[None] * kk)
+    return (2.0 * sym).astype(jnp.complex128)
+
+
 def contract(L, W):
     """L_{mu,nu} W^{mu,nu} = sum_{mu,nu} eta_mu eta_nu L^{mu,nu} W^{mu,nu}; real part.
     L,W shape (...,4,4)."""
