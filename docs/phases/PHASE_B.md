@@ -35,7 +35,7 @@ inclusive (e,e′) fold (B2/B3, Fig 1) is the remaining build — it composes th
 tensor (here) with the spectral fold and the A1 EM-1π piece.
 
 ## B2 update — QE inclusive response (PWIA) DONE
-`adonis/nuclear/qe_inclusive.py`: the plane-wave impulse-approximation QE (e,e') response, folding the single-nucleon elastic response (Kelly FFs) over the 12C spectral function S(p,E). At the JLab kinematics (E=2222 MeV, theta=15.541 deg) it gives a QE peak at omega~227 MeV (the relativistic quasi-free peak sqrt(q^2+M^2)-M+E_b ~207, + response skew) with a **Fermi-motion width FWHM~159 MeV** (expected k_F q/M ~147). Gate: tests/test_qe_inclusive.py. Remaining: add the 1pi inclusive piece (from A1, integrated over the pion) for the full QE+1pi dsigma/domega, and overlay the JLab-config ACHILLES run -> Fig 1.
+`adonis/nuclear/qe_inclusive.py`: the plane-wave impulse-approximation QE (e,e') response, folding the single-nucleon elastic response (Kelly FFs) over the 12C spectral function S(p,E). At the JLab kinematics (E=2222 MeV, theta=15.541 deg) it gives a QE peak at omega~208 MeV (the relativistic quasi-free peak sqrt(q^2+M^2)-M+E_b, with the proper v_L/v_T Rosenbluth response -- see the oracle section below) with a **Fermi-motion width FWHM~153 MeV** (expected k_F q/M ~147). Gate: tests/test_qe_inclusive.py. Remaining: add the 1pi inclusive piece (from A1, integrated over the pion) for the full QE+1pi dsigma/domega, and overlay the JLab-config ACHILLES run -> Fig 1.
 
 ## B2 complete — QE + 1pi inclusive (Fig 1 structure)
 `adonis/nuclear/inclusive_1pi.py`: the 1pi/Delta contribution to dsigma/domega, folding the EM transverse/longitudinal structure functions W_T,W_L (EM_CHANNELS hadron tensor) over S(p,E) at the lepton (omega,q). The Delta bump sits at omega~459 MeV (expected (m_D^2-M^2+Q^2)/2M ~491), well above the QE peak (~223). The total QE+1pi (figures/inclusive_ee_c12.png) reproduces the two-peak structure of the paper's Fig 1. test_inclusive_two_peak_structure.
@@ -59,13 +59,22 @@ from the spectral function). Model peak 459 -> 517 (oracle 531); centroid 508 ->
 532). The ratio is flat ~1.0 across the peak; residuals only at the rising edge and the
 high-omega tail (the higher-resonance + non-resonant strength the Delta-only EM fold omits).
 
-**QE: chi2/ndf ~28, peak ~35 MeV high.** The ratio is <1 below the peak and >1 above — a peak
-shifted to higher omega. This is a **PWIA off-shell/binding-prescription** difference: folding
-over the full S(p,E) removal-energy grid over-shifts (the high-E SRC tail pulls the peak up;
-no-binding gives 178, full-E 226, oracle 192), while ACHILLES uses less effective binding for
-the peak. A documented model approximation (not a bug like the 1pi case); pinning it down needs
-ACHILLES's exact de Forest cc1/cc2 prescription.
+**QE: chi2/ndf ~9 after the v_L/v_T fix (was ~28), peak 208 vs 192.** Diagnosed via the ratio
+panel (originally <1 below the peak, >1 above — a shifted peak). ACHILLES uses the **same**
+spectral function (`info_C12_pke.data` -> `pke12p_tot.data`), so it is purely a prescription
+difference. Two factorial tests isolated it:
+- **Energy balance** — keep the Benhar form `E_f = omega + M - E` (E = removal energy from
+  S(p,E)); the binding is already carried by E, so the bare mass M is correct. de Forest's
+  on-shell-initial variant `sqrt(M^2+p^2)` *double-counts* the Fermi energy and **worsens**
+  chi2 (8.6 -> 96) — rejected.
+- **Response** — replaced the isotropic `(G_E^2 + tau G_M^2)/(1+tau)` with the proper
+  **longitudinal/transverse Rosenbluth separation** `v_L R_L + v_T R_T`
+  (`v_L=(Q^2/q^2)^2`, `v_T=Q^2/2q^2 + tan^2(theta/2)`, `R_L~G_E^2`, `R_T~tau G_M^2`). This is
+  the real fix: **chi2/ndf 27.6 -> 8.6**, peak 222 -> 208, ratio flat ~1.0 across the peak.
+
+The residual ~16 MeV / chi2~9 is the deeper off-shell single-nucleon cross section (de Forest
+cc1/cc2) + the high-omega SRC tail the model under-carries.
 
 Gates: `test_onepi_bump_matches_achilles_res` (chi2/ndf < 20, centroid < 20 MeV),
-`test_qe_peak_vs_achilles` (chi2/ndf < 40, peak offset < 50 MeV) — both skipped if the CSVs
+`test_qe_peak_vs_achilles` (chi2/ndf < 15, peak offset < 30 MeV) — both skipped if the CSVs
 are absent.

@@ -66,18 +66,18 @@ def test_onepi_bump_matches_achilles_res():
 
 @pytest.mark.skipif(not _QE_CSV.exists(), reason="ACHILLES QE (e,e') oracle CSV not present")
 def test_qe_peak_vs_achilles():
-    """B2 oracle (chi2): the model QE dsigma/domega vs the ACHILLES QE_Spectral_Func generator.
-    The peak sits ~35 MeV above the ACHILLES QE peak (chi2/ndf ~28) -- a PWIA off-shell/binding
-    prescription difference (the full S(p,E) removal-energy fold over-shifts; ACHILLES uses
-    less effective binding).  Gated loosely + documented; this is a known model approximation,
-    not a bug (cf. the 1pi piece, which IS a clean binding fix)."""
+    """B2 oracle (chi2): the model QE dsigma/domega vs the ACHILLES QE_Spectral_Func generator
+    (same spectral function, pke12p).  With the proper longitudinal/transverse Rosenbluth
+    separation (v_L R_L + v_T R_T) the peak sits at 208 vs the ACHILLES 192 MeV and chi2/ndf
+    ~9 (was ~28 with the isotropic G_E^2+tau G_M^2 combination).  The residual ~16 MeV is the
+    deeper off-shell single-nucleon cross-section (de Forest cc1/cc2) treatment."""
     from adonis.core.validation import chi2_ndf
     d = np.loadtxt(_QE_CSV)
     ow, osh, oerr = d[:, 0], d[:, 1], d[:, 2]
     m = qe_dsigma_domega(2222.0, 15.541, ow, "pke12p_tot.data", 6, 6)
     chi2, ndf = chi2_ndf(m, np.zeros_like(m), osh, oerr, floor=0.05)
-    assert abs(ow[int(np.argmax(m))] - ow[int(np.argmax(osh))]) < 50.0   # peak offset bounded
-    assert chi2 / max(ndf, 1) < 40.0, chi2 / max(ndf, 1)                 # documented residual
+    assert abs(ow[int(np.argmax(m))] - ow[int(np.argmax(osh))]) < 30.0   # peak offset bounded
+    assert chi2 / max(ndf, 1) < 15.0, chi2 / max(ndf, 1)                 # v_L/v_T Rosenbluth fix
 
 
 def test_inclusive_two_peak_structure():
