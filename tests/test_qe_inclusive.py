@@ -34,3 +34,16 @@ def test_ar40_qe_broader_than_c12():
     def fwhm(d):
         h = d.max() / 2; a = w[d > h]; return a[-1] - a[0]
     assert fwhm(dAr) > fwhm(dC), (fwhm(dAr), fwhm(dC))
+
+
+def test_inclusive_two_peak_structure():
+    """Full inclusive (e,e') has the QE peak AND a 1pi/Delta bump above it (Fig 1 structure):
+    the Delta bump sits near omega ~ (m_Delta^2 - M^2 + Q^2)/(2M), above the QE peak."""
+    from adonis.nuclear.inclusive_1pi import onepi_dsigma_domega
+    w = np.linspace(20, 500, 60)
+    qe = qe_dsigma_domega(2222., 15.541, w, "pke12p_tot.data", 6, 6)
+    pi = onepi_dsigma_domega(2222., 15.541, w, "pke12p_tot.data", 12)
+    assert np.all(pi >= 0)
+    w_qe, w_pi = w[int(np.argmax(qe))], w[int(np.argmax(pi))]
+    assert w_pi > w_qe + 100, (w_qe, w_pi)              # Delta bump well above the QE peak
+    assert 380 <= w_pi <= 520, w_pi                     # near the expected Delta position

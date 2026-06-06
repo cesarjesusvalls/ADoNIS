@@ -11,7 +11,7 @@ before continuing that phase.
 | [PHASE_A3.md](PHASE_A3.md) | A3 — free-nucleon σ(E_ν) → Fig 2 | ◐ vertex+oracle+muon+units done (ν_e & ν_μ ≤3% vs ACHILLES, c_μ/c_e=0.998, physical nb); only the external ANL/BNL data overlay remains |
 | [PHASE_A1.md](PHASE_A1.md) | A1 — EM 1π current (electron probe) | ☑ done — EM current validated ≤3% vs ACHILLES (all 4 channels; neutron split fixed via isign=-1), closure exact |
 | [PHASE_A2.md](PHASE_A2.md) | A2 — NC 1π current | ☑ done — NC current (sin²θ_W) validated ≤1.3% vs ACHILLES (all 4 channels), closure exact |
-| [PHASE_B.md](PHASE_B.md) | B — QE vertex + inclusive (e,e′) | ◐ B1 done — free-nucleon CCQE (Llewellyn-Smith) reproduces ACHILLES QE to ≤3% (absolute, no constant); inclusive fold (Fig 1) remains |
+| [PHASE_B.md](PHASE_B.md) | B — QE vertex + inclusive (e,e′) | ☑ B1 CCQE <0.5% abs; B2/B3 inclusive (e,e′) QE+1π two-peak (Fig 1 structure, ¹²C+⁴⁰Ar) |
 | [PHASE_D.md](PHASE_D.md) | D — FSI scaffold & differentiability proof (toy) | ◐ toy cascade recovered + verified (forward-unbiased, 5-param differentiable); FSIModel port + full joint closure remain |
 | [PHASE_E.md](PHASE_E.md) | E — meson-baryon scattering (DCC PWA) | ◐ E1 πN σ(W): π⁺p Δ(1232) peak reproduced (208 mb @ 1220 MeV); π⁻p/ηN/KΛ channels + angular dσ/dΩ remain |
 | [PHASE_G.md](PHASE_G.md) | G/H — cascade engine + both modes | ☑ cascade image built + RUNS; Fig c12_ar40 oracle generated (π-¹²C Virtual+Propagating, π-⁴⁰Ar), all Δ-peaked; model-side FSIModel follows |
