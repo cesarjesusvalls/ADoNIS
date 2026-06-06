@@ -20,7 +20,7 @@ NUISANCE (the paper digitises them separately).
 | 9,16 | MINERvA CC0π δα_T / p_n / 6-panel (CH) | MINERvA (NUISANCE + flux) | ⏳ same |
 | 10 | MicroBooNE CC1p0π δp_T in δα_T bins (Ar) | MicroBooNE | ⏳ same |
 | 11,12 | MicroBooNE NC1π⁰ cosθ, p (Ar) | MicroBooNE (NUISANCE + flux) | ⏳ NC1π⁰ + flux-fold |
-| 13 | πN/η-p σ(W) + dσ/dΩ (model only) | — (ACHILLES INC vs ANL-Osaka DCC) | ◐ have the DCC side (Phase E); ACHILLES-INC side = cascade |
+| **13** | πN σ(W) + dσ/dΩ (model only) | — (ACHILLES INC vs ANL-Osaka DCC) | ✅ **done** (πN) — DCC σ(W) 9.3:2.2:1 + 1+3cos²θ angular (Phase E); η N/KΛ need absent tables |
 | 14 | NN→NNπ σ (model only, GiBUU) | — | ☐ GiBUU NN parameterisation |
 | 15 | Δ-production diagrams | — | n/a |
 | 17 | T2K appendix δα_T/δϕ_T (CH) | T2K | ⏳ flux-fold pipeline |
