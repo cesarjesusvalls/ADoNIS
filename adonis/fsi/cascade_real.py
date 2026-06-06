@@ -17,12 +17,13 @@ COMPONENTS (now matching ACHILLES Virtual-Resonances, data/default/VirtResIntera
   * real rho(r), Local Fermi gas, real two-body kinematics off a Fermi nucleon, Pauli blocking.
 
 STATUS: reaction sigma(p) peaks at p=275 MeV (= the Delta), CC0pi 0.30 (was 0.32 with Oset-QE;
-ACHILLES in-event 0.22), sigma_abs ~86 mb (DUET ~60).  The residual ~40% over-absorption is a
-DISCRETE-GEOMETRY effect not in this continuum transport: ACHILLES's PionAbsorption requires
-`AllowedAbsorption` to find a spectator nucleon within a distance cutoff (often fails near the
-surface, where many produced/scattered pions are) -> lower effective absorption.  Closing it
-needs the discrete impact-parameter walk with explicit nucleon positions; the cross-section
-PHYSICS (scatter + absorption) is now the real ACHILLES physics, untuned.
+ACHILLES in-event 0.22), sigma_abs ~86 mb (DUET ~60).  The cross-section PHYSICS is the exact,
+untuned ACHILLES physics.  The residual ~40% over-absorption is a TRANSPORT-level difference
+(continuum mean-free-path here vs ACHILLES's discrete geometric impact-parameter walk over
+explicitly-sampled background nucleons with adaptive 0.04 fm steps + formation zones).
+(Note: PionAbsorption::AllowedAbsorption always returns true, so it is NOT a spectator-
+availability gate.)  Pinning the exact factor needs instrumenting ACHILLES to dump its per-step
+cross sections + interaction probabilities and matching them directly -- the next step.
 
 Differentiability: the trajectory is SAMPLED against a frozen proposal (the Oset cross
 sections at detached parameters); the Oset coefficients enter only via a per-event
