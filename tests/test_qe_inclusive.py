@@ -18,3 +18,19 @@ def test_qe_peak_and_fermi_width():
     above = w[d > half]
     fwhm = above[-1] - above[0]
     assert 100 <= fwhm <= 220, fwhm               # Fermi-motion width ~ k_F q/M
+
+
+import pytest
+from adonis.paths import achilles_data_root
+_PKE40 = achilles_data_root() / "Spectral_Functions" / "pke40p_tot.data"
+
+
+@pytest.mark.skipif(not _PKE40.exists(), reason="40Ar spectral function not present")
+def test_ar40_qe_broader_than_c12():
+    """B3: 40Ar QE peak is broader than 12C (higher Fermi momentum, k_F 250 vs 225)."""
+    w = np.linspace(20, 400, 80)
+    dC = qe_dsigma_domega(2222.0, 15.541, w, sf="pke12p_tot.data", n_p=6, n_n=6)
+    dAr = qe_dsigma_domega(2222.0, 15.541, w, sf="pke40p_tot.data", n_p=18, n_n=22)
+    def fwhm(d):
+        h = d.max() / 2; a = w[d > h]; return a[-1] - a[0]
+    assert fwhm(dAr) > fwhm(dC), (fwhm(dAr), fwhm(dC))
