@@ -142,90 +142,87 @@ def _all_xsecs(pE, pmom, m_pi, kf, rho_tot, protfrac, vrel):
     return jnp.clip(sa, 0.0, None), jnp.clip(qe9, 0.0, None)
 
 
-def propagate(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protfrac=0.0):
-    """Transport a batch of pions through the nucleus.  All arrays leading-axis = pion.
-      pos0 (N,3) fm, p_pi0 (N,4) MeV (E,px,py,pz), charge_idx0 (N,) in {0,1,2}.
-    Returns (p_pi_final (N,4), charge_idx (N,), absorbed (N,) bool, n_scatter (N,))."""
+from functools import partial as _partial
+
+
+@_partial(jax.jit, static_argnums=(3,))
+def _propagate_scan(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protfrac):
+    """JIT + lax.scan core of the pion transport (the per-step body is traced ONCE)."""
     rgrid, rho, radius = _load_density(cfg.nucleus)
     n = pos0.shape[0]
-    pos = pos0
-    p_pi = p_pi0
-    ch = charge_idx0
-    alive = jnp.ones(n, bool)
-    absorbed = jnp.zeros(n, bool)
-    nsc = jnp.zeros(n, jnp.int32)
-
     keys = jax.random.split(key, cfg.max_steps)
-    for step_key in keys:
+
+    def body(carry, step_key):
+        pos, p_pi, ch, alive, absorbed, nsc = carry
         r = jnp.linalg.norm(pos, axis=1)
-        escaped = alive & (r > radius)
-        alive = alive & ~escaped
+        alive = alive & ~(alive & (r > radius))
         live = alive
 
         m_pi = _CH_MASS[ch]
         pmom = jnp.linalg.norm(p_pi[:, 1:], axis=1)
         pE = p_pi[:, 0]
         rho_p = _rho_species(r, rgrid, rho)
-        rho_tot = 2.0 * rho_p                       # proton + neutron (same table)
+        rho_tot = 2.0 * rho_p
         kf = _kf_local(rho_p)
 
-        # sample the struck nucleon (Fermi sphere) ONCE per step: used for v_rel in the rate
-        # AND, if it scatters, the two-body kinematics (ACHILLES uses the actual struck nucleon)
         kN, step_key = jax.random.split(step_key)
-        p_N = jax.vmap(_sample_fermi_nucleon)(kf, jax.random.split(kN, n))   # (N,4)
+        p_N = jax.vmap(_sample_fermi_nucleon)(kf, jax.random.split(kN, n))
         v_pi = p_pi[:, 1:] / pE[:, None]
         v_N = p_N[:, 1:] / p_N[:, 0:1]
         vrel = jnp.linalg.norm(v_pi - v_N, axis=1)
 
-        # SCATTER: DCC meson-baryon sigma(W) (ACHILLES MesonBaryonInteraction = Phase E),
-        # W from the actual pion + struck nucleon.  ABSORPTION: Oset (PionAbsorptionOneStep).
         Ppair = p_pi + p_N
         W = jnp.sqrt(jnp.clip(Ppair[:, 0] ** 2 - jnp.sum(Ppair[:, 1:] ** 2, axis=1), 1.0, None))
-        sig_out = cascade_mb.jax_channel_sigmas(W, ch)        # (N,3) mb, to pi+/0/-
+        sig_out = cascade_mb.jax_channel_sigmas(W, ch)
         sigma_sc_tot = jnp.sum(sig_out, axis=1)
         sa = ox.abs_cross_section(pE, m_pi, pmom, jnp.clip(vrel, 1e-3, None), kf,
                                   jnp.clip(rho_tot, 1e-9, None))
-        sigma_tot = (sa + sigma_sc_tot) * MB_TO_FM2  # fm^2
-        lam = rho_tot * sigma_tot                    # 1/fm
+        sigma_tot = (sa + sigma_sc_tot) * MB_TO_FM2
+        lam = rho_tot * sigma_tot
         p_int = -jnp.expm1(-lam * cfg.step)
 
         kI, kC, kF, kS = jax.random.split(step_key, 4)
         interacts = live & (jax.random.uniform(kI, (n,)) < p_int)
-
         p_abs = sa / jnp.clip(sa + sigma_sc_tot, 1e-12, None)
         is_abs = interacts & (jax.random.uniform(kC, (n,)) < p_abs)
         absorbed = absorbed | is_abs
         alive = alive & ~is_abs
 
-        # scatter: pick the out-pion charge ∝ sig_out (elastic + charge exchange)
         scatters = interacts & ~is_abs
         probs = sig_out / jnp.clip(jnp.sum(sig_out, axis=1, keepdims=True), 1e-12, None)
         cdf = jnp.cumsum(probs, axis=1)
         u = jax.random.uniform(kF, (n, 1))
-        out_ch = jnp.clip(jnp.sum((u > cdf).astype(jnp.int32), axis=1), 0, 2)
+        out_ch = jnp.clip(jnp.sum((u > cdf).astype(jnp.int32), axis=1), 0, 2).astype(jnp.int32)
 
-        # per-event scatter kinematics off the SAME struck nucleon used for v_rel (vmap)
         def scat_one(p_pi_i, pN_i, out_i, kf_i, k):
-            m_out = _CH_MASS[out_i]
-            p_out = _two_body_cm_scatter(p_pi_i, pN_i, m_out, k)
-            # Pauli blocking on the recoil nucleon: reject if |p_recoil| < kf
+            p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k)
             p_rec = (p_pi_i + pN_i) - p_out
-            blocked = jnp.linalg.norm(p_rec[1:]) < kf_i
-            return p_out, blocked
-        ks = jax.random.split(kS, n)
-        p_out, blocked = jax.vmap(scat_one)(p_pi, p_N, out_ch, kf, ks)
+            return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
+        p_out, blocked = jax.vmap(scat_one)(p_pi, p_N, out_ch, kf, jax.random.split(kS, n))
 
         do_scatter = scatters & ~blocked
         p_pi = jnp.where(do_scatter[:, None], p_out, p_pi)
         ch = jnp.where(do_scatter, out_ch, ch)
         nsc = nsc + do_scatter.astype(jnp.int32)
 
-        # advance survivors along the (possibly new) pion direction
         v3 = p_pi[:, 1:]
         d = v3 / jnp.clip(jnp.linalg.norm(v3, axis=1, keepdims=True), 1e-9, None)
         pos = jnp.where(alive[:, None], pos + cfg.step * d, pos)
+        return (pos, p_pi, ch, alive, absorbed, nsc), None
 
+    init = (pos0, p_pi0, charge_idx0, jnp.ones(n, bool), jnp.zeros(n, bool), jnp.zeros(n, jnp.int32))
+    (pos, p_pi, ch, alive, absorbed, nsc), _ = jax.lax.scan(body, init, keys)
     return p_pi, ch, absorbed, nsc
+
+
+def propagate(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protfrac=0.0):
+    """Transport a batch of pions through the nucleus.  All arrays leading-axis = pion.
+      pos0 (N,3) fm, p_pi0 (N,4) MeV (E,px,py,pz), charge_idx0 (N,) in {0,1,2}.
+    Returns (p_pi_final (N,4), charge_idx (N,), absorbed (N,) bool, n_scatter (N,)).
+    JIT + lax.scan over the steps (the per-step body is traced once -> fast)."""
+    _load_density(cfg.nucleus)          # warm caches EAGERLY (avoid tracer leak inside jit)
+    cascade_mb._jax_grids()
+    return _propagate_scan(pos0, p_pi0, charge_idx0, cfg, key, protfrac)
 
 
 def sample_vertex(key, n, nucleus="c12_density.txt"):

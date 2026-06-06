@@ -67,27 +67,30 @@ def propagate_nucleon(pos0, p_N0, is_proton0, cfg: NucleonCascadeConfig, key, pr
     Returns (p_N_final (N,4), n_scatter (N,)).  The nucleon identity is conserved by elastic
     scattering; we follow the leading nucleon (the struck background nucleon becomes a secondary,
     not tracked here)."""
+    _load_density(cfg.nucleus)          # warm cache EAGERLY (avoid tracer leak inside jit)
+    return _propagate_nucleon_scan(pos0, p_N0, is_proton0, cfg, key, protfrac)
+
+
+from functools import partial as _partial
+
+
+@_partial(jax.jit, static_argnums=(3,))
+def _propagate_nucleon_scan(pos0, p_N0, is_proton0, cfg: NucleonCascadeConfig, key, protfrac):
     rgrid, rho, radius = _load_density(cfg.nucleus)
     n = pos0.shape[0]
-    pos = pos0
-    p_N = p_N0
-    isp = is_proton0
-    alive = jnp.ones(n, bool)
-    nsc = jnp.zeros(n, jnp.int32)
+    keys = jax.random.split(key, cfg.max_steps)
 
-    for step_key in jax.random.split(key, cfg.max_steps):
+    def body(carry, step_key):
+        pos, p_N, isp, alive, nsc = carry
         r = jnp.linalg.norm(pos, axis=1)
         alive = alive & (r <= radius)
-
-        pE = p_N[:, 0]
         rho_p = _rho_species(r, rgrid, rho)
         rho_tot = 2.0 * rho_p
         kf = _kf_local(rho_p)
 
         kN, step_key = jax.random.split(step_key)
         kpt, kN = jax.random.split(kN)
-        # background-nucleon species: proton fraction Z/A = (1 - protfrac)/2  (protfrac=(N-Z)/A)
-        zoa = (1.0 - protfrac) / 2.0
+        zoa = (1.0 - protfrac) / 2.0                 # background proton fraction Z/A
         bg_is_proton = jax.random.uniform(kpt, (n,)) < zoa
         p_bg = jax.vmap(_sample_fermi_nucleon)(kf, jax.random.split(kN, n))
 
@@ -95,15 +98,14 @@ def propagate_nucleon(pos0, p_N0, is_proton0, cfg: NucleonCascadeConfig, key, pr
         P = p_N + p_bg
         s = P[:, 0] ** 2 - jnp.sum(P[:, 1:] ** 2, axis=1)
         sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
-        sigma = nn_elastic_sigma(sqrts, same_iso) * MB_TO_FM2     # fm^2
-        lam = rho_tot * sigma
-        p_int = -jnp.expm1(-lam * cfg.step)
+        sigma = nn_elastic_sigma(sqrts, same_iso) * MB_TO_FM2
+        p_int = -jnp.expm1(-rho_tot * sigma * cfg.step)
 
         kI, kS = jax.random.split(step_key)
         interacts = alive & (jax.random.uniform(kI, (n,)) < p_int)
 
         def scat_one(p_lead, p_bg_i, kf_i, k):
-            p_out = _two_body_cm_scatter(p_lead, p_bg_i, M_N, k)      # leading nucleon out
+            p_out = _two_body_cm_scatter(p_lead, p_bg_i, M_N, k)
             p_rec = (p_lead + p_bg_i) - p_out
             blocked = (jnp.linalg.norm(p_out[1:]) < kf_i) | (jnp.linalg.norm(p_rec[1:]) < kf_i)
             return p_out, blocked
@@ -115,7 +117,10 @@ def propagate_nucleon(pos0, p_N0, is_proton0, cfg: NucleonCascadeConfig, key, pr
         v3 = p_N[:, 1:]
         d = v3 / jnp.clip(jnp.linalg.norm(v3, axis=1, keepdims=True), 1e-9, None)
         pos = jnp.where(alive[:, None], pos + cfg.step * d, pos)
+        return (pos, p_N, isp, alive, nsc), None
 
+    init = (pos0, p_N0, is_proton0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32))
+    (pos, p_N, isp, alive, nsc), _ = jax.lax.scan(body, init, keys)
     return p_N, nsc
 
 
