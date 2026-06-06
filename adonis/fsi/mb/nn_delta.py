@@ -88,10 +88,10 @@ def _dsigma_dcost_dm(cost, sqrts, mdelta):
     return mat * np.sqrt(pout2) * 2 * mdelta * prop
 
 
-def sigma_nn2ndelta(sqrts, n_cost=40, n_m=60):
-    """sigma(N N -> N Delta) [mb] at CM energy sqrts [GeV] for ONE charge channel
-    (matrix element charge-independent at the pole; isospin applied by the caller).
-    2-D integral over cos(theta) in [-1,1] and m_delta in [mn+mpi, sqrts-mn]."""
+def _base_integral(sqrts, n_cost=90, n_m=110):
+    """integral over cos(theta) in [-1,1] and m_delta in [mn+mpi, sqrts-mn] of the differential
+    (NO 2pi -- ACHILLES DSigmaDM integrates only cos(theta); the flux 1/pcm + isofactor are
+    applied in sigma_nn2ndelta).  Charge-independent (the matrix element uses the Delta pole)."""
     sqrts = float(sqrts)
     m_lo, m_hi = M_N + M_PI, sqrts - M_N
     if m_hi <= m_lo:
@@ -100,6 +100,28 @@ def sigma_nn2ndelta(sqrts, n_cost=40, n_m=60):
     dC = cg[1] - cg[0]; dM = mg[1] - mg[0]
     tot = 0.0
     for m in mg:
-        row = np.array([_dsigma_dcost_dm(c, sqrts, m) for c in cg])
-        tot += np.sum(row) * dC * dM
-    return float(2 * np.pi * tot)
+        tot += np.sum([_dsigma_dcost_dm(c, sqrts, m) for c in cg]) * dC * dM
+    return float(tot)
+
+
+def _pcm(sqrts):
+    """initial NN CM momentum [GeV]."""
+    return np.sqrt(max(sqrts ** 2 / 4 - M_N ** 2, 1e-12))
+
+
+def sigma_nn2ndelta(sqrts, delta_id="deltapp"):
+    """sigma(N N -> N Delta) [mb] at CM energy sqrts [GeV] (NucleonNucleon::SigmaNN2NDelta):
+    base integral x isofactor / pcm.  isofactor = 1 for Delta++/Delta-, 1/3 for Delta+/Delta0."""
+    iso = 1.0 if delta_id in ("deltapp", "deltam") else 1.0 / 3.0
+    return _base_integral(sqrts) * iso / _pcm(sqrts)
+
+
+def sigma_pp_channels(sqrts):
+    """Fig 14: (sigma(pp->pn pi+), sigma(pp->pp pi0)) [mb] via pp -> N Delta -> N N pi.
+    pp -> n Delta++ (iso 1) and pp -> p Delta+ (iso 1/3); Delta++ -> p pi+ (BR 1),
+    Delta+ -> p pi0 (2/3) / n pi+ (1/3)  (isospin Clebsch)."""
+    s_dpp = sigma_nn2ndelta(sqrts, "deltapp")     # pp -> n Delta++
+    s_dp = sigma_nn2ndelta(sqrts, "deltap")       # pp -> p Delta+
+    pn_pip = s_dpp * 1.0 + s_dp * (1.0 / 3.0)      # Delta++->p pi+ ; Delta+->n pi+
+    pp_pi0 = s_dp * (2.0 / 3.0)                    # Delta+->p pi0
+    return pn_pip, pp_pi0

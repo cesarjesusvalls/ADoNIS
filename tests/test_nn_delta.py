@@ -31,3 +31,16 @@ def test_matrix_element_finite():
     # representative t,u at sqrts=2.2, m_delta=1.232
     m = nd.mat_nn2ndelta(-0.3, -0.3, nd.M_DELTA ** 2)
     assert np.isfinite(m) and m > 0
+
+
+def test_fig14_pp_channels():
+    """Fig 14: pp->pn pi+ and pp->pp pi0 peak at the right magnitude (~20 / ~4 mb) around
+    sqrts~2.3-2.5 GeV, with the 5:1 isospin ratio (Delta++ : Delta+ + branching)."""
+    s = np.linspace(2.05, 3.0, 16)
+    pn = np.array([nd.sigma_pp_channels(x)[0] for x in s])
+    pp = np.array([nd.sigma_pp_channels(x)[1] for x in s])
+    assert 15 < pn.max() < 26, pn.max()                      # pp->pn pi+ peak ~20 mb
+    assert 3 < pp.max() < 6, pp.max()                        # pp->pp pi0 peak ~4 mb
+    assert abs(pn.max() / pp.max() - 5.0) < 0.2              # 5:1 isospin ratio
+    assert 2.2 < s[pn.argmax()] < 2.6                        # peaks in the Delta region
+    assert pn[0] < 0.3 and pn[-1] < pn.max()                 # rises from threshold, falls off
