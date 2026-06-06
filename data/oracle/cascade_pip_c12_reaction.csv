@@ -1,0 +1,18 @@
+# ACHILLES cascade (achilles-cascade, Virtual mode) pi+ on 12C reaction cross section
+# from docker achilles:cascade (docker/Dockerfile.cascade). Beam uniform in p_pi, so
+# N_hits(p) ∝ sigma_reaction(p) (shape; absolute norm = pi R^2 x hit-fraction, TBD).
+# 1182 cascade events. Columns: p_pi[MeV], sigma_shape (peak-normalised)
+95.0  0.0852
+125.0  0.1364
+155.0  0.2727
+185.0  0.3864
+215.0  0.6307
+245.0  0.8182
+275.0  1.0000
+305.0  0.7557
+335.0  0.6989
+365.0  0.5568
+395.0  0.4716
+425.0  0.3864
+455.0  0.2727
+485.0  0.2443
