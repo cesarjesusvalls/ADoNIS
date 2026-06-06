@@ -21,11 +21,20 @@ initial→final meson-baryon channels, i,f ∈ {0:πN, 1:ηN, 2:KΛ, 3:KΣ}). Ex
   [mb]). **Validated: the π⁺p Δ(1232) peak — W=1220 MeV, σ=208 mb** (PDG ~200 mb), falling
   to ~10 mb above. Gate `tests/test_mb_xsec.py`; σ-norm knob is exactly linear (the
   differentiable handle). CI extracts `MesonBaryonAmplitudes/ANL` (cache key bumped).
-  - ◐ remaining E1: the π⁻p / charge-exchange channels (I=1/2+3/2 with the GetCG isospin
-    Clebsches, `CalcCrossSectionW_grid` lines 409-421), and ηN/KΛ/KΣ final states
-    (`ANL_0-{1,2,3}`); the paper's Fig DCC_total overlay.
-- ☐ **E2 angular dσ/dΩ**: Legendre `P_L`, `P_L'`, full multipole interference + inverse-CDF
-  angle sampling. **Fig DCC_angular.**
+  - ☑ **π⁻p channels** — `pim_p_elastic` (c_{3/2}=1/3, c_{1/2}=2/3), `pim_p_cex`
+    (π⁻p→π⁰n, c_{3/2}=+√2/3, c_{1/2}=−√2/3), `pim_p_total` (elastic+cex). **The textbook
+    9:2:1 Δ isospin ratio is reproduced: π⁺p:cex:elastic = 9.3:2.2:1** (the small >2 cex
+    excess is the physical opposite-sign I=1/2 fill-in). Gate
+    `test_cex_isospin_921_ratio`. Figure `figures/mb_pin_scattering.png` (`make_mb_figure.py`).
+  - ◐ **soft-blocked**: ηN/KΛ/KΣ final states (`ANL_0-{1,2,3}`) are **not in the extracted
+    data dump** (only `ANL_0-0.dat` πN→πN is present) — like the A3 ANL/BNL overlay, this
+    needs external/image data, not model work. The paper's Fig DCC_total η/K overlay waits
+    on those tables.
+- ☑ **E2 angular dσ/dΩ** — DONE (`dsigma_dOmega`): spin-non-flip f + spin-flip g from the
+  multipoles (`f=Σ[(L+1)a_{L+}+L a_{L-}]P_L`, `g=Σ[a_{L+}−a_{L-}]P_L^1`, dσ/dΩ=|f|²+|g|²).
+  At the Δ it gives the **P33 1+3cos²θ** shape (fwd/90°≈4); off-resonance the S–P
+  interference tilts it forward (W>1232) or backward (W<1232). Gate
+  `test_delta_angular_distribution`; figure `figures/mb_pin_scattering.png` (right panel).
 
 ## Oracle note (important)
 The paper's Fig DCC_total/DCC_angular compares the ACHILLES **INC** (cascade) to the
@@ -36,7 +45,8 @@ this environment (no `cmake`/`gfortran`; image lacks the binary — see `README.
 gated on the **physical πN cross section** (Δ peak + PDG), not the standalone INC run.
 
 ## Status
-Format scoped + extracted. E0/E1/E2 are the remaining build (a new parser + the partial-wave
-→ cross-section physics with isospin). Self-validatable against the πN Δ peak without the
-cascade binary.
-</content>
+E0/E1/E2 **DONE** for the πN sector with the available data: parser, total σ(W) for all
+three πN charge channels (9:2:1 Δ ratio), and the angular dσ/dΩ (P33 1+3cos²θ). The only
+remaining E item is the ηN/KΛ/KΣ final states, which are **soft-blocked on missing data
+tables** (`ANL_0-{1,2,3}` absent from the dump) — not a model gap. Self-validated against
+the physical πN cross section (Δ peak, PDG, isospin ratios) without the cascade binary.

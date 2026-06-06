@@ -144,3 +144,29 @@ def pim_p_elastic(W=None, norm=1.0):
         amps = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
         Wt = np.asarray(W)
     return Wt, _channel_sigma(amps, Wt, {3: 1.0 / 3.0, 1: 2.0 / 3.0}, norm)
+
+
+# charge-exchange isospin weights (products of initial pi-p and final pi0n Clebsches):
+#   |pi- p>  = sqrt(1/3)|3/2,-1/2> - sqrt(2/3)|1/2,-1/2>
+#   |pi0 n>  = sqrt(2/3)|3/2,-1/2> + sqrt(1/3)|1/2,-1/2>
+#   c_{3/2} = sqrt(2/3)*sqrt(1/3) = +sqrt(2)/3 ;  c_{1/2} = sqrt(1/3)*(-sqrt(2/3)) = -sqrt(2)/3
+_CEX_CG = {3: np.sqrt(2.0) / 3.0, 1: -np.sqrt(2.0) / 3.0}
+
+
+def pim_p_cex(W=None, norm=1.0):
+    """pi- p -> pi0 n charge-exchange cross section [mb].  At the Delta (pure I=3/2) the
+    I=1/2 piece vanishes and sigma ∝ |sqrt(2)/3|^2 = 2/9 of the I=3/2 strength -> the
+    textbook 9:2:1 ratio of pi+p : (pi-p->pi0n) : pi-p elastic at the Delta(1232).  Off the
+    resonance the opposite-sign I=1/2 amplitude interferes, filling in the wings."""
+    Wt, amps = load_anl(0, 0)
+    if W is not None:
+        amps = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
+        Wt = np.asarray(W)
+    return Wt, _channel_sigma(amps, Wt, _CEX_CG, norm)
+
+
+def pim_p_total(W=None, norm=1.0):
+    """pi- p total over the two open piN final states (elastic + charge exchange) [mb]."""
+    Wt, se = pim_p_elastic(W, norm)
+    _, sc = pim_p_cex(W, norm)
+    return Wt, se + sc

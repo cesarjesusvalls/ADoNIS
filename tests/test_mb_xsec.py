@@ -46,6 +46,21 @@ def test_pim_p_isospin_ratio():
     assert 8.0 < sp[m].max() / sm[m].max() < 10.0       # the 9:1 ratio
 
 
+def test_cex_isospin_921_ratio():
+    """The three piN channels at the Delta(1232) reproduce the textbook 9:2:1 isospin ratio
+    pi+p : (pi-p->pi0n charge exchange) : pi-p elastic -- a pure I=3/2 prediction (weights
+    1, sqrt(2)/3, 1/3 -> 1 : 2/9 : 1/9 = 9:2:1)."""
+    from adonis.fsi.mb.anl_xsec import pip_p_total, pim_p_elastic, pim_p_cex
+    W, sp = pip_p_total()
+    _, sc = pim_p_cex()
+    _, se = pim_p_elastic()
+    m = (W >= 1150) & (W <= 1350)
+    pk = lambda s: s[m].max()
+    assert 1200 <= W[m][int(np.argmax(sc[m]))] <= 1245      # cex peaks at the Delta
+    assert 8.5 < pk(sp) / pk(se) < 10.0                     # pi+p : elastic = 9
+    assert 1.8 < pk(sc) / pk(se) < 2.6                      # cex   : elastic = 2 (+ I=1/2 fill-in)
+
+
 def test_delta_angular_distribution():
     """pi+ p dsigma/dOmega at the Delta (W=1232) reproduces the P33 1 + 3 cos^2(theta)
     shape (forward/90deg ~ 4), with the physical S-P interference forward-backward asymmetry."""
