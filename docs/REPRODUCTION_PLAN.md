@@ -37,6 +37,21 @@ Legend: ☐ todo · ◐ partial · ☑ done.
 - ☑ Per-module `closure_test`/`oracle_test` contract; CI green; oracle published as the `oracle-data` release
 - ☑ Differentiable cascade **proof-of-concept** exists in git history (Phase-1 toy `component_c/d/e`, `integrate_full`; removed in commit `f60947a`, recoverable) — joint closure recovered M_A + m_Δ + Γ + σ_sc + σ_abs. Real-physics FSI port is Phases D–H.
 
+**Phase status (per `docs/phases/`):**
+- ☑ **A1/A2/A3** — EM (≤3%), NC (≤1.3%), CC σ(E_ν) currents validated vs ACHILLES.
+- ☑ **B** — CCQE <0.5% abs; inclusive (e,e′) QE+1π two-peak structure (Fig 1), ¹²C + ⁴⁰Ar.
+- ☑ **C** — leptonic/hadronic/TKI observables; CC1π/CC0π signals; FSI distorts δp_T (Fig).
+- ☑ **D** — `ToyCascadeFSI` (`FSIModel.apply(EventRecord)`): per-event kind-1 reweighting,
+  closure ~9e-7; joint M_A+σ_sc+σ_abs recovery on real DCC events; D2 Oset-shaped
+  momentum-dependent σ_abs (peaks at the Δ).
+- ☑ **E** — πN sector: σ(W) for all 3 charge channels (9.3:2.2:1 Δ ratio), angular dσ/dΩ
+  (1+3cos²θ). ηN/KΛ/KΣ soft-blocked (tables absent).
+- ☑ **F1** — Oset self-energy transcribed + differentiable; feeds D2. F2 absolute σ_abs(T_π)
+  overlay soft-blocked on the `AbsCrossSection` source.
+- ☑ **G/H** — cascade image built + runs; Fig c12_ar40 reaction-σ oracle generated.
+- **Soft-blocked** (external data/source, not model gaps): A3 ANL/BNL overlay, ηN/K tables,
+  F2 AbsCrossSection, Phase-I e/ν exclusive (needs an ACHILLES e-vs-ν oracle to validate).
+
 ---
 
 ## Phase 0 — Inventory & oracle-matrix infrastructure (prerequisite)
