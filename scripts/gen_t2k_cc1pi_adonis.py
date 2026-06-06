@@ -36,8 +36,18 @@ class _FreeNucleon:
         return jnp.zeros((n, 3)), jnp.zeros((n,))
 
 
-def _gen_one(key, n, e_nu, nuclear, with_fsi, do_pion_fsi, do_nucleon_fsi):
-    ks, kpi, knuc = jax.random.split(key, 3)
+# T2K CC1pi+ STV tight phase space (NUISANCE PRD 103 112009): momentum windows + theta<70deg.
+COS70 = np.cos(70.0 * np.pi / 180.0)
+MU_LO, MU_HI = 250.0, 7000.0; PI_LO, PI_HI = 150.0, 1200.0; P_LO, P_HI = 450.0, 1200.0
+
+
+def _accept(p4, lo, hi):
+    m = np.linalg.norm(p4[:, 1:], axis=1)
+    return (m > lo) & (m < hi) & (p4[:, 3] / np.clip(m, 1e-9, None) > COS70)
+
+
+def _gen_one(key, n, e_nu, nuclear, with_fsi, do_pion_fsi, do_nucleon_fsi, is_hydrogen=False):
+    ks, kpi, knuc, kd = jax.random.split(key, 4)
     S = sample_final_state(ks, n, e_nu=e_nu, ep_lo=M_MU + 10.0, ep_hi=e_nu, theta_max_deg=180.0,
                            m_lep=M_MU, current="CC", weight_ep_volume=True, nuclear=nuclear)
     w, LWc = weight_from_sample(DCCKnobs(), S)
@@ -47,9 +57,14 @@ def _gen_one(key, n, e_nu, nuclear, with_fsi, do_pion_fsi, do_nucleon_fsi):
     if with_fsi and do_nucleon_fsi:
         ev = DiscreteNucleonFSI(DiscreteCascadeConfig(seed=2, step=0.05, max_steps=260)).apply(None, ev, key=knuc)
     pid_pi = np.asarray(ev.pid_pi); pid_N = np.asarray(ev.pid_N); wv = np.asarray(ev.w)
-    sel = (pid_pi == 211) & (pid_N == 2212) & (wv > 0)
-    return (np.asarray(obs.delta_pTT(ev))[sel], np.asarray(obs.p_N_tki(ev))[sel],
-            np.asarray(obs.delta_alphaT(ev))[sel], wv[sel])
+    mu = np.asarray(ev.kp); ppi = np.asarray(ev.p_pi); pN = np.asarray(ev.p_N)
+    sel = ((pid_pi == 211) & (pid_N == 2212) & (wv > 0) & _accept(mu, MU_LO, MU_HI)
+           & _accept(ppi, PI_LO, PI_HI) & _accept(pN, P_LO, P_HI))     # tight CC1pi+ acceptance
+    dptt = np.asarray(obs.delta_pTT(ev)); pn = np.asarray(obs.p_N_tki(ev))
+    dat = np.asarray(obs.delta_alphaT(ev))
+    if is_hydrogen:                                                     # NUISANCE: flat daT throw
+        dat = np.asarray(jax.random.uniform(kd, dat.shape, minval=0.0, maxval=np.pi))
+    return dptt[sel], pn[sel], dat[sel], wv[sel]
 
 
 def generate(n=400_000, seed=0, with_fsi=True):
@@ -63,7 +78,7 @@ def generate(n=400_000, seed=0, with_fsi=True):
     eC = np.asarray(flux.sample_enu(jax.random.fold_in(kc, 0), nC))
     eH = np.asarray(flux.sample_enu(jax.random.fold_in(kh, 0), nH))
     dC = _gen_one(kc, nC, eC, nuc, with_fsi, True, True)
-    dH = _gen_one(kh, nH, eH, _FreeNucleon(), with_fsi, False, False)   # free p: no nuclear FSI
+    dH = _gen_one(kh, nH, eH, _FreeNucleon(), with_fsi, False, False, is_hydrogen=True)  # free p
     # scale the two sub-samples so the H weight fraction = H_FRACTION
     wC, wH = dC[3], dH[3]
     sC, sH = wC.sum(), wH.sum()
