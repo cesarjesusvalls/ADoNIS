@@ -31,6 +31,34 @@ def test_cascade_closure():
     assert r.passed, r.detail
 
 
+def test_oset_shape_closure_and_delta_peak():
+    """The momentum-dependent Oset-shaped absorption mode (a) stays exactly differentiable
+    (closure), and (b) absorbs Delta-region pions (T_pi ~ 180-210 MeV) preferentially over
+    lower/higher momenta -- the Oset Delta-peaked absorption signature fed into the cascade."""
+    from adonis.core.event import EventRecord
+    M_PI = 139.57
+    m = ToyCascadeFSI(CascadeConfig(oset_shape=True, seed=2))
+    assert m.closure_test().passed                          # differentiable in the Oset mode
+
+    def mono(p_mev, n=6000):
+        key = jax.random.PRNGKey(int(p_mev))
+        k1, k2 = jax.random.split(key)
+        ct = jax.random.uniform(k1, (n,), minval=-1, maxval=1); ph = jax.random.uniform(k2, (n,)) * 2 * np.pi
+        st = jnp.sqrt(1 - ct ** 2)
+        d = jnp.stack([st * jnp.cos(ph), st * jnp.sin(ph), ct], 1) * p_mev
+        E = jnp.sqrt(p_mev ** 2 + M_PI ** 2); z = jnp.zeros((n, 4)); o = jnp.ones(n)
+        p_pi = jnp.concatenate([jnp.full((n, 1), E), d], 1)
+        return EventRecord(k=z, kp=z, p_struck=z, p_pi=p_pi, p_N=z, w=o,
+                           channel=jnp.zeros(n, jnp.int32), pid_pi=jnp.full(n, 211, jnp.int32),
+                           pid_N=jnp.full(n, 2212, jnp.int32), pid_Ni=jnp.full(n, 2112, jnp.int32),
+                           W=jnp.full(n, 1232.0), Q2_adj=jnp.full(n, 1.0e5))
+
+    p = PhysicsParams(fsi_sigma_scatter=0.05, fsi_sigma_abs=0.30)  # low scatter -> isolate absorption
+    af = {pp: float(np.mean(np.asarray(m.apply(p, mono(pp), key=jax.random.PRNGKey(7)).pid_pi == 0)))
+          for pp in (140, 320, 400)}                              # below / at / above the Delta
+    assert af[320] > af[140] and af[320] > af[400], af            # absorption peaks at the Delta
+
+
 # --- (joint) production + FSI joint recovery on real EventRecords ------------ #
 FAST = bool(_os.environ.get("ADONIS_CI_FAST"))
 N = 8_000 if FAST else 24_000

@@ -58,12 +58,25 @@ chain unchanged (`Generator(ch, fsi=ToyCascadeFSI())`).
 Figure: `figures/fsi_cascade_c12.png` (`scripts/make_fsi_figure.py`) — the produced vs
 escaped pion spectrum, showing absorption depletion (~CC0π fraction) + low-|p| softening.
 
+## D2 — Oset-shaped, momentum-dependent absorption (F→D) — DONE
+`CascadeConfig(oset_shape=True)`: the cascade's σ_abs becomes **momentum-dependent**,
+`σ_abs(T_π) = fsi_sigma_abs · absorption_rate_shape(T_π)`, where the shape is the transcribed
+Oset absorption self-energy (Phase F, `adonis/fsi/mb/oset.py::absorption_rate_shape`)
+normalised to 1 at the Δ (T_π=180 MeV). The rate is recomputed each step from the current
+(degrading) pion |p|, so low-energy pions feel the s-wave tail and Δ-region pions are
+absorbed preferentially. Stays pure kind-1 (the shape reads the detached T_π; θ enters only
+via `fsi_sigma_abs`): **closure rel ~7e-7**, and the cascade absorption fraction tracks the
+Oset shape, peaking at the Δ (`test_oset_shape_closure_and_delta_peak`; figure
+`figures/oset_fsi_absorption_c12.png`). This is the resonant-FSI-rate item, wired from the
+real Oset physics. (The *absolute* σ_abs(T_π) overlay vs ACHILLES is still F2-soft-blocked
+on the `AbsCrossSection` source — see PHASE_F.md — but the **shape** drives the cascade here.)
+
 ## Remaining (optional)
 - ☐ Re-run the toy `integrate_full` **5-param** joint closure end-to-end (adds m_Δ, Γ_Δ,
   which are amplitude-table values in the real DCC, not `PhysicsParams` knobs — so the
   real-chain joint closure fits the 3 it owns: M_A, σ_sc, σ_abs).
-- ☐ Momentum-dependent (resonant) FSI rates (cf. `integrate_bc._rates`) once the real Oset
-  absorption σ(T_π) is wired in (Phase F2).
+- ☐ Expose the Oset coefficient C_A2 as a `PhysicsParams` FSI knob to fit the absorption
+  *shape* (not just its strength) jointly — the shape is already differentiable in C_A2.
 
 Toy FSI physics ⇒ **no oracle gate** (per the plan); the gates are closure (differentiability)
 and the joint-recovery closure.

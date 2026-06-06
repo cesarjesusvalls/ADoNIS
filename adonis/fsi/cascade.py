@@ -38,10 +38,14 @@ from adonis.params import PhysicsParams
 M_PI = 139.57  # MeV; put the degraded pion back on-shell after energy loss
 
 
-def _rates(params):
-    """(total interaction rate [1/fm], P(absorb | interact)) from the FSI knobs."""
-    lam = params.fsi_sigma_scatter + params.fsi_sigma_abs
-    return lam, params.fsi_sigma_abs / lam
+def _rates(params, sig_abs=None):
+    """(total interaction rate [1/fm], P(absorb | interact)) from the FSI knobs.
+
+    `sig_abs` overrides params.fsi_sigma_abs (e.g. a momentum-dependent absorption rate);
+    the result then broadcasts over the per-event override array."""
+    sa = params.fsi_sigma_abs if sig_abs is None else sig_abs
+    lam = params.fsi_sigma_scatter + sa
+    return lam, sa / lam
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,7 @@ class CascadeConfig:
     mom_loss: float = 0.20  # fractional |p_pi| lost per quasi-elastic scatter
     g_scatter: float = 0.40  # Henyey-Greenstein forward asymmetry
     seed: int = 0            # default internal PRNG seed (overridable per apply())
+    oset_shape: bool = False  # if True, sigma_abs(T_pi) = fsi_sigma_abs * Oset Delta-peaked shape
 
 
 class ToyCascadeFSI(FSIModel):
@@ -64,11 +69,23 @@ class ToyCascadeFSI(FSIModel):
         sg = jax.lax.stop_gradient
         # frozen proposal q (decision thresholds read this); theta enters only via the ratio
         proposal = params if proposal is None else proposal
-        lam_cur, absp_cur = _rates(params)
-        lam_q, absp_q = _rates(sg(proposal))
-
+        q = sg(proposal)
         n = event.p_pi.shape[0]
         key = jax.random.PRNGKey(cfg.seed) if key is None else key
+
+        def step_rates(pm):
+            """Per-event (lam_cur, absp_cur, lam_q, absp_q) at the current pion |p| `pm`.
+            Constant unless cfg.oset_shape, in which case sigma_abs is Delta-peaked in T_pi."""
+            if cfg.oset_shape:
+                from adonis.fsi.mb.oset import absorption_rate_shape
+                T = sg(jnp.sqrt(pm ** 2 + M_PI ** 2) - M_PI)        # detached pion KE [MeV]
+                shp = sg(absorption_rate_shape(T))                  # Delta-peaked, detached
+                lc, ac = _rates(params, params.fsi_sigma_abs * shp)
+                lq, aq = _rates(q, q.fsi_sigma_abs * shp)
+            else:
+                lc, ac = _rates(params)
+                lq, aq = _rates(q)
+            return lc, ac, lq, aq
 
         # initial pion |p| and direction (geometry + kinematics are detached)
         p3 = event.p_pi[:, 1:]
@@ -85,6 +102,7 @@ class ToyCascadeFSI(FSIModel):
         for sub in jax.random.split(key, cfg.n_bounces):
             kr, kc, ks, kb = jax.random.split(sub, 4)
             live = alive > 0.5
+            lam_cur, absp_cur, lam_q, absp_q = step_rates(pmag)   # per-step (Oset uses current |p|)
             d = _distance_to_boundary(pos, direction, cfg.R)
             reach_q = jnp.exp(-d * lam_q)                       # P(escape) under the proposal
             reach_p = jnp.exp(-d * lam_cur)                     # P(escape) under theta

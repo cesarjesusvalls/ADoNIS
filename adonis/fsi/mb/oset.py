@@ -57,3 +57,16 @@ def absorption_self_energy(T_pi, rho_frac=1.0, c_a2=C_A2, c_a3=C_A3, c_beta=C_BE
     """Total pion absorption self-energy Im Sigma_abs = abs_NN + abs_NNN [MeV]."""
     return (self_energy_abs_NN(T_pi, rho_frac, c_a2, c_beta, m_pi)
             + self_energy_abs_NNN(T_pi, rho_frac, c_a3, c_beta, m_pi))
+
+
+T_PI_REF = 180.0          # MeV, near the Delta absorption peak (the shape normalisation point)
+
+
+def absorption_rate_shape(T_pi, c_a2=C_A2, c_a3=C_A3, c_beta=C_BETA, m_pi=M_PI, t_ref=T_PI_REF):
+    """Delta-peaked absorption SHAPE (>=0), normalised to 1 at `t_ref`, for the cascade's
+    MOMENTUM-DEPENDENT sigma_abs: sigma_abs(T_pi) = fsi_sigma_abs * absorption_rate_shape(T_pi),
+    so `fsi_sigma_abs` is the absorption rate at the Delta peak and the shape carries the
+    Oset T_pi-dependence (low-T_pi s-wave + Delta resonance).  Differentiable in c_a2/c_a3."""
+    s = jnp.clip(absorption_self_energy(T_pi, 1.0, c_a2, c_a3, c_beta, m_pi), 0.0, None)
+    s_ref = absorption_self_energy(t_ref, 1.0, c_a2, c_a3, c_beta, m_pi)
+    return s / (s_ref + 1e-30)
