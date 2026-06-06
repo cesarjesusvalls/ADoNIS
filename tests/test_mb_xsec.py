@@ -72,3 +72,22 @@ def test_delta_angular_distribution():
     assert 3.0 < fwd / ninety < 5.5, fwd / ninety        # ~4 for 1+3cos^2
     # symmetric-ish but forward-peaked; minimum near 90 deg
     assert d[len(c) // 2] < d[0] and d[len(c) // 2] < d[-1]
+
+
+def test_eta_klambda_production():
+    """piN -> etaN (N(1535)) and piN -> KLambda production channels (ANL_0-1, 0-2): the eta
+    channel peaks at the N(1535) (~1535 MeV) which sits at the eta-N threshold; K Lambda turns
+    on above its higher threshold."""
+    import numpy as np
+    from adonis.paths import achilles_data_root
+    import pytest
+    if not (achilles_data_root() / "MesonBaryonAmplitudes" / "ANL" / "ANL_0-1.dat").exists():
+        pytest.skip("ANL_0-1 (etaN) amplitudes not present")
+    from adonis.fsi.mb.anl_xsec import eta_production, klambda_production
+    We, se = eta_production(); Wk, sk = klambda_production()
+    me = (We >= 1480) & (We <= 1800)
+    assert 1510 <= We[me][se[me].argmax()] <= 1580           # N(1535) peak
+    assert 1.5 < se[me].max() < 5.0                          # ~2-3 mb (eta production)
+    assert np.interp(1480, We, se) < 0.5 * se[me].max()      # rises from the eta-N threshold
+    # K Lambda turns on at a higher W than eta
+    assert np.interp(1500, Wk, sk) < 0.1                     # below K-Lambda threshold

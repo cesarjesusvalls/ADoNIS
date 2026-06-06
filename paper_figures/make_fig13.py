@@ -13,19 +13,24 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
-from adonis.fsi.mb.anl_xsec import pip_p_total, pim_p_elastic, pim_p_cex, dsigma_dOmega
+from adonis.fsi.mb.anl_xsec import (pip_p_total, pim_p_elastic, pim_p_cex, dsigma_dOmega,
+                                    eta_production, klambda_production)
 ROOT = Path(__file__).resolve().parents[1]
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
 W, sp = pip_p_total(); _, se = pim_p_elastic(); _, sc = pim_p_cex()
+Weta, seta = eta_production(); Wkl, skl = klambda_production()
 ax1.plot(W, sp, color="tab:red", lw=2, label=r"$\pi^+p\to\pi^+p$")
 ax1.plot(W, sc, color="tab:green", lw=2, label=r"$\pi^-p\to\pi^0n$ (cex)")
 ax1.plot(W, se, color="tab:blue", lw=2, label=r"$\pi^-p\to\pi^-p$")
-ax1.axvline(1232, ls=":", color="gray"); ax1.set_xlim(1080, 1400)
+ax1.plot(Weta, seta, color="tab:purple", lw=2, label=r"$\pi^-p\to\eta n$ (N(1535))")
+ax1.plot(Wkl, skl, color="tab:brown", lw=1.5, label=r"$\pi^-p\to K^0\Lambda$")
+ax1.axvline(1232, ls=":", color="0.7"); ax1.axvline(1535, ls=":", color="tab:purple", alpha=0.5)
+ax1.set_xlim(1080, 1750)
 m = (W >= 1150) & (W <= 1350); pk = lambda s: s[m].max()
 ax1.set_xlabel("W [MeV]"); ax1.set_ylabel(r"$\sigma$ [mb]")
-ax1.set_title(f"ANL-Osaka DCC $\\pi N$ total $\\sigma$  (Δ ratio {pk(sp)/pk(se):.1f}:{pk(sc)/pk(se):.1f}:1)")
-ax1.legend()
+ax1.set_title(f"ANL-Osaka DCC meson-baryon $\\sigma(W)$  (Δ {pk(sp)/pk(se):.1f}:{pk(sc)/pk(se):.1f}:1; η@N(1535))")
+ax1.legend(fontsize=7)
 
 c = np.linspace(-1, 1, 121)
 for W0, col in [(1232.0, "tab:red"), (1160.0, "tab:purple"), (1320.0, "tab:orange")]:

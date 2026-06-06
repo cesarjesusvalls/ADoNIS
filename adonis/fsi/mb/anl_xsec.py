@@ -170,3 +170,30 @@ def pim_p_total(W=None, norm=1.0):
     Wt, se = pim_p_elastic(W, norm)
     _, sc = pim_p_cex(W, norm)
     return Wt, se + sc
+
+
+# --- inelastic production channels: piN -> etaN, KLambda (ANL_0-{1,2}) --------- #
+# eta and Lambda are isoscalar, so only the I=1/2 piN amplitude contributes; the physical
+# pi- p -> eta n / K0 Lambda cross section carries the isospin Clebsch (|<f|1/2><1/2|pi-p>|^2).
+import numpy as _np
+_R23 = _np.sqrt(2.0 / 3.0)
+
+
+def eta_production(W=None, norm=1.0):
+    """pi- p -> eta n cross section [mb] (ANL_0-1, I=1/2 only).  Peaks at the N(1535) (W~1535)
+    which sits at the eta N threshold and couples strongly to eta N."""
+    Wt, amps = load_anl(0, 1)
+    if W is not None:
+        amps = _np.stack([_np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
+        Wt = _np.asarray(W)
+    return Wt, _channel_sigma(amps, Wt, {1: _R23}, norm)
+
+
+def klambda_production(W=None, norm=1.0):
+    """pi- p -> K0 Lambda cross section [mb] (ANL_0-2, I=1/2 only).  Threshold ~ m_K + m_Lambda
+    (W~1610); the strangeness-production channel."""
+    Wt, amps = load_anl(0, 2)
+    if W is not None:
+        amps = _np.stack([_np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
+        Wt = _np.asarray(W)
+    return Wt, _channel_sigma(amps, Wt, {1: _R23}, norm)
