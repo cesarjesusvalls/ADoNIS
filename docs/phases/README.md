@@ -15,6 +15,7 @@ before continuing that phase.
 | [PHASE_D.md](PHASE_D.md) | D — FSI scaffold & differentiability proof (toy) | ◐ toy cascade recovered + verified (forward-unbiased, 5-param differentiable); FSIModel port + full joint closure remain |
 | [PHASE_E.md](PHASE_E.md) | E — meson-baryon scattering (DCC PWA) | ◐ E1 πN σ(W): π⁺p Δ(1232) peak reproduced (208 mb @ 1220 MeV); π⁻p/ηN/KΛ channels + angular dσ/dΩ remain |
 | [PHASE_G.md](PHASE_G.md) | G/H — cascade engine + both modes | ☑ cascade image built + RUNS; Fig c12_ar40 oracle generated (π-¹²C Virtual+Propagating, π-⁴⁰Ar), all Δ-peaked; model-side FSIModel follows |
+| [PHASE_F.md](PHASE_F.md) | F — Oset pion absorption | ☑ F1 done — Oset self-energy transcribed (C_Q/C_A2/C_A3 knobs), peaks at the Δ, exactly differentiable; abs cross-section fold remains |
 
 Legend: ☐ todo · ◐ partial · ☑ done.
 

@@ -90,7 +90,7 @@ Reuses the proven differentiable vertex machinery → lowest risk.
 
 ## Phase F — Real Oset absorption
 
-- ☐ **F1 — Oset Im Σ_Δ** (C_Q/C_A2/C_A3 vs T_π, s-wave) → absorption σ. closure: grad wrt absorption strength. oracle: Oset parameterization values.
+- ◐ **F1 — Oset Im Σ_Δ** (C_Q/C_A2/C_A3 vs T_π, s-wave) → absorption σ. closure: grad wrt absorption strength. oracle: Oset parameterization values.
 
 ## Phase G — Cascade engine + Virtual Resonances mode (highest risk)
 
