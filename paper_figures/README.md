@@ -16,7 +16,7 @@ NUISANCE (the paper digitises them separately).
 | **3** | π⁺-C absorption & reaction σ(p_π) | DUET/Ashery (not in NUISANCE) | ✅ **done (model)** — ACHILLES VirtRes oracle vs ADoNIS cascade; **abs. fraction 0.31 vs 0.35**, Δ-region χ²/ndf ~3.5 (bridge ×0.75); DUET overlay pending digitisation |
 | 4–6 | e4ν exclusive (E_QE, E_cal, P_T), ¹²C | CLAS Nature 2021 (not in NUISANCE) | ⏳ needs cascade (proton FSI) + CLAS data |
 | 7 | T2K CC0π δp_T, δα_T (CH) | T2K (NUISANCE + Zenodo flux) | ⏳ needs flux-fold + nuclear-TKI pipeline (+cascade) |
-| 8 | T2K CC1π⁺ p_N, δp_TT (CH) | T2K | ⏳ same |
+| **8** | T2K CC1π⁺ δp_TT, p_N, δα_T (CH) | T2K (NUISANCE STV txt) | ✅ **done** — experiment+ACHILLES+ADoNIS+FSI; flux-folded, real pion+nucleon FSI; ADoNIS χ²/ndf ~1.9, ACHILLES ~1.0; FSI bends toward the data tails |
 | 9,16 | MINERvA CC0π δα_T / p_n / 6-panel (CH) | MINERvA (NUISANCE + flux) | ⏳ same |
 | 10 | MicroBooNE CC1p0π δp_T in δα_T bins (Ar) | MicroBooNE | ⏳ same |
 | 11,12 | MicroBooNE NC1π⁰ cosθ, p (Ar) | MicroBooNE (NUISANCE + flux) | ⏳ NC1π⁰ + flux-fold |

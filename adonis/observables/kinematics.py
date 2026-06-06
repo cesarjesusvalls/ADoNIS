@@ -122,6 +122,41 @@ def delta_alphaT(ev):
     return jnp.arccos(jnp.clip(c, -1.0, 1.0))
 
 
+def delta_pTT(ev):
+    """T2K CC1pi+ double-transverse momentum imbalance delta_pTT [MeV] (arXiv:2102.03346):
+    the hadronic (pion+proton) momentum along the axis perpendicular to the lepton-scattering
+    plane,  zhat_TT = (zhat_nu x p_mu)/|...|  (zhat_nu = beam = +z).  zhat_TT lies in the plane
+    transverse to the beam, so this does NOT need the (unknown) neutrino energy -- the canonical
+    double-transverse imbalance; zero for a stationary nucleon w/o FSI."""
+    beam = jnp.array([0.0, 0.0, 1.0])
+    mu3 = ev.kp[:, 1:]
+    nrm = jnp.cross(jnp.broadcast_to(beam, mu3.shape), mu3)
+    zhat = nrm / (jnp.linalg.norm(nrm, axis=-1, keepdims=True) + 1e-9)
+    had = ev.p_pi[:, 1:] + ev.p_N[:, 1:]
+    return jnp.sum(had * zhat, axis=-1)
+
+
+# carbon target masses for the TKI longitudinal inference [MeV]
+_M_A = 11174.862        # 12C nuclear mass
+_M_A1 = 10252.547       # 11B residual
+
+
+def p_N_tki(ev):
+    """Inferred initial nucleon momentum |p_N| [MeV] (Furmanski-Sobczyk reconstruction,
+    generalised to CC1pi+ with the visible hadron = pion+proton).  Transverse imbalance
+    delta_pT plus a longitudinal component delta_pL inferred from energy-momentum conservation
+    with the residual nucleus (12C->11B), eliminating the unknown neutrino energy."""
+    lt = _pT(ev.kp); had = ev.p_pi + ev.p_N
+    dpt_vec = lt + _pT(had)
+    dpt2 = jnp.sum(dpt_vec ** 2, axis=-1)
+    # visible longitudinal momentum and energy (muon + pion + proton)
+    pL = ev.kp[:, 3] + had[:, 3]
+    Evis = ev.kp[:, 0] + had[:, 0]
+    R = _M_A + pL - Evis
+    dpL = 0.5 * R - (_M_A1 ** 2 + dpt2) / (2.0 * jnp.clip(R, 1.0, None))
+    return jnp.sqrt(jnp.clip(dpt2 + dpL ** 2, 0.0, None))
+
+
 # registry for convenient batch histogramming / validation
 OBSERVABLES = {
     "enu": enu, "Q2": Q2, "W": W, "lepton_energy": lepton_energy,
@@ -129,4 +164,5 @@ OBSERVABLES = {
     "ppi_costheta_lab": ppi_costheta_lab, "nucleon_mom": nucleon_mom,
     "cos_theta_star": cos_theta_star, "phi_star": phi_star,
     "delta_pT": delta_pT, "delta_phiT": delta_phiT, "delta_alphaT": delta_alphaT,
+    "delta_pTT": delta_pTT, "p_N_tki": p_N_tki,
 }
