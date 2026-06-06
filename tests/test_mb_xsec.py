@@ -44,3 +44,16 @@ def test_pim_p_isospin_ratio():
     m = (W >= 1150) & (W <= 1350)
     assert 15 < sm[m].max() < 35, sm[m].max()          # pi-p elastic Delta peak ~22 mb
     assert 8.0 < sp[m].max() / sm[m].max() < 10.0       # the 9:1 ratio
+
+
+def test_delta_angular_distribution():
+    """pi+ p dsigma/dOmega at the Delta (W=1232) reproduces the P33 1 + 3 cos^2(theta)
+    shape (forward/90deg ~ 4), with the physical S-P interference forward-backward asymmetry."""
+    import numpy as np
+    from adonis.fsi.mb.anl_xsec import dsigma_dOmega
+    c = np.linspace(-1, 1, 41)
+    d = dsigma_dOmega(1232.0, c)
+    fwd, ninety = d[-1], d[len(c) // 2]
+    assert 3.0 < fwd / ninety < 5.5, fwd / ninety        # ~4 for 1+3cos^2
+    # symmetric-ish but forward-peaked; minimum near 90 deg
+    assert d[len(c) // 2] < d[0] and d[len(c) // 2] < d[-1]

@@ -91,6 +91,50 @@ def pip_p_total(W=None, norm=1.0):
     return Wt, _channel_sigma(amps, Wt, {3: 1.0}, norm)
 
 
+def dsigma_dOmega(W, cos_theta, cg={3: 1.0}):
+    """piN -> piN differential cross section dsigma/dOmega(theta) [arb. shape] at fixed W,
+    via the standard spin-non-flip f and spin-flip g partial-wave amplitudes:
+
+        f(theta) = sum_L [ (L+1) a_{L+} + L a_{L-} ] P_L(cos)
+        g(theta) = sum_L [ a_{L+} - a_{L-} ] P_L^1(cos)        (a_{L+/-}: J = L +/- 1/2)
+        dsigma/dOmega = |f|^2 + |g|^2
+
+    a_{L,J} is the isospin-combined amplitude sum_I cg_I A^I_{L,J}.  At the Delta (W~1232)
+    P33 (L=1, J=3/2=L+1/2) dominates -> the classic 1 + 3 cos^2(theta) shape.
+    """
+    from numpy.polynomial.legendre import Legendre
+    Wt, amps = load_anl(0, 0)
+    a = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])])  # (20,) at this W
+    # a_{L,+/-}: index by (L, sign) where + is J=L+1/2 (twoJ=2L+1), - is J=L-1/2 (twoJ=2L-1)
+    aLp, aLm = {}, {}
+    for k, name in enumerate(WAVES):
+        L, twoI, twoJ = wave_qn(name)
+        amp = cg.get(twoI, 0.0) * a[k]
+        if twoJ == 2 * L + 1:
+            aLp[L] = aLp.get(L, 0j) + amp
+        elif twoJ == 2 * L - 1:
+            aLm[L] = aLm.get(L, 0j) + amp
+    c = np.asarray(cos_theta, dtype=float)
+    Lmax = 5
+    PL = np.stack([np.polynomial.legendre.legval(c, [0] * L + [1]) for L in range(Lmax + 1)])
+    # associated Legendre P_L^1(cos) = -sqrt(1-c^2) dP_L/dc
+    s = np.sqrt(np.clip(1 - c ** 2, 0, 1))
+    PL1 = np.stack([-s * _dPL(L, c) for L in range(Lmax + 1)])
+    f = np.zeros_like(c, dtype=complex)
+    g = np.zeros_like(c, dtype=complex)
+    for L in range(Lmax + 1):
+        f += ((L + 1) * aLp.get(L, 0j) + L * aLm.get(L, 0j)) * PL[L]
+        g += (aLp.get(L, 0j) - aLm.get(L, 0j)) * PL1[L]
+    return np.abs(f) ** 2 + np.abs(g) ** 2
+
+
+def _dPL(L, c):
+    """dP_L/dcos via the Legendre derivative."""
+    coef = [0] * L + [1]
+    d = np.polynomial.legendre.legder(coef)
+    return np.polynomial.legendre.legval(c, d)
+
+
 def pim_p_elastic(W=None, norm=1.0):
     """pi- p -> pi- p elastic cross section [mb].  |pi- p> = sqrt(1/3)|3/2> - sqrt(2/3)|1/2>,
     so the elastic isospin weights (initial x final) are c_{3/2}=1/3, c_{1/2}=2/3.  Smaller
