@@ -33,3 +33,14 @@ def test_cascade_propagating_delta_peak():
     ref = np.loadtxt(_CSV_P)
     p, sig = ref[:, 0], ref[:, 1]
     assert 240 <= p[int(np.argmax(sig))] <= 320, p[int(np.argmax(sig))]
+
+
+_CSV_AR = Path(__file__).resolve().parent.parent / "data" / "oracle" / "cascade_pip_ar40_reaction.csv"
+
+
+@pytest.mark.skipif(not _CSV_AR.exists(), reason="pi-40Ar cascade oracle not present")
+def test_cascade_ar40_delta_peak():
+    """pi+ on 40Ar reaction sigma also peaks at the Delta (slightly shifted by the medium)."""
+    ref = np.loadtxt(_CSV_AR)
+    p, sig = ref[:, 0], ref[:, 1]
+    assert 250 <= p[int(np.argmax(sig))] <= 340, p[int(np.argmax(sig))]

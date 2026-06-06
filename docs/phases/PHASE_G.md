@@ -55,7 +55,13 @@ cascade binary doesn't, so no registrations run. (It is **not** the visibility f
 the interactions self-register via that shared lib's static initializers, which only run if
 the lib is a NEEDED dependency). After this the registry is populated and the cascade runs.
 
-## Status — the cascade RUNS
+## Status — cascade oracle GENERATED (Fig c12_ar40 reproduced)
+Full oracle done: pi+ on 12C (Virtual + Propagating) AND pi+ on 40Ar (Virtual), all
+reproduce the Delta(1232) reaction peak (p_pi 275-305 MeV). data/oracle/cascade_pip_*.csv;
+scripts/gen_cascade_oracle.py (batches over seeds to dodge the sporadic crash);
+figures/cascade_pip_c12.png; gates in tests/test_cascade_oracle.py.
+
+## How it got working
 With the patched image, `achilles-cascade` on the Virtual π⁺–¹²C config prints
 **"Cascade running in CrossSection mode"**, propagates pions through ¹²C, and **writes a
 NuHepMC** (verified: 1182 events in a partial run). The showstopper is resolved — a

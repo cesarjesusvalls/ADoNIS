@@ -18,8 +18,9 @@ import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
 fig, ax = plt.subplots(figsize=(6, 4))
-for csv, label, col in [("cascade_pip_c12_reaction.csv", "Virtual Resonances", "tab:blue"),
-                        ("cascade_pip_c12_reaction_prop.csv", "Propagating Resonances", "tab:red")]:
+for csv, label, col in [("cascade_pip_c12_reaction.csv", r"$^{12}$C Virtual", "tab:blue"),
+                        ("cascade_pip_c12_reaction_prop.csv", r"$^{12}$C Propagating", "tab:red"),
+                        ("cascade_pip_ar40_reaction.csv", r"$^{40}$Ar Virtual", "tab:green")]:
     path = ROOT / "data" / "oracle" / csv
     if not path.exists():
         continue
@@ -28,7 +29,7 @@ for csv, label, col in [("cascade_pip_c12_reaction.csv", "Virtual Resonances", "
 ax.axvspan(240, 320, color="gray", alpha=0.15, label="Delta(1232) region")
 ax.set_xlabel(r"$p_\pi$ [MeV]")
 ax.set_ylabel(r"reaction $\sigma$ (shape, peak-normalised)")
-ax.set_title(r"ACHILLES cascade: $\pi^+$ on $^{12}$C reaction $\sigma$ (both modes)")
+ax.set_title(r"ACHILLES cascade: $\pi^+$ reaction $\sigma$ ($^{12}$C / $^{40}$Ar) — Fig c12_ar40")
 ax.legend(fontsize=8)
 fig.tight_layout()
 out = ROOT / "figures"; out.mkdir(exist_ok=True)
