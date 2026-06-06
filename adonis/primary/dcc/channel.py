@@ -65,7 +65,7 @@ def _diff_coeffs(hs: HadronStructure):
 def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
                        sf="pke12p_tot.data", e_nu=E_NU_DEFAULT, ep_lo=50.0, ep_hi=1480.0,
                        theta_max_deg=180.0, m_pi=M_PI, m_N=MQE, nuclear=None, m_lep=0.0,
-                       current="CC", theta_min_deg=0.0):
+                       current="CC", theta_min_deg=0.0, weight_ep_volume=False):
     """Draw the FIXED detached proposal (all kinematics + the precomputed angular kernels,
     lepton tensor, cuts, phase-space factors, lab final-state momenta).  Nothing here
     depends on the physics knobs -- so `weight_from_sample(knobs, S)` can be re-evaluated
@@ -99,8 +99,8 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     qx = -plep * jnp.sin(theta)
     qz = e_nu - plep * jnp.cos(theta)
     q_vec2 = qx ** 2 + qz ** 2
-    k_lab = jnp.stack([jnp.full((n,), e_nu), jnp.zeros((n,)), jnp.zeros((n,)),
-                       jnp.full((n,), e_nu)], axis=-1)
+    e_nu_a = jnp.broadcast_to(jnp.asarray(e_nu, float), (n,))     # scalar OR per-event flux
+    k_lab = jnp.stack([e_nu_a, jnp.zeros((n,)), jnp.zeros((n,)), e_nu_a], axis=-1)
     kp_lab = jnp.stack([Ep, plep * jnp.sin(theta), jnp.zeros((n,)), plep * jnp.cos(theta)], axis=-1)
 
     p_vec, E_rm = nuclear.sample_nucleon(ksf, n)
@@ -131,6 +131,11 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     # momentum magnitude `plep` (not the energy Ep) is what enters d^3p'/(2E').
     p_pi, p_N = two_body_lab(P, e1, e2, e3, jnp.clip(W, 1.0, None), cos_ts, phi_s, m_pi, m_N)
     prefac = (plep / e_nu) * jnp.sin(theta) * (pion_cm_momentum(W) / jnp.clip(W, 1.0, None)) * em_prop
+    # flux-folding: when ep_hi is per-event (= E_nu), the lepton-energy proposal volume
+    # (ep_hi - ep_lo) varies per event and must enter the weight (it is a constant absorbed by
+    # the bridge for the fixed-energy default, so guarded off there).
+    if weight_ep_volume:
+        prefac = prefac * (jnp.asarray(ep_hi, float) - ep_lo)
     return dict(
         hs=hs, n=n, m_pi=m_pi, m_N=m_N, kch=kch,
         Wc=jnp.clip(W, 1.0, None), Q2c=jnp.clip(Q2_adj, 1.0, None), W=W, Q2_adj=Q2_adj,
