@@ -22,3 +22,14 @@ def test_cascade_reaction_delta_peak():
     # resonance shape: rises into the Delta and falls above it
     assert np.interp(110, p, sig) < sig[ipk]
     assert np.interp(480, p, sig) < sig[ipk]
+
+
+_CSV_P = Path(__file__).resolve().parent.parent / "data" / "oracle" / "cascade_pip_c12_reaction_prop.csv"
+
+
+@pytest.mark.skipif(not _CSV_P.exists(), reason="propagating cascade oracle not present")
+def test_cascade_propagating_delta_peak():
+    """The Propagating-Resonances mode (GiBUU Delta) also peaks at the Delta."""
+    ref = np.loadtxt(_CSV_P)
+    p, sig = ref[:, 0], ref[:, 1]
+    assert 240 <= p[int(np.argmax(sig))] <= 320, p[int(np.argmax(sig))]

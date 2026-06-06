@@ -1,0 +1,17 @@
+# ACHILLES cascade Propagating-Resonances mode, pi+ on 12C reaction sigma shape
+# (achilles:cascade; batches accumulated over seeds to dodge the sporadic crash).
+# 3463 events. Columns: p_pi[MeV], sigma_shape (peak-normalised)
+95.0  0.1106
+125.0  0.1535
+155.0  0.2551
+185.0  0.4086
+215.0  0.7111
+245.0  0.9368
+275.0  1.0000
+305.0  0.9639
+335.0  0.8916
+365.0  0.6682
+395.0  0.5598
+425.0  0.4108
+455.0  0.4018
+485.0  0.3454
