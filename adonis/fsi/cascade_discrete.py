@@ -164,3 +164,33 @@ def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key):
     Returns (p_pi (N,4), charge_idx (N,), absorbed (N,), n_scatter (N,))."""
     _load_density(cfg.nucleus); cascade_mb._jax_grids(); cascade_mb._build_angular()
     return _propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key)
+
+
+# pid <-> charge index (0:pi+, 1:pi0, 2:pi-)
+_PID_TO_CH = {211: 0, 111: 1, -211: 2}
+
+
+class DiscreteCascadeFSI:
+    """FSIModel: propagate the produced pion through the nucleus with the validated discrete-
+    Glauber cascade.  The pion is created at a config nucleon position (the production vertex) and
+    walks out through the other A-1 nucleons.  Production replacement for RealCascadeFSI (which
+    used the ~2x-low continuum transport).  protfrac is accepted for interface parity."""
+
+    def __init__(self, cfg: DiscreteCascadeConfig = DiscreteCascadeConfig(), protfrac: float = 0.0):
+        self.cfg = cfg
+        self.protfrac = float(protfrac)
+
+    def apply(self, params, event, key=None):
+        key = jax.random.PRNGKey(self.cfg.seed) if key is None else key
+        kn, kv, kp = jax.random.split(key, 3)
+        n = event.p_pi.shape[0]
+        npos, nmom, nisp = sample_nucleons(kn, n, self.cfg)
+        A = nisp.shape[1]
+        # production vertex = a random config nucleon position; that nucleon is consumed
+        vtx = jax.random.randint(kv, (n,), 0, A)
+        pos0 = npos[jnp.arange(n), vtx]
+        ch0 = jnp.asarray([_PID_TO_CH.get(int(p), 1) for p in np.asarray(event.pid_pi)], dtype=jnp.int32)
+        p_pi, ch, absorbed, nsc = propagate_discrete(pos0, event.p_pi, ch0, npos, nmom, nisp,
+                                                     self.cfg, kp)
+        keep = (~absorbed)[:, None]
+        return event._replace(p_pi=p_pi * keep, pid_pi=jnp.where(absorbed, 0, _CH_PID[ch]))
