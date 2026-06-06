@@ -1,0 +1,1 @@
+PROVENANCE: ANL (Radecky 1982) + BNL (Kitagaki 1986) numu CC1pi, W<1.4 GeV, from NUISANCE data/. cols: Enu[GeV] sigma[cm^2] err[cm^2].
