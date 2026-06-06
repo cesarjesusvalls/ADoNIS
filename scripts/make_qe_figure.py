@@ -15,7 +15,7 @@ from adonis.nuclear.inclusive_1pi import onepi_dsigma_domega
 ROOT = Path(__file__).resolve().parents[1]
 
 E, TH = 2222.0, 15.541
-w = np.linspace(20, 520, 110)
+w = np.linspace(20, 900, 130)      # extend past the Delta so the 1pi resonance tail is shown
 TARGETS = [
     dict(name=r"$^{12}$C", sf="pke12p_tot.data", n_p=6, n_n=6, n_nuc=12),
     dict(name=r"$^{40}$Ar", sf="pke40p_tot.data", n_p=18, n_n=22, n_nuc=40),

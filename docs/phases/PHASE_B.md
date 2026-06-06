@@ -56,8 +56,14 @@ standard ADoNIS-vs-ACHILLES diagnostic — not just an eyeballed overlay.
 that the nucleon is **bound** — so the Delta bump sat ~60 MeV too low in omega. Corrected to
 `tot0 = w + M_N - E_rm` with `E_rm` = the S(p,E)-weighted mean removal energy (~41 MeV, read
 from the spectral function). Model peak 459 -> 517 (oracle 531); centroid 508 -> 531 (oracle
-532). The ratio is flat ~1.0 across the peak; residuals only at the rising edge and the
-high-omega tail (the higher-resonance + non-resonant strength the Delta-only EM fold omits).
+532). The ratio is flat ~1.0 across the peak. **High-omega tail:** unit-area-normalised, the
+model tracks ACHILLES well through omega~700 (ratios 0.91-1.07); integrated strength above
+600 MeV is **36% (model) vs 39% (oracle)** -- only a ~3% gap. The genuine residual is the
+*far* tail (omega > 800, ratio -> 0.73): the third-resonance / DIS-onset region a
+resonance-region (DCC EM) fold under-carries (the DCC W_T does have the N(1440)/N(1520)
+second-resonance bump at W~1470-1510, but weak ~0.2 of the Delta, and no DIS). The model
+1pi curve is now plotted to omega=900 (`make_qe_figure.py`) so this tail is visible rather
+than truncated at 520.
 
 **QE: chi2/ndf ~9 after the v_L/v_T fix (was ~28), peak 208 vs 192.** Diagnosed via the ratio
 panel (originally <1 below the peak, >1 above — a shifted peak). ACHILLES uses the **same**
