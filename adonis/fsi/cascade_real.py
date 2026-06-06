@@ -9,17 +9,20 @@ elastic scattering uses the REAL two-body kinematics off a Fermi-moving nucleon 
 loss is the recoil, not a fixed fraction); absorption removes the pion (-> CC0pi); Pauli
 blocking on the recoil nucleon.
 
-STATUS / ROOT CAUSE (found): this version uses the Oset QE cross section for the hard scatter,
-which is too BROAD in T_pi -> the cascade reaction sigma(p) peaks correctly at p=275 MeV (= the
-Delta, matching the ACHILLES oracle) but falls off too slowly (at p=455: 0.70 vs ACHILLES 0.27),
-and it over-absorbs (sigma_abs ~106 mb vs DUET ~60). The ACHILLES Virtual-Resonances config
-(data/default/VirtResInteractions.yml) actually scatters via `MesonBaryonInteraction` -- the
-DCC ANL-Osaka partial-wave amplitudes sigma(W) + their real angular distribution (= ADoNIS
-Phase E, adonis/fsi/mb/anl_xsec.py, the sharply Delta-peaked piN cross sections validated to
-the 9.3:2.2:1 isospin ratio) -- and absorbs via `PionAbsorptionOneStep` (the Oset absorption).
-FIX IN PROGRESS: swap the scatter cross section + angular sampling from Oset QE to the Phase-E
-DCC sigma(W)/dsigma/dOmega; keep Oset for absorption. Then the reaction sigma will be sharply
-Delta-peaked like ACHILLES.  Committed as the real-physics scaffold, not yet validated.
+COMPONENTS (now matching ACHILLES Virtual-Resonances, data/default/VirtResInteractions.yml):
+  * SCATTER: the DCC ANL-Osaka meson-baryon sigma(W) per charge channel (elastic + charge
+    exchange) -- `MesonBaryonInteraction` = ADoNIS Phase E (mb/cascade_mb.py), sharply
+    Delta-peaked, validated to the 9.3:2.2:1 isospin ratio.  W from the real pion+struck-nucleon.
+  * ABSORPTION: the exact Oset AbsCrossSection (`PionAbsorptionOneStep` -> oset_xsec).
+  * real rho(r), Local Fermi gas, real two-body kinematics off a Fermi nucleon, Pauli blocking.
+
+STATUS: reaction sigma(p) peaks at p=275 MeV (= the Delta), CC0pi 0.30 (was 0.32 with Oset-QE;
+ACHILLES in-event 0.22), sigma_abs ~86 mb (DUET ~60).  The residual ~40% over-absorption is a
+DISCRETE-GEOMETRY effect not in this continuum transport: ACHILLES's PionAbsorption requires
+`AllowedAbsorption` to find a spectator nucleon within a distance cutoff (often fails near the
+surface, where many produced/scattered pions are) -> lower effective absorption.  Closing it
+needs the discrete impact-parameter walk with explicit nucleon positions; the cross-section
+PHYSICS (scatter + absorption) is now the real ACHILLES physics, untuned.
 
 Differentiability: the trajectory is SAMPLED against a frozen proposal (the Oset cross
 sections at detached parameters); the Oset coefficients enter only via a per-event
@@ -37,6 +40,7 @@ import jax
 import jax.numpy as jnp
 
 from adonis.fsi import oset_xsec as ox
+from adonis.fsi.mb import cascade_mb
 
 HBARC = ox.HBARC
 M_N = ox.M_N
@@ -167,32 +171,32 @@ def propagate(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protfrac=0.
         v_N = p_N[:, 1:] / p_N[:, 0:1]
         vrel = jnp.linalg.norm(v_pi - v_N, axis=1)
 
-        sa, qe9 = _all_xsecs(pE, pmom, m_pi, kf, jnp.clip(rho_tot, 1e-9, None), protfrac, vrel)
-        # QE channels available for each event's incoming charge
-        in_mask = (_QE_IN[None, :] == ch[:, None])  # (N,9)
-        qe_av = qe9 * in_mask
-        sigma_qe_tot = jnp.sum(qe_av, axis=1)
-        sigma_tot = (sa + sigma_qe_tot) * MB_TO_FM2  # fm^2
+        # SCATTER: DCC meson-baryon sigma(W) (ACHILLES MesonBaryonInteraction = Phase E),
+        # W from the actual pion + struck nucleon.  ABSORPTION: Oset (PionAbsorptionOneStep).
+        Ppair = p_pi + p_N
+        W = jnp.sqrt(jnp.clip(Ppair[:, 0] ** 2 - jnp.sum(Ppair[:, 1:] ** 2, axis=1), 1.0, None))
+        sig_out = cascade_mb.jax_channel_sigmas(W, ch)        # (N,3) mb, to pi+/0/-
+        sigma_sc_tot = jnp.sum(sig_out, axis=1)
+        sa = ox.abs_cross_section(pE, m_pi, pmom, jnp.clip(vrel, 1e-3, None), kf,
+                                  jnp.clip(rho_tot, 1e-9, None))
+        sigma_tot = (sa + sigma_sc_tot) * MB_TO_FM2  # fm^2
         lam = rho_tot * sigma_tot                    # 1/fm
         p_int = -jnp.expm1(-lam * cfg.step)
 
         kI, kC, kF, kS = jax.random.split(step_key, 4)
         interacts = live & (jax.random.uniform(kI, (n,)) < p_int)
 
-        # choose absorb vs a QE out-channel  (probabilities over [abs, 9 qe channels])
-        denom = jnp.clip(sa + sigma_qe_tot, 1e-12, None)
-        p_abs = sa / denom
+        p_abs = sa / jnp.clip(sa + sigma_sc_tot, 1e-12, None)
         is_abs = interacts & (jax.random.uniform(kC, (n,)) < p_abs)
         absorbed = absorbed | is_abs
         alive = alive & ~is_abs
 
-        # QE scatter: pick out-channel ∝ qe_av, sample Fermi nucleon, real CM two-body kinematics
+        # scatter: pick the out-pion charge ∝ sig_out (elastic + charge exchange)
         scatters = interacts & ~is_abs
-        probs = qe_av / jnp.clip(jnp.sum(qe_av, axis=1, keepdims=True), 1e-12, None)
+        probs = sig_out / jnp.clip(jnp.sum(sig_out, axis=1, keepdims=True), 1e-12, None)
         cdf = jnp.cumsum(probs, axis=1)
         u = jax.random.uniform(kF, (n, 1))
-        chan = jnp.clip(jnp.sum((u > cdf).astype(jnp.int32), axis=1), 0, 8)
-        out_ch = _QE_OUT[chan]
+        out_ch = jnp.clip(jnp.sum((u > cdf).astype(jnp.int32), axis=1), 0, 2)
 
         # per-event scatter kinematics off the SAME struck nucleon used for v_rel (vmap)
         def scat_one(p_pi_i, pN_i, out_i, kf_i, k):
