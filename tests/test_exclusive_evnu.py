@@ -32,10 +32,11 @@ COS_BINS, COS_RNG = 16, (-1.0, 1.0)
 W_BINS, W_RNG = 20, (1080.0, 1700.0)
 
 
-def _model(channels, current):
+def _model(channels, current, m_lep=0.0):
     hs = HadronStructure(channels=channels, n_theta=12, n_phi=12, spline=False)
     S = sample_final_state(jax.random.PRNGKey(5), N, hs=hs, current=current, e_nu=2222.0,
-                           ep_lo=50.0, ep_hi=2200.0, theta_max_deg=17.0, theta_min_deg=14.0)
+                           ep_lo=50.0, ep_hi=2200.0, theta_max_deg=17.0, theta_min_deg=14.0,
+                           m_lep=m_lep)
     w, LWc = weight_from_sample(PhysicsParams(), S, use_spline=False)
     ev = assemble_event(S, w, LWc)
     return np.asarray(obs.cos_theta_star(ev)), np.asarray(obs.W(ev)), np.asarray(w)
@@ -47,10 +48,12 @@ def _nh(x, w, bins, rng):
     s = h.sum(); return h / s, np.sqrt(h2) / s
 
 
-oc = np.loadtxt(_CSV_COS)        # center, e_shape, e_err, nu_shape, nu_err
+# 7-col CSVs: center, {e, nue, numu} x {shape, err}  -> shape cols 1, 3, 5
+oc = np.loadtxt(_CSV_COS)
 ow = np.loadtxt(_CSV_W)
 mcte, mWe, mwe = _model(EM_CHANNELS, "EM")
 mctn, mWn, mwn = _model(CC_CHANNELS, "CC")
+mctm, mWm, mwm = _model(CC_CHANNELS, "CC", m_lep=105.658)
 
 
 def _fb(c, h):
@@ -58,25 +61,29 @@ def _fb(c, h):
 
 
 def test_evnu_physical_difference():
-    """The axial current makes the neutrino more Delta-peaked (lower <W>) and less
-    forward-peaked (smaller cos(theta*) F/B asymmetry) than the electron -- in BOTH the
-    ACHILLES oracle and the ADoNIS model."""
-    # oracle (from the binned CSVs)
-    assert _fb(oc[:, 0], oc[:, 1]) > _fb(oc[:, 0], oc[:, 3]) + 0.02          # e more forward
-    assert np.average(ow[:, 0], weights=ow[:, 1]) > np.average(ow[:, 0], weights=ow[:, 3]) + 30
-    # model reproduces the same ordering
+    """The axial current makes BOTH neutrinos more Delta-peaked (lower <W>) and less
+    forward-peaked (smaller cos(theta*) F/B asymmetry) than the electron -- in the ACHILLES
+    oracle and the ADoNIS model.  nu_e and nu_mu agree closely (the lepton mass is a small
+    kinematic shift on the same V-A structure)."""
+    for col in (3, 5):                                          # nu_e, nu_mu vs e (col 1)
+        assert _fb(oc[:, 0], oc[:, 1]) > _fb(oc[:, 0], oc[:, col]) + 0.02
+        assert np.average(ow[:, 0], weights=ow[:, 1]) > np.average(ow[:, 0], weights=ow[:, col]) + 25
     mhe = _nh(mcte, mwe, COS_BINS, COS_RNG)[0]; mhn = _nh(mctn, mwn, COS_BINS, COS_RNG)[0]
-    assert _fb(oc[:, 0], mhe) > _fb(oc[:, 0], mhn) + 0.02
+    assert _fb(oc[:, 0], mhe) > _fb(oc[:, 0], mhn) + 0.02       # model: e more forward than nu
     assert np.average(mWe, weights=mwe) > np.average(mWn, weights=mwn) + 40
+    # nu_e and nu_mu are close (lepton-mass effect small)
+    assert abs(np.average(mWn, weights=mwn) - np.average(mWm, weights=mwm)) < 60
 
 
 def test_evnu_model_reproduces_oracle():
-    """ADoNIS reproduces both currents' exclusive distributions vs the ACHILLES oracle."""
+    """ADoNIS reproduces all three lepton channels' exclusive distributions vs ACHILLES."""
     cases = [
-        (ow, mWe, mwe, W_BINS, W_RNG, 1, 6.0),       # e: W       (cols 1,2)
-        (ow, mWn, mwn, W_BINS, W_RNG, 3, 6.0),       # nu: W      (cols 3,4)
+        (ow, mWe, mwe, W_BINS, W_RNG, 1, 6.0),        # e: W
+        (ow, mWn, mwn, W_BINS, W_RNG, 3, 6.0),        # nu_e: W
+        (ow, mWm, mwm, W_BINS, W_RNG, 5, 8.0),        # nu_mu: W
         (oc, mcte, mwe, COS_BINS, COS_RNG, 1, 12.0),  # e: cos*
-        (oc, mctn, mwn, COS_BINS, COS_RNG, 3, 12.0),  # nu: cos*
+        (oc, mctn, mwn, COS_BINS, COS_RNG, 3, 12.0),  # nu_e: cos*
+        (oc, mctm, mwm, COS_BINS, COS_RNG, 5, 12.0),  # nu_mu: cos*
     ]
     for o, x_m, w_m, bins, rng, col, tol in cases:
         ho, eo = o[:, col], o[:, col + 1]

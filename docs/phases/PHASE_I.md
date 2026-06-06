@@ -6,11 +6,13 @@ single-pion production is the **current structure**, so the exclusive pion obser
 the axial current and its V–A interference directly.
 
 ## Matched-kinematics oracles
-Two ACHILLES `RES_Spectral_Func` oracles on ¹²C at **E = 2.222 GeV** with the **same** forward
+Three ACHILLES `RES_Spectral_Func` oracles on ¹²C at **E = 2.222 GeV** with the **same** forward
 lepton-angle acceptance (`AngleTheta [14,17]°`), from the `achilles:oracle` image:
 - electron: `Leptons:[11,[11]]` — reused from the Fig-1 RES oracle
   (`_oracle_out/inclusive_ee_12C_res.hepmc`);
-- ν_e CC: `Leptons:[12,[11]]` — `_oracle_out/exclusive_nue_12C_res.yml` → hepmc.
+- ν_e CC: `Leptons:[12,[11]]` — `_oracle_out/exclusive_nue_12C_res.yml` → hepmc;
+- ν_μ CC: `Leptons:[14,[13]]` (muon final state, `AngleTheta` on PID 13) —
+  `_oracle_out/exclusive_numu_12C_res.yml` → hepmc.
 
 `scripts/make_exclusive_evnu.py` parses both hepmc into the exclusive pion observables
 (`cos θ*_π` the pion CM angle vs q, and the hadronic invariant mass `W`), saves the oracle
@@ -27,14 +29,15 @@ model/oracle ratio panel + χ²/ndf.
   — the EM 1/Q⁴ propagator (favouring low Q²/higher-W reach) + vector coupling to the higher
   resonances.
 
-ADoNIS reproduces **both** currents: model A_FB e/ν = +0.105 / +0.043, ⟨W⟩ = 1347 / 1258,
-matching ACHILLES. χ²/ndf (model vs oracle): **W e 2.4, ν 1.5; cos θ* e 4.5, ν 7.3**.
-Figure: `figures/exclusive_evnu_c12.png`.
+**ν_μ** (muon final state) gives essentially the same axial signature as ν_e — A_FB = +0.043
+vs +0.051, ⟨W⟩ = 1252 vs 1251 — the lepton mass is only a small kinematic shift on the same
+V–A structure. ADoNIS reproduces **all three** channels: χ²/ndf (model vs oracle) **W: e 2.4,
+ν_e 1.5, ν_μ 5.2; cos θ*: e 4.5, ν_e 7.3, ν_μ 5.2**. Figure: `figures/exclusive_evnu_c12.png`.
 
 ## Gates (`tests/test_exclusive_evnu.py`)
-- **physical difference** — e more forward than ν (A_FB) and higher ⟨W⟩, in **both** the
-  oracle and the model (the axial signature).
-- **model reproduces oracle** — χ²/ndf < 6 (W) and < 12 (cos θ*) for each current.
+- **physical difference** — e more forward than BOTH neutrinos (A_FB) and higher ⟨W⟩, in the
+  oracle and the model (the axial signature); ν_e ≈ ν_μ (lepton-mass shift small).
+- **model reproduces oracle** — χ²/ndf < 6–8 (W) and < 12 (cos θ*) for all three channels.
 
 ## Caveat
 At matched kinematics the e/ν difference combines the current (vector vs V–A) **and** the
