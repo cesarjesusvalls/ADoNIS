@@ -83,10 +83,12 @@ class RealCascadeConfig:
     seed: int = 0
 
 
-def _two_body_cm_scatter(p_pi, p_N, m_out_pi, key):
-    """Elastic/charge-exchange piN -> pi'N': isotropic in the CM, real two-body kinematics.
-    Returns the outgoing pion 4-momentum (E,px,py,pz) in the lab.  (ACHILLES
-    OsetMesonBaryonInteractions::GenerateMomentum: isotropic cos(theta*), phi.)"""
+def _two_body_cm_scatter(p_pi, p_N, m_out_pi, key, cos_cm=None):
+    """Elastic/charge-exchange piN -> pi'N' two-body kinematics; cos(theta_cm) is supplied
+    (from the DCC angular distribution -- ACHILLES MesonBaryonInteraction::GenerateMomentum
+    samples the partial-wave angular CDF, NOT isotropic) or isotropic if cos_cm is None.
+    Returns the outgoing pion 4-momentum (E,px,py,pz) in the lab.  theta_cm is measured from
+    the incoming pion CM direction (Poincare z-axis), matching ACHILLES."""
     P = p_pi + p_N                                  # total 4-momentum (lab)
     s = P[0] ** 2 - jnp.sum(P[1:] ** 2)
     sqrts = jnp.sqrt(jnp.clip(s, 1e-6, None))
@@ -95,12 +97,19 @@ def _two_body_cm_scatter(p_pi, p_N, m_out_pi, key):
     lam = jnp.sqrt(jnp.clip((s - m1 ** 2 - m2 ** 2) ** 2 - 4 * m1 ** 2 * m2 ** 2, 0.0, None))
     pf = lam / (2.0 * sqrts)
     ka, kb = jax.random.split(key)
-    cth = 2.0 * jax.random.uniform(ka) - 1.0
+    cth = (2.0 * jax.random.uniform(ka) - 1.0) if cos_cm is None else cos_cm
     sth = jnp.sqrt(jnp.clip(1 - cth ** 2, 0.0, None))
     phi = 2 * jnp.pi * jax.random.uniform(kb)
-    p1_cm = jnp.array([E1, pf * sth * jnp.cos(phi), pf * sth * jnp.sin(phi), pf * cth])
-    # boost CM -> lab with beta = P_vec/P_E
+    # CM scatter axis = the incoming pion CM direction (theta measured from it), per ACHILLES
     beta = P[1:] / P[0]
+    zaxis = _boost(p_pi, -beta)[1:]
+    zhat = zaxis / jnp.clip(jnp.linalg.norm(zaxis), 1e-9, None)
+    # build an orthonormal frame (zhat, e1, e2)
+    ref = jnp.where(jnp.abs(zhat[2]) < 0.9, jnp.array([0., 0., 1.]), jnp.array([1., 0., 0.]))
+    e1 = jnp.cross(ref, zhat); e1 = e1 / jnp.clip(jnp.linalg.norm(e1), 1e-9, None)
+    e2 = jnp.cross(zhat, e1)
+    dir_cm = cth * zhat + sth * (jnp.cos(phi) * e1 + jnp.sin(phi) * e2)
+    p1_cm = jnp.concatenate([E1[None], pf * dir_cm])
     return _boost(p1_cm, beta)
 
 
@@ -194,11 +203,15 @@ def _propagate_scan(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protf
         u = jax.random.uniform(kF, (n, 1))
         out_ch = jnp.clip(jnp.sum((u > cdf).astype(jnp.int32), axis=1), 0, 2).astype(jnp.int32)
 
-        def scat_one(p_pi_i, pN_i, out_i, kf_i, k):
-            p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k)
+        # CM scattering angle from the DCC angular distribution (NOT isotropic)
+        kS, kang = jax.random.split(kS)
+        cos_cm = cascade_mb.jax_sample_cos_cm(W, jax.random.uniform(kang, (n,)))
+
+        def scat_one(p_pi_i, pN_i, out_i, kf_i, k, cc):
+            p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k, cos_cm=cc)
             p_rec = (p_pi_i + pN_i) - p_out
             return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
-        p_out, blocked = jax.vmap(scat_one)(p_pi, p_N, out_ch, kf, jax.random.split(kS, n))
+        p_out, blocked = jax.vmap(scat_one)(p_pi, p_N, out_ch, kf, jax.random.split(kS, n), cos_cm)
 
         do_scatter = scatters & ~blocked
         p_pi = jnp.where(do_scatter[:, None], p_out, p_pi)
@@ -221,7 +234,7 @@ def propagate(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protfrac=0.
     Returns (p_pi_final (N,4), charge_idx (N,), absorbed (N,) bool, n_scatter (N,)).
     JIT + lax.scan over the steps (the per-step body is traced once -> fast)."""
     _load_density(cfg.nucleus)          # warm caches EAGERLY (avoid tracer leak inside jit)
-    cascade_mb._jax_grids()
+    cascade_mb._jax_grids(); cascade_mb._build_angular()
     return _propagate_scan(pos0, p_pi0, charge_idx0, cfg, key, protfrac)
 
 

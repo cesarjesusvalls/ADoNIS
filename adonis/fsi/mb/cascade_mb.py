@@ -83,6 +83,49 @@ def _jax_grids():
     return _JGRID["W"], _JGRID["sig"]
 
 
+# --- DCC angular distribution sampler (replaces isotropic CM scatter in the cascade) -------- #
+# Precompute the inverse CDF of dsigma/dOmega(cos) over a W grid (pi+ p, P33/Delta-dominated --
+# the 1+3cos^2 shape the ACHILLES MesonBaryonInteraction samples), then sample cos_cm by bilinear
+# inverse-CDF lookup.  The same angular shape is used for every piN charge channel (Delta-driven).
+_ANG = {}
+
+
+def _build_angular():
+    if _ANG:
+        return _ANG
+    from adonis.fsi.mb.anl_xsec import dsigma_dOmega
+    Wg = np.linspace(1085.0, 1700.0, 96)             # W grid [MeV]
+    cg = np.linspace(-1.0, 1.0, 181)                 # cos(theta_cm) grid
+    ug = np.linspace(0.0, 1.0, 64)                   # uniform grid for the inverse CDF
+    inv = np.zeros((Wg.size, ug.size))
+    for i, W in enumerate(Wg):
+        d = np.clip(np.asarray(dsigma_dOmega(float(W), cg)), 0.0, None)
+        cdf = np.concatenate([[0.0], np.cumsum(0.5 * (d[1:] + d[:-1]) * np.diff(cg))])
+        cdf = cdf / cdf[-1] if cdf[-1] > 0 else np.linspace(0, 1, cg.size)
+        inv[i] = np.interp(ug, cdf, cg)              # cos as a function of the CDF value
+    _ANG["W"] = _jnp.asarray(Wg); _ANG["u"] = _jnp.asarray(ug); _ANG["inv"] = _jnp.asarray(inv)
+    _ANG["W0"] = float(Wg[0]); _ANG["dW"] = float(Wg[1] - Wg[0]); _ANG["nW"] = Wg.size
+    _ANG["nu"] = ug.size
+    return _ANG
+
+
+def jax_sample_cos_cm(W, u):
+    """Sample cos(theta_cm) (N,) from the DCC angular distribution at invariant mass W (N,),
+    with u (N,) ~ U[0,1].  Bilinear inverse-CDF lookup over the precomputed (W, u) table."""
+    t = _build_angular()
+    inv = t["inv"]; nW = t["nW"]; nu = t["nu"]
+    wf = _jnp.clip((W - t["W0"]) / t["dW"], 0.0, nW - 1.0001)
+    iw = wf.astype(_jnp.int32); fw = wf - iw
+    uf = _jnp.clip(u * (nu - 1), 0.0, nu - 1.0001)
+    iu = uf.astype(_jnp.int32); fu = uf - iu
+    def cell(iw_, iu_):
+        return inv[iw_, iu_]
+    c00 = inv[iw, iu]; c01 = inv[iw, iu + 1]; c10 = inv[iw + 1, iu]; c11 = inv[iw + 1, iu + 1]
+    c0 = c00 * (1 - fu) + c01 * fu
+    c1 = c10 * (1 - fu) + c11 * fu
+    return _jnp.clip(c0 * (1 - fw) + c1 * fw, -1.0, 1.0)
+
+
 def jax_channel_sigmas(W, pion_in_idx_arr):
     """sig_out (N,3) [mb] for a batch of pions: W (N,), pion_in_idx_arr (N,) in {0,1,2}.
     Isospin-averaged over a p/n target.  Pure jnp (interp); the amplitudes are constants."""
