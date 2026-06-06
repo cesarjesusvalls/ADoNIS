@@ -9,13 +9,17 @@ elastic scattering uses the REAL two-body kinematics off a Fermi-moving nucleon 
 loss is the recoil, not a fixed fraction); absorption removes the pion (-> CC0pi); Pauli
 blocking on the recoil nucleon.
 
-STATUS: the cross sections (oset_xsec) are an exact port; this transport is the physical
-mean-free-path (continuum) realisation, which currently over-absorbs vs the in-event ACHILLES
-cascade by ~40% (CC0pi 0.32 vs 0.22) -- ACHILLES uses a discrete geometric impact-parameter
-walk with per-struck-nucleon channels (pi+ p -> pi+ p only; pi+ n -> pi+ n / pi0 p), formation
-zones, and adaptive steps. Matching it to MC error is in progress (the rate normalisation /
-geometric algorithm); the module is the real-physics scaffold, not yet a validated replacement
-for ToyCascadeFSI.
+STATUS / ROOT CAUSE (found): this version uses the Oset QE cross section for the hard scatter,
+which is too BROAD in T_pi -> the cascade reaction sigma(p) peaks correctly at p=275 MeV (= the
+Delta, matching the ACHILLES oracle) but falls off too slowly (at p=455: 0.70 vs ACHILLES 0.27),
+and it over-absorbs (sigma_abs ~106 mb vs DUET ~60). The ACHILLES Virtual-Resonances config
+(data/default/VirtResInteractions.yml) actually scatters via `MesonBaryonInteraction` -- the
+DCC ANL-Osaka partial-wave amplitudes sigma(W) + their real angular distribution (= ADoNIS
+Phase E, adonis/fsi/mb/anl_xsec.py, the sharply Delta-peaked piN cross sections validated to
+the 9.3:2.2:1 isospin ratio) -- and absorbs via `PionAbsorptionOneStep` (the Oset absorption).
+FIX IN PROGRESS: swap the scatter cross section + angular sampling from Oset QE to the Phase-E
+DCC sigma(W)/dsigma/dOmega; keep Oset for absorption. Then the reaction sigma will be sharply
+Delta-peaked like ACHILLES.  Committed as the real-physics scaffold, not yet validated.
 
 Differentiability: the trajectory is SAMPLED against a frozen proposal (the Oset cross
 sections at detached parameters); the Oset coefficients enter only via a per-event
@@ -46,7 +50,7 @@ def _load_density(name="c12_density.txt"):
         p = Path(__file__).resolve().parents[2] / "data" / "nuclear" / name
         d = np.loadtxt(p, comments="#")
         r, rho = d[:, 0], d[:, 1]          # col1 = rho_proton = rho_neutron (ACHILLES config)
-        radius = float(r[rho > 1e-8].max() + (r[1] - r[0]))
+        radius = float(r[rho > 1e-4 * rho[0]].max())   # physical boundary (~1% density), ~4.5 fm
         _DENS[name] = (jnp.asarray(r), jnp.asarray(rho), radius)
     return _DENS[name]
 
