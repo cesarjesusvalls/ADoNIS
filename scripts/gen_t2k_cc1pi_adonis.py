@@ -18,7 +18,7 @@ from adonis.primary.dcc.channel import sample_final_state, weight_from_sample, a
 from adonis.primary.dcc.amplitudes import DCCKnobs
 from adonis.nuclear.spectral import SpectralFunction
 from adonis.fsi.cascade_discrete import DiscreteCascadeFSI, DiscreteCascadeConfig
-from adonis.fsi.nucleon_cascade import NucleonFSI, NucleonCascadeConfig
+from adonis.fsi.cascade_discrete import DiscreteNucleonFSI
 from adonis import observables as obs
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +45,7 @@ def _gen_one(key, n, e_nu, nuclear, with_fsi, do_pion_fsi, do_nucleon_fsi):
     if with_fsi and do_pion_fsi:
         ev = DiscreteCascadeFSI(DiscreteCascadeConfig(seed=1, step=0.05, max_steps=260)).apply(None, ev, key=kpi)
     if with_fsi and do_nucleon_fsi:
-        ev = NucleonFSI(NucleonCascadeConfig(seed=1, step=0.08, max_steps=160)).apply(None, ev, key=knuc)
+        ev = DiscreteNucleonFSI(DiscreteCascadeConfig(seed=2, step=0.05, max_steps=260)).apply(None, ev, key=knuc)
     pid_pi = np.asarray(ev.pid_pi); pid_N = np.asarray(ev.pid_N); wv = np.asarray(ev.w)
     sel = (pid_pi == 211) & (pid_N == 2212) & (wv > 0)
     return (np.asarray(obs.delta_pTT(ev))[sel], np.asarray(obs.p_N_tki(ev))[sel],
