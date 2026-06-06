@@ -36,6 +36,36 @@ def test_ar40_qe_broader_than_c12():
     assert fwhm(dAr) > fwhm(dC), (fwhm(dAr), fwhm(dC))
 
 
+from pathlib import Path as _P
+_EE_CSV = _P(__file__).resolve().parents[1] / "data" / "oracle" / "inclusive_ee_12C_res.csv"
+
+
+@pytest.mark.skipif(not _EE_CSV.exists(), reason="ACHILLES RES (e,e') oracle CSV not present")
+def test_onepi_bump_matches_achilles_res():
+    """B2 oracle: the model 1pi/Delta bump in dsigma/domega sits in the same omega region as
+    the ACHILLES RES_Spectral_Func inclusive (e,e') generator (E=2.222 GeV, theta~15.5 deg,
+    achilles:oracle image).  Validates onepi_dsigma_domega's Delta position against the real
+    ACHILLES oracle via the bump centroid (robust to binning + the resonance-region tail).
+
+    The model is a Delta-only EM-structure-function fold; ACHILLES RES adds higher resonances
+    + non-resonant strength (the high-omega tail), so its argmax sits ~70 MeV above the model
+    Delta peak, but the bump *centroids* agree to ~20 MeV."""
+    from adonis.nuclear.inclusive_1pi import onepi_dsigma_domega
+
+    def centroid(wv, yv, lo=380.0, hi=680.0):
+        m = (wv >= lo) & (wv <= hi)
+        return float(np.sum(wv[m] * yv[m]) / np.sum(yv[m]))
+
+    d = np.loadtxt(_EE_CSV)
+    c_oracle = centroid(d[:, 0], d[:, 1])
+    w = np.linspace(250, 900, 60)
+    pi = onepi_dsigma_domega(2222.0, 15.541, w, "pke12p_tot.data", 12)
+    c_model = centroid(w, pi)
+    assert abs(c_model - c_oracle) < 45.0, (c_model, c_oracle)   # Delta-bump region agrees
+    # and the model peak is in the resonance region (not the QE peak)
+    assert 420 <= w[int(np.argmax(pi))] <= 560
+
+
 def test_inclusive_two_peak_structure():
     """Full inclusive (e,e') has the QE peak AND a 1pi/Delta bump above it (Fig 1 structure):
     the Delta bump sits near omega ~ (m_Delta^2 - M^2 + Q^2)/(2M), above the QE peak."""

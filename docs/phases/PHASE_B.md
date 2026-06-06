@@ -39,3 +39,18 @@ tensor (here) with the spectral fold and the A1 EM-1π piece.
 
 ## B2 complete — QE + 1pi inclusive (Fig 1 structure)
 `adonis/nuclear/inclusive_1pi.py`: the 1pi/Delta contribution to dsigma/domega, folding the EM transverse/longitudinal structure functions W_T,W_L (EM_CHANNELS hadron tensor) over S(p,E) at the lepton (omega,q). The Delta bump sits at omega~459 MeV (expected (m_D^2-M^2+Q^2)/2M ~491), well above the QE peak (~223). The total QE+1pi (figures/inclusive_ee_c12.png) reproduces the two-peak structure of the paper's Fig 1. test_inclusive_two_peak_structure.
+
+## B2 oracle — 1pi bump validated vs ACHILLES RES (e,e')
+Generated an **ACHILLES oracle** for the 1pi piece: `RES_Spectral_Func` electron scattering
+at the model kinematics (E=2.222 GeV, theta in [14,17] deg via the ACHILLES `AngleTheta`
+HardCut), 40k events from the `achilles:oracle` image
+(`_oracle_out/inclusive_ee_12C_res.yml`; `scripts/gen_inclusive_ee_oracle.py` parses the
+hepmc into omega = E_beam - E_e' -> `data/oracle/inclusive_ee_12C_res.csv`). The ACHILLES RES
+inclusive omega spectrum peaks at **omega~531 MeV** with a long resonance-region tail. The
+model 1pi/Delta bump peaks at 459 (Delta-only EM fold) but its **centroid (508 MeV) matches
+the ACHILLES bump centroid (~530) to ~20 MeV** -- the bumps occupy the same omega region.
+The argmax sits ~70 MeV lower because the model is Delta-only EM structure functions, while
+ACHILLES RES adds higher resonances + non-resonant strength (the high-omega tail the model
+does not carry). Overlaid as black points on the 12C panel of
+`figures/inclusive_ee_c12_ar40.png`. Gate: `test_onepi_bump_matches_achilles_res` (centroid
+agreement < 45 MeV, skipped if the CSV is absent).

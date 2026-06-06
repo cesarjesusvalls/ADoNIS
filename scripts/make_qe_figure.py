@@ -21,14 +21,25 @@ TARGETS = [
     dict(name=r"$^{40}$Ar", sf="pke40p_tot.data", n_p=18, n_n=22, n_nuc=40),
 ]
 
+# optional ACHILLES RES (e,e') oracle overlay for the 1pi bump (12C panel)
+_ORACLE = ROOT / "data" / "oracle" / "inclusive_ee_12C_res.csv"
+oracle = None
+if _ORACLE.exists():
+    d = np.loadtxt(_ORACLE)
+    oracle = (d[:, 0], d[:, 1])
+
 fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharex=True)
 for ax, tg in zip(axes, TARGETS):
     qe = qe_dsigma_domega(E, TH, w, tg["sf"], tg["n_p"], tg["n_n"])
     pi = onepi_dsigma_domega(E, TH, w, tg["sf"], tg["n_nuc"])
-    pi = pi / pi.max() * qe.max() * 0.45        # relative scaling (Delta bump ~half QE peak)
+    pi_scale = qe.max() * 0.45
+    pi = pi / pi.max() * pi_scale               # relative scaling (Delta bump ~half QE peak)
     ax.plot(w, qe, label="QE", color="tab:orange")
     ax.plot(w, pi, label=r"1$\pi$ (Δ)", color="tab:green")
     ax.plot(w, qe + pi, label="total", color="tab:blue", lw=2)
+    if oracle is not None and tg["sf"].startswith("pke12"):
+        ow, osh = oracle
+        ax.plot(ow, osh * pi_scale, "k.", ms=7, label="ACHILLES RES (e,e′)")
     # QE-peak FWHM annotation
     half = qe.max() / 2
     above = np.where(qe >= half)[0]
