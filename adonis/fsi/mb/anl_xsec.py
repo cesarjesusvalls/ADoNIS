@@ -62,20 +62,41 @@ def _pcm2(W, mM=M_PI, mB=M_N):
     return PF                                            # ACHILLES "PF" (= 4 W^2 p_cm^2)
 
 
-def pip_p_total(W=None, norm=1.0):
-    """pi+ p -> pi+ p total cross section [mb] (pure I=3/2). `norm` is a differentiable
-    overall sigma-normalisation knob (=1 nominal). Returns (W[MeV], sigma[mb])."""
-    Wt, amps = load_anl(0, 0)
-    if W is not None:
-        # linear interp of the complex amps onto requested W
-        amps = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
-        Wt = np.asarray(W)
-    s = np.zeros(len(Wt))
+def _channel_sigma(amps, Wt, cg, norm=1.0):
+    """Partial-wave cross section [mb] for a physical piN channel with isospin weights
+    cg = {1: c_{1/2}, 3: c_{3/2}} (the products of initial+final meson-baryon Clebsches):
+    sigma = pref * sum_{L,J} (2J+1) |sum_I cg_I A^I_{L,J}|^2.  Waves are paired by (L,J)."""
+    # group wave indices by (L, twoJ)
+    by_lj = {}
     for k, name in enumerate(WAVES):
         L, twoI, twoJ = wave_qn(name)
-        if twoI != 3:                                   # pi+ p is pure I=3/2
-            continue
-        s += (twoJ + 1.0) * np.abs(amps[:, k]) ** 2
+        by_lj.setdefault((L, twoJ), {})[twoI] = k
+    s = np.zeros(len(Wt))
+    for (L, twoJ), waves in by_lj.items():
+        amp = np.zeros(len(Wt), dtype=complex)
+        for twoI, k in waves.items():
+            amp += cg.get(twoI, 0.0) * amps[:, k]
+        s += (twoJ + 1.0) * np.abs(amp) ** 2
     PF = _pcm2(Wt)
     pref = HBARC ** 2 * 10.0 * 2.0 * np.pi * 4.0 * Wt ** 2 / PF
-    return Wt, norm * pref * s
+    return norm * pref * s
+
+
+def pip_p_total(W=None, norm=1.0):
+    """pi+ p -> pi+ p total cross section [mb] (pure I=3/2). Returns (W[MeV], sigma[mb])."""
+    Wt, amps = load_anl(0, 0)
+    if W is not None:
+        amps = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
+        Wt = np.asarray(W)
+    return Wt, _channel_sigma(amps, Wt, {3: 1.0}, norm)
+
+
+def pim_p_elastic(W=None, norm=1.0):
+    """pi- p -> pi- p elastic cross section [mb].  |pi- p> = sqrt(1/3)|3/2> - sqrt(2/3)|1/2>,
+    so the elastic isospin weights (initial x final) are c_{3/2}=1/3, c_{1/2}=2/3.  Smaller
+    Delta peak than pi+ p (only 1/3 of the I=3/2 strength)."""
+    Wt, amps = load_anl(0, 0)
+    if W is not None:
+        amps = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
+        Wt = np.asarray(W)
+    return Wt, _channel_sigma(amps, Wt, {3: 1.0 / 3.0, 1: 2.0 / 3.0}, norm)

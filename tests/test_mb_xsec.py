@@ -33,3 +33,14 @@ def test_sigma_norm_linear():
     _, s1 = pip_p_total(norm=1.0)
     _, s2 = pip_p_total(norm=2.0)
     assert np.allclose(s2, 2.0 * s1)
+
+
+def test_pim_p_isospin_ratio():
+    """pi- p elastic reproduces the Delta with the textbook 9:1 isospin ratio vs pi+ p
+    (the I=3/2 amplitude enters with weight 1 for pi+p, 1/3 for pi-p elastic -> |1|^2/|1/3|^2=9)."""
+    from adonis.fsi.mb.anl_xsec import pip_p_total, pim_p_elastic
+    W, sp = pip_p_total()
+    _, sm = pim_p_elastic()
+    m = (W >= 1150) & (W <= 1350)
+    assert 15 < sm[m].max() < 35, sm[m].max()          # pi-p elastic Delta peak ~22 mb
+    assert 8.0 < sp[m].max() / sm[m].max() < 10.0       # the 9:1 ratio
