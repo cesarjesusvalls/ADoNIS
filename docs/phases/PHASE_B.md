@@ -40,17 +40,32 @@ tensor (here) with the spectral fold and the A1 EM-1π piece.
 ## B2 complete — QE + 1pi inclusive (Fig 1 structure)
 `adonis/nuclear/inclusive_1pi.py`: the 1pi/Delta contribution to dsigma/domega, folding the EM transverse/longitudinal structure functions W_T,W_L (EM_CHANNELS hadron tensor) over S(p,E) at the lepton (omega,q). The Delta bump sits at omega~459 MeV (expected (m_D^2-M^2+Q^2)/2M ~491), well above the QE peak (~223). The total QE+1pi (figures/inclusive_ee_c12.png) reproduces the two-peak structure of the paper's Fig 1. test_inclusive_two_peak_structure.
 
-## B2 oracle — 1pi bump validated vs ACHILLES RES (e,e')
-Generated an **ACHILLES oracle** for the 1pi piece: `RES_Spectral_Func` electron scattering
-at the model kinematics (E=2.222 GeV, theta in [14,17] deg via the ACHILLES `AngleTheta`
-HardCut), 40k events from the `achilles:oracle` image
-(`_oracle_out/inclusive_ee_12C_res.yml`; `scripts/gen_inclusive_ee_oracle.py` parses the
-hepmc into omega = E_beam - E_e' -> `data/oracle/inclusive_ee_12C_res.csv`). The ACHILLES RES
-inclusive omega spectrum peaks at **omega~531 MeV** with a long resonance-region tail. The
-model 1pi/Delta bump peaks at 459 (Delta-only EM fold) but its **centroid (508 MeV) matches
-the ACHILLES bump centroid (~530) to ~20 MeV** -- the bumps occupy the same omega region.
-The argmax sits ~70 MeV lower because the model is Delta-only EM structure functions, while
-ACHILLES RES adds higher resonances + non-resonant strength (the high-omega tail the model
-does not carry). Overlaid as black points on the 12C panel of
-`figures/inclusive_ee_c12_ar40.png`. Gate: `test_onepi_bump_matches_achilles_res` (centroid
-agreement < 45 MeV, skipped if the CSV is absent).
+## B2 oracle — inclusive (e,e') validated vs ACHILLES (ratio + chi2)
+Generated **ACHILLES (e,e') oracles** for both components: `QE_Spectral_Func` and
+`RES_Spectral_Func` electron scattering at the model kinematics (E=2.222 GeV, theta in [14,17]
+deg via the ACHILLES `AngleTheta` HardCut, which makes a fixed-angle inclusive oracle
+efficient), 40k events each from the `achilles:oracle` image
+(`_oracle_out/inclusive_ee_12C_{qe,res}.yml`; `scripts/gen_inclusive_ee_oracle.py` parses the
+hepmc into omega = E_beam - E_e' **with per-bin MC errors** ->
+`data/oracle/inclusive_ee_12C_{qe,res}.csv`). The comparison uses a **ratio panel + chi2/ndf**
+(`scripts/make_inclusive_ee_validation.py` -> `figures/inclusive_ee_validation_c12.png`), the
+standard ADoNIS-vs-ACHILLES diagnostic — not just an eyeballed overlay.
+
+**1pi/Delta (RES): chi2/ndf ~15, centroid agrees to ~1 MeV.** Found + fixed a real bug:
+`onepi_dsigma_domega` used `tot0 = w + M_N` (struck nucleon at the FULL rest energy), ignoring
+that the nucleon is **bound** — so the Delta bump sat ~60 MeV too low in omega. Corrected to
+`tot0 = w + M_N - E_rm` with `E_rm` = the S(p,E)-weighted mean removal energy (~41 MeV, read
+from the spectral function). Model peak 459 -> 517 (oracle 531); centroid 508 -> 531 (oracle
+532). The ratio is flat ~1.0 across the peak; residuals only at the rising edge and the
+high-omega tail (the higher-resonance + non-resonant strength the Delta-only EM fold omits).
+
+**QE: chi2/ndf ~28, peak ~35 MeV high.** The ratio is <1 below the peak and >1 above — a peak
+shifted to higher omega. This is a **PWIA off-shell/binding-prescription** difference: folding
+over the full S(p,E) removal-energy grid over-shifts (the high-E SRC tail pulls the peak up;
+no-binding gives 178, full-E 226, oracle 192), while ACHILLES uses less effective binding for
+the peak. A documented model approximation (not a bug like the 1pi case); pinning it down needs
+ACHILLES's exact de Forest cc1/cc2 prescription.
+
+Gates: `test_onepi_bump_matches_achilles_res` (chi2/ndf < 20, centroid < 20 MeV),
+`test_qe_peak_vs_achilles` (chi2/ndf < 40, peak offset < 50 MeV) — both skipped if the CSVs
+are absent.

@@ -37,6 +37,13 @@ def onepi_dsigma_domega(E_e, theta_deg, omega, sf="pke12p_tot.data", n_nuc=12, k
     dp = p[1] - p[0]
     pdist = p ** 2 * n_p                              # momentum distribution (un-normalised)
     pdist = pdist / (np.sum(pdist) * dp + 1e-30)
+    # mean nucleon removal energy E_rm from the spectral function: the struck nucleon is
+    # BOUND, so its initial energy is M_N - E_rm, not M_N.  Omitting this puts the Delta
+    # bump ~60 MeV too low in omega (it takes more omega to reach W=1232 off a bound
+    # nucleon).  The QE response already folds E(p,E); here we use the S-weighted mean.
+    E_grid = t.energy.astype(float); S2 = t.S.astype(float)             # (np, ne)
+    Pp = (p ** 2)[:, None] * S2
+    E_rm = float(np.sum(E_grid[None, :] * Pp) / (np.sum(Pp) + 1e-30))
     th = np.deg2rad(theta_deg)
     omega = np.atleast_1d(omega).astype(float)
 
@@ -56,7 +63,7 @@ def onepi_dsigma_domega(E_e, theta_deg, omega, sf="pke12p_tot.data", n_nuc=12, k
         Ws, weights = [], []
         for ip, pp in enumerate(p):
             for cg in cosg:
-                tot0 = w + M_N                         # struck nucleon ~ at M (rest-energy)
+                tot0 = w + M_N - E_rm                  # struck nucleon is bound: E = M_N - E_rm
                 W2 = tot0 ** 2 - (q ** 2 + pp ** 2 + 2 * q * pp * cg)
                 if W2 > (M_N + 130) ** 2:              # above pion threshold
                     Ws.append(np.sqrt(W2)); weights.append(pdist[ip])

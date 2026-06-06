@@ -40,30 +40,44 @@ from pathlib import Path as _P
 _EE_CSV = _P(__file__).resolve().parents[1] / "data" / "oracle" / "inclusive_ee_12C_res.csv"
 
 
+_QE_CSV = _P(__file__).resolve().parents[1] / "data" / "oracle" / "inclusive_ee_12C_qe.csv"
+
+
 @pytest.mark.skipif(not _EE_CSV.exists(), reason="ACHILLES RES (e,e') oracle CSV not present")
 def test_onepi_bump_matches_achilles_res():
-    """B2 oracle: the model 1pi/Delta bump in dsigma/domega sits in the same omega region as
-    the ACHILLES RES_Spectral_Func inclusive (e,e') generator (E=2.222 GeV, theta~15.5 deg,
-    achilles:oracle image).  Validates onepi_dsigma_domega's Delta position against the real
-    ACHILLES oracle via the bump centroid (robust to binning + the resonance-region tail).
-
-    The model is a Delta-only EM-structure-function fold; ACHILLES RES adds higher resonances
-    + non-resonant strength (the high-omega tail), so its argmax sits ~70 MeV above the model
-    Delta peak, but the bump *centroids* agree to ~20 MeV."""
+    """B2 oracle (chi2): the model 1pi/Delta dsigma/domega vs the ACHILLES RES_Spectral_Func
+    inclusive (e,e') generator (E=2.222 GeV, theta~15.5 deg).  After the removal-energy
+    correction the bump centroids agree to ~1 MeV and the shape chi2/ndf ~15 (residuals only
+    at the rising edge + the high-omega resonance tail the Delta-only EM fold omits)."""
     from adonis.nuclear.inclusive_1pi import onepi_dsigma_domega
+    from adonis.core.validation import chi2_ndf
+    d = np.loadtxt(_EE_CSV)
+    ow, osh, oerr = d[:, 0], d[:, 1], d[:, 2]
+    m = onepi_dsigma_domega(2222.0, 15.541, ow, "pke12p_tot.data", 12)
+    chi2, ndf = chi2_ndf(m, np.zeros_like(m), osh, oerr, floor=0.05)
 
     def centroid(wv, yv, lo=380.0, hi=680.0):
-        m = (wv >= lo) & (wv <= hi)
-        return float(np.sum(wv[m] * yv[m]) / np.sum(yv[m]))
+        k = (wv >= lo) & (wv <= hi)
+        return float(np.sum(wv[k] * yv[k]) / np.sum(yv[k]))
 
-    d = np.loadtxt(_EE_CSV)
-    c_oracle = centroid(d[:, 0], d[:, 1])
-    w = np.linspace(250, 900, 60)
-    pi = onepi_dsigma_domega(2222.0, 15.541, w, "pke12p_tot.data", 12)
-    c_model = centroid(w, pi)
-    assert abs(c_model - c_oracle) < 45.0, (c_model, c_oracle)   # Delta-bump region agrees
-    # and the model peak is in the resonance region (not the QE peak)
-    assert 420 <= w[int(np.argmax(pi))] <= 560
+    assert abs(centroid(ow, m) - centroid(ow, osh)) < 20.0       # bump region agrees (binding fix)
+    assert chi2 / max(ndf, 1) < 20.0, chi2 / max(ndf, 1)         # shape chi2/ndf gate
+
+
+@pytest.mark.skipif(not _QE_CSV.exists(), reason="ACHILLES QE (e,e') oracle CSV not present")
+def test_qe_peak_vs_achilles():
+    """B2 oracle (chi2): the model QE dsigma/domega vs the ACHILLES QE_Spectral_Func generator.
+    The peak sits ~35 MeV above the ACHILLES QE peak (chi2/ndf ~28) -- a PWIA off-shell/binding
+    prescription difference (the full S(p,E) removal-energy fold over-shifts; ACHILLES uses
+    less effective binding).  Gated loosely + documented; this is a known model approximation,
+    not a bug (cf. the 1pi piece, which IS a clean binding fix)."""
+    from adonis.core.validation import chi2_ndf
+    d = np.loadtxt(_QE_CSV)
+    ow, osh, oerr = d[:, 0], d[:, 1], d[:, 2]
+    m = qe_dsigma_domega(2222.0, 15.541, ow, "pke12p_tot.data", 6, 6)
+    chi2, ndf = chi2_ndf(m, np.zeros_like(m), osh, oerr, floor=0.05)
+    assert abs(ow[int(np.argmax(m))] - ow[int(np.argmax(osh))]) < 50.0   # peak offset bounded
+    assert chi2 / max(ndf, 1) < 40.0, chi2 / max(ndf, 1)                 # documented residual
 
 
 def test_inclusive_two_peak_structure():

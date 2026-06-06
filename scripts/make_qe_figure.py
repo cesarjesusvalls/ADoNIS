@@ -21,12 +21,14 @@ TARGETS = [
     dict(name=r"$^{40}$Ar", sf="pke40p_tot.data", n_p=18, n_n=22, n_nuc=40),
 ]
 
-# optional ACHILLES RES (e,e') oracle overlay for the 1pi bump (12C panel)
-_ORACLE = ROOT / "data" / "oracle" / "inclusive_ee_12C_res.csv"
-oracle = None
-if _ORACLE.exists():
-    d = np.loadtxt(_ORACLE)
-    oracle = (d[:, 0], d[:, 1])
+# optional ACHILLES (e,e') oracle overlays (12C panel): QE_Spectral_Func + RES_Spectral_Func
+def _load(name):
+    f = ROOT / "data" / "oracle" / name
+    if f.exists():
+        d = np.loadtxt(f); return d[:, 0], d[:, 1]
+    return None
+oracle_qe = _load("inclusive_ee_12C_qe.csv")
+oracle_res = _load("inclusive_ee_12C_res.csv")
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharex=True)
 for ax, tg in zip(axes, TARGETS):
@@ -37,9 +39,13 @@ for ax, tg in zip(axes, TARGETS):
     ax.plot(w, qe, label="QE", color="tab:orange")
     ax.plot(w, pi, label=r"1$\pi$ (Δ)", color="tab:green")
     ax.plot(w, qe + pi, label="total", color="tab:blue", lw=2)
-    if oracle is not None and tg["sf"].startswith("pke12"):
-        ow, osh = oracle
-        ax.plot(ow, osh * pi_scale, "k.", ms=7, label="ACHILLES RES (e,e′)")
+    if tg["sf"].startswith("pke12"):
+        if oracle_qe is not None:
+            ow, osh = oracle_qe
+            ax.plot(ow, osh * qe.max(), "o", ms=4, color="saddlebrown", label="ACHILLES QE")
+        if oracle_res is not None:
+            ow, osh = oracle_res
+            ax.plot(ow, osh * pi.max(), "s", ms=4, color="darkgreen", label="ACHILLES RES")
     # QE-peak FWHM annotation
     half = qe.max() / 2
     above = np.where(qe >= half)[0]
