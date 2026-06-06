@@ -194,3 +194,86 @@ class DiscreteCascadeFSI:
                                                      self.cfg, kp)
         keep = (~absorbed)[:, None]
         return event._replace(p_pi=p_pi * keep, pid_pi=jnp.where(absorbed, 0, _CH_PID[ch]))
+
+
+# ===== discrete-Glauber NUCLEON cascade (proton/neutron FSI for the TKI observables) ========= #
+from adonis.fsi.nucleon_cascade import nn_elastic_sigma
+
+
+@partial(jax.jit, static_argnums=(6,))
+def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key):
+    """Leading nucleon walks through the background config via NN-elastic scatter (isotropic CM,
+    as ACHILLES NucleonNucleon::GenerateMomentum), Pauli-blocking BOTH outgoing nucleons, consuming
+    the struck one.  No absorption.  isp0 (n,) proton-mask of the leading nucleon."""
+    rgrid, rho, radius = _load_density(cfg.nucleus)
+    n, A = nisp.shape
+    keys = jax.random.split(key, cfg.max_steps)
+    ar = jnp.arange(n)
+
+    def body(carry, sk):
+        pos, p_N, dhat, alive, nsc, consumed = carry
+        outward = jnp.sum(pos * dhat, axis=1) > 0
+        alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
+        rel = npos - pos[:, None, :]
+        par = jnp.sum(rel * dhat[:, None, :], axis=2)
+        perp2 = jnp.sum(rel ** 2, axis=2) - par ** 2
+        in_slab = (par > 0) & (par <= cfg.step) & (~consumed) & alive[:, None]
+        Pp = p_N[:, None, :] + nmom
+        s = Pp[:, :, 0] ** 2 - jnp.sum(Pp[:, :, 1:] ** 2, axis=2)
+        sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
+        same_iso = isp0[:, None] == nisp                              # (n,A)
+        sig = jnp.clip(nn_elastic_sigma(sqrts, same_iso), 0.0, None)  # mb
+        prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
+        sk, ku, ks = jax.random.split(sk, 3)
+        passes = in_slab & (jax.random.uniform(ku, (n, A)) < prob)
+        big = jnp.where(passes, perp2, jnp.inf)
+        j = jnp.argmin(big, axis=1)
+        has_hit = jnp.isfinite(big[ar, j]) & alive
+        pN_j = nmom[ar, j]
+        rnuc = jnp.linalg.norm(npos, axis=2); kf_n = _kf_local(_rho_species(rnuc, rgrid, rho))
+        kf_j = kf_n[ar, j]
+
+        def scat_one(p_lead, pN_i, kf_i, k):
+            p_out = _two_body_cm_scatter(p_lead, pN_i, M_N, k)        # leading out (isotropic)
+            p_rec = (p_lead + pN_i) - p_out
+            blocked = (jnp.linalg.norm(p_out[1:]) < kf_i) | (jnp.linalg.norm(p_rec[1:]) < kf_i)
+            return p_out, blocked
+        p_out, blocked = jax.vmap(scat_one)(p_N, pN_j, kf_j, jax.random.split(ks, n))
+        do = has_hit & ~blocked
+        p_N = jnp.where(do[:, None], p_out, p_N)
+        nsc = nsc + do.astype(jnp.int32)
+        consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & do[:, None])
+        d3 = p_N[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
+        pos = pos + cfg.step * dhat * alive[:, None]
+        return (pos, p_N, dhat, alive, nsc, consumed), None
+
+    dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
+    init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32), jnp.zeros((n, A), bool))
+    (pos, p_N, dhat, alive, nsc, consumed), _ = jax.lax.scan(body, init, keys)
+    return p_N, nsc
+
+
+def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key):
+    _load_density(cfg.nucleus)
+    return _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key)
+
+
+class DiscreteNucleonFSI:
+    """FSIModel add-on: propagate the leading outgoing NUCLEON through the nucleus with the
+    discrete-Glauber NN-elastic cascade.  Composable with DiscreteCascadeFSI (pion)."""
+
+    def __init__(self, cfg: DiscreteCascadeConfig = DiscreteCascadeConfig(), protfrac: float = 0.0):
+        self.cfg = cfg
+        self.protfrac = float(protfrac)
+
+    def apply(self, params, event, key=None):
+        key = jax.random.PRNGKey(self.cfg.seed + 5) if key is None else key
+        kn, kv, kp = jax.random.split(key, 3)
+        n = event.p_N.shape[0]
+        npos, nmom, nisp = sample_nucleons(kn, n, self.cfg)
+        A = nisp.shape[1]
+        vtx = jax.random.randint(kv, (n,), 0, A)
+        pos0 = npos[jnp.arange(n), vtx]
+        isp0 = jnp.asarray(np.asarray(event.pid_N) == 2212)
+        p_N, nsc = propagate_nucleon_discrete(pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp)
+        return event._replace(p_N=p_N)
