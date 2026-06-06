@@ -16,14 +16,19 @@ COMPONENTS (now matching ACHILLES Virtual-Resonances, data/default/VirtResIntera
   * ABSORPTION: the exact Oset AbsCrossSection (`PionAbsorptionOneStep` -> oset_xsec).
   * real rho(r), Local Fermi gas, real two-body kinematics off a Fermi nucleon, Pauli blocking.
 
-STATUS: reaction sigma(p) peaks at p=275 MeV (= the Delta), CC0pi 0.30 (was 0.32 with Oset-QE;
-ACHILLES in-event 0.22), sigma_abs ~86 mb (DUET ~60).  The cross-section PHYSICS is the exact,
-untuned ACHILLES physics.  The residual ~40% over-absorption is a TRANSPORT-level difference
-(continuum mean-free-path here vs ACHILLES's discrete geometric impact-parameter walk over
-explicitly-sampled background nucleons with adaptive 0.04 fm steps + formation zones).
-(Note: PionAbsorption::AllowedAbsorption always returns true, so it is NOT a spectator-
-availability gate.)  Pinning the exact factor needs instrumenting ACHILLES to dump its per-step
-cross sections + interaction probabilities and matching them directly -- the next step.
+VALIDATED against the ACHILLES Virtual-Resonances oracle (achilles:cascade, Mode: CrossSection;
+scripts/cascade_abs_from_hepmc.py -> data/oracle/cascade_pip_c12_virt_abs.csv).  For pi+ on 12C:
+  * ABSORPTION FRACTION among reacted pions: ADoNIS 0.28-0.30 at the Delta vs ACHILLES 0.29-0.31
+    -- they AGREE (the old "ACHILLES 0.22" was a phantom target from a different config).
+  * sigma_reaction(p) and sigma_abs(p) SHAPES agree; ADoNIS sits ~1.33x above ACHILLES in
+    absolute normalisation at the Delta (Delta-region chi2/ndf ~3.5 after one bridge constant,
+    paper_figures/make_fig3.py).  The residual is a TRANSPORT difference (continuum mean-free-
+    path through the smooth rho(r) + per-step Fermi-resampled v_rel here, vs ACHILLES's discrete
+    impact-parameter walk over correlated QMC nucleon configs with an adaptive 0.04 fm step and
+    the actual struck-nucleon v_rel).  It grows in the wings (low p: the Oset 1/v_rel term for
+    slow pions).  The cross-section PHYSICS is the exact, untuned Oset+DCC port; the densities
+    are identical (data/nuclear/c12_density.txt == ACHILLES data/densities/c12.prova.txt).
+    See memory cascade-absorption-fraction-029.
 
 Differentiability: the trajectory is SAMPLED against a frozen proposal (the Oset cross
 sections at detached parameters); the Oset coefficients enter only via a per-event

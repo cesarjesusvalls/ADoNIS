@@ -1,0 +1,17 @@
+# ADoNIS production differentiable cascade (cascade_real.propagate), pi+ on 12C
+# matched to ACHILLES CrossSection setup; sigma = piR^2 * P(.|p), R from rho(r) tail
+# p_pi[MeV]  sigma_reaction[mb]  sigma_abs[mb]
+95.0  85.86  66.69
+125.0  100.42  55.20
+155.0  145.65  73.59
+185.0  206.22  82.03
+215.0  292.84  93.53
+245.0  322.74  98.12
+275.0  327.34  90.46
+305.0  349.57  101.96
+335.0  301.27  84.33
+365.0  302.81  98.89
+395.0  295.91  106.56
+425.0  242.25  91.23
+455.0  227.68  85.86
+485.0  214.65  73.59

@@ -13,7 +13,7 @@ NUISANCE (the paper digitises them separately).
 |---|---|---|---|
 | **1** | inclusive (e,e′) dσ/dω, ¹²C | JLab (NUISANCE 12C.dat, 2.020 GeV/15.02°) | ✅ **done** — experiment+ACHILLES+ADoNIS; ADoNIS χ²/ndf 142 ≈ ACHILLES 131 (QE peak; cascade-free) |
 | **2** | free-nucleon ν_μ CC1π σ(E_ν), 3 channels | ANL+BNL (NUISANCE) | ✅ **done** — experiment+ACHILLES+ADoNIS+χ²/ndf+ratio |
-| **3** | π⁺-C/Ar absorption & reaction σ(p_π) | DUET/Ashery/LADS/Dytman (not in NUISANCE) | ⏳ needs the real cascade (parked) + hadron data |
+| **3** | π⁺-C absorption & reaction σ(p_π) | DUET/Ashery (not in NUISANCE) | ✅ **done (model)** — ACHILLES VirtRes oracle vs ADoNIS cascade; **abs. fraction 0.31 vs 0.35**, Δ-region χ²/ndf ~3.5 (bridge ×0.75); DUET overlay pending digitisation |
 | 4–6 | e4ν exclusive (E_QE, E_cal, P_T), ¹²C | CLAS Nature 2021 (not in NUISANCE) | ⏳ needs cascade (proton FSI) + CLAS data |
 | 7 | T2K CC0π δp_T, δα_T (CH) | T2K (NUISANCE + Zenodo flux) | ⏳ needs flux-fold + nuclear-TKI pipeline (+cascade) |
 | 8 | T2K CC1π⁺ p_N, δp_TT (CH) | T2K | ⏳ same |
@@ -25,6 +25,9 @@ NUISANCE (the paper digitises them separately).
 | 15 | Δ-production diagrams | — | n/a |
 | 17 | T2K appendix δα_T/δϕ_T (CH) | T2K | ⏳ flux-fold pipeline |
 
-**Reachable cascade-free (done): 1, 2.** Most remaining figures need the real cascade (parked)
-and/or the flux-averaged nuclear-TKI pipeline; Figs 4–6 / 3 also need the JLab/CLAS/DUET hadron
-datasets that the paper digitised separately (not in NUISANCE).
+**Done: 1, 2, 3, 13, 14.** Fig 3 validates the differentiable ADoNIS cascade against the
+ACHILLES Virtual-Resonances oracle (π⁺-¹²C transparency); the cascade reproduces the ACHILLES
+absorption fraction (0.31 vs 0.35) and the Δ-peak σ shape (≈1.33× normalisation, the smooth-ρ
+continuum-transport residual). Most remaining figures (4–12, 16, 17) need the flux-averaged
+nuclear-TKI pipeline; Figs 4–6 / the Fig 3 data overlay also need the JLab/CLAS/DUET hadron
+datasets the paper digitised separately (not in NUISANCE).
