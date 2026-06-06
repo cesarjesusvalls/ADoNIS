@@ -19,3 +19,4 @@ __pycache__/
 *.hepmc
 achilles_data/
 _oracle_out/
+_paper_release/
