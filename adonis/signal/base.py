@@ -37,6 +37,20 @@ class HasPion(SignalDef):
         return event.pid_pi == self.pid
 
 
+class CC1Pi(SignalDef):
+    """CC1pi topology: exactly one surviving final-state pion (pid_pi != 0).  After the
+    cascade, absorbed pions are marked pid_pi=0, so this is the post-FSI CC1pi signal."""
+    def select(self, event):
+        return event.pid_pi != 0
+
+
+class CC0Pi(SignalDef):
+    """CC0pi topology: no surviving pion -- created by FSI absorption (pid_pi == 0).  The
+    pionless signal that pion absorption feeds (the FSI-driven background to CCQE)."""
+    def select(self, event):
+        return event.pid_pi == 0
+
+
 class KinematicCut(SignalDef):
     """Cut an observable into [lo, hi]. observable: name in observables.OBSERVABLES."""
     def __init__(self, observable, lo=-jnp.inf, hi=jnp.inf):

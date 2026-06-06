@@ -25,9 +25,19 @@ C_A2={1.06,-6.64,22.66}, C_A3={-13.46,46.17,-20.34}, C_ALPHA, C_BETA, ImB0=0.035
 - **closure**: Im Σ_abs is exactly differentiable in the C_A2 (and C_Q) strength knobs
   (autodiff==FD to 1e-13) — the F-phase tunable handle.
 
-## Remaining
-- ☐ Fold the self-energy into the absorption **cross section** (the `pAbsorptionFactor`,
+## Remaining (F2 — soft-blocked on the AbsCrossSection source)
+- ◐ Fold the self-energy into the absorption **cross section** (the `pAbsorptionFactor`,
   `sAbsorptionFactor`, Δ-propagator pieces in `OsetCrossSections.cc::AbsCrossSection`) and a
-  density profile, for a σ_abs(T_π) curve to overlay the cascade absorption oracle
-  (the absorption half of Fig c12_ar40). The self-energy (the physics knobs) is the core,
-  and it's done + differentiable.
+  density profile, for a σ_abs(T_π) curve. **Investigated (2026-06-06):** the naive optical
+  relations σ ∝ ImΣ_abs/v (and (abs+qe)/v) peak at T_π≈200 MeV (p_π≈335 MeV), too high vs
+  the cascade reaction oracle (`cascade_pip_c12_reaction.csv`, peak p_π=275 MeV, T_π≈170);
+  and that oracle is the **total** reaction (abs+qe+cex folded through the geometry), not the
+  pure Oset absorption — so it isn't the right oracle for σ_abs anyway. A faithful overlay
+  needs the exact `OsetCrossSections.cc::AbsCrossSection` formula (Δ-propagator + s/p factors
+  + density profile), which is **not in the extracted dump** (only the self-energy
+  coefficients from `OsetCrossSections.hh` were extracted). Data/source soft-block — like the
+  ηN/K tables (Phase E) and the ANL/BNL overlay (A3), not a model gap.
+- The self-energy itself (the tunable FSI knobs C_Q/C_A2/C_A3) is done + exactly
+  differentiable; it is what the cascade and the D-phase FSI consume. A future
+  momentum-dependent FSI σ_abs(T_π) can read its Δ-peaked shape directly (cf. PHASE_D
+  "Remaining": resonant FSI rates).
