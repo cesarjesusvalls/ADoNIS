@@ -59,14 +59,14 @@ def events(path):
                     has_pi = True
     if p_in is not None:
         yield p_in, has_pi
-    events.last = (w / 1e12 if w else None, acc, att)    # (pi R^2 [mb], accepted, attempted)
+    events.last = (w if w else None, acc, att)           # (raw event weight [pb], accepted, attempted)
 
 
 def sigmas(paths, nbins=14, lo=80.0, hi=500.0):
     """Absolute sigma_reaction(p) and sigma_abs(p) [mb].  Attempts are uniform in p, so the
     per-bin attempt count = total_attempts * (binwidth / range)."""
     P, ABSV = [], []
-    piR2 = 0.0
+    weight = 0.0
     tot_att = 0
     for path in paths:
         for p_in, has_pi in events(path):
@@ -75,9 +75,15 @@ def sigmas(paths, nbins=14, lo=80.0, hi=500.0):
             P.append(p_in); ABSV.append(0 if has_pi else 1)
         a, acc, att = events.last
         if a:
-            piR2 = a
+            weight = a
         if att:
             tot_att += att
+    # Geometric beam-disk area [mb] from RunCascade.cc InitCrossSection:
+    #   event.Weight() = pi*radius^2*10*1e6 [nb] then *= (hi-lo); writer -> pb (x1000).
+    #   so pi*radius^2*10 [mb] = weight / (1e6 * (hi-lo) * 1000) = weight / (1e9*(hi-lo)).
+    # (For the radius=10 fm oracle this is 3141.6 mb; the old code's weight/1e12 wrongly
+    #  assumed (hi-lo)=1000, under-normalising by (hi-lo)/1000 = 2.38x for [80,500].)
+    piR2 = weight / (1e9 * (hi - lo))
     P, ABSV = np.array(P), np.array(ABSV)
     edges = np.linspace(lo, hi, nbins + 1)
     idx = np.clip(np.digitize(P, edges) - 1, 0, nbins - 1)

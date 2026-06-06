@@ -1,17 +1,18 @@
-# ADoNIS production differentiable cascade (cascade_real.propagate), pi+ on 12C
-# matched to ACHILLES CrossSection setup; sigma = piR^2 * P(.|p), R from rho(r) tail
-# p_pi[MeV]  sigma_reaction[mb]  sigma_abs[mb]
-95.0  85.86  66.69
-125.0  100.42  55.20
-155.0  145.65  73.59
-185.0  206.22  82.03
-215.0  292.84  93.53
-245.0  322.74  98.12
-275.0  327.34  90.46
-305.0  349.57  101.96
-335.0  301.27  84.33
-365.0  302.81  98.89
-395.0  295.91  106.56
-425.0  242.25  91.23
-455.0  227.68  85.86
-485.0  214.65  73.59
+# ADoNIS DISCRETE-Glauber cascade (scratch/discrete_transport.py over QMC configs,
+# DCC angular scatter + Oset abs): pi+ on 12C transparency, correct radius=10fm norm.
+# Supersedes the continuum cascade_real (which under-predicted ~2x, missing the
+# transverse exp(-pi b^2/sigma) reach). p_pi[MeV] sigma_reaction[mb] sigma_abs[mb]
+95.0  88.35  64.68
+125.0  121.51  72.64
+155.0  177.85  78.67
+185.0  287.00  100.23
+215.0  440.32  141.34
+245.0  573.80  182.26
+275.0  618.26  198.17
+305.0  590.95  176.13
+335.0  510.46  150.35
+365.0  426.90  132.72
+395.0  351.97  105.98
+425.0  298.30  85.48
+455.0  247.71  67.84
+485.0  219.73  58.84

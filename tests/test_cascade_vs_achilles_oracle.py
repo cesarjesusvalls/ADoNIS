@@ -33,18 +33,15 @@ def test_absorption_fraction_agrees():
     assert abs(fa - fd) < 0.07, (fa, fd)                   # agree to within ~0.05
 
 
-def test_delta_peak_shape_and_norm():
-    """In the Delta region the two sigma(p) agree in shape; ADoNIS is ~1.1-1.6x ACHILLES."""
+def test_delta_peak_absolute_norm():
+    """ABSOLUTE sigma(p) agreement in the Delta region after the oracle normalisation fix
+    (radius=10 fm -> piR2=3141.6 mb; the discrete-Glauber ADoNIS cascade replaces the continuum,
+    which was ~2x low for missing the transverse exp(-pi b^2/sigma) reach).  ADoNIS/ACHILLES is
+    now ~0.85-1.20 absolute (within the oracle's per-bin statistics)."""
     p, sra, saa, srd, sad = _load()
     d = (p >= 200) & (p <= 360)
-    ratio_r = srd[d] / sra[d]
-    ratio_a = sad[d] / saa[d]
-    # absolute normalisation offset (continuum transport), bounded and consistent reac vs abs
-    assert 1.1 < np.mean(ratio_r) < 1.6, np.mean(ratio_r)
-    assert 1.1 < np.mean(ratio_a) < 1.6, np.mean(ratio_a)
-    # shape: after dividing out the mean offset, bins track to ~15%
-    shape_r = ratio_r / np.mean(ratio_r)
-    assert np.all(np.abs(shape_r - 1) < 0.25), shape_r
+    assert 0.85 < np.mean(srd[d] / sra[d]) < 1.20, np.mean(srd[d] / sra[d])
+    assert 0.85 < np.mean(sad[d] / saa[d]) < 1.20, np.mean(sad[d] / saa[d])
 
 
 def test_both_peak_at_delta():

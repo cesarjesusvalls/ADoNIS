@@ -1,18 +1,17 @@
-# ACHILLES Virtual-Resonances (MesonBaryonInteraction DCC + PionAbsorptionOneStep Oset)
-# pi+ on 12C transparency (CrossSection mode), 8344 accepted events over 5 seeds.
-# Absolute via sigma = piR^2 * accepted/attempted (R=6.5fm); attempts uniform in p.
+# ACHILLES Virtual-Resonances pi+ on 12C (CrossSection mode, radius=10fm beam disk)
+# CORRECT normalisation piR2=pi*radius^2*10=3141.6mb (was under-normalised 2.38x before)
 # p_pi[MeV]  sigma_reaction[mb]  sigma_abs[mb]  n_acc
-95.0  32.51  25.08  127
-125.0  51.45  30.46  201
-155.0  70.64  33.53  276
-185.0  123.63  45.56  483
-215.0  196.32  60.15  767
-245.0  242.14  70.39  946
-275.0  261.08  76.02  1020
-305.0  269.78  78.58  1054
-335.0  222.17  54.78  868
-365.0  183.52  47.86  717
-395.0  154.60  45.82  604
-425.0  127.47  32.51  498
-455.0  97.26  28.92  380
-485.0  103.15  23.29  403
+95.0  77.40  59.72  127
+125.0  122.49  72.52  201
+155.0  168.20  79.83  276
+185.0  294.35  108.48  483
+215.0  467.43  143.22  767
+245.0  576.52  167.59  946
+275.0  621.61  181.00  1020
+305.0  642.34  187.09  1054
+335.0  528.98  130.42  868
+365.0  436.96  113.96  717
+395.0  368.09  109.09  604
+425.0  303.49  77.40  498
+455.0  231.58  68.87  380
+485.0  245.60  55.46  403
