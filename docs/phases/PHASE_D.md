@@ -27,18 +27,43 @@ restored under **`adonis/fsi/toy/`** (from `f60947a^:archive/diffpi_legacy/` +
   vertex reweighting (kind 1), the escape/scatter expected-value deposits (kind 1), and
   the absorb-vs-scatter score weight (kind 2). Gate: `tests/test_toy_cascade.py`.
 
-## Remaining (D1 proper)
-- ☐ Re-run the **full 5-param joint closure** end-to-end (synthesize at truth → fit →
-  recover within MC error). The fit loop (Adam on the χ² of `weighted_histogram` vs a
-  `sampled_histogram` pseudo-dataset) needs wiring from the config's truth/init knobs
-  (`ConfigFull.{MA,mDelta,GammaDelta,sigma_scatter,sigma_abs}_*`); the forward-agreement
-  check (weighted==sampled in expectation) and gradient-SNR study live here.
-- ☐ **Port to a concrete `FSIModel`** acting on the real `EventRecord` (the plan's D1):
-  wrap the cascade as `FSIModel.apply(params, EventRecord) -> EventRecord`, carrying the
-  one global weight into the existing chain, and revive the joint closure on **real**
-  produced final states (toy FSI physics; no oracle). This is the bridge from the toy
-  package to the production chain — the actual Phase-D deliverable.
+## D1 — concrete FSIModel on the real EventRecord — DONE
+`adonis/fsi/cascade.py` (`ToyCascadeFSI`): the plan's D1 — the toy cascade ported to the
+production contract `FSIModel.apply(params, EventRecord) -> EventRecord`. The produced pion
+(`event.p_pi`) starts at the nucleus centre along its production direction and propagates
+through a uniform sphere (R [fm]); per step it escapes, scatters (deflect + lose `mom_loss`
+of |p|), or is absorbed (pion removed → `pid_pi=0`, a CC0π event). Two new differentiable
+knobs live in `PhysicsParams`: `fsi_sigma_scatter`, `fsi_sigma_abs` [1/fm].
 
-Toy physics ⇒ **no oracle gate** (per the plan); the gates are closure (differentiability)
+**Estimator (per event, kind-1 reweighting).** Like ACHILLES' cascade, each event gets a
+*definite sampled* final state (so the EventRecord stays a per-event record, not an
+expected-value histogram). Every stochastic decision is sampled against a **frozen
+proposal** `q` (a detached copy of the params); θ enters only through a likelihood-ratio
+weight `p_θ/q` folded into `event.w`. The sampled path is frozen as θ varies → the loss is
+smooth and, at a fixed key, **autodiff == finite difference to machine precision**
+(no REINFORCE jump variance). In production `proposal=None` defaults to `sg(params)`
+(self-normalised: forward weight 1, gradient `d log p`), so it drops into the `Generator`
+chain unchanged (`Generator(ch, fsi=ToyCascadeFSI())`).
+
+**Gates** (`tests/test_cascade_fsi.py`):
+- **closure** — `d/d(σ_sc, σ_abs)` of a final-state observable, autodiff vs FD with a frozen
+  proposal: rel **~9e-7** (machine precision).
+- **joint recovery** — synthesize the post-FSI `(Q², |p_π|)+CC0π` histogram on **real**
+  DCC-produced events at a known `(M_A, σ_sc, σ_abs)`, then recover all three jointly by
+  Adam on χ² (common random numbers + one frozen proposal ⇒ smooth, exact). Recovers
+  `(1.150, 0.349, 0.218)` vs truth `(1.15, 0.35, 0.22)` from init `(0.95, 0.18, 0.40)`.
+  Production (M_A, lepton side) and FSI (σ, hadron side) knobs are **simultaneously
+  identifiable from one observable**, gradient flowing through the whole chain.
+
+Figure: `figures/fsi_cascade_c12.png` (`scripts/make_fsi_figure.py`) — the produced vs
+escaped pion spectrum, showing absorption depletion (~CC0π fraction) + low-|p| softening.
+
+## Remaining (optional)
+- ☐ Re-run the toy `integrate_full` **5-param** joint closure end-to-end (adds m_Δ, Γ_Δ,
+  which are amplitude-table values in the real DCC, not `PhysicsParams` knobs — so the
+  real-chain joint closure fits the 3 it owns: M_A, σ_sc, σ_abs).
+- ☐ Momentum-dependent (resonant) FSI rates (cf. `integrate_bc._rates`) once the real Oset
+  absorption σ(T_π) is wired in (Phase F2).
+
+Toy FSI physics ⇒ **no oracle gate** (per the plan); the gates are closure (differentiability)
 and the joint-recovery closure.
-</content>

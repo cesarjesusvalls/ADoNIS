@@ -25,7 +25,10 @@ class PhysicsParams(NamedTuple):
     axial_MA: float = 1.000        # axial mass [GeV]; Q^2-dependent reweight of the axial block
     axial_strength: float = 1.0    # overall axial-current scale
     pw_norm: tuple = ()            # () = no rescale, else length-14 per-partial-wave (1+pw_norm)
-    # room for future knobs (e.g. FSI parameters) -- add as leaves here.
+    # --- FSI (cascade) knobs: total interaction rates of the in-medium pion [1/fm] ---
+    fsi_sigma_scatter: float = 0.30  # pion-nucleon (quasi-elastic) scatter rate
+    fsi_sigma_abs: float = 0.20      # pion absorption rate (-> CC0pi)
+    # room for future knobs -- add as leaves here.
 
 
 # Back-compat alias: the migrated DCC modules import/accept `DCCKnobs`.
