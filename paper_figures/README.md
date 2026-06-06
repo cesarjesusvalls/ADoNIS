@@ -15,9 +15,9 @@ NUISANCE (the paper digitises them separately).
 | **2** | free-nucleon ν_μ CC1π σ(E_ν), 3 channels | ANL+BNL (NUISANCE) | ✅ **done** — experiment+ACHILLES+ADoNIS+χ²/ndf+ratio |
 | **3** | π⁺-C absorption & reaction σ(p_π) | DUET/Ashery (not in NUISANCE) | ✅ **done (model)** — ACHILLES VirtRes oracle vs ADoNIS cascade; **abs. fraction 0.31 vs 0.35**, Δ-region χ²/ndf ~3.5 (bridge ×0.75); DUET overlay pending digitisation |
 | 4–6 | e4ν exclusive (E_QE, E_cal, P_T), ¹²C | CLAS Nature 2021 (not in NUISANCE) | ⏳ needs cascade (proton FSI) + CLAS data |
-| 7 | T2K CC0π δp_T, δα_T (CH) | T2K (NUISANCE + Zenodo flux) | ⏳ needs flux-fold + nuclear-TKI pipeline (+cascade) |
-| **8** | T2K CC1π⁺ δp_TT, p_N, δα_T (CH) | T2K (NUISANCE STV txt) | ✅ **done** — experiment+ACHILLES+ADoNIS+FSI; flux-folded, real pion+nucleon FSI; ADoNIS χ²/ndf ~1.9, ACHILLES ~1.0; FSI bends toward the data tails |
-| 9,16 | MINERvA CC0π δα_T / p_n / 6-panel (CH) | MINERvA (NUISANCE + flux) | ⏳ same |
+| **7** | T2K CC0π δp_T, δα_T (CH) | T2K (NUISANCE ROOT) | ✅ **done** — flux-folded CCQE + discrete-Glauber proton FSI, tight cuts; ADoNIS χ²/ndf vs data 1.5/1.6, ACHILLES 0.8/1.1 |
+| **8** | T2K CC1π⁺ p_N, δp_TT (CH) [δα_T appendix] | T2K (NUISANCE STV) | ✅ **done** — tight cuts + NUISANCE hydrogen δα_T prescription (both read from source); ADoNIS-vs-ACHILLES δp_TT 2%, p_N 8%, δα_T 8% |
+| 9,16 | MINERvA CC0π δα_T / p_n / 6-panel (CH) | MINERvA (NUISANCE + ME flux) | ◐ pipeline built (CCQE+proton FSI, tight cuts read from NUISANCE); ACHILLES 2M oracle generating |
 | 10 | MicroBooNE CC1p0π δp_T in δα_T bins (Ar) | MicroBooNE | ⏳ same |
 | 11,12 | MicroBooNE NC1π⁰ cosθ, p (Ar) | MicroBooNE (NUISANCE + flux) | ⏳ NC1π⁰ + flux-fold |
 | **13** | πN/ηN/KΛ σ(W) + dσ/dΩ (model only) | — (ACHILLES INC vs ANL-Osaka DCC) | ✅ **done** — πN 9.3:2.2:1 + 1+3cos²θ; **η production at N(1535)** + KΛ threshold (full ANL tables were local) |
