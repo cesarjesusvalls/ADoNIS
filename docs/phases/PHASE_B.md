@@ -23,7 +23,7 @@ kinematic Q² range → σ(E_ν).
 ## Remaining
 - ☐ **B1b** Optional: z-expansion axial FF in the LS σ (close the ~3%); EM/NC elastic
   variants of the 1-nucleon current (reuse the Kelly FFs) for the inclusive fold.
-- ☐ **B2 — EM inclusive dσ/dω = QE + 1π** on ¹²C, vs the JLab-config ACHILLES (E=2.222 GeV,
+- ◐ **B2 — EM inclusive dσ/dω = QE + 1π** — *QE part DONE* on ¹²C, vs the JLab-config ACHILLES (E=2.222 GeV,
   θ=15.541°). Build the QE 1-nucleon hadron tensor W^{μν}_1N folded over the ¹²C spectral
   function (reuse `SpectralFunction`) + the EM 1π piece (A1), summed → dσ/dω. **→ Fig 1 (¹²C).**
 - ☐ **B3 — ⁴⁰Ar spectral function** swap: point the fold at the `pke40{p,n}` tables (present
@@ -33,3 +33,6 @@ kinematic Q² range → σ(E_ν).
 B1 (the QE vertex, free-nucleon CCQE) is done and validated absolutely vs ACHILLES. The
 inclusive (e,e′) fold (B2/B3, Fig 1) is the remaining build — it composes the QE 1-nucleon
 tensor (here) with the spectral fold and the A1 EM-1π piece.
+
+## B2 update — QE inclusive response (PWIA) DONE
+`adonis/nuclear/qe_inclusive.py`: the plane-wave impulse-approximation QE (e,e') response, folding the single-nucleon elastic response (Kelly FFs) over the 12C spectral function S(p,E). At the JLab kinematics (E=2222 MeV, theta=15.541 deg) it gives a QE peak at omega~227 MeV (the relativistic quasi-free peak sqrt(q^2+M^2)-M+E_b ~207, + response skew) with a **Fermi-motion width FWHM~159 MeV** (expected k_F q/M ~147). Gate: tests/test_qe_inclusive.py. Remaining: add the 1pi inclusive piece (from A1, integrated over the pion) for the full QE+1pi dsigma/domega, and overlay the JLab-config ACHILLES run -> Fig 1.
