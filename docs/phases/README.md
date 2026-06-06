@@ -17,6 +17,7 @@ before continuing that phase.
 | [PHASE_E.md](PHASE_E.md) | E — meson-baryon scattering (DCC PWA) | ☑ πN sector: σ(W) all 3 charge channels (9.3:2.2:1 Δ ratio), angular dσ/dΩ (1+3cos²θ at Δ); ηN/KΛ/KΣ soft-blocked on missing tables |
 | [PHASE_G.md](PHASE_G.md) | G/H — cascade engine + both modes | ☑ cascade image built + RUNS; Fig c12_ar40 oracle generated (π-¹²C Virtual+Propagating, π-⁴⁰Ar), all Δ-peaked; model-side FSIModel follows |
 | [PHASE_F.md](PHASE_F.md) | F — Oset pion absorption | ☑ F1 done — Oset self-energy transcribed (C_Q/C_A2/C_A3 knobs), peaks at the Δ, exactly differentiable; abs cross-section fold remains |
+| [PHASE_I.md](PHASE_I.md) | I — exclusive e/ν comparison | ☑ matched-kinematics e vs ν_e RES oracles; axial signature (ν more Δ-peaked in W, less forward in cos θ*); ADoNIS reproduces both, χ²/ndf W 1.5–2.4, cos θ* 4.5–7.3 |
 
 Legend: ☐ todo · ◐ partial · ☑ done.
 
