@@ -32,11 +32,9 @@ Legend: ☐ todo · ◐ partial · ☑ done.
   reanalysis (not in the `../nuisance` clone, which has dσ/dQ²); `uproot` isn't installed.
   Soft-blocked — and not the model's job (the model↔ACHILLES validation is done).
 - **In-event ν cascade oracle** (pion-propagation effect on ν observables): the main
-  `achilles` binary **SIGSEGVs with `Cascade: Run: True`** in BOTH the `:oracle` and the
-  `:cascade` images (empty cascade interaction registry — same root cause as the standalone
-  tool). The earlier fix force-linked `AchillesCascadeInteractions --no-as-needed` only into
-  the `achilles-cascade` target, not the main `achilles` binary. **Resolvable** by applying
-  the same link fix to the `achilles` target in `docker/Dockerfile.cascade` and rebuilding
-  (a long build). Until then a cascade-ON ν final-state oracle is blocked — but the
-  *qualitative* pion-propagation effect on ν observables is already shown by the toy
-  `ToyCascadeFSI` (Phase C/D: `test_tki_fsi` δp_T smearing + CC0π, `figures/fsi_cascade_c12.png`).
+  `achilles` binary SIGSEGV'd with `Cascade: Run: True` (empty cascade interaction registry).
+  **FULLY RESOLVED** — `docker/Dockerfile.fullcascade` force-links `AchillesCascadeInteractions`
+  into the **main** `achilles` target (it was PRIVATE to `event_gen`, dropped without
+  `--no-as-needed`). The in-event ν cascade now runs; the pion-propagation result
+  (cascade softens the π spectrum + absorbs 22% → CC0π) is reproduced and the differentiable
+  `ToyCascadeFSI` is tuned to it. See `PHASE_G.md`, `figures/cascade_effect_nue_c12.png`.

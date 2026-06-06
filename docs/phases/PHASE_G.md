@@ -80,3 +80,23 @@ Two refinements remain before the Fig-c12_ar40 oracle is final:
 
 The model-side cascade FSIModel (whose differentiability Phase D de-risks on toy physics)
 is the parallel build.
+
+## In-event ν cascade — FIXED (`docker/Dockerfile.fullcascade` → `achilles:fullcascade`)
+The *standalone* `achilles-cascade` tool gives the π-beam reaction σ; the **paper's central
+"pion propagation" result** needs the in-event cascade on a ν final state
+(`Cascade: Run: True` in the main generator). Both the `:oracle` and `:cascade` images
+**SIGSEGV** there — same empty-registry root cause, but the earlier fix patched only the
+`achilles-cascade` target. The main `achilles` executable links `event_gen`, which links
+`AchillesCascadeInteractions` **PRIVATE** (CMakeLists line ~138), so it is not propagated to
+`achilles` and the linker drops it (no referenced symbols → static initializers never run).
+**Fix** (`Dockerfile.fullcascade`): force-link `AchillesCascadeInteractions` into the
+`achilles` target with `LINKER:--no-as-needed`. The in-event cascade now runs cleanly
+("Generated N/N events, Success", no SIGSEGV).
+
+**Pion-propagation result** (`scripts/make_cascade_effect.py` →
+`figures/cascade_effect_nue_c12.png`): ν_e RES single-π on ¹²C, cascade OFF vs ON
+(E=2.222 GeV). The cascade **softens** the pion spectrum (peak ~250 → ~170 MeV, ⟨|p_π|⟩
+314 → 281) and **absorbs 22%** of pions (CC1π → CC0π). The differentiable `ToyCascadeFSI`
+reproduces the same softening + absorption and is **tuned to the real ACHILLES cascade**
+(σ_sc≈0.17, σ_abs≈0.10 fm⁻¹ → CC0π 0.21, softening ratio 0.90) — the toy FSI's two physical
+knobs match the gross cascade effect.

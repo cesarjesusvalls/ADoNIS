@@ -1,0 +1,48 @@
+FROM alpine AS build
+RUN apk update && apk add g++ gcc musl-dev cmake hdf5-dev make git gfortran python3
+COPY . /achilles_src
+
+# Same interaction-registry fix as Dockerfile.cascade, applied to the MAIN `achilles`
+# binary so the IN-EVENT cascade (Cascade: Run: True) works -- not just the standalone
+# achilles-cascade tool.  event_gen links AchillesCascadeInteractions PRIVATE, so the main
+# achilles executable (which links event_gen) drops it without referenced symbols and its
+# static initializers never run -> empty cascade interaction registry -> SIGSEGV.  Force-link
+# it into the achilles target with --no-as-needed (main.cc already creates a Plugin::Manager).
+RUN python3 - <<'PYEOF'
+cm = "/achilles_src/src/Achilles/CMakeLists.txt"
+s = open(cm).read()
+# (a) standalone achilles-cascade fix (as in Dockerfile.cascade)
+s = s.replace("PUBLIC event_gen docopt::docopt cmake_git_version_tracking)",
+              "PUBLIC event_gen docopt::docopt cmake_git_version_tracking dl plugin_manager AchillesCascadeInteractions)")
+s = s.replace("    list(APPEND achilles_targets achilles-cascade)",
+              "    target_link_options(achilles-cascade PRIVATE \"LINKER:--no-as-needed\")\n    list(APPEND achilles_targets achilles-cascade)")
+# (b) MAIN achilles binary: force-link the cascade interactions + --no-as-needed
+s = s.replace("PUBLIC event_gen docopt::docopt dl cmake_git_version_tracking plugin_manager)",
+              "PUBLIC event_gen docopt::docopt dl cmake_git_version_tracking plugin_manager AchillesCascadeInteractions)")
+s = s.replace("list(APPEND achilles_targets achilles plugin_manager)",
+              "target_link_options(achilles PRIVATE \"LINKER:--no-as-needed\")\n    list(APPEND achilles_targets achilles plugin_manager)")
+open(cm, "w").write(s)
+assert 'target_link_options(achilles PRIVATE' in open(cm).read(), "main achilles patch failed"
+assert 'plugin_manager AchillesCascadeInteractions)' in open(cm).read(), "main link patch failed"
+mn = "/achilles_src/src/Achilles/CascadeMain.cc"
+s = open(mn).read()
+s = s.replace('#include "Achilles/Version.hh"',
+              '#include "Achilles/Version.hh"\n#include "Plugins/Manager/PluginManager.hh"')
+s = s.replace("    achilles::CascadeTest::RunCascade(runcard);",
+              "    achilles::Plugin::Manager plugin_manager;\n    achilles::CascadeTest::RunCascade(runcard);")
+open(mn, "w").write(s)
+print("patched CMakeLists (main achilles + achilles-cascade) + CascadeMain")
+PYEOF
+
+RUN cmake -S achilles_src -B achilles \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DACHILLES_ENABLE_CASCADE_TEST=ON \
+        -DCMAKE_CXX_FLAGS="-fno-visibility-inlines-hidden" \
+    && cmake --build achilles -j
+
+FROM alpine AS main
+RUN apk update && apk add --no-cache hdf5-dev libstdc++ libgfortran
+COPY --from=build /achilles /achilles
+WORKDIR /achilles
+ENTRYPOINT ["./bin/achilles"]
+CMD ["run.yml"]
