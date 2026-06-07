@@ -48,7 +48,9 @@ OBS = [
 ]
 
 ach = np.load(ROOT / "data" / "oracle" / "t2k_cc1pi_tki_achilles.npz")
-ado = np.load(ROOT / "data" / "oracle" / "t2k_cc1pi_tki_adonis_fsi.npz")
+# bit-exact RES primary (adonis/xsec) if present, else the older DCC-bridge surrogate
+_x = ROOT / "data" / "oracle" / "t2k_cc1pi_tki_adonis_xsec.npz"
+ado = np.load(_x) if _x.exists() else np.load(ROOT / "data" / "oracle" / "t2k_cc1pi_tki_adonis_fsi.npz")
 ado0 = np.load(ROOT / "data" / "oracle" / "t2k_cc1pi_tki_adonis_nofsi.npz")
 
 fig, axes = plt.subplots(2, 3, figsize=(14, 6), height_ratios=[3, 1])
