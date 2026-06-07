@@ -83,9 +83,11 @@ def spline4_eval(x, y, xout):
 
 def stencil_start(n, i1):
     """0-based start of the 4-point stencil for the lower grid index i1 (jnp int),
-    matching interpolate_amp's iw_start logic: near the low edge -> 0..3, near the
-    high edge -> n-4..n-1, else i1-2..i1+1 (ACHILLES 1-based iw = i1+1)."""
-    iw = i1 + 1
+    matching interpolate_amp's iw_start logic.  ACHILLES's iw is the 1-based UPPER bracket
+    (first wcms(iw) >= W); with i1 the 0-based LOWER bracket (searchsorted-1), that is
+    iw = i1 + 2 (NOT i1+1 -- the off-by-one put W in the stencil's edge interval and
+    under-shot the amplitude at the low-W/low-Q^2 features that dominate sigma_RES)."""
+    iw = i1 + 2
     start = jnp.where(iw <= 2, 1, jnp.where(iw >= n - 1, n - 3, iw - 2)) - 1
     return jnp.clip(start, 0, n - 4)
 
