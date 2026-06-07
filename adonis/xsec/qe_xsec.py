@@ -104,6 +104,46 @@ def generate(n, seed=0, sf=None):
                 p_out=s["p_out"])
 
 
+def sample_importance(n, seed=0, sf=None):
+    """Like sample() but draws the struck nucleon from the spectral IMPORTANCE sampler
+    (|p|,E ~ |p|^2 S) instead of the flat QESpectralMapper -> the dominant flat-MC weight
+    variance (the |p|^2 S peak) cancels in the weight.  event.Weight() loses J_had and initwgt
+    (now in the sampling); they are replaced by the constant N_neutron (4pi Z_p = 1 for the
+    normalised S).  Beam + TwoBody final state sampled as in sample()."""
+    from adonis.xsec.spectral import SpectralImportanceSampler, SpectralFunction as _SF
+    rng = np.random.default_rng(seed)
+    u = rng.random((n, 7))
+    flux = T2KFlux()
+    minE = flux.seed_min_GeV(); maxE = flux.max_energy; dE_beam = maxE - minE
+    E_GeV = u[:, 4] * dE_beam + minE; Enu = E_GeV * 1000.0
+    fE = flux.f(E_GeV); J_beam = (dE_beam * fE) / flux.flux_integral
+    k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
+    sf = sf or _SF("data/Spectral_Functions/pke12n_tot.data")
+    samp = SpectralImportanceSampler(sf)
+    pvec, E_rm = samp.sample(n, rng)
+    p_struck = np.concatenate([(_MN - E_rm)[:, None], pvec], axis=1)
+    # ThreeBody->TwoBody: total -> mu + p, isotropic CM (same as sample())
+    P = k_nu + p_struck
+    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
+    sqrts = np.sqrt(np.clip(s, 1e-9, None))
+    s2, s3 = M_MU ** 2, M_P ** 2
+    E1 = sqrts / 2 * (1 + s2 / s - s3 / s); E2 = sqrts / 2 * (1 + s3 / s - s2 / s)
+    lam = np.sqrt(np.clip((s - s2 - s3) ** 2 - 4 * s2 * s3, 0, None)); pcm = lam / (2 * sqrts)
+    cts = 2 * u[:, 5] - 1; sts = np.sqrt(np.clip(1 - cts ** 2, 0, None)); php = _TWO_PI * u[:, 6]
+    dirn = np.stack([sts * np.cos(php), sts * np.sin(php), cts], axis=1)
+    beta = P[:, 1:] / P[:, 0:1]
+    k_mu = _boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta)
+    p_out = _boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta)
+    J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
+    valid = (s > (M_MU + M_P) ** 2) & (lam > 0) & (E_rm > 2.5) & (E_rm < 400)
+    d = me_cross_section(jnp.asarray(k_nu), jnp.asarray(k_mu), jnp.asarray(p_struck),
+                         jnp.asarray(p_out), spin_avg=0.5, had_mass=MASS_PDG_NEUTRON)
+    me = np.asarray(d["me_xsec"])
+    w = np.where(valid, me * N_NEUTRON * J_2body * J_beam, 0.0)
+    w = np.where(np.isfinite(w), w, 0.0)
+    return dict(w=w, k_nu=k_nu, k_mu=k_mu, p_struck=p_struck, p_out=p_out, sigma=w.mean())
+
+
 if __name__ == "__main__":
     import sys
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 20000

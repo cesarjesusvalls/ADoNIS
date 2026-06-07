@@ -134,3 +134,45 @@ def initial_state_weight(p_mag, E_in, sf: SpectralFunction, n_nucleon):
     """n_nucleon * S(|p|, removal), removal = mqe - E_in  (QESpectral::InitialStateWeight)."""
     removal = C.mN - E_in
     return n_nucleon * sf(p_mag, removal)
+
+
+def _trapz_cdf(rho):
+    rho = np.clip(np.asarray(rho, float), 0, None)
+    cdf = np.concatenate([[0.0], np.cumsum(0.5 * (rho[:-1] + rho[1:]))])
+    tot = cdf[-1]
+    return cdf / tot if tot > 0 else np.linspace(0, 1, len(rho))
+
+
+class SpectralImportanceSampler:
+    """IMPORTANCE sampler over S(p,E) built from a SpectralFunction's own table -- draws
+    (|p|, removal E) ~ |p|^2 S(p,E) (the physical distribution).  Used to flatten the dominant
+    flat-MC weight variance in the QE/RES integrator (the ADoNIS analog of ACHILLES Vegas): the
+    |p|^2 S factor cancels in the importance weight, so the struck-nucleon contributes only a
+    constant.  norm = sf.norm (S normalized so int |p|^2 n_p 4pi dp = 1)."""
+
+    def __init__(self, sf: SpectralFunction):
+        mom = np.asarray(sf.mom); ne = sf.ne; np_ = sf.np
+        S = (np.asarray(sf.spec).reshape(np_, ne)) / sf.norm     # S(p_j, E_i), normalized
+        S = np.clip(S, 0, None)
+        n_p = S.sum(axis=1) * (sf.energy[1] - sf.energy[0])       # int S dE  (momentum marginal)
+        self.mom = mom; self.energy = np.asarray(sf.energy)
+        self.p_cdf = _trapz_cdf(mom ** 2 * n_p)                   # |p| ~ |p|^2 n_p
+        self.e_cdf = np.stack([_trapz_cdf(S[j]) for j in range(np_)])   # E | p
+
+    def sample(self, n, rng):
+        up = rng.random(n)
+        pj = np.clip(np.searchsorted(self.p_cdf, up), 1, len(self.mom) - 1)
+        c0, c1 = self.p_cdf[pj - 1], self.p_cdf[pj]
+        fr = np.clip((up - c0) / (c1 - c0 + 1e-30), 0, 1)
+        pmag = self.mom[pj - 1] + fr * (self.mom[pj] - self.mom[pj - 1])
+        ue = rng.random(n)
+        def einterp(rows):
+            ei = np.clip(np.array([np.searchsorted(rows[k], ue[k]) for k in range(n)]), 1, len(self.energy) - 1)
+            d0 = rows[np.arange(n), ei - 1]; d1 = rows[np.arange(n), ei]
+            ef = np.clip((ue - d0) / (d1 - d0 + 1e-30), 0, 1)
+            return self.energy[ei - 1] + ef * (self.energy[ei] - self.energy[ei - 1])
+        E_lo = einterp(self.e_cdf[pj - 1]); E_hi = einterp(self.e_cdf[pj])
+        E_rm = (1 - fr) * E_lo + fr * E_hi
+        ct = 2 * rng.random(n) - 1; st = np.sqrt(np.clip(1 - ct ** 2, 0, None)); ph = 2 * np.pi * rng.random(n)
+        pvec = np.stack([pmag * st * np.cos(ph), pmag * st * np.sin(ph), pmag * ct], axis=1)
+        return pvec, E_rm
