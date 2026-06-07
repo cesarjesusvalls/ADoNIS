@@ -89,7 +89,13 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
     I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, m_Nf ** 2), 1e-12, None)
     density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
     J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
-    valid = (s > Smin) & (s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0) & (_sqlam(s23, M_MU ** 2, m_Nf ** 2) > 0)
+    # ACHILLES QESpectralMapper removal-energy ceiling (HadronicMapper.cc:50-53), Smin = 3-body
+    # threshold here.  Without it the importance sampler over-populates the high-|p|/high-E tail.
+    det_e = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
+    emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
+    emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
+    valid = ((s > Smin) & (s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0)
+             & (_sqlam(s23, M_MU ** 2, m_Nf ** 2) > 0) & (energy < emax))
     return dict(k_nu=k_nu, p_struck=p_struck, k_mu=k_mu, p_N=p_N, p_pi=p_pi,
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, Enu=Enu, E_GeV=E_GeV, valid=valid)
 

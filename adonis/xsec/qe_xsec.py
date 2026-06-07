@@ -135,7 +135,15 @@ def sample_importance(n, seed=0, sf=None):
     k_mu = _boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta)
     p_out = _boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta)
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
-    valid = (s > (M_MU + M_P) ** 2) & (lam > 0) & (E_rm > 2.5) & (E_rm < 400)
+    # ACHILLES QESpectralMapper restricts the removal energy to [0, emax]; the importance sampler
+    # draws E_rm from the full spectral grid, so the SAME kinematic ceiling must be imposed or the
+    # high-|p|/high-E tail (-> high delta_pT) is over-populated.  emax = min(mN+E0-sqrt(det),
+    # mN-mom, 400), det = E0^2 + mom^2 + 2 (p.k_nu) + Smin  (HadronicMapper.cc:50-53).
+    mom_s = np.linalg.norm(pvec, axis=1)
+    det_e = Enu ** 2 + mom_s ** 2 + 2 * pvec[:, 2] * Enu + (M_MU + M_P) ** 2
+    emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
+    emax = np.minimum(np.minimum(emax, _MN - mom_s), 400.0)
+    valid = (s > (M_MU + M_P) ** 2) & (lam > 0) & (E_rm > 2.5) & (E_rm < emax)
     d = me_cross_section(jnp.asarray(k_nu), jnp.asarray(k_mu), jnp.asarray(p_struck),
                          jnp.asarray(p_out), spin_avg=0.5, had_mass=MASS_PDG_NEUTRON)
     me = np.asarray(d["me_xsec"])
