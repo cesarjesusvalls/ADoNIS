@@ -120,3 +120,81 @@ def exclusive_amps2(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID):
     L = np.asarray(lepton_current(jnp.asarray(k_nu)[None], jnp.asarray(k_mu)[None]))[0]  # (4,4)
     LH = np.einsum('am,bm,m->ab', L, H, _METRIC)
     return float(np.sum(np.abs(LH) ** 2)) / _NORM
+
+
+# ---- vectorised (batched) version for high-N MC ------------------------------------------ #
+import jax
+from adonis.xsec.dcc_kinematics import boost_matrix_batch, setdfun_batch
+
+_BUILD_ZMTX_V = None
+
+
+def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi):
+    """vmap build_zmtx over the event axis (two_J/two_L/two_I + mode static)."""
+    from adonis.primary.dcc.assembly import build_zmtx as _bz
+    f = lambda v, i, a, w, q: _bz(v, i, a, w, q, _PW_2J, _PW_2L, _PW_2I,
+                                  mode=1, itiz=itiz, m_N=C.mN, m_pi=mpi)
+    return jax.vmap(f)(vec, isv, axial, W, Q2)
+
+
+def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0):
+    """Vectorised exclusive amps2 over a batch of events (all SAME channel: itiz, hPID).
+    Returns amps2 (N,) on the ACHILLES absolute scale (/_NORM)."""
+    k_nu = np.asarray(k_nu, float); k_mu = np.asarray(k_mu, float)
+    p_struck = np.asarray(p_struck, float); p_outN = np.asarray(p_outN, float); p_pi = np.asarray(p_pi, float)
+    N = k_nu.shape[0]; mN = C.mN
+    tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
+    mpi = C.mpi0 if int(hPID) == 111 else 139.57018
+    q = k_nu - k_mu
+    E_on = np.sqrt(np.sum(p_struck[:, 1:] ** 2, axis=1) + mN ** 2)
+    qsh = q.copy(); qsh[:, 0] = q[:, 0] + p_struck[:, 0] - E_on
+    pcm = p_outN + p_pi
+    xlrs = boost_matrix_batch(pcm, to_cm=True); xlr = boost_matrix_batch(pcm, to_cm=False)
+    xk2 = np.einsum('nij,nj->ni', xlrs, p_pi); qx2 = np.einsum('nij,nj->ni', xlrs, qsh)
+    def ang(v3):
+        r = np.linalg.norm(v3, axis=1); cz = v3[:, 2] / r
+        sz = np.sqrt(np.clip(1 - cz ** 2, 0, None))
+        zphi = np.where(sz > 1e-12, (v3[:, 0] + 1j * v3[:, 1]) / (np.where(sz > 1e-12, sz, 1) * r), 1.0 + 0j)
+        return cz, zphi
+    xz_pin, zphi_pin = ang(xk2[:, 1:]); xz_q, zphi_q = ang(qx2[:, 1:])
+    wcm = np.sqrt(np.clip(pcm[:, 0] ** 2 - np.sum(pcm[:, 1:] ** 2, axis=1), 1.0, None))
+    Q2 = np.sum(qsh[:, 1:] ** 2, axis=1) - qsh[:, 0] ** 2
+    dfun, off = setdfun_batch(xz_q, _JMAX)
+    bleg = np.stack([np.asarray(legendre_ylm(_LMAX, z)) for z in xz_pin])     # (N, L+1, 2L+1)
+    vec, isv, axial = _AMP.amplitudes_spline(jnp.asarray(wcm), jnp.asarray(Q2), DCCKnobs())
+    zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, mpi))  # (N,8,npw)
+    tiz = itiz / 2.0; tpinz = tcrz + tiz; tmax = tm_f + 0.5 + _EPS_TPIN
+    IGM1 = (-1, 0, 1, 2)
+    zcrnt = np.zeros((N, 2, 2, 4), complex)
+    for ixi1 in range(1, 9):
+        igm1 = int(ISMI[ixi1]); igm1x = int(ISMIX[ixi1]); lambda_N = -int(ISBI[ixi1])
+        lam_idx = _ISP[lambda_N]; Lambda_i = 2 * igm1x - lambda_N; ig_idx = IGM1.index(igm1)
+        for pw in range(_NPW):
+            jpin = int(_PW_2J[pw]); Lpin = int(_PW_2L[pw]); itpin = int(_PW_2I[pw])
+            tpin = itpin / 2.0; xlpin = Lpin / 2.0; xjpin = jpin / 2.0; llpin = Lpin // 2
+            if not (tpin + _EPS_TPIN > abs(tpinz) and tmax > tpin and jpin >= abs(Lambda_i)):
+                continue
+            cgi = cbg(1.0, tcrz, 0.5, tiz, tpin, tpinz) * cbg(tm_f, tpiz, 0.5, tpinz - tpiz, tpin, tpinz)
+            if cgi == 0:
+                continue
+            zfac = np.sqrt(jpin + 1.0) * cgi * zmtx[:, ixi1 - 1, pw]          # (N,)
+            for isf in (-1, 1):
+                isf_idx = _ISP[isf]; xs = isf / 2.0
+                zzz = np.zeros(N, complex)
+                for mj in range(max(-Lpin + isf, -jpin), min(Lpin + isf, jpin) + 1, 2):
+                    xmj = mj / 2.0; llz = (mj - isf) // 2
+                    if abs(llz) > llpin:
+                        continue
+                    zzz += (cbg(xlpin, xmj - xs, 0.5, xs, xjpin, xmj) * bleg[:, llpin, llz + _LMAX]
+                            * (zphi_pin ** llz) * dfun[:, jpin, mj + off, Lambda_i + off]
+                            * (zphi_q ** ((-mj + Lambda_i) // 2)))
+                zcrnt[:, isf_idx, lam_idx, ig_idx] += zfac * zzz
+    sq = 1.0 / np.sqrt(2.0)
+    zjx = np.zeros((N, 2, 2, 4), complex)
+    zjx[:, :, :, 0] = zcrnt[:, :, :, 1]; zjx[:, :, :, 3] = zcrnt[:, :, :, 3]
+    zjx[:, :, :, 1] = (zcrnt[:, :, :, 0] - zcrnt[:, :, :, 2]) * sq
+    zjx[:, :, :, 2] = (zcrnt[:, :, :, 0] + zcrnt[:, :, :, 2]) * sq * 1j
+    zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)              # (N, combo, mu)
+    L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_mu)))    # (N,4,4)
+    LH = np.einsum('ncm,nbm,m->ncb', L, zj, _METRIC)
+    return np.sum(np.abs(LH) ** 2, axis=(1, 2)) / _NORM
