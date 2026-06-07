@@ -33,12 +33,20 @@ def parse_stv(fname):
 
 
 def hist_shape(x, w, edges):
-    """area-normalised dsigma/dx on the given edges (= shape)."""
+    """Area-normalised dsigma/dx AND its per-bin MC stat error (shape/sqrt(Neff_bin)).
+
+    Neff_bin = (Sigma w)^2/Sigma(w^2); the relative error sqrt(Sigma w^2)/Sigma w rides
+    straight through the global area rescale.  Returns (shape, abs_error)."""
     h, _ = np.histogram(x, bins=edges, weights=w)
+    h2, _ = np.histogram(x, bins=edges, weights=w ** 2)
     width = np.diff(edges)
     dens = h / width
     area = np.sum(dens * width)
-    return dens / area if area > 0 else dens
+    if area <= 0:
+        return dens, np.zeros_like(dens)
+    shp = dens / area
+    rel = np.sqrt(h2) / np.clip(h, 1e-300, None)
+    return shp, shp * rel
 
 
 OBS = [
@@ -61,14 +69,15 @@ for j, o in enumerate(OBS):
     # normalise data to unit area (shape)
     area = np.sum(dval * width); dval_n, derr_n = dval / area, derr / area
     xa = ach[o["key"]] * o["conv"]; xd = ado[o["key"]] * o["conv"]; xd0 = ado0[o["key"]] * o["conv"]
-    sa = hist_shape(xa, ach["w"], edges)
-    sd = hist_shape(xd, ado["w"], edges)
-    sd0 = hist_shape(xd0, ado0["w"], edges)
+    sa, sa_e = hist_shape(xa, ach["w"], edges)
+    sd, sd_e = hist_shape(xd, ado["w"], edges)
+    sd0, _ = hist_shape(xd0, ado0["w"], edges)
 
-    def chi2(model):
-        good = derr_n > 0
-        return float(np.sum(((model[good] - dval_n[good]) / derr_n[good]) ** 2)), int(good.sum())
-    c2a, nd = chi2(sa); c2d, _ = chi2(sd)
+    def chi2(model, merr):
+        """chi2 vs data folding BOTH data and model (MC) stat errors into the denominator."""
+        good = derr_n > 0; denom = derr_n[good] ** 2 + merr[good] ** 2
+        return float(np.sum((model[good] - dval_n[good]) ** 2 / denom)), int(good.sum())
+    c2a, nd = chi2(sa, sa_e); c2d, _ = chi2(sd, sd_e)
 
     ax.errorbar(cen, dval_n, yerr=derr_n, xerr=width / 2, fmt="o", color="k", ms=4, capsize=2, label="T2K data")
     ax.step(cen, sa, where="mid", color="0.4", lw=1.8, label=f"ACHILLES (χ²/ndf={c2a/max(nd,1):.1f})")
@@ -78,12 +87,18 @@ for j, o in enumerate(OBS):
                  fontsize=9); ax.set_ylim(bottom=0)
     if j == 0:
         ax.set_ylabel(r"$(1/\sigma)\,d\sigma/dx$"); ax.legend(fontsize=7)
-    axr.axhspan(1 - 0, 1 + 0, color="0.9")
-    axr.errorbar(cen, dval_n / np.clip(sd, 1e-12, None), yerr=derr_n / np.clip(sd, 1e-12, None),
-                 fmt="o", color="tab:red", ms=3)
+    # closure metric: ACHILLES/ADoNIS per-bin ratio with propagated MC stat errors (+/-3% band)
+    sac = np.clip(sa, 1e-12, None); sdc = np.clip(sd, 1e-12, None)
+    rca = sa / sdc
+    rca_e = rca * np.sqrt((sa_e / sac) ** 2 + (sd_e / sdc) ** 2)
+    axr.axhspan(0.97, 1.03, color="tab:green", alpha=0.15)
+    axr.step(cen, rca, where="mid", color="tab:red", lw=1.5)
+    axr.errorbar(cen, rca, yerr=rca_e, fmt="o", color="tab:red", ms=3, capsize=2, lw=1)
     axr.axhline(1, ls="--", color="0.5"); axr.set_ylim(0.3, 1.9); axr.set_xlabel(o["label"])
+    miss = np.abs(rca - 1) - rca_e > 0.03
+    axr.set_title(f"max|r-1|={100*np.max(np.abs(rca-1)):.0f}%  ({int(miss.sum())} off>3σ)", fontsize=8)
     if j == 0:
-        axr.set_ylabel("data/ADoNIS")
+        axr.set_ylabel("ACHILLES / ADoNIS")
 fig.suptitle("Fig 8 — T2K CC1π⁺ STV (CH): data vs ACHILLES vs ADoNIS (spectral-fn + real pion & "
              "nucleon FSI; area-normalised shapes)", fontsize=10)
 fig.tight_layout()
