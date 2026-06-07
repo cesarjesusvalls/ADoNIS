@@ -36,7 +36,7 @@ def _cc0pi(mu, lead, w):
 
 
 def qe_sample(n, seed):
-    r = qe_xsec.generate(n, seed=seed)
+    r = qe_xsec.sample_importance(n, seed=seed)                  # importance-sampled (low variance)
     w = np.asarray(r["w"]) / n                                   # per-event absolute nb
     k_mu = np.asarray(r["k_mu"]); p_out = np.asarray(r["p_out"]); p_str = np.asarray(r["p_struck"])
     z = jnp.zeros((len(w), 4))
