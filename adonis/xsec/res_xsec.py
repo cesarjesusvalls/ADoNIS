@@ -97,12 +97,14 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, Enu=Enu, E_GeV=E_GeV, valid=valid)
 
 
-def generate(n=20000, seed=0):
+def generate(n=20000, seed=0, return_events=False):
     rng = np.random.default_rng(seed)
     flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     sf = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
     out = {}; sig = 0.0
+    ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid")}
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
+        Npid = 2212 if mNf == M_P else 2112
         s = _sample_channel(n, rng, flux, minE, maxE, mpi, mNf)
         v = s["valid"]
         iw = N_NUC * sf.batch(s["mom"], s["energy"])
@@ -115,7 +117,17 @@ def generate(n=20000, seed=0):
         w = np.where(v, a2 * fl * iw * SPIN_AVG * s["J"], 0.0)
         w = np.where(np.isfinite(w) & (a2 > 0), w, 0.0)
         sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc
+        if return_events:
+            keep = w > 0
+            ev["k_nu"].append(s["k_nu"][keep]); ev["k_mu"].append(s["k_mu"][keep])
+            ev["p_struck"].append(s["p_struck"][keep]); ev["p_N"].append(s["p_N"][keep])
+            ev["p_pi"].append(s["p_pi"][keep])
+            # weight per event so that sum(w_event) over the sampled set = sigma_channel
+            ev["w"].append(w[keep] / n)
+            ev["ppid"].append(np.full(keep.sum(), ppid)); ev["Npid"].append(np.full(keep.sum(), Npid))
     out["sigma"] = sig
+    if return_events:
+        out["events"] = {k: np.concatenate(ev[k]) if ev[k] else np.empty((0,)) for k in ev}
     return out
 
 
