@@ -30,10 +30,14 @@ def shape(x, w, edges):
 
 
 ach = np.load(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_achilles.npz")
-# ADoNIS CC0pi = CCQE + RES-with-pion-absorbed (the faithful ACHILLES composition, set by the two
-# absolute cross sections, NOT a fitted fraction).  Falls back to pure-CCQE if combined absent.
-_comb = ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_combined.npz"
-ado = np.load(_comb) if _comb.exists() else np.load(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_fsi.npz")
+# ADoNIS CC0pi = bit-exact spectral-fn QE + RES-with-pion-absorbed (adonis/xsec), each at its OWN
+# first-principles absolute nb weight (sigma_QE, sigma_RES) -- the faithful ACHILLES composition,
+# NOT a fitted fraction.  Falls back to the older combined/CCQE samples if the xsec one is absent.
+for _name in ("t2k_cc0pi_tki_adonis_xsec.npz", "t2k_cc0pi_tki_adonis_combined.npz",
+              "t2k_cc0pi_tki_adonis_fsi.npz"):
+    _p = ROOT / "data" / "oracle" / _name
+    if _p.exists():
+        ado = np.load(_p); break
 ado0 = np.load(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_nofsi.npz")
 
 PANELS = [
