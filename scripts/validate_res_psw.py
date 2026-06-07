@@ -182,3 +182,25 @@ def test_res_psw_bit_exact():
     rel = np.array(rel)
     assert np.median(rel) < 1e-9, f"RES psw median rel {np.median(rel):.2e}"
     assert rel.max() < 1e-7, f"RES psw max rel {rel.max():.2e}"
+
+
+def test_res_initwgt_bit_exact():
+    """initwgt = N_nucleon * S(|p|, removal) reproduces the RESDUMP bit-exactly."""
+    from adonis.xsec.spectral import SpectralFunction
+    sfn = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
+    sfp = SpectralFunction("data/Spectral_Functions/pke12p_tot.data")
+    path = Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"
+    rel = []
+    for ln in path.read_text().splitlines():
+        if not ln.startswith("RESDUMP"):
+            continue
+        d = dict(t.split("=", 1) for t in ln.split() if "=" in t)
+        hiID = int(d["hiID"]); iw_ach = float(d["initwgt"])
+        hi = np.array([float(d["hiE"]), *[float(x) for x in d["hi"].split(",")]])
+        if iw_ach == 0:
+            continue
+        p = np.linalg.norm(hi[1:]); removal = MN - hi[0]
+        sf = sfn if hiID == 2112 else sfp
+        rel.append(abs(6.0 * sf(p, removal) - iw_ach) / abs(iw_ach))
+    rel = np.array(rel)
+    assert rel.max() < 1e-12, f"initwgt max rel {rel.max():.2e}"
