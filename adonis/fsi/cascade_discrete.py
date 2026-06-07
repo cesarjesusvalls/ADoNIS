@@ -250,7 +250,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     ar = jnp.arange(n)
 
     def body(carry, sk):
-        pos, p_N, dhat, alive, nsc, consumed, best_ko = carry
+        pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos = carry
         outward = jnp.sum(pos * dhat, axis=1) > 0
         alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
         rel = npos - pos[:, None, :]
@@ -288,18 +288,19 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         bg_proton = nisp[ar, j]
         ko_better = do & bg_proton & (jnp.linalg.norm(recoil[:, 1:], axis=1) > jnp.linalg.norm(best_ko[:, 1:], axis=1))
         best_ko = jnp.where(ko_better[:, None], recoil, best_ko)
+        best_ko_pos = jnp.where(ko_better[:, None], npos[ar, j], best_ko_pos)   # knockout production vertex
         p_N = jnp.where(do[:, None], p_out, p_N)
         nsc = nsc + do.astype(jnp.int32)
         consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & do[:, None])
         d3 = p_N[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
         pos = pos + cfg.step * dhat * alive[:, None]
-        return (pos, p_N, dhat, alive, nsc, consumed, best_ko), None
+        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos), None
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
-            jnp.zeros((n, A), bool), jnp.zeros((n, 4)))
-    (pos, p_N, dhat, alive, nsc, consumed, best_ko), _ = jax.lax.scan(body, init, keys)
-    return p_N, nsc, best_ko
+            jnp.zeros((n, A), bool), jnp.zeros((n, 4)), jnp.zeros((n, 3)))
+    (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos), _ = jax.lax.scan(body, init, keys)
+    return p_N, nsc, best_ko, best_ko_pos
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key):
@@ -324,10 +325,21 @@ class DiscreteNucleonFSI:
         vtx = jax.random.randint(kv, (n,), 0, A)
         pos0 = npos[jnp.arange(n), vtx]
         isp0 = jnp.asarray(np.asarray(event.pid_N) == 2212)
-        p_N, nsc, best_ko = propagate_nucleon_discrete(pos0, event.p_N, isp0, npos, nmom, nisp,
-                                                       self.cfg, kp)
-        # leading proton = highest-momentum of {primary (after FSI), knocked-out proton}, matching
-        # the analysis HMFSParticle/GetProtonInRange selection (ACHILLES adds the knock-out to FS)
-        ko_lead = jnp.linalg.norm(best_ko[:, 1:], axis=1) > jnp.linalg.norm(p_N[:, 1:], axis=1)
-        lead = jnp.where(ko_lead[:, None], best_ko, p_N)
+        p_N, nsc, best_ko, best_ko_pos = propagate_nucleon_discrete(pos0, event.p_N, isp0, npos,
+                                                                    nmom, nisp, self.cfg, kp)
+        # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
+        # Re-propagate the leading knockout through the same background; its final state can be the
+        # leading proton.  (One secondary generation -- the dominant multi-nucleon contribution.)
+        kp2 = jax.random.fold_in(kp, 99)
+        has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
+        ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
+        isp_ko = jnp.ones(n, bool)                                       # knockout proton
+        ko_f, _, ko_ko, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+                                                       nisp, self.cfg, kp2)
+        ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))
+        ko_ko = jnp.where(has_ko[:, None], ko_ko, jnp.zeros((n, 4)))     # 2nd-gen knockout proton
+        # leading proton = highest-momentum proton among {primary, re-cascaded knockout, 2nd-gen ko}
+        cands = jnp.stack([p_N, ko_f, ko_ko], axis=1)                   # (n,3,4)
+        mom = jnp.linalg.norm(cands[:, :, 1:], axis=2)                  # (n,3)
+        lead = cands[jnp.arange(n), jnp.argmax(mom, axis=1)]
         return event._replace(p_N=lead)
