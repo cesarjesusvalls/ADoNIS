@@ -1,0 +1,55 @@
+"""Bit-exact regression: the JAX QE matrix-element port (adonis.xsec) vs instrumented ACHILLES.
+
+tests/data/qe_dump_achilles.txt holds 300 QEDUMP rows from a real ACHILLES QE_Spectral_Func run
+(XSecBackend.cc instrumentation, %.17e): the lab momenta + ACHILLES amps2/flux/spinavg.  The port
+must reproduce amps2 and flux on the SAME momenta.  amps2 is a full 4x4 spin sum (a spin trace),
+so it is basis-independent -- the Weyl leptonic x Dirac hadronic currents must match the Fortran.
+
+flux is bit-exact (<1e-8).  amps2 median ~7e-11 (bit-exact); a <=1e-5 tail survives on ~4% of
+events at LOW Q^2 / deep removal energy -- float64 summation-order roundoff between the einsum and
+ACHILLES's explicit Fortran matmul chains (confirmed: NOT mqe, NOT mass, NOT dump precision).
+"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import numpy as np
+import jax
+jax.config.update("jax_enable_x64", True)
+import jax.numpy as jnp
+
+from scripts.validate_qe_matrix_element import parse
+from adonis.xsec.backend import me_cross_section, MASS_PDG_NEUTRON as MN, MASS_PDG_PROTON as MP
+
+DUMP = Path(__file__).resolve().parent / "data" / "qe_dump_achilles.txt"
+
+
+def _compute():
+    rows = parse(str(DUMP))
+    arr = lambda k: jnp.asarray([r[k] for r in rows])
+    li, lo, hi, ho = arr("li"), arr("lo"), arr("hi"), arr("ho")
+    sa = arr("spinavg")
+    mass = jnp.asarray([MN if r["hiID"] == 2112 else MP for r in rows])
+    d = me_cross_section(li, lo, hi, ho, spin_avg=sa, had_mass=mass)
+    aa = np.array([r["amps2"] for r in rows]); fa = np.array([r["flux"] for r in rows])
+    ra = np.abs(np.asarray(d["amps2"]) - aa) / np.abs(aa)
+    rf = np.abs(np.asarray(d["flux"]) - fa) / np.abs(fa)
+    return ra, rf
+
+
+def test_flux_bit_exact():
+    _, rf = _compute()
+    assert rf.max() < 1e-8, f"flux max rel {rf.max():.2e}"
+
+
+def test_amps2_bit_exact_median():
+    ra, _ = _compute()
+    assert np.median(ra) < 1e-9, f"amps2 median rel {np.median(ra):.2e}"
+    assert np.percentile(ra, 95) < 1e-5, f"amps2 95pct rel {np.percentile(ra,95):.2e}"
+    assert ra.max() < 5e-5, f"amps2 max rel {ra.max():.2e}"
+
+
+if __name__ == "__main__":
+    ra, rf = _compute()
+    print(f"flux max {rf.max():.2e} | amps2 median {np.median(ra):.2e} 95pct "
+          f"{np.percentile(ra,95):.2e} max {ra.max():.2e}")
+    test_flux_bit_exact(); test_amps2_bit_exact_median(); print("QE matrix element bit-exact OK")

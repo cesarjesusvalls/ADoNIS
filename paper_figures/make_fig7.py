@@ -30,7 +30,10 @@ def shape(x, w, edges):
 
 
 ach = np.load(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_achilles.npz")
-ado = np.load(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_fsi.npz")
+# ADoNIS CC0pi = CCQE + RES-with-pion-absorbed (the faithful ACHILLES composition, set by the two
+# absolute cross sections, NOT a fitted fraction).  Falls back to pure-CCQE if combined absent.
+_comb = ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_combined.npz"
+ado = np.load(_comb) if _comb.exists() else np.load(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_fsi.npz")
 ado0 = np.load(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_nofsi.npz")
 
 PANELS = [
@@ -50,6 +53,10 @@ for j, pn in enumerate(PANELS):
     def chi2(m):
         g = en > 0; return float(np.sum(((m[g] - dn[g]) / en[g]) ** 2)), int(g.sum())
     c2a, nd = chi2(sa); c2d, _ = chi2(sd)
+    rab = sd / np.clip(sa, 1e-12, None)                 # ADoNIS/ACHILLES per-bin ratio (THE metric)
+    print(f"[{pn['key']}] ADoNIS/ACHILLES per-bin ratio:", np.array2string(rab, precision=3))
+    print(f"   max|r-1| = {100*np.max(np.abs(rab-1)):.1f}%  "
+          f"({'PASS <3%' if np.max(np.abs(rab-1))<0.03 else 'FAIL'})")
     ax.errorbar(cen, dn, yerr=en, xerr=width / 2, fmt="o", color="k", ms=4, capsize=2, label="T2K data")
     ax.step(cen, sa, where="mid", color="0.4", lw=1.8, label="ACHILLES")
     ax.step(cen, sd, where="mid", color="tab:blue", lw=2, label="ADoNIS+FSI")

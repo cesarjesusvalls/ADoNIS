@@ -88,7 +88,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     ar = jnp.arange(n)
 
     def body(carry, sk):
-        pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed = carry
+        pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs = carry
         # escape: outward-moving pion past the radius
         outward = jnp.sum(pos * dhat, axis=1) > 0
         alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
@@ -115,7 +115,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         sig = sa + ss                                                # mb
 
         prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
-        sk, ku, kc, kf, ka = jax.random.split(sk, 5)
+        sk, ku, kc, kf, ka, kab = jax.random.split(sk, 6)
         passes = in_slab & (jax.random.uniform(ku, (n, A)) < prob)
         big = jnp.where(passes, perp2, jnp.inf)
         j = jnp.argmin(big, axis=1)
@@ -124,6 +124,36 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         sa_j = sa[ar, j]; sig_j = sig[ar, j]; W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
         p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)
         is_abs = has_hit & (jax.random.uniform(kc, (n,)) < p_abs)
+
+        # ----- pion ABSORPTION final state (ACHILLES PionAbsorption::GenerateMomentum) -----
+        # piNN -> NN: pion + struck nucleon j + closest background nucleon (FindClosest is by
+        # distance to the struck nucleon); 2 outgoing nucleons isotropic in the 3-body CM.
+        d2 = jnp.sum((npos - npos[ar, j][:, None, :]) ** 2, axis=2)             # (n,A)
+        d2 = jnp.where((jnp.arange(A)[None, :] == j[:, None]) | consumed, jnp.inf, d2)
+        pj = jnp.argmin(d2, axis=1)                                            # partner index
+        pN_p = nmom[ar, pj]
+        qpi = 1 - ch                                                           # 0:pi+ ->+1, 2:pi- ->-1
+        nprot_out = qpi + nisp[ar, j].astype(jnp.int32) + nisp[ar, pj].astype(jnp.int32)
+
+        def abs_one(p_pi_i, pNj_i, pNp_i, npr, k):
+            P = p_pi_i + pNj_i + pNp_i
+            s = P[0] ** 2 - jnp.sum(P[1:] ** 2)
+            sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
+            Estar = sqrts / 2.0
+            pstar = jnp.sqrt(jnp.clip(Estar ** 2 - M_N ** 2, 0.0, None))
+            k1, k2, k3 = jax.random.split(k, 3)
+            cth = 2.0 * jax.random.uniform(k1) - 1.0
+            sth = jnp.sqrt(jnp.clip(1 - cth ** 2, 0.0, None)); phi = 2 * jnp.pi * jax.random.uniform(k2)
+            dirn = jnp.array([sth * jnp.cos(phi), sth * jnp.sin(phi), cth])
+            beta = P[1:] / P[0]
+            pa = _boost(jnp.concatenate([Estar[None], pstar * dirn]), beta)
+            pb = _boost(jnp.concatenate([Estar[None], -pstar * dirn]), beta)
+            ma = jnp.linalg.norm(pa[1:]); mb = jnp.linalg.norm(pb[1:])
+            faster = jnp.where(ma >= mb, pa, pb)
+            one_p = jnp.where(jax.random.uniform(k3) < 0.5, pa, pb)            # which of the two is p
+            return jnp.where(npr >= 2, faster, jnp.where(npr == 1, one_p, jnp.zeros(4)))
+        abs_lead = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out, jax.random.split(kab, n))
+        best_abs = jnp.where(is_abs[:, None], abs_lead, best_abs)             # one absorption / pion
 
         # scatter: out-pion charge ~ sig_io[j], DCC angle, Pauli-block recoil
         sig_io_j = sig_io.reshape(n, A, 3)[ar, j]
@@ -150,18 +180,20 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
         d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
         pos = pos + cfg.step * dhat * alive[:, None]
-        return (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed), None
+        return (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), None
 
     dhat0 = p_pi0[:, 1:] / jnp.clip(jnp.linalg.norm(p_pi0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
-            jnp.zeros(n, jnp.int32), jnp.zeros((n, A), bool))
-    (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed), _ = jax.lax.scan(body, init, keys)
-    return p_pi, ch, absorbed, nsc
+            jnp.zeros(n, jnp.int32), jnp.zeros((n, A), bool), jnp.zeros((n, 4)))
+    (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), _ = jax.lax.scan(body, init, keys)
+    return p_pi, ch, absorbed, nsc, best_abs
 
 
 def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key):
     """Discrete-Glauber transport of a batch of pions through explicit nucleons.
-    Returns (p_pi (N,4), charge_idx (N,), absorbed (N,), n_scatter (N,))."""
+    Returns (p_pi (N,4), charge_idx (N,), absorbed (N,), n_scatter (N,), abs_lead_p (N,4)).
+    abs_lead_p is the leading absorption PROTON 4-momentum for absorbed events (piNN->NN), zeros
+    otherwise -- this is what populates the CC0pi high-delta_pT tail."""
     _load_density(cfg.nucleus); cascade_mb._jax_grids(); cascade_mb._build_angular()
     return _propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key)
 
@@ -190,8 +222,10 @@ class DiscreteCascadeFSI:
         vtx = jax.random.randint(kv, (n,), 0, A)
         pos0 = npos[jnp.arange(n), vtx]
         ch0 = jnp.asarray([_PID_TO_CH.get(int(p), 1) for p in np.asarray(event.pid_pi)], dtype=jnp.int32)
-        p_pi, ch, absorbed, nsc = propagate_discrete(pos0, event.p_pi, ch0, npos, nmom, nisp,
-                                                     self.cfg, kp)
+        p_pi, ch, absorbed, nsc, abs_lead = propagate_discrete(pos0, event.p_pi, ch0, npos, nmom,
+                                                               nisp, self.cfg, kp)
+        self.last_abs_proton = abs_lead          # leading absorption proton (piNN->NN), for CC0pi
+        self.last_absorbed = absorbed
         keep = (~absorbed)[:, None]
         return event._replace(p_pi=p_pi * keep, pid_pi=jnp.where(absorbed, 0, _CH_PID[ch]))
 
