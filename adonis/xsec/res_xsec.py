@@ -53,11 +53,15 @@ def _boost_to_lab(p4cm, P):
 def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
     """Vectorised sampling of n RES events for one channel.  Returns dict of arrays + validity."""
     u = rng.random((n, 10))
+    Smin = (M_MU + m_Nf + m_pi) ** 2
+    # BeamMapper seed is PROCESS-dependent: (Smin - Masses()[1])/(2 sqrt(Masses()[1])), Masses()[1]
+    # = final-nucleon mass^2 (BeamMapper.cc).  For RES this is higher than the QE seed -> use it
+    # per channel (validated bit-exact vs RESDUMP psw, scripts/validate_res_psw.py).
+    minE = max((Smin - m_Nf ** 2) / (2 * m_Nf) / 1000.0, flux.min_energy)
     dE_beam = maxE - minE
     E_GeV = u[:, 4] * dE_beam + minE; Enu = E_GeV * 1000.0
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
     J_beam = (dE_beam * flux.f(E_GeV)) / flux.flux_integral
-    Smin = (M_MU + m_Nf + m_pi) ** 2
     pvec, energy = _IMP.sample(n, rng)                          # importance: |p|^2 S (low variance)
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)

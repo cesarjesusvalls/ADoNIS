@@ -114,27 +114,42 @@ Samples `(|p|, cosθ, φ, E_removal)` of the bound nucleon. Weight = the `d³p d
 
 ### 5c. Final state μNπ — `ThreeBodyMapper` (`FinalStateMapper.cc:79-147`)
 
-This is the structurally important piece. `s = (p_struck + k_ν)²`, masses `s2=m_N², s3=m_π²,
-s4=m_μ²`.
+This is the structurally important piece. `s = (k_ν + p_struck)²`. **`ProcessInfo::Masses()` is
+lepton-first** (`ProcessInfo.cc:11`: leptonic.second THEN hadronic.second), so the mapper masses are
+`s2 = m_μ², s3 = m_N², s4 = m_π²`.
 
-**Grouping: (Nπ) together as the hadronic mass, μ split off.**
+**Grouping: (μN) together, the PION split off via the t-channel.** (Earlier drafts of this doc had
+this backwards — the lepton-first `Masses()` ordering is decisive, and it is now confirmed
+bit-exact, see below.)
 ```
-s23 = M(Nπ)² = W²                                                    (FinalStateMapper.cc:96)
-s23 ∈ [ (m_N+m_π)² , (√s − m_μ)² ]   sampled UNIFORM in s23           (:89-90, :96)
-TChannelMomenta( total → (Nπ-system) + μ )      t-channel sampling    (:100)
-Isotropic2Momenta( (Nπ-system) → N + π )        isotropic in Nπ frame (:102)
+s23 = M(μN)² = s2,s3 grouped                                         (FinalStateMapper.cc:96)
+s23 ∈ [ (m_μ+m_N)² , (√s − m_π)² ]   sampled UNIFORM in s23           (:89-90, :96)
+TChannelMomenta( total → (μN-system) + π )   t-channel on the lepton  (:100)
+Isotropic2Momenta( (μN-system) → μ + N )     isotropic in μN frame    (:102)
 ```
+PSMapper also orders momenta lepton-first (`PSMapper.cc:20`), so in `TChannelWeight(mom[0], mom[1],
+mom[2]+mom[3], mom[4])` we have **p1in = ν, p2in = struck N, p1out = (μN), p2out = π**.
 
 **Weight** (`GenerateWeight`, `:113-147`):
 ```
-GenerateWeight = (2π)^5 · TChannelWeight · Isotropic2Weight / (s23_max − s23_min)
+ThreeBodyGenerateWeight = (2π)^5 · TChannelWeight · Isotropic2Weight / (s23_max − s23_min)
 ```
 with (full angular range ctmin=−1, ctmax=+1):
 - `Isotropic2Weight = (2/π)·(s/√λ)·2/(ctmax−ctmin)`  (`:337-350`, `SqLam = √λ_Källén / s`)
-- `TChannelWeight` = t-channel propagator density (`:281-335`).
+- `TChannelWeight` = t-channel propagator density (`:281-335`); `t_mass=0`, `ctexp=m_alpha=0.9`,
+  `m_amct=1`, `ctmin/ctmax=∓1`.
 
-The event weight contributed by this mapper is the **forward Jacobian**
-`(s23_max−s23_min) / [(2π)^5 · TChannelWeight · Isotropic2Weight]`.
+### 5d. Beam seed is PROCESS-dependent (`BeamMapper.cc:9,19`)
+The neutrino energy is sampled starting at `(Smin − Masses()[1])/(2·√Masses()[1])`, with
+`Masses()[1] = m_N²` (final nucleon). For RES this seed is ~0.16 GeV higher than for QE (the extra
+pion threshold), so the beam Jacobian `dE = E_max − E_seed` differs by ~0.5 %.
+
+### 5e. The whole `event.Weight()` is now reproduced BIT-EXACTLY
+`event.Weight() = 1 / (lbeam·hbeam·main GenerateWeight)` (`Integrand.hh:90-95`, Vegas weight = 1 in
+the instrumentation run) `= J_beam · J_had · (1/ThreeBodyGenerateWeight)`. The Python port
+(`scripts/validate_res_psw.py`, `tests/test_xsec_res_psw.py`) reproduces the 300-event RESDUMP `psw`
+to **median 1.4·10⁻¹⁴, max 7·10⁻¹¹** — i.e. the ACHILLES RES phase-space weight is now an exact,
+tested ADoNIS function.
 
 ### 2-body anchor (QE, validated)
 For comparison, the QE `TwoBodyMapper::GenerateWeight` (`:53-77`) gives forward Jacobian

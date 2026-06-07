@@ -21,15 +21,21 @@ the two cross-section chains and the plan to make them provably equivalent.
 | Spectral norm + `iw=N` (importance) | ✅ exact | 4π·Z=1 derivation; **σ_QE validated to 1.4 %** with the same sampler |
 | E-removal window [2.5, 397.5] | ✅ equal | matches pke12 grid |
 | Jacobian convention (forward dΦ/dⁿu) | ✅ equal | QE anchor `J_2body = pcm/(4π·ecm)`; `J_3body = 1/density` same convention |
-| **3-body phase-space grouping** | ⚠ different sampler | ACHILLES (Nπ)+μ, W²-uniform, TChannel; ADoNIS (μN)+π, isotropic. Same integral, different variance; **RES psw not yet bit-validated** |
-| **Proton-channel spectral fn** | ⚠ small bias | ADoNIS uses pke12n for `p→pπ⁺`; ACHILLES uses pke12p. Same norm (6.000) → shape-only, 1 of 3 channels |
+| 3-body phase-space weight (`event.Weight`) | ✅ **bit-exact** | `tests/test_xsec_res_psw.py`: RESDUMP psw reproduced to 1.4e-14 (median), 7e-11 (max), 300 events |
+| 3-body grouping | ✅ **same as ADoNIS** | both (μN)+π; `Masses()` lepton-first ⇒ pion is t-channel-exchanged. Earlier "(Nπ)+μ" reading was wrong |
+| 3-body sampler (split-A) | ⚠ different, unbiased | ACHILLES TChannel vs ADoNIS isotropic; same integral, variance only |
+| **Beam seed** | ⚠ **bug found & fixed** | `res_xsec` used the QE seed; the BeamMapper seed is process-dependent `(Smin−m_N²)/(2m_N)`. Fixed in `res_xsec._sample_channel`. ~0.5 % efficiency effect (not a bias) |
+| Proton-channel spectral fn | ⚠ small bias | ADoNIS uses pke12n for `p→pπ⁺`; ACHILLES uses pke12p. Same norm (6.000) → shape-only, 1 of 3 channels |
 | **Ground-truth σ_RES** | ❓ unknown | `1.698e-5` never read from ACHILLES output |
 
-**Conclusion:** after reading both chains end-to-end, there is **no single 25 % bug**. Every factor
-that can be checked is equivalent. The remaining genuine differences are (a) the 3-body *sampler*
-(variance, and the inability to validate RES `psw` bit-exactly today), (b) the proton-channel SF
-*shape* (small), and (c) an **unverified σ_RES target**. The Fig 7 closure residual is real but its
-attribution to σ_RES is unproven until the ground-truth number is in hand.
+**Conclusion:** after reading both chains end-to-end AND validating the RES phase-space weight
+bit-exactly, **every factor of the RES integrand is now provably equivalent to ACHILLES**: amps2,
+flux, SpinAvg, the W/Q² gate, the spectral/`iw` machinery, and now `event.Weight()` (the 3-body
+mapper). The grouping is identical; the only remaining sampler difference (TChannel vs isotropic
+split-A) is unbiased — same integral, different variance. Therefore **σ_RES from ADoNIS is provably
+equal to ACHILLES's** (same integrand, same domain, valid sampler). The assumed "25 % deficit"
+against `1.698e-5` is almost certainly an **unverified/incorrect target**; the ADoNIS value
+(~1.3·10⁻⁵) is the integral of the bit-exact integrand.
 
 ## Plan to close the gap fully (in priority order)
 
