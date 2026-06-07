@@ -25,8 +25,22 @@ def load_root(fname):
 
 
 def shape(x, w, edges):
-    h, _ = np.histogram(x, bins=edges, weights=w); wd = np.diff(edges)
-    d = h / wd; s = np.sum(d * wd); return d / s if s > 0 else d
+    """Area-normalised shape AND its per-bin statistical error.
+
+    A weighted histogram bin has variance Sigma(w^2); the effective count is
+    Neff_bin = (Sigma w)^2 / Sigma(w^2) so the *relative* stat error on the bin is
+    sqrt(Sigma w^2)/Sigma w = 1/sqrt(Neff_bin).  Area-normalisation is a global
+    rescale, so it carries that relative error straight onto the shape:
+    err_bin = shape_bin / sqrt(Neff_bin).  Returns (shape, abs_error)."""
+    h, _ = np.histogram(x, bins=edges, weights=w)
+    h2, _ = np.histogram(x, bins=edges, weights=w ** 2)         # Sigma w^2 per bin
+    wd = np.diff(edges)
+    d = h / wd; s = np.sum(d * wd)
+    if s <= 0:
+        return d, np.zeros_like(d)
+    shp = d / s
+    rel = np.sqrt(h2) / np.clip(h, 1e-300, None)                # 1/sqrt(Neff_bin)
+    return shp, shp * rel
 
 
 ach = np.load(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_achilles.npz")
@@ -52,11 +66,13 @@ for j, pn in enumerate(PANELS):
     cen = 0.5 * (edges[1:] + edges[:-1]); width = np.diff(edges)
     area = np.sum(dval * width); dn, en = dval / area, derr / area
     xa = ach[pn["key"]] * pn["conv"]; xd = ado[pn["key"]] * pn["conv"]; xd0 = ado0[pn["key"]] * pn["conv"]
-    sa = shape(xa, ach["w"], edges); sd = shape(xd, ado["w"], edges); sd0 = shape(xd0, ado0["w"], edges)
+    sa, sa_e = shape(xa, ach["w"], edges); sd, sd_e = shape(xd, ado["w"], edges); sd0, _ = shape(xd0, ado0["w"], edges)
 
-    def chi2(m):
-        g = en > 0; return float(np.sum(((m[g] - dn[g]) / en[g]) ** 2)), int(g.sum())
-    c2a, nd = chi2(sa); c2d, _ = chi2(sd)
+    def chi2(m, me):
+        """chi2 vs data folding BOTH data and model (MC) stat errors into the denominator."""
+        g = en > 0; denom = en[g] ** 2 + me[g] ** 2
+        return float(np.sum((m[g] - dn[g]) ** 2 / denom)), int(g.sum())
+    c2a, nd = chi2(sa, sa_e); c2d, _ = chi2(sd, sd_e)
     rab = sd / np.clip(sa, 1e-12, None)                 # ADoNIS/ACHILLES per-bin ratio (THE metric)
     print(f"[{pn['key']}] ADoNIS/ACHILLES per-bin ratio:", np.array2string(rab, precision=3))
     print(f"   max|r-1| = {100*np.max(np.abs(rab-1)):.1f}%  "
@@ -69,14 +85,19 @@ for j, pn in enumerate(PANELS):
     ax.set_ylim(bottom=0)
     if j == 0:
         ax.set_ylabel(r"$(1/\sigma)\,d\sigma/dx$"); ax.legend(fontsize=8)
-    # THE acceptance criterion: ACHILLES / ADoNIS per-bin ratio (target 1 +/- 3%)
-    rca = sa / np.clip(sd, 1e-12, None)
+    # THE acceptance criterion: ACHILLES / ADoNIS per-bin ratio (target 1 +/- 3%).
+    # Error propagated from BOTH MC samples: r*sqrt((sa_e/sa)^2 + (sd_e/sd)^2).
+    sac = np.clip(sa, 1e-12, None); sdc = np.clip(sd, 1e-12, None)
+    rca = sa / sdc
+    rca_e = rca * np.sqrt((sa_e / sac) ** 2 + (sd_e / sdc) ** 2)
     axr.axhspan(0.97, 1.03, color="tab:green", alpha=0.15)          # +/-3% band
     axr.step(cen, rca, where="mid", color="tab:blue", lw=1.8)
-    axr.plot(cen, rca, "o", color="tab:blue", ms=3)
+    axr.errorbar(cen, rca, yerr=rca_e, fmt="o", color="tab:blue", ms=3, capsize=2, lw=1)
     axr.axhline(1, ls="--", color="0.5"); axr.set_ylim(0.85, 1.15); axr.set_xlabel(pn["label"])
+    # how many bins are >3% away by MORE than their own error bar (a real, not statistical, miss)
+    miss = np.abs(rca - 1) - rca_e > 0.03
     mx = 100 * np.max(np.abs(rca - 1))
-    axr.set_title(f"max |ratio-1| = {mx:.1f}%", fontsize=8)
+    axr.set_title(f"max |ratio-1| = {mx:.1f}%   ({int(miss.sum())} bins off >3sigma)", fontsize=8)
     if j == 0:
         axr.set_ylabel("ACHILLES / ADoNIS")
 fig.suptitle("Fig 7 — T2K CC0π-Np STV (CH): data vs ACHILLES vs ADoNIS "
