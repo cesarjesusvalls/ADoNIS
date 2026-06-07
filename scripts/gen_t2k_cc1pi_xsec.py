@@ -57,8 +57,11 @@ if __name__ == "__main__":
     n_res = int(sys.argv[1]) if len(sys.argv) > 1 else 400000
     nseed = int(sys.argv[2]) if len(sys.argv) > 2 else 1
     d = generate(n_res, nseed=nseed)
-    print(f"CC1pi+: {len(d['w'])} events  "
-          f"rms(dpTT)={np.sqrt(np.average(d['dptt']**2, weights=d['w'])):.1f}  "
-          f"<p_N>={np.average(d['pn'], weights=d['w']):.1f}" if len(d['w']) else "no events")
+    if len(d["w"]):
+        print(f"CC1pi+: {len(d['w'])} events  "
+              f"rms(dpTT)={np.sqrt(np.average(d['dptt']**2, weights=d['w'])):.1f}  "
+              f"<p_N>={np.average(d['pn'], weights=d['w']):.1f}")
+    else:
+        print("CC1pi+: no events passed cuts")
     np.savez(ROOT / "data" / "oracle" / "t2k_cc1pi_tki_adonis_xsec.npz", **d)
     print("wrote data/oracle/t2k_cc1pi_tki_adonis_xsec.npz")
