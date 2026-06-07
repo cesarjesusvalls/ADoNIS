@@ -29,6 +29,9 @@ _LMAX = 5
 _ISP = {-1: 1, 1: 0}                      # spin index: up(+1)->0, down(-1)->1  (0-based)
 _EPS_TPIN = 1e-3
 _METRIC = np.array([1.0, -1.0, -1.0, -1.0])
+# DCC amplitude table validity (currents_pi_dcc.f90:109-120): outside -> J_mu = 0.  ESSENTIAL --
+# without it the spline EXTRAPOLATES to garbage on high-Enu/high-Q2 events (1e8x spurious amps2).
+_W_LO = 1076.957; _W_HI = 2000.0; _Q2_HI = 5.0e6
 # ONE universal constant (table-normalisation x fac x 2xmn/hbarc x |FResV|^2) putting the exclusive
 # DCC amps2 on the ACHILLES absolute scale -- validated CHANNEL-INDEPENDENT (pi+ 3.771e-5, pi0
 # 3.769e-5) and CONSTANT per-event to ~3.7% (the residual = amplitude-table interpolation spline
@@ -117,6 +120,11 @@ def exclusive_amps2(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID):
     """amps2 up to the overall constant: sum_{isf,lam} |L.H|^2."""
     tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
     H = exclusive_H(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, tpiz=tpiz)
+    # DCC table validity gate
+    q = np.asarray(k_nu) - np.asarray(k_mu); Q2 = q[1:] @ q[1:] - q[0] ** 2
+    pcm = np.asarray(p_outN) + np.asarray(p_pi); W = np.sqrt(max(pcm[0] ** 2 - pcm[1:] @ pcm[1:], 0.0))
+    if W < _W_LO or W > _W_HI or Q2 < 0 or Q2 > _Q2_HI:
+        return 0.0
     L = np.asarray(lepton_current(jnp.asarray(k_nu)[None], jnp.asarray(k_mu)[None]))[0]  # (4,4)
     LH = np.einsum('am,bm,m->ab', L, H, _METRIC)
     return float(np.sum(np.abs(LH) ** 2)) / _NORM
@@ -197,4 +205,6 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)              # (N, combo, mu)
     L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_mu)))    # (N,4,4)
     LH = np.einsum('ncm,nbm,m->ncb', L, zj, _METRIC)
-    return np.sum(np.abs(LH) ** 2, axis=(1, 2)) / _NORM
+    a2 = np.sum(np.abs(LH) ** 2, axis=(1, 2)) / _NORM
+    gate = (wcm >= _W_LO) & (wcm <= _W_HI) & (Q2 >= 0) & (Q2 <= _Q2_HI)   # DCC table validity
+    return np.where(gate, a2, 0.0)
