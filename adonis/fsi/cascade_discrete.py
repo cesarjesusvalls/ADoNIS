@@ -211,7 +211,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     ar = jnp.arange(n)
 
     def body(carry, sk):
-        pos, p_N, dhat, alive, nsc, consumed = carry
+        pos, p_N, dhat, alive, nsc, consumed, best_ko = carry
         outward = jnp.sum(pos * dhat, axis=1) > 0
         alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
         rel = npos - pos[:, None, :]
@@ -240,17 +240,24 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
             return p_out, blocked
         p_out, blocked = jax.vmap(scat_one)(p_N, pN_j, kf_j, jax.random.split(ks, n))
         do = has_hit & ~blocked
+        # knocked-out nucleon = the struck background nucleon's recoil; if it is a PROTON track
+        # the highest-momentum one (ACHILLES adds it to the final state, the analysis may pick it)
+        recoil = (p_N + pN_j) - p_out
+        bg_proton = nisp[ar, j]
+        ko_better = do & bg_proton & (jnp.linalg.norm(recoil[:, 1:], axis=1) > jnp.linalg.norm(best_ko[:, 1:], axis=1))
+        best_ko = jnp.where(ko_better[:, None], recoil, best_ko)
         p_N = jnp.where(do[:, None], p_out, p_N)
         nsc = nsc + do.astype(jnp.int32)
         consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & do[:, None])
         d3 = p_N[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
         pos = pos + cfg.step * dhat * alive[:, None]
-        return (pos, p_N, dhat, alive, nsc, consumed), None
+        return (pos, p_N, dhat, alive, nsc, consumed, best_ko), None
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
-    init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32), jnp.zeros((n, A), bool))
-    (pos, p_N, dhat, alive, nsc, consumed), _ = jax.lax.scan(body, init, keys)
-    return p_N, nsc
+    init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
+            jnp.zeros((n, A), bool), jnp.zeros((n, 4)))
+    (pos, p_N, dhat, alive, nsc, consumed, best_ko), _ = jax.lax.scan(body, init, keys)
+    return p_N, nsc, best_ko
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key):
@@ -275,5 +282,10 @@ class DiscreteNucleonFSI:
         vtx = jax.random.randint(kv, (n,), 0, A)
         pos0 = npos[jnp.arange(n), vtx]
         isp0 = jnp.asarray(np.asarray(event.pid_N) == 2212)
-        p_N, nsc = propagate_nucleon_discrete(pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp)
-        return event._replace(p_N=p_N)
+        p_N, nsc, best_ko = propagate_nucleon_discrete(pos0, event.p_N, isp0, npos, nmom, nisp,
+                                                       self.cfg, kp)
+        # leading proton = highest-momentum of {primary (after FSI), knocked-out proton}, matching
+        # the analysis HMFSParticle/GetProtonInRange selection (ACHILLES adds the knock-out to FS)
+        ko_lead = jnp.linalg.norm(best_ko[:, 1:], axis=1) > jnp.linalg.norm(p_N[:, 1:], axis=1)
+        lead = jnp.where(ko_lead[:, None], best_ko, p_N)
+        return event._replace(p_N=lead)
