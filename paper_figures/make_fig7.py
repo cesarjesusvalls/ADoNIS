@@ -68,11 +68,13 @@ for j, pn in enumerate(PANELS):
     xa = ach[pn["key"]] * pn["conv"]; xd = ado[pn["key"]] * pn["conv"]; xd0 = ado0[pn["key"]] * pn["conv"]
     sa, sa_e = shape(xa, ach["w"], edges); sd, sd_e = shape(xd, ado["w"], edges); sd0, _ = shape(xd0, ado0["w"], edges)
 
-    def chi2(m, me):
-        """chi2 vs data folding BOTH data and model (MC) stat errors into the denominator."""
-        g = en > 0; denom = en[g] ** 2 + me[g] ** 2
-        return float(np.sum((m[g] - dn[g]) ** 2 / denom)), int(g.sum())
-    c2a, nd = chi2(sa, sa_e); c2d, _ = chi2(sd, sd_e)
+    # CLOSURE metric (THE acceptance test): chi2 of ACHILLES vs ADoNIS, folding BOTH MC stat
+    # errors into the denominator -- are the two codes statistically consistent bin-by-bin?
+    gc = (sa_e > 0) | (sd_e > 0)
+    denom_c = sa_e[gc] ** 2 + sd_e[gc] ** 2
+    c2c = float(np.sum((sa[gc] - sd[gc]) ** 2 / np.clip(denom_c, 1e-300, None)))
+    ndc = int(gc.sum())
+    print(f"[{pn['key']}] ACHILLES-vs-ADoNIS closure chi2/ndf = {c2c/max(ndc,1):.2f} ({c2c:.1f}/{ndc})")
     rab = sd / np.clip(sa, 1e-12, None)                 # ADoNIS/ACHILLES per-bin ratio (THE metric)
     print(f"[{pn['key']}] ADoNIS/ACHILLES per-bin ratio:", np.array2string(rab, precision=3))
     print(f"   max|r-1| = {100*np.max(np.abs(rab-1)):.1f}%  "
@@ -81,7 +83,7 @@ for j, pn in enumerate(PANELS):
     ax.step(cen, sa, where="mid", color="0.4", lw=1.8, label="ACHILLES")
     ax.step(cen, sd, where="mid", color="tab:blue", lw=2, label="ADoNIS+FSI")
     ax.step(cen, sd0, where="mid", color="tab:blue", lw=1, ls=":", alpha=0.7, label="ADoNIS no-FSI")
-    ax.set_title(f"{pn['label']}   χ²/ndf vs data: ADoNIS {c2d/max(nd,1):.1f}, ACH {c2a/max(nd,1):.1f}", fontsize=9)
+    ax.set_title(f"{pn['label']}   ACHILLES-vs-ADoNIS closure χ²/ndf = {c2c/max(ndc,1):.2f}", fontsize=9)
     ax.set_ylim(bottom=0)
     if j == 0:
         ax.set_ylabel(r"$(1/\sigma)\,d\sigma/dx$"); ax.legend(fontsize=8)

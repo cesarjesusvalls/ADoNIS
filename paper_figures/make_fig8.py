@@ -73,17 +73,17 @@ for j, o in enumerate(OBS):
     sd, sd_e = hist_shape(xd, ado["w"], edges)
     sd0, _ = hist_shape(xd0, ado0["w"], edges)
 
-    def chi2(model, merr):
-        """chi2 vs data folding BOTH data and model (MC) stat errors into the denominator."""
-        good = derr_n > 0; denom = derr_n[good] ** 2 + merr[good] ** 2
-        return float(np.sum((model[good] - dval_n[good]) ** 2 / denom)), int(good.sum())
-    c2a, nd = chi2(sa, sa_e); c2d, _ = chi2(sd, sd_e)
+    # CLOSURE metric: chi2 of ACHILLES vs ADoNIS folding BOTH MC stat errors.
+    gc = (sa_e > 0) | (sd_e > 0)
+    c2c = float(np.sum((sa[gc] - sd[gc]) ** 2 / np.clip(sa_e[gc] ** 2 + sd_e[gc] ** 2, 1e-300, None)))
+    ndc = int(gc.sum())
+    print(f"[{o['key']}] ACHILLES-vs-ADoNIS closure chi2/ndf = {c2c/max(ndc,1):.2f} ({c2c:.1f}/{ndc})")
 
     ax.errorbar(cen, dval_n, yerr=derr_n, xerr=width / 2, fmt="o", color="k", ms=4, capsize=2, label="T2K data")
-    ax.step(cen, sa, where="mid", color="0.4", lw=1.8, label=f"ACHILLES (χ²/ndf={c2a/max(nd,1):.1f})")
-    ax.step(cen, sd, where="mid", color="tab:red", lw=2, label=f"ADoNIS+FSI (χ²/ndf={c2d/max(nd,1):.1f})")
+    ax.step(cen, sa, where="mid", color="0.4", lw=1.8, label="ACHILLES")
+    ax.step(cen, sd, where="mid", color="tab:red", lw=2, label="ADoNIS+FSI")
     ax.step(cen, sd0, where="mid", color="tab:red", lw=1, ls=":", alpha=0.7, label="ADoNIS no-FSI")
-    ax.set_title(f"{o['label']}   χ²/ndf vs data: ADoNIS {c2d/max(nd,1):.1f}, ACH {c2a/max(nd,1):.1f}",
+    ax.set_title(f"{o['label']}   ACHILLES-vs-ADoNIS closure χ²/ndf = {c2c/max(ndc,1):.2f}",
                  fontsize=9); ax.set_ylim(bottom=0)
     if j == 0:
         ax.set_ylabel(r"$(1/\sigma)\,d\sigma/dx$"); ax.legend(fontsize=7)
