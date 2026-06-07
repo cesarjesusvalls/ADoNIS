@@ -19,8 +19,10 @@ from adonis.xsec.flux import T2KFlux
 from adonis.xsec.spectral import SpectralFunction
 from adonis.xsec.backend import flux_factor, MASS_PDG_NEUTRON, MASS_PDG_PROTON
 from adonis.xsec.dcc_current import exclusive_amps2_batch
+from adonis.xsec.spectral import SpectralImportanceSampler
 
 _MN = C.mN
+_IMP = SpectralImportanceSampler(SpectralFunction("data/Spectral_Functions/pke12n_tot.data"))
 M_MU = 105.7
 _TWO_PI = 2 * np.pi
 N_NUC = 6
@@ -56,19 +58,10 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
     J_beam = (dE_beam * flux.f(E_GeV)) / flux.flux_integral
     Smin = (M_MU + m_Nf + m_pi) ** 2
-    rad = np.clip(Enu ** 2 + 2 * Enu * _MN + _MN ** 2 - Smin, 0, None)
-    pmin = np.clip(Enu - np.sqrt(rad), 0, None); pmax = np.clip(Enu + np.sqrt(rad), None, 800.0)
-    dp = pmax - pmin
-    mom = dp * u[:, 0] + pmin
-    cosTm = np.clip((2 * Enu * _MN + _MN ** 2 - mom ** 2 - Smin) / (2 * Enu * np.clip(mom, 1e-9, None)), -1, 1)
-    cosT = (cosTm + 1) * u[:, 1] - 1; sinT = np.sqrt(np.clip(1 - cosT ** 2, 0, None))
-    phi = _TWO_PI * u[:, 2]
-    pvec = np.stack([mom * sinT * np.cos(phi), mom * sinT * np.sin(phi), mom * cosT], axis=1)
-    det = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
-    emax = np.minimum(np.minimum(_MN + Enu - np.sqrt(np.clip(det, 0, None)), _MN - mom), 400.0)
-    energy = emax * u[:, 3] - 1e-8
+    pvec, energy = _IMP.sample(n, rng)                          # importance: |p|^2 S (low variance)
+    mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
-    J_had = mom ** 2 * dp * (cosTm + 1) * _TWO_PI * emax
+    J_had = np.ones(n)                                          # |p|^2 S J_had absorbed -> N_NUC
     P = k_nu + p_struck
     s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
     sqrts = np.sqrt(np.clip(s, 1e-9, None))
@@ -92,7 +85,7 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
     I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, m_Nf ** 2), 1e-12, None)
     density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
     J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
-    valid = (dp > 0) & (emax > 0) & (s > Smin) & (s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0) & (_sqlam(s23, M_MU ** 2, m_Nf ** 2) > 0)
+    valid = (s > Smin) & (s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0) & (_sqlam(s23, M_MU ** 2, m_Nf ** 2) > 0)
     return dict(k_nu=k_nu, p_struck=p_struck, k_mu=k_mu, p_N=p_N, p_pi=p_pi,
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, Enu=Enu, E_GeV=E_GeV, valid=valid)
 
@@ -107,9 +100,9 @@ def generate(n=20000, seed=0, return_events=False):
         Npid = 2212 if mNf == M_P else 2112
         s = _sample_channel(n, rng, flux, minE, maxE, mpi, mNf)
         v = s["valid"]
-        iw = N_NUC * sf.batch(s["mom"], s["energy"])
+        iw = N_NUC                                              # importance: |p|^2 S in the sampling
         a2 = np.zeros(n)
-        idx = np.where(v & (iw > 0) & (s["J"] > 0))[0]
+        idx = np.where(v & (s["energy"] > 2.5) & (s["energy"] < 400) & (s["J"] > 0))[0]
         if len(idx):
             a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
                                             s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
