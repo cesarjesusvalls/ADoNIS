@@ -20,7 +20,7 @@ from adonis import observables as obs
 ROOT = Path(__file__).resolve().parents[1]
 COS70 = np.cos(70.0 * np.pi / 180.0)
 MU_LO, MU_HI = 250.0, 7000.0; PI_LO, PI_HI = 150.0, 1200.0; P_LO, P_HI = 450.0, 1200.0
-_CFG = DiscreteCascadeConfig
+_CFG = lambda **k: DiscreteCascadeConfig(cylinder=True, **k)
 
 
 def _acc(p4, lo, hi):

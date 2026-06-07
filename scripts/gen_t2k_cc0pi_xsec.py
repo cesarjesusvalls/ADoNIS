@@ -21,7 +21,7 @@ from adonis import observables as obs
 
 ROOT = Path(__file__).resolve().parents[1]
 MU_LO = 250.0; COSMU = -0.6; P_LO, P_HI = 450.0, 1000.0; COSP = 0.4
-_CFG = DiscreteCascadeConfig
+_CFG = lambda **k: DiscreteCascadeConfig(cylinder=True, **k)
 
 
 def _cc0pi(mu, lead, w):

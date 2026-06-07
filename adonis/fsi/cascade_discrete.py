@@ -61,6 +61,8 @@ class DiscreteCascadeConfig:
     step: float = 0.05
     max_steps: int = 260
     seed: int = 0
+    cylinder: bool = False   # ACHILLES Probability: Cylinder (hard b^2<sigma/pi) vs Gaussian
+                             # exp(-pi b^2/sigma).  T2K run-card uses Cylinder; Fig-3 oracle Gaussian.
 
 
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
@@ -114,7 +116,10 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         ss = jnp.clip(jnp.sum(sig_io, axis=-1).reshape(n, A), 0.0, None)
         sig = sa + ss                                                # mb
 
-        prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
+        if cfg.cylinder:
+            prob = jnp.where(in_slab & (perp2 < jnp.clip(sig * MB_TO_FM2, 0.0, None) / jnp.pi), 1.0, 0.0)
+        else:
+            prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
         sk, ku, kc, kf, ka, kab = jax.random.split(sk, 6)
         passes = in_slab & (jax.random.uniform(ku, (n, A)) < prob)
         big = jnp.where(passes, perp2, jnp.inf)
@@ -257,7 +262,10 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
         same_iso = isp0[:, None] == nisp                              # (n,A)
         sig = jnp.clip(nn_elastic_sigma(sqrts, same_iso), 0.0, None)  # mb
-        prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
+        if cfg.cylinder:
+            prob = jnp.where(in_slab & (perp2 < jnp.clip(sig * MB_TO_FM2, 0.0, None) / jnp.pi), 1.0, 0.0)
+        else:
+            prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
         sk, ku, ks = jax.random.split(sk, 3)
         passes = in_slab & (jax.random.uniform(ku, (n, A)) < prob)
         big = jnp.where(passes, perp2, jnp.inf)
