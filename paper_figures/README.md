@@ -17,8 +17,8 @@ NUISANCE (the paper digitises them separately).
 | **2** | free-nucleon ν_μ CC1π σ(E_ν), 3 channels | ANL+BNL (NUISANCE) | ✅ **done** — experiment+ACHILLES+ADoNIS+χ²/ndf+ratio |
 | **3** | π⁺-C absorption & reaction σ(p_π) | DUET/Ashery (not in NUISANCE) | ✅ **done (model)** — ACHILLES VirtRes oracle vs ADoNIS cascade; **abs. fraction 0.31 vs 0.35**, Δ-region χ²/ndf ~3.5 (bridge ×0.75); DUET overlay pending digitisation |
 | 4–6 | e4ν exclusive (E_QE, E_cal, P_T), ¹²C | CLAS Nature 2021 (not in NUISANCE) | ⏳ needs cascade (proton FSI) + CLAS data |
-| **7** | T2K CC0π δp_T, δα_T (CH) | T2K (NUISANCE ROOT) | ◐ **NOT YET <3%** — pipeline+tight cuts done, but ADoNIS/ACHILLES per-bin fails: δp_T 21%, δα_T 12% (FSI tail too weak / stats) |
-| **8** | T2K CC1π⁺ p_N, δp_TT (CH) [δα_T appendix] | T2K (NUISANCE STV) | ◐ **partial** — δp_TT <3% ✅; p_N 8% / δα_T 8% FAIL the 3% per-bin criterion (stats + CCQE/FSI residual) |
+| **7** | T2K CC0π δp_T, δα_T (CH) | T2K (NUISANCE ROOT) | ◐ **BIT-EXACT PRIMARY now** (adonis/xsec): CC0π = spectral-fn QE + RES-π-absorbed (6% of CC0π) at first-principles absolute weights, no fitted mix. ⟨δp_T⟩ 187.6 vs ACH 196 (4%), rms 246 vs 250 (2%), ⟨δα_T⟩ 98.3 vs 96.3. Per-bin not yet <3%; residual = cascade proton-FSI tail (~4% weak) + stats. High-N accumulating. |
+| **8** | T2K CC1π⁺ p_N, δp_TT (CH) [δα_T appendix] | T2K (NUISANCE STV) | ◐ bit-exact RES primary + cascade pipeline built; p_N high & δp_TT small bias to debug (isotropic-vs-t-channel angular sampling), needs high-N |
 | 9,16 | MINERvA CC0π δα_T / p_n / 6-panel (CH) | MINERvA (NUISANCE + ME flux) | ◐ pipeline built (CCQE+proton FSI, tight cuts read from NUISANCE); ACHILLES 2M oracle generating |
 | 10 | MicroBooNE CC1p0π δp_T in δα_T bins (Ar) | MicroBooNE | ⏳ same |
 | 11,12 | MicroBooNE NC1π⁰ cosθ, p (Ar) | MicroBooNE (NUISANCE + flux) | ⏳ NC1π⁰ + flux-fold |
