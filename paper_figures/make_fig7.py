@@ -69,11 +69,16 @@ for j, pn in enumerate(PANELS):
     ax.set_ylim(bottom=0)
     if j == 0:
         ax.set_ylabel(r"$(1/\sigma)\,d\sigma/dx$"); ax.legend(fontsize=8)
-    axr.errorbar(cen, dn / np.clip(sd, 1e-12, None), yerr=en / np.clip(sd, 1e-12, None),
-                 fmt="o", color="tab:blue", ms=3)
-    axr.axhline(1, ls="--", color="0.5"); axr.set_ylim(0.3, 1.9); axr.set_xlabel(pn["label"])
+    # THE acceptance criterion: ACHILLES / ADoNIS per-bin ratio (target 1 +/- 3%)
+    rca = sa / np.clip(sd, 1e-12, None)
+    axr.axhspan(0.97, 1.03, color="tab:green", alpha=0.15)          # +/-3% band
+    axr.step(cen, rca, where="mid", color="tab:blue", lw=1.8)
+    axr.plot(cen, rca, "o", color="tab:blue", ms=3)
+    axr.axhline(1, ls="--", color="0.5"); axr.set_ylim(0.85, 1.15); axr.set_xlabel(pn["label"])
+    mx = 100 * np.max(np.abs(rca - 1))
+    axr.set_title(f"max |ratio-1| = {mx:.1f}%", fontsize=8)
     if j == 0:
-        axr.set_ylabel("data/ADoNIS")
+        axr.set_ylabel("ACHILLES / ADoNIS")
 fig.suptitle("Fig 7 — T2K CC0π-Np STV (CH): data vs ACHILLES vs ADoNIS "
              "(spectral-fn CCQE + discrete-Glauber proton FSI; tight phase space)", fontsize=10)
 fig.tight_layout()
