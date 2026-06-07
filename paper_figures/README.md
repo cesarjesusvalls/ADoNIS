@@ -1,4 +1,6 @@
-# Paper figures — arXiv:2508.19213v2 reproduction
+# Paper figures
+> **Acceptance criterion (see ACCEPTANCE.md):** a figure is ✅ only when |ADoNIS/ACHILLES − 1| < 3% in EVERY bin of EVERY panel. χ²/ndf-vs-data is NOT the metric.
+ — arXiv:2508.19213v2 reproduction
 
 Dedicated reproductions of the paper's figures: **experiment data + ACHILLES + ADoNIS**, with
 a ratio panel + χ²/ndf. Filenames match the paper numerology (`figN_*.png`). Each `make_figN.py`
@@ -15,8 +17,8 @@ NUISANCE (the paper digitises them separately).
 | **2** | free-nucleon ν_μ CC1π σ(E_ν), 3 channels | ANL+BNL (NUISANCE) | ✅ **done** — experiment+ACHILLES+ADoNIS+χ²/ndf+ratio |
 | **3** | π⁺-C absorption & reaction σ(p_π) | DUET/Ashery (not in NUISANCE) | ✅ **done (model)** — ACHILLES VirtRes oracle vs ADoNIS cascade; **abs. fraction 0.31 vs 0.35**, Δ-region χ²/ndf ~3.5 (bridge ×0.75); DUET overlay pending digitisation |
 | 4–6 | e4ν exclusive (E_QE, E_cal, P_T), ¹²C | CLAS Nature 2021 (not in NUISANCE) | ⏳ needs cascade (proton FSI) + CLAS data |
-| **7** | T2K CC0π δp_T, δα_T (CH) | T2K (NUISANCE ROOT) | ✅ **done** — flux-folded CCQE + discrete-Glauber proton FSI, tight cuts; ADoNIS χ²/ndf vs data 1.5/1.6, ACHILLES 0.8/1.1 |
-| **8** | T2K CC1π⁺ p_N, δp_TT (CH) [δα_T appendix] | T2K (NUISANCE STV) | ✅ **done** — tight cuts + NUISANCE hydrogen δα_T prescription (both read from source); ADoNIS-vs-ACHILLES δp_TT 2%, p_N 8%, δα_T 8% |
+| **7** | T2K CC0π δp_T, δα_T (CH) | T2K (NUISANCE ROOT) | ◐ **NOT YET <3%** — pipeline+tight cuts done, but ADoNIS/ACHILLES per-bin fails: δp_T 21%, δα_T 12% (FSI tail too weak / stats) |
+| **8** | T2K CC1π⁺ p_N, δp_TT (CH) [δα_T appendix] | T2K (NUISANCE STV) | ◐ **partial** — δp_TT <3% ✅; p_N 8% / δα_T 8% FAIL the 3% per-bin criterion (stats + CCQE/FSI residual) |
 | 9,16 | MINERvA CC0π δα_T / p_n / 6-panel (CH) | MINERvA (NUISANCE + ME flux) | ◐ pipeline built (CCQE+proton FSI, tight cuts read from NUISANCE); ACHILLES 2M oracle generating |
 | 10 | MicroBooNE CC1p0π δp_T in δα_T bins (Ar) | MicroBooNE | ⏳ same |
 | 11,12 | MicroBooNE NC1π⁰ cosθ, p (Ar) | MicroBooNE (NUISANCE + flux) | ⏳ NC1π⁰ + flux-fold |
