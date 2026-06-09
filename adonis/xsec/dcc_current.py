@@ -13,6 +13,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.xsec import constants as C
+from adonis.primary.dcc import conventions as _conv
 from adonis.xsec.leptonic import lepton_current
 from adonis.xsec.dcc_kinematics import boost_matrix, setdfun
 from adonis.primary.dcc.angular import cbg, legendre_ylm, legendre_ylm_batch, ISMI, ISMIX, ISBI
@@ -44,7 +45,7 @@ _W_LO = 1076.957; _W_HI = 2000.0; _Q2_HI = 5.0e6
 # average -- so use C.mn here.  This removes the 0.11% (= (mn/mN_avg)^2) amps2 deficit; the absolute
 # scale is DERIVED, not tuned.
 _FRESV = C.Vud * C.ee / (C.sw * np.sqrt(2.0) * 2.0)          # |hadronic CC coupling|
-_NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * C.mn) ** 2)      # mn = neutron (ACHILLES xmn); was C.mN avg
+_NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron mass via conventions
 
 # Forward-generator amplitude interpolation: "bilinear" (~45x faster, ~0.3% vs spline) for the
 # fast diagnostic loop; set to "spline" for a bit-faithful-to-ACHILLES final number.
@@ -176,11 +177,12 @@ _BUILD_ZMTX_V = None
 
 
 def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi):
-    """vmap build_zmtx over the event axis (two_J/two_L/two_I + mode static)."""
-    from adonis.primary.dcc.assembly import build_zmtx as _bz
-    f = lambda v, i, a, w, q: _bz(v, i, a, w, q, _PW_2J, _PW_2L, _PW_2I,
-                                  mode=1, itiz=itiz, m_N=C.mN, m_pi=mpi)
-    return jax.vmap(f)(vec, isv, axial, W, Q2)
+    """Unified amplitude matrix: the batched differential.build_zmtx_batched (the single
+    build_zmtx; proven == vmapped assembly.build_zmtx for CC in tests/test_build_zmtx_equiv.py).
+    m_N via conventions (amplitude-internal avg mass); m_pi passed in (conventions.amp_m_pi())."""
+    from adonis.primary.dcc.differential import build_zmtx_batched as _bzb
+    return _bzb(vec, isv, axial, W, Q2, _PW_2J, _PW_2L, _PW_2I,
+                mode=1, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi)
 
 
 def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
@@ -193,7 +195,7 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     p_struck = np.asarray(p_struck, float); p_outN = np.asarray(p_outN, float); p_pi = np.asarray(p_pi, float)
     N = k_nu.shape[0]; mN = C.mN
     tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
-    mpi = C.mpi0 if int(hPID) == 111 else 139.57018
+    mpi = _conv.amp_m_pi()    # amplitude-internal pion mass = isospin-avg fpio 138.04 (Risk-1 study)
     q = k_nu - k_mu
     if ROTATE_QZ:
         mlist = [k_nu, k_mu, p_struck, p_outN, p_pi]
