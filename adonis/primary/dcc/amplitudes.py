@@ -66,6 +66,25 @@ class DCCAmplitudes:
             vec = vec * scale; isv = isv * scale; axial = axial * scale
         return vec, isv, axial
 
+    def amplitudes_spline_np(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
+        """NumPy (no-autodiff) twin of amplitudes_spline -- bit-identical FMM-cubic interp,
+        ~30x faster for the forward generator (avoids per-op JAX dispatch). Returns numpy arrays."""
+        from adonis.primary.dcc.spline import interp2d_spline_np
+        if not hasattr(self, "_Wnp"):
+            self._Wnp = np.asarray(self.W); self._Q2np = np.asarray(self.Q2)
+            self._vecnp = np.asarray(self.vec); self._isvnp = np.asarray(self.isv)
+            self._axialnp = np.asarray(self.axial)
+        ni, npw = self.vec.shape[2], self.vec.shape[3]
+        def sp(block):
+            flat = block.reshape(block.shape[0], block.shape[1], ni * npw)
+            return interp2d_spline_np(flat, self._Wnp, self._Q2np, W, Q2).reshape(-1, ni, npw)
+        vec, isv = sp(self._vecnp), sp(self._isvnp)
+        axial = sp(self._axialnp) * knobs.axial_strength
+        if knobs.pw_norm != ():
+            scale = 1.0 + np.asarray(knobs.pw_norm)
+            vec = vec * scale; isv = isv * scale; axial = axial * scale
+        return vec, isv, axial
+
     def amplitudes_bilinear(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
         """Batched (N,) BILINEAR amplitude interpolation -- ~3.5x faster / lighter than the
         spline (used for closures/fits where the ~0.3% spline-vs-bilinear difference cancels
@@ -85,6 +104,31 @@ class DCCAmplitudes:
         vec, isv, axial = bil(self.vec), bil(self.isv), bil(self.axial) * knobs.axial_strength
         if knobs.pw_norm != ():
             scale = 1.0 + jnp.asarray(knobs.pw_norm)
+            vec = vec * scale; isv = isv * scale; axial = axial * scale
+        return vec, isv, axial
+
+    def amplitudes_bilinear_np(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
+        """NumPy batched BILINEAR interp -- fastest path (~0.3% vs spline), for the forward
+        diagnostic where that difference is negligible vs the deficit under study."""
+        if not hasattr(self, "_Wnp"):
+            self._Wnp = np.asarray(self.W); self._Q2np = np.asarray(self.Q2)
+            self._vecnp = np.asarray(self.vec); self._isvnp = np.asarray(self.isv)
+            self._axialnp = np.asarray(self.axial)
+        gw, gq = self._Wnp, self._Q2np
+        nw, nq = gw.shape[0], gq.shape[0]
+        W = np.asarray(W); Q2 = np.asarray(Q2)
+        iw = np.clip(np.searchsorted(gw, W) - 1, 0, nw - 2)
+        iq = np.clip(np.searchsorted(gq, Q2) - 1, 0, nq - 2)
+        tw = ((W - gw[iw]) / (gw[iw + 1] - gw[iw]))[:, None, None]
+        tq = ((Q2 - gq[iq]) / (gq[iq + 1] - gq[iq]))[:, None, None]
+        def bil(block):
+            v00, v01 = block[iq, iw], block[iq, iw + 1]
+            v10, v11 = block[iq + 1, iw], block[iq + 1, iw + 1]
+            return (1 - tq) * ((1 - tw) * v00 + tw * v01) + tq * ((1 - tw) * v10 + tw * v11)
+        vec, isv = bil(self._vecnp), bil(self._isvnp)
+        axial = bil(self._axialnp) * knobs.axial_strength
+        if knobs.pw_norm != ():
+            scale = 1.0 + np.asarray(knobs.pw_norm)
             vec = vec * scale; isv = isv * scale; axial = axial * scale
         return vec, isv, axial
 

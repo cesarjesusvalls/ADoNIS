@@ -22,7 +22,9 @@ from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.spectral import SpectralImportanceSampler
 
 _MN = C.mN
-_IMP = SpectralImportanceSampler(SpectralFunction("data/Spectral_Functions/pke12n_tot.data"))
+_SF_N = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
+_SF_P = SpectralFunction("data/Spectral_Functions/pke12p_tot.data")
+_IMP = SpectralImportanceSampler(_SF_N)          # struck nucleon proposal ~ |p|^2 S_n for ALL channels
 M_MU = 105.7
 _TWO_PI = 2 * np.pi
 N_NUC = 6
@@ -100,7 +102,114 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, Enu=Enu, E_GeV=E_GeV, valid=valid)
 
 
-def generate(n=20000, seed=0, return_events=False):
+# --- ACHILLES-faithful ProcessGroup mirror -------------------------------------------------- #
+# ACHILLES groups the 3 CC-1pi channels by multiplicity into ONE group, builds the phase space
+# from process[0] = (n -> p pi0) ONLY (masses m_p, m_pi0; Smin0), generates ONE point, evaluates
+# ALL 3 channels' amps2 at the SHARED momenta, and sums (Process.cc:287-302,323-327,357;
+# XSecBackend.cc:72; verified from the dump: every channel carries m_p, m_pi0).  Struck nucleon is
+# sampled FLAT (QESpectralMapper) so initwgt = N*S_channel is EXPLICIT per channel -- no S_p/S_n
+# reweight trick (that only arises from an S_n importance proposal).
+_M_SHARED_NF, _M_SHARED_PI = M_P, M_PI0
+_SMIN0 = (M_MU + M_P + M_PI0) ** 2
+# (initial-nucleon pid, itiz, pion pid, spectral fn, N_nucleon, flux had_mass)
+_GROUP_CHANNELS = [
+    (2112, -1, 111, _SF_N, N_NUC, MASS_PDG_NEUTRON),    # [0] n -> p pi0  (= process[0])
+    (2112, -1, 211, _SF_N, N_NUC, MASS_PDG_NEUTRON),    # [1] n -> n pi+
+    (2212, +1, 211, _SF_P, N_NUC, MASS_PDG_PROTON),     # [2] p -> p pi+
+]
+
+
+def _sample_shared(n, rng, flux, maxE):
+    """ONE shared phase-space point per draw, ACHILLES process[0]=(m_p,m_pi0) masses & Smin0,
+    struck nucleon sampled FLAT (QESpectralMapper) with explicit J_had (no importance)."""
+    u = rng.random((n, 10))
+    mpi, mNf, Smin = _M_SHARED_PI, _M_SHARED_NF, _SMIN0
+    minE = max((Smin - mNf ** 2) / (2 * mNf) / 1000.0, flux.min_energy)
+    dE_beam = maxE - minE
+    E_GeV = u[:, 4] * dE_beam + minE; Enu = E_GeV * 1000.0
+    k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
+    J_beam = (dE_beam * flux.f(E_GeV)) / flux.flux_integral
+    # FLAT struck nucleon (HadronicMapper.cc:30-65), process[0] Smin
+    radical = np.clip(Enu ** 2 + 2 * Enu * _MN + _MN ** 2 - Smin, 0, None)
+    pmin = np.clip(Enu - np.sqrt(radical), 0, None); pmax = np.clip(Enu + np.sqrt(radical), None, 800.0)
+    dp = pmax - pmin; mom = dp * u[:, 0] + pmin
+    cosTm = np.clip((2 * Enu * _MN + _MN ** 2 - mom ** 2 - Smin) / (2 * Enu * np.clip(mom, 1e-9, None)), -1, 1)
+    cosT = (cosTm + 1) * u[:, 1] - 1; sinT = np.sqrt(np.clip(1 - cosT ** 2, 0, None)); phi = _TWO_PI * u[:, 2]
+    pvec = np.stack([mom * sinT * np.cos(phi), mom * sinT * np.sin(phi), mom * cosT], axis=1)
+    det = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
+    emax = _MN + Enu - np.sqrt(np.clip(det, 0, None))
+    emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
+    energy = emax * u[:, 3] - 1e-8
+    p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
+    J_had = mom ** 2 * dp * (cosTm + 1) * _TWO_PI * emax          # inverse QESpectralMapper density
+    P = k_nu + p_struck
+    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1); sqrts = np.sqrt(np.clip(s, 1e-9, None))
+    s23max = (sqrts - mpi) ** 2; s23min = max((M_MU + mNf) ** 2, 1e-8)
+    s23 = s23min + (s23max - s23min) * u[:, 5]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
+    EmuN = (s + s23 - mpi ** 2) / (2 * sqrts); pA = sqrts * _sqlam(s, s23, mpi ** 2) / 2
+    ctA = 2 * u[:, 6] - 1; stA = np.sqrt(np.clip(1 - ctA ** 2, 0, None)); phA = _TWO_PI * u[:, 7]
+    dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
+    muN_cm = np.concatenate([EmuN[:, None], pA[:, None] * dA], axis=1)
+    pi_cm = np.concatenate([np.sqrt(mpi ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
+    p_muN = _boost_to_lab(muN_cm, P); p_pi = _boost_to_lab(pi_cm, P)
+    I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, s23, mpi ** 2), 1e-12, None)
+    Emu = (s23 + M_MU ** 2 - mNf ** 2) / (2 * rs23); pB = rs23 * _sqlam(s23, M_MU ** 2, mNf ** 2) / 2
+    ctB = 2 * u[:, 8] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 9]
+    dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
+    mu_cm = np.concatenate([Emu[:, None], pB[:, None] * dB], axis=1)
+    N_cm = np.concatenate([np.sqrt(mNf ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
+    k_mu = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
+    I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, mNf ** 2), 1e-12, None)
+    density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
+    J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
+    valid = ((dp > 0) & (emax > 0) & (s > Smin) & (s23max > s23min) & (energy < emax) & (energy > 2.5)
+             & (_sqlam(s, s23, mpi ** 2) > 0) & (_sqlam(s23, M_MU ** 2, mNf ** 2) > 0))
+    return dict(k_nu=k_nu, p_struck=p_struck, k_mu=k_mu, p_N=p_N, p_pi=p_pi,
+                J=J_beam * J_had * J_3body, mom=mom, energy=energy, valid=valid)
+
+
+def generate_faithful(n=20000, seed=0, return_events=False):
+    """ACHILLES-faithful: ONE shared (process[0]) point per draw; sum the 3 channels' amps2 with
+    EXPLICIT per-channel initwgt = N*S_channel and per-channel flux, on the shared momenta."""
+    rng = np.random.default_rng(seed)
+    flux = T2KFlux(); maxE = flux.max_energy
+    s = _sample_shared(n, rng, flux, maxE)
+    v = s["valid"]; idx = np.where(v & (s["J"] > 0))[0]
+    out = {}; w_tot = np.zeros(n)
+    for (ipid, itiz, ppid, sf, ncount, hadmass) in _GROUP_CHANNELS:
+        a2 = np.zeros(n)
+        if len(idx):
+            a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
+                                            s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
+        initwgt = ncount * sf.batch(s["mom"], s["energy"])       # EXPLICIT N * S_channel (per channel)
+        fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=hadmass))
+        w_c = np.where(v, a2 * fl * initwgt * SPIN_AVG * s["J"], 0.0)
+        w_c = np.where(np.isfinite(w_c) & (a2 > 0), w_c, 0.0)
+        out[(ipid, ppid)] = w_c.mean(); w_tot += w_c
+    out["sigma"] = w_tot.mean()
+    if return_events:
+        keep = w_tot > 0
+        out["events"] = dict(k_nu=s["k_nu"][keep], k_mu=s["k_mu"][keep], p_struck=s["p_struck"][keep],
+                             p_N=s["p_N"][keep], p_pi=s["p_pi"][keep], w=w_tot[keep] / n)
+    return out
+
+
+# Default RES estimator: "faithful" (ACHILLES ProcessGroup transliteration, flat struck, explicit
+# N*S, no reweight; higher variance) or "importance" (S_n importance struck + S_p/S_n reweight on
+# the proton channel; low variance, same integral).  Override per call via generate(..., method=).
+RES_METHOD = "importance"
+
+
+def generate(n=20000, seed=0, return_events=False, method=None):
+    """Dispatch to the faithful (transliteration) or importance RES estimator.  Both estimate the
+    same sigma; faithful mirrors ACHILLES operation-for-operation, importance is lower variance."""
+    m = method or RES_METHOD
+    if m == "importance":
+        return generate_importance(n, seed=seed, return_events=return_events)
+    return generate_faithful(n, seed=seed, return_events=return_events)
+
+
+def generate_importance(n=20000, seed=0, return_events=False):
     rng = np.random.default_rng(seed)
     flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     sf = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
@@ -117,7 +226,15 @@ def generate(n=20000, seed=0, return_events=False):
             a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
                                             s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
         fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=mstr))
-        w = np.where(v, a2 * fl * iw * SPIN_AVG * s["J"], 0.0)
+        # D3: the struck nucleon is proposed from pke12n (|p|^2 S_n) for every channel, but the
+        # PROTON-initiated channel's integrand carries S_p, not S_n.  Importance-reweight it by
+        # S_p/S_n (both normalised; =1 for the neutron channels).  Closes the pke12p/pke12n gap.
+        if ipid == 2212:
+            sn = _SF_N.batch(s["mom"], s["energy"]); sp = _SF_P.batch(s["mom"], s["energy"])
+            reweight = np.where(sn > 0, sp / np.clip(sn, 1e-300, None), 0.0)
+        else:
+            reweight = 1.0
+        w = np.where(v, a2 * fl * iw * SPIN_AVG * s["J"] * reweight, 0.0)
         w = np.where(np.isfinite(w) & (a2 > 0), w, 0.0)
         sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc
         if return_events:

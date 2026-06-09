@@ -31,6 +31,10 @@ METRIC = np.array([1.0, -1.0, -1.0, -1.0])
 GAMMA_J = jnp.asarray(GAMMA); GAMMA5_J = jnp.asarray(GAMMA5)
 PL_J = jnp.asarray(PL); PR_J = jnp.asarray(PR)
 
+# DIAGNOSTIC flag (default False = faithful massive spinors). Set via env ADONIS_MASSLESS_LEPTON=1.
+import os as _os
+FORCE_MASSLESS = _os.environ.get("ADONIS_MASSLESS_LEPTON", "0") not in ("0", "", "false", "False")
+
 
 def sigma_munu(mu, nu):
     """sigma^{mu nu} = (i/2)[gamma^mu, gamma^nu], the hardcoded matrices of Spinor.cc:89-112."""
@@ -94,7 +98,9 @@ def spinor(type_, bar, hel, mom, ms=1):
     omm = jnp.sqrt((mom[..., 0] - phE) / (2.0 * phE))
     r = 0 if mode else 2
     # massive correction (apply where m2 != 0; massless leptons keep m2~0 -> skip)
-    nz = jnp.abs(m2) > 1e-8
+    # DIAGNOSTIC: FORCE_MASSLESS drops the omp/omm mass correction (treats lepton as massless,
+    # so q.L=0 -> contraction blind to the q^mu pion-pole longitudinal, like the old fold).
+    nz = (jnp.abs(m2) > 1e-8) & (not FORCE_MASSLESS)
     new_r0 = sgn * omm * u[2 - r]; new_r1 = sgn * omm * u[3 - r]
     u_2r = u[2 - r] * omp; u_3r = u[3 - r] * omp
     out = list(u)

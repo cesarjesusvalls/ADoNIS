@@ -15,7 +15,7 @@ import jax.numpy as jnp
 from adonis.xsec import constants as C
 from adonis.xsec.leptonic import lepton_current
 from adonis.xsec.dcc_kinematics import boost_matrix, setdfun
-from adonis.primary.dcc.angular import cbg, legendre_ylm, ISMI, ISMIX, ISBI
+from adonis.primary.dcc.angular import cbg, legendre_ylm, legendre_ylm_batch, ISMI, ISMIX, ISBI
 from adonis.primary.dcc.assembly import build_zmtx
 from adonis.primary.dcc.amplitudes import DCCAmplitudes, DCCKnobs
 from adonis.primary.dcc.loader import load_cached
@@ -32,11 +32,42 @@ _METRIC = np.array([1.0, -1.0, -1.0, -1.0])
 # DCC amplitude table validity (currents_pi_dcc.f90:109-120): outside -> J_mu = 0.  ESSENTIAL --
 # without it the spline EXTRAPOLATES to garbage on high-Enu/high-Q2 events (1e8x spurious amps2).
 _W_LO = 1076.957; _W_HI = 2000.0; _Q2_HI = 5.0e6
-# ONE universal constant (table-normalisation x fac x 2xmn/hbarc x |FResV|^2) putting the exclusive
-# DCC amps2 on the ACHILLES absolute scale -- validated CHANNEL-INDEPENDENT (pi+ 3.771e-5, pi0
-# 3.769e-5) and CONSTANT per-event to ~3.7% (the residual = amplitude-table interpolation spline
-# vs ACHILLES interpolate_amp).  amps2_absolute = amps2_raw / _NORM.
-_NORM = 3.77040e-05
+# First-principles RES normalisation (NO fit).  ACHILLES builds the hadron current as
+#   H = FResV * zj_raw * fac * (2*xmn/hbarc)   (res_spec_currents; amp_dcc_sl.f:417 fac;
+#   currents_pi_dcc.f90:130  J_mu*=2*xmn/hbarc),  with FResV = Vud*ee/(sw*sqrt2*2) the hadronic
+#   EW coupling (LeptonicCurrent.cc:63; resV=1).  My zj_raw omits FResV, fac and the fm-unit
+#   scalings; assembling those constants (fac^2 = 2/(fnuc^2 4pi) with the fm->MeV scaling fnuc^2,
+#   and (2 m_N/hbarc)^2) gives  1/_NORM = |FResV|^2 * (2 m_N)^2 / (2 pi).  This reproduces the old
+#   fitted 3.7704e-5 to 0.6% -- so the absolute scale is DERIVED, not tuned.
+_FRESV = C.Vud * C.ee / (C.sw * np.sqrt(2.0) * 2.0)          # |hadronic CC coupling|
+_NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * C.mN) ** 2)      # = 3.792e-5 (was fit 3.7704e-5)
+
+# Forward-generator amplitude interpolation: "bilinear" (~45x faster, ~0.3% vs spline) for the
+# fast diagnostic loop; set to "spline" for a bit-faithful-to-ACHILLES final number.
+BATCH_INTERP = "bilinear"
+# The DCC partial-wave amplitude is built with the momentum transfer q as the quantization (z) axis
+# (ACHILLES does this via TransformQZ before computing the current). amps2 is a Lorentz scalar but
+# this implementation is only correct when q is along +z, so we rotate every event into that frame.
+# Callers that already pass q-along-z momenta (e.g. ACHILLES RESDUMP) are unaffected (rotation ~ identity).
+ROTATE_QZ = True
+
+
+def _rotate_q_to_z(mom_list, q):
+    """Rotate every event's spatial momenta so q (spatial) points along +z. Returns rotated list."""
+    N = q.shape[0]
+    qs = q[:, 1:]
+    qmag = np.linalg.norm(qs, axis=1, keepdims=True)
+    qn = qs / np.where(qmag > 0, qmag, 1.0)
+    nx, ny, nz = qn[:, 0], qn[:, 1], qn[:, 2]
+    denom = 1.0 + nz
+    safe = denom > 1e-9
+    d = np.where(safe, denom, 1.0)
+    R = np.empty((N, 3, 3))
+    R[:, 0, 0] = 1 - nx ** 2 / d; R[:, 0, 1] = -nx * ny / d; R[:, 0, 2] = -nx
+    R[:, 1, 0] = -nx * ny / d;    R[:, 1, 1] = 1 - ny ** 2 / d; R[:, 1, 2] = -ny
+    R[:, 2, 0] = nx;              R[:, 2, 1] = ny;              R[:, 2, 2] = nz
+    R[~safe] = np.array([[1.0, 0, 0], [0, -1.0, 0], [0, 0, -1.0]])  # q along -z -> flip
+    return [np.concatenate([p[:, :1], np.einsum('nij,nj->ni', R, p[:, 1:])], axis=1) for p in mom_list]
 
 
 def _ang(vec3):
@@ -145,17 +176,32 @@ def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi):
     return jax.vmap(f)(vec, isv, axial, W, Q2)
 
 
-def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0):
+def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
+                          return_zj=False, q_direct=None):
     """Vectorised exclusive amps2 over a batch of events (all SAME channel: itiz, hPID).
-    Returns amps2 (N,) on the ACHILLES absolute scale (/_NORM)."""
+    Returns amps2 (N,) on the ACHILLES absolute scale (/_NORM).
+    return_zj=True returns the lab hadron current zj (N,4_combo,4_mu) instead (DIAGNOSTIC).
+    q_direct (N,4): use this q verbatim as the (already de-Forest-shifted) transfer."""
     k_nu = np.asarray(k_nu, float); k_mu = np.asarray(k_mu, float)
     p_struck = np.asarray(p_struck, float); p_outN = np.asarray(p_outN, float); p_pi = np.asarray(p_pi, float)
     N = k_nu.shape[0]; mN = C.mN
     tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
     mpi = C.mpi0 if int(hPID) == 111 else 139.57018
     q = k_nu - k_mu
+    if ROTATE_QZ:
+        mlist = [k_nu, k_mu, p_struck, p_outN, p_pi]
+        if q_direct is not None:
+            mlist.append(np.asarray(q_direct, float))
+        rot = _rotate_q_to_z(mlist, q)
+        k_nu, k_mu, p_struck, p_outN, p_pi = rot[0], rot[1], rot[2], rot[3], rot[4]
+        if q_direct is not None:
+            q_direct = rot[5]
+        q = k_nu - k_mu
     E_on = np.sqrt(np.sum(p_struck[:, 1:] ** 2, axis=1) + mN ** 2)
-    qsh = q.copy(); qsh[:, 0] = q[:, 0] + p_struck[:, 0] - E_on
+    if q_direct is not None:
+        qsh = np.asarray(q_direct, float)
+    else:
+        qsh = q.copy(); qsh[:, 0] = q[:, 0] + p_struck[:, 0] - E_on
     pcm = p_outN + p_pi
     xlrs = boost_matrix_batch(pcm, to_cm=True); xlr = boost_matrix_batch(pcm, to_cm=False)
     xk2 = np.einsum('nij,nj->ni', xlrs, p_pi); qx2 = np.einsum('nij,nj->ni', xlrs, qsh)
@@ -168,8 +214,13 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     wcm = np.sqrt(np.clip(pcm[:, 0] ** 2 - np.sum(pcm[:, 1:] ** 2, axis=1), 1.0, None))
     Q2 = np.sum(qsh[:, 1:] ** 2, axis=1) - qsh[:, 0] ** 2
     dfun, off = setdfun_batch(xz_q, _JMAX)
-    bleg = np.stack([np.asarray(legendre_ylm(_LMAX, z)) for z in xz_pin])     # (N, L+1, 2L+1)
-    vec, isv, axial = _AMP.amplitudes_spline(jnp.asarray(wcm), jnp.asarray(Q2), DCCKnobs())
+    bleg = legendre_ylm_batch(_LMAX, xz_pin)                                  # (N, L+1, 2L+1)
+    # interp switch: "bilinear" (~45x faster, ~0.3% vs spline -- forward diagnostic default)
+    # or "spline" (bit-matches ACHILLES interpolate_amp) -- set dcc_current.BATCH_INTERP.
+    if BATCH_INTERP == "spline":
+        vec, isv, axial = _AMP.amplitudes_spline_np(wcm, Q2, DCCKnobs())
+    else:
+        vec, isv, axial = _AMP.amplitudes_bilinear_np(wcm, Q2, DCCKnobs())
     zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, mpi))  # (N,8,npw)
     tiz = itiz / 2.0; tpinz = tcrz + tiz; tmax = tm_f + 0.5 + _EPS_TPIN
     IGM1 = (-1, 0, 1, 2)
@@ -202,8 +253,19 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     zjx[:, :, :, 0] = zcrnt[:, :, :, 1]; zjx[:, :, :, 3] = zcrnt[:, :, :, 3]
     zjx[:, :, :, 1] = (zcrnt[:, :, :, 0] - zcrnt[:, :, :, 2]) * sq
     zjx[:, :, :, 2] = (zcrnt[:, :, :, 0] + zcrnt[:, :, :, 2]) * sq * 1j
-    zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)              # (N, combo, mu)
-    L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_mu)))    # (N,4,4)
+    # DIAGNOSTIC frame toggle: amps2 is a Lorentz scalar, so contracting in the 2CM frame
+    # (no boost on zj, boost the leptons in instead) must equal the lab contraction.
+    import os as _os
+    if _os.environ.get("ADONIS_CONTRACT_FRAME", "lab") == "cm":
+        xlrs = boost_matrix_batch(pcm, to_cm=True)
+        knu_c = np.einsum('nmk,nk->nm', xlrs, k_nu); kmu_c = np.einsum('nmk,nk->nm', xlrs, k_mu)
+        zj = zjx.reshape(N, 4, 4)                                            # current in 2CM
+        L = np.asarray(lepton_current(jnp.asarray(knu_c), jnp.asarray(kmu_c)))
+    else:
+        zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)          # (N, combo, mu)
+        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_mu)))  # (N,4,4)
+    if return_zj:
+        return zj                                                            # (N, combo, mu) lab current
     LH = np.einsum('ncm,nbm,m->ncb', L, zj, _METRIC)
     a2 = np.sum(np.abs(LH) ** 2, axis=(1, 2)) / _NORM
     gate = (wcm >= _W_LO) & (wcm <= _W_HI) & (Q2 >= 0) & (Q2 <= _Q2_HI)   # DCC table validity

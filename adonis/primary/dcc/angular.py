@@ -176,6 +176,33 @@ def cbg(a, x, b, y, c, z):
     return s
 
 
+def legendre_ylm_batch(lmax, z):
+    """Vectorised legendre_ylm over a batch z (N,) -> bleg (N, lmax+1, 2*lmax+1).
+    Bit-identical recurrence to legendre_ylm, all ops over the leading N axis."""
+    import numpy as _np, math as _m
+    z = _np.asarray(z, float); N = z.shape[0]
+    bleg = _np.zeros((N, lmax + 1, 2 * lmax + 1))
+    def setb(l, m, v): bleg[:, l, m + lmax] = v
+    def getb(l, m): return bleg[:, l, m + lmax]
+    z1 = _np.sqrt(1.0 - z ** 2) + 1e-20
+    z2 = z / z1
+    setb(0, 0, _np.ones(N))
+    for l in range(1, lmax + 1):
+        setb(l, l, z1 ** l / (2 ** l) * _bb(2 * l, l))
+        setb(l, l - 1, z2 * getb(l, l))
+        if l == 1:
+            continue
+        for m in range(l - 2, -1, -1):
+            setb(l, m, (-getb(l, m + 2) + 2 * (m + 1) * z2 * getb(l, m + 1))
+                  / ((l - m) * (l + m + 1)))
+    for l in range(lmax + 1):
+        for m in range(l + 1):
+            fac = _sqrt((2 * l + 1) / (4.0 * _m.pi) * _bb(l - m, l + m)) * (-1) ** m
+            setb(l, m, getb(l, m) * fac)
+            setb(l, -m, getb(l, m) * (-1) ** m)
+    return bleg
+
+
 def legendre_ylm(lmax, z):
     """Normalized associated Legendre / real spherical-harmonic theta-part
     Y_l^m(theta, 0) for l=0..lmax, m=-l..l (port of Fortran ylmsub).  z=cos(theta).

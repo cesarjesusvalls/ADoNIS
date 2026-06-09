@@ -44,6 +44,22 @@ IGM1_LIST = (-1, 0, 1, 2)          # spherical photon pol: -1,+1 transverse; 0 t
 LAM_LIST = (-1, 1)                  # nucleon helicity (2*lambda)
 ISF_LIST = (-1, 1)                  # 2*(final nucleon spin z)
 
+# --- DEBUG localization knobs (default = faithful; set to probe the low-Q^2 deficit) --- #
+DBG = {
+    "pion_pole": 1.0,   # scale the induced-pseudoscalar (pion-pole) longitudinal term
+    "axial_z": 1.0,     # scale the axial Z component (zmtx 7,8 from table, idxp=4 pair)
+    "axial_time": 1.0,  # scale the axial TIME component (zmtx 3,4, idxp=3 pair)
+    "vec_cc_z": 1.0,    # scale the vector z-from-time current-conservation add (zmtx 7,8)
+    "idxp_start": 0,    # 1 -> skip idxp=1 (the (1,6) pair) for J=1/2 waves, as ACHILLES does
+    "axial_sign": -1.0, # overall axial sign (ACHILLES yin=-zampa -> a=-axial); +1 to test
+}
+# env-var override (debug only): ADONIS_DBG_PION_POLE=-1 etc. Faithful defaults unless set.
+import os as _os
+for _k in list(DBG):
+    _v = _os.environ.get("ADONIS_DBG_" + _k.upper())
+    if _v is not None:
+        DBG[_k] = float(_v) if ("." in _v or "e" in _v.lower()) else int(_v)
+
 
 def pw_phase(two_J, two_L):
     """phv = (-1)**((2J-1)/2 + L + 1)  (interpolate_amp); pha (axial) = -phv."""
@@ -76,15 +92,19 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
 
     # ---- axial current (weak only): zmtx(idx)= -A, zmtx(idxx)= -A*pha ------- #
     if mode < 10:
-        a = -axial
+        a = DBG["axial_sign"] * axial
         if r_axial is not None:
             a = a * jnp.asarray(r_axial)
+        # idx-1 -> idxx-1 pairs, with per-pair DEBUG scale (time/z localization)
+        _ax_scale = {(0, 5): 1.0, (1, 4): 1.0,
+                     (2, 3): DBG["axial_time"], (6, 7): DBG["axial_z"]}
         for src, dst in ((0, 5), (1, 4), (2, 3), (6, 7)):     # id1-1 -> id2-1
-            zmtx = zmtx.at[src].set(a[src])
-            zmtx = zmtx.at[dst].set(a[src] * pha)
+            sc = _ax_scale[(src, dst)]
+            zmtx = zmtx.at[src].set(a[src] * sc)
+            zmtx = zmtx.at[dst].set(a[src] * pha * sc)
         # pion-pole (induced pseudoscalar) term, CC only (mode>0)
         if mode > 0:
-            facpp = 1.0 / (-Q2 - m_pi ** 2)
+            facpp = DBG["pion_pole"] / (-Q2 - m_pi ** 2)
             zp = (qc0 * zmtx[2] - qc * zmtx[6]) * facpp
             zm = (qc0 * zmtx[3] - qc * zmtx[7]) * facpp
             zmtx = zmtx.at[2].add(-qc0 * zp)
@@ -105,13 +125,17 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
             src_block = -isv                       # isign=-1 neutron phase (amp_dcc_sl_module.f:644)
         else:                                      # EM proton, or EM I=3/2
             src_block = vec
+        # ACHILLES idxp_start: for J=1/2 waves (two_J==1) start at idxp=2 (skip the (1,6) pair)
+        idxp_start = 2 if (DBG["idxp_start"] and int(two_J[ipw]) == 1) else 1
         for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3)), start=1):
+            if idxp < idxp_start:
+                continue
             vz = vfac * src_block[src, ipw]
             zmtx = zmtx.at[src, ipw].add(vz)
             zmtx = zmtx.at[dst, ipw].add(vz * phv[ipw])
             if idxp == 3:                         # z from time via current conservation
-                zmtx = zmtx.at[6, ipw].add(vz * xxx)
-                zmtx = zmtx.at[7, ipw].add(vz * xxx * phv[ipw])
+                zmtx = zmtx.at[6, ipw].add(vz * xxx * DBG["vec_cc_z"])
+                zmtx = zmtx.at[7, ipw].add(vz * xxx * phv[ipw] * DBG["vec_cc_z"])
     return zmtx
 
 
