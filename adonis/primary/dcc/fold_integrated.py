@@ -35,9 +35,12 @@ E_NU_DEFAULT = 1500.0
 
 
 def pion_cm_momentum(W):
-    """Pion CM momentum k_pi(W) [MeV] with the exact DCC masses; 0 below threshold."""
-    thr_hi = (MQE + M_PI) ** 2
-    thr_lo = (MQE - M_PI) ** 2
+    """Pion CM momentum k_pi(W) [MeV]; 0 below threshold.  KINEMATIC pion mass (mpi0 to match
+    ACHILLES) via conventions, NOT the amplitude-internal fpio."""
+    from adonis.primary.dcc.conventions import kin_m_pi, M_PIP
+    mpi = kin_m_pi(M_PIP)
+    thr_hi = (MQE + mpi) ** 2
+    thr_lo = (MQE - mpi) ** 2
     lam = jnp.clip((W ** 2 - thr_hi) * (W ** 2 - thr_lo), 0.0, None)
     return jnp.sqrt(lam) / (2.0 * W)
 
