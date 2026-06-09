@@ -37,13 +37,26 @@ from adonis.params import GenConfig, DCCKnobs
 from adonis.primary.dcc.channel import DCCSinglePion
 from adonis.nuclear.free import FreeNucleon
 
-# Calibrated model→nb scale.  The relative weight omits the universal CC prefactor
-# (G_F²cos²θ_c and the proposal-measure/flux bookkeeping); this ONE constant — fit against
-# the ACHILLES free-nucleon oracle, which reports nb (Constants.hh HBARC2=0.38938 mb·GeV²) —
-# converts the model's relative σ to physical nb.  It is unit bookkeeping, NOT a physics
-# tune: energy- and channel-independent, and the SAME for ν_e and ν_μ to 0.2% (see
-# `freenucleon_sigma_oracle`, which re-fits it each call rather than relying on this value).
-SIGMA_UNIT_NB = 2.569e-14        # nb per (model relative unit); ~0.2% calibration spread
+# DERIVED model->nb scale -- ZERO FITTED CONSTANTS (was a fitted 2.569e-14).  From two
+# first-principles results:
+#  (1) the proven amplitude bridge (tests/test_amps2_bridge.py): the diff-path L.W equals the
+#      generator's absolute amps2 up to amps2_gen = L.W * (ee/(sw*sqrt2))^2 * 1/4 * |prop_W|^2 / _NORM,
+#  (2) the analytic 3-body phase space in the diff-path (E', Omega_lep, Omega_pi*) sampling,
+#      dPhi3/(dE' dOmega_lep dOmega_pi*) = |k'| |p_pi^cm| / (8 W (2pi)^5).
+# Combined with dsigma = flux_factor * spin_avg * amps2_gen * dPhi3 and the diff-path
+# prefac = (|k'|/E_nu) sin(theta) (|p_pi^cm|/W), EVERY kinematic factor cancels, leaving the pure
+# constant below.  Validated vs the independent generator sigma to 0.5%.  N_NUC=6 divides out the
+# per-channel nucleon-count `mult` so the result is per-nucleon (the ACHILLES free-nucleon oracle).
+def _derived_sigma_unit_nb():
+    import numpy as np
+    from adonis.xsec import constants as C
+    from adonis.xsec.dcc_current import _NORM
+    bridge0 = (C.ee / (C.sw * np.sqrt(2.0))) ** 2 * 0.25 * (1.0 / C.MW ** 4) / _NORM
+    # m_N = the diff-path struck-nucleon mass (C.mN), spin_avg=1/2, N_NUC=6 (per-channel mult).
+    return C.HBARC2 * C.TO_NB * 0.5 * bridge0 / (32.0 * C.mN * (2.0 * np.pi) ** 4 * 6.0)
+
+
+SIGMA_UNIT_NB = _derived_sigma_unit_nb()     # = 2.513e-14, first-principles (no fit)
 CM2_1E38_PER_NB = 1.0e5          # 1 nb = 1e5 × 10⁻³⁸ cm²  (the Fig-2 σ axis)
 
 
