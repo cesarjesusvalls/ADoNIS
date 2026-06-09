@@ -32,6 +32,22 @@ M_PIP = 139.57018; M_PI0 = 134.9764
 M_P = 938.27; M_N = 939.57
 SPIN_AVG = 0.5
 
+# ============================ ACHILLES-MATCH KNOB: pion kinematic mass ============================
+# ACHILLES builds the RES 1pi phase space with the NEUTRAL pion mass (mpi0 = 134.98) for EVERY
+# channel -- INCLUDING pi+/pi-.  Verified from the free-proton RESDUMP: the outgoing pi+ (PID 211)
+# is on-shell at 134.977, not the physical charged mass 139.57.  Using the heavier physical M_PIP
+# in s23max=(sqrt(s)-m_pi)^2 / p*_A shrinks the 3-body phase space ~1.0-1.4% and was THE dominant
+# ADoNIS-vs-ACHILLES RES normalization deficit (free proton: 1.07% low -> +0.24% once switched).
+#   MATCH_ACHILLES_PION_MASS = True  -> use mpi0 for all pions (reproduces ACHILLES, default)
+#   MATCH_ACHILLES_PION_MASS = False -> use the physical per-channel masses (correct physics; the
+#                                       RES sigma then sits ~1% ABOVE ACHILLES -- intentional).
+# This is a deliberate "match the generator" choice, NOT physics; flip it to move away from ACHILLES.
+MATCH_ACHILLES_PION_MASS = True
+def _pi_kin_mass(physical_mpi):
+    """Kinematic pion mass for the phase space: mpi0 to match ACHILLES, else the physical value."""
+    return M_PI0 if MATCH_ACHILLES_PION_MASS else physical_mpi
+# =================================================================================================
+
 CHANNELS = [
     (2112, -1, M_N, 211, M_PIP, MASS_PDG_NEUTRON),     # n -> n pi+
     (2112, -1, M_P, 111, M_PI0, MASS_PDG_NEUTRON),     # n -> p pi0
@@ -217,7 +233,7 @@ def generate_importance(n=20000, seed=0, return_events=False):
     ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid")}
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
         Npid = 2212 if mNf == M_P else 2112
-        s = _sample_channel(n, rng, flux, minE, maxE, mpi, mNf)
+        s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf)   # mpi0 to match ACHILLES
         v = s["valid"]
         iw = N_NUC                                              # importance: |p|^2 S in the sampling
         a2 = np.zeros(n)

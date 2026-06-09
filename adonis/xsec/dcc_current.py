@@ -37,10 +37,14 @@ _W_LO = 1076.957; _W_HI = 2000.0; _Q2_HI = 5.0e6
 #   currents_pi_dcc.f90:130  J_mu*=2*xmn/hbarc),  with FResV = Vud*ee/(sw*sqrt2*2) the hadronic
 #   EW coupling (LeptonicCurrent.cc:63; resV=1).  My zj_raw omits FResV, fac and the fm-unit
 #   scalings; assembling those constants (fac^2 = 2/(fnuc^2 4pi) with the fm->MeV scaling fnuc^2,
-#   and (2 m_N/hbarc)^2) gives  1/_NORM = |FResV|^2 * (2 m_N)^2 / (2 pi).  This reproduces the old
-#   fitted 3.7704e-5 to 0.6% -- so the absolute scale is DERIVED, not tuned.
+#   and (2 m_N/hbarc)^2) gives  1/_NORM = |FResV|^2 * (2 m_N)^2 / (2 pi).
+# Per-event amps2 audit vs the ACHILLES free-proton RESDUMP (scripts/amps2_resdump_audit.py): the
+# ratio amps2_ACH/amps2_ADO is FLAT at 1.0011 -- a pure constant => the only offset is _NORM's mass.
+# ACHILLES's 2*xmn/hbarc uses xmn = the NEUTRON mass (one_body.f90:3, 939.566), not the (mp+mn)/2
+# average -- so use C.mn here.  This removes the 0.11% (= (mn/mN_avg)^2) amps2 deficit; the absolute
+# scale is DERIVED, not tuned.
 _FRESV = C.Vud * C.ee / (C.sw * np.sqrt(2.0) * 2.0)          # |hadronic CC coupling|
-_NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * C.mN) ** 2)      # = 3.792e-5 (was fit 3.7704e-5)
+_NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * C.mn) ** 2)      # mn = neutron (ACHILLES xmn); was C.mN avg
 
 # Forward-generator amplitude interpolation: "bilinear" (~45x faster, ~0.3% vs spline) for the
 # fast diagnostic loop; set to "spline" for a bit-faithful-to-ACHILLES final number.

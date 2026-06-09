@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np, jax; jax.config.update("jax_enable_x64", True)
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
-from adonis.xsec.res_xsec import _sqlam, _boost_to_lab, M_MU, _TWO_PI, M_PIP, M_P
+from adonis.xsec.res_xsec import _sqlam, _boost_to_lab, M_MU, _TWO_PI, M_PIP, M_PI0, M_P, _pi_kin_mass
 from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON
 
@@ -20,7 +20,7 @@ ACHHEPMC = Path("/Users/homelab/Lab/Playground/projects/DIFFGEN/Achilles/_resrun
 def generate(n, seed=0):
     rng = np.random.default_rng(seed)
     u = rng.random((n, 5))                                  # s23, ctA, phA, ctB, phB
-    m_pi = M_PIP; m_Nf = M_P
+    m_pi = _pi_kin_mass(M_PIP); m_Nf = M_P    # mpi0 to match ACHILLES (see res_xsec.MATCH_ACHILLES_PION_MASS)
     knu = np.tile([E_NU, 0, 0, E_NU], (n, 1)).astype(float)
     pst = np.tile([M_STRUCK, 0, 0, 0], (n, 1)).astype(float)
     P = knu + pst
