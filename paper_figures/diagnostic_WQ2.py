@@ -62,7 +62,7 @@ def parse_hepmc(path, mode):
     return left, q2, w, sigma_nb
 
 
-def adonis(mode, n, nchunks=10):
+def adonis(mode, n, nchunks=25):
     """Run the ADoNIS generator in `nchunks` chunks (one seed each) with % progress.
     Each chunk's per-event weights are normalised to sum to that chunk's sigma estimate, then
     divided by nchunks, so the concatenated set sums to the MEAN sigma over chunks."""
@@ -97,7 +97,7 @@ def adonis(mode, n, nchunks=10):
     return left[keep], q2[keep], w[keep]
 
 
-def panel(ax, axr, ach_x, ach_w, ado_x, ado_w, bins, xlabel):
+def panel(ax, axr, ach_x, ach_w, ado_x, ado_w, bins, xlabel, axc=None):
     bw = np.diff(bins); ctr = 0.5 * (bins[1:] + bins[:-1])
     ha, _ = np.histogram(ach_x, bins=bins, weights=ach_w)
     h2a, _ = np.histogram(ach_x, bins=bins, weights=ach_w**2)
@@ -114,8 +114,24 @@ def panel(ax, axr, ach_x, ach_w, ado_x, ado_w, bins, xlabel):
         r = dd / da
         re = r * np.sqrt((ed / dd)**2 + (ea / da)**2)
     axr.axhspan(0.97, 1.03, color="green", alpha=0.15); axr.axhline(1.0, ls="--", color="green")
-    axr.errorbar(ctr, r, yerr=re, fmt="o-", color="C3", ms=3)
-    axr.set_ylim(0.4, 1.2); axr.set_ylabel("ADoNIS/ACH"); axr.set_xlabel(xlabel)
+    axr.step(bins, np.append(r, r[-1]), where="post", color="C3", lw=1.3)   # ratio as steps
+    axr.errorbar(ctr, r, yerr=re, fmt="none", ecolor="C3", alpha=0.8, capsize=1.5)
+    axr.set_ylim(0.4, 1.2); axr.set_ylabel("ADoNIS/ACH")
+    if axc is None:
+        axr.set_xlabel(xlabel)
+    # chi2/ndf between the two histograms (propagated stat errors), over bins both populated
+    msk = (da > 0) & (dd > 0) & np.isfinite(ed) & np.isfinite(ea) & ((ed**2 + ea**2) > 0)
+    ndf = int(msk.sum())
+    chi2_bins = np.where(msk, (dd - da)**2 / np.where(msk, ed**2 + ea**2, 1.0), 0.0)
+    chi2 = float(chi2_bins[msk].sum())
+    chi2ndf = chi2 / max(ndf, 1)
+    axr.text(0.03, 0.82, f"χ²/ndf = {chi2ndf:.2f}  ({ndf} bins)", transform=axr.transAxes, fontsize=9)
+    # per-bin chi2 contribution (disaggregated) -> spot which bins drive the disagreement
+    if axc is not None:
+        axc.bar(ctr, chi2_bins, width=bw, color="C3", alpha=0.6, align="center")
+        axc.axhline(1.0, ls=":", color="0.5", lw=0.8)          # chi2/bin = 1 reference
+        axc.set_ylabel("χ²/bin"); axc.set_xlabel(xlabel); axc.set_ylim(bottom=0)
+    return chi2ndf
 
 
 def main():
@@ -137,11 +153,12 @@ def main():
     else:
         lbins = np.linspace(0, 2000, 22); llab = "ω=E_ν−E_μ [MeV]"
     qbins = np.linspace(0, 2.0, 18)
-    fig, axes = plt.subplots(2, 2, figsize=(14, 8), height_ratios=[3, 1], sharex="col")
+    fig, axes = plt.subplots(3, 2, figsize=(14, 9.5), height_ratios=[3, 1, 1], sharex="col")
+    c2W = panel(axes[0, 0], axes[1, 0], alx, aw, dlx, dw, lbins, llab, axc=axes[2, 0])
+    c2Q = panel(axes[0, 1], axes[1, 1], aq2, aw, dq2, dw, qbins, "Q² [GeV²]", axc=axes[2, 1])
     fig.suptitle(f"{mode.upper()} primary (no FSI): ACHILLES vs ADoNIS — total ADoNIS/ACH = "
-                 f"{sig_ado/sig_ach:.3f}   (N_ACH={len(alx)}, N_ADO={len(dlx)})")
-    panel(axes[0, 0], axes[1, 0], alx, aw, dlx, dw, lbins, llab)
-    panel(axes[0, 1], axes[1, 1], aq2, aw, dq2, dw, qbins, "Q² [GeV²]")
+                 f"{sig_ado/sig_ach:.3f}   (N_ACH={len(alx)}, N_ADO={len(dlx)})   "
+                 f"χ²/ndf  W={c2W:.2f}  Q²={c2Q:.2f}")
     fig.tight_layout()
     out = ROOT / "paper_figures" / (f"res_WQ2_shapes.png" if mode == "res" else "qe_WQ2_shapes_5x.png")
     fig.savefig(out, dpi=110); print("  wrote", out)
