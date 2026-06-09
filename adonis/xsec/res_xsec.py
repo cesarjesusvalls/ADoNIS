@@ -32,20 +32,14 @@ M_PIP = 139.57018; M_PI0 = 134.9764
 M_P = 938.27; M_N = 939.57
 SPIN_AVG = 0.5
 
-# ============================ ACHILLES-MATCH KNOB: pion kinematic mass ============================
-# ACHILLES builds the RES 1pi phase space with the NEUTRAL pion mass (mpi0 = 134.98) for EVERY
-# channel -- INCLUDING pi+/pi-.  Verified from the free-proton RESDUMP: the outgoing pi+ (PID 211)
-# is on-shell at 134.977, not the physical charged mass 139.57.  Using the heavier physical M_PIP
-# in s23max=(sqrt(s)-m_pi)^2 / p*_A shrinks the 3-body phase space ~1.0-1.4% and was THE dominant
-# ADoNIS-vs-ACHILLES RES normalization deficit (free proton: 1.07% low -> +0.24% once switched).
-#   MATCH_ACHILLES_PION_MASS = True  -> use mpi0 for all pions (reproduces ACHILLES, default)
-#   MATCH_ACHILLES_PION_MASS = False -> use the physical per-channel masses (correct physics; the
-#                                       RES sigma then sits ~1% ABOVE ACHILLES -- intentional).
-# This is a deliberate "match the generator" choice, NOT physics; flip it to move away from ACHILLES.
-MATCH_ACHILLES_PION_MASS = True
+# Pion KINEMATIC mass for the 3-body phase space.  Single source of truth: conventions.kin_m_pi
+# (mpi0=134.98 to match ACHILLES, else the physical per-channel mass).  This was THE dominant
+# RES normalization deficit -- see conventions.py and the [[res-norm-deficit-is-pion-mass]] note.
+from adonis.primary.dcc import conventions as _conv
+MATCH_ACHILLES_PION_MASS = _conv.MATCH_ACHILLES        # back-compat alias; toggle lives in conventions
 def _pi_kin_mass(physical_mpi):
-    """Kinematic pion mass for the phase space: mpi0 to match ACHILLES, else the physical value."""
-    return M_PI0 if MATCH_ACHILLES_PION_MASS else physical_mpi
+    """Kinematic pion mass for the 3-body phase space (delegates to conventions.kin_m_pi)."""
+    return _conv.kin_m_pi(physical_mpi)
 # =================================================================================================
 
 CHANNELS = [
@@ -68,13 +62,46 @@ def _boost_to_lab(p4cm, P):
     return np.concatenate([E[:, None], p4cm[:, 1:] + c1[:, None] * P[:, 1:]], axis=1)
 
 
+def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
+    """Shared 3-body final state (mu + N + pi): two isotropic 2-body splits from the lab beam k_nu
+    and struck nucleon p_struck.  u is (n,5) = [s23, ctA, phA, ctB, phB] in [0,1).  Returns the lab
+    final momenta, the 3-body phase-space Jacobian J_3body, the invariants s/s23, and the 3-body
+    validity mask.  ONE core -- used by both the 12C importance estimator (_sample_channel) and the
+    free-proton wrapper (scripts/free_proton_gen)."""
+    P = k_nu + p_struck
+    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
+    sqrts = np.sqrt(np.clip(s, 1e-9, None))
+    s23max = (sqrts - m_pi) ** 2; s23min = max((M_MU + m_Nf) ** 2, 1e-8)
+    s23 = s23min + (s23max - s23min) * u[:, 0]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
+    # split A: total -> muN + pi
+    EmuN = (s + s23 - m_pi ** 2) / (2 * sqrts); pA = sqrts * _sqlam(s, s23, m_pi ** 2) / 2
+    ctA = 2 * u[:, 1] - 1; stA = np.sqrt(np.clip(1 - ctA ** 2, 0, None)); phA = _TWO_PI * u[:, 2]
+    dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
+    muN_cm = np.concatenate([EmuN[:, None], pA[:, None] * dA], axis=1)
+    pi_cm = np.concatenate([np.sqrt(m_pi ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
+    p_muN = _boost_to_lab(muN_cm, P); p_pi = _boost_to_lab(pi_cm, P)
+    I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, s23, m_pi ** 2), 1e-12, None)
+    # split B: muN -> mu + N
+    Emu = (s23 + M_MU ** 2 - m_Nf ** 2) / (2 * rs23); pB = rs23 * _sqlam(s23, M_MU ** 2, m_Nf ** 2) / 2
+    ctB = 2 * u[:, 3] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 4]
+    dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
+    mu_cm = np.concatenate([Emu[:, None], pB[:, None] * dB], axis=1)
+    N_cm = np.concatenate([np.sqrt(m_Nf ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
+    k_mu = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
+    I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, m_Nf ** 2), 1e-12, None)
+    density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
+    J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
+    valid3 = ((s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0)
+              & (_sqlam(s23, M_MU ** 2, m_Nf ** 2) > 0))
+    return dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
+
+
 def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
-    """Vectorised sampling of n RES events for one channel.  Returns dict of arrays + validity."""
+    """One RES channel for the 12C importance estimator: spectrum beam + importance struck nucleon
+    + the shared 3-body core (_sample_3body)."""
     u = rng.random((n, 10))
     Smin = (M_MU + m_Nf + m_pi) ** 2
-    # BeamMapper seed is PROCESS-dependent: (Smin - Masses()[1])/(2 sqrt(Masses()[1])), Masses()[1]
-    # = final-nucleon mass^2 (BeamMapper.cc).  For RES this is higher than the QE seed -> use it
-    # per channel (validated bit-exact vs RESDUMP psw, scripts/validate_res_psw.py).
+    # BeamMapper seed is PROCESS-dependent (BeamMapper.cc); validated bit-exact vs RESDUMP psw.
     minE = max((Smin - m_Nf ** 2) / (2 * m_Nf) / 1000.0, flux.min_energy)
     dE_beam = maxE - minE
     E_GeV = u[:, 4] * dE_beam + minE; Enu = E_GeV * 1000.0
@@ -84,38 +111,14 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
     J_had = np.ones(n)                                          # |p|^2 S J_had absorbed -> N_NUC
-    P = k_nu + p_struck
-    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
-    sqrts = np.sqrt(np.clip(s, 1e-9, None))
-    s23max = (sqrts - m_pi) ** 2; s23min = max((M_MU + m_Nf) ** 2, 1e-8)
-    s23 = s23min + (s23max - s23min) * u[:, 5]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
-    # split A: total -> muN + pi
-    EmuN = (s + s23 - m_pi ** 2) / (2 * sqrts); pA = sqrts * _sqlam(s, s23, m_pi ** 2) / 2
-    ctA = 2 * u[:, 6] - 1; stA = np.sqrt(np.clip(1 - ctA ** 2, 0, None)); phA = _TWO_PI * u[:, 7]
-    dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
-    muN_cm = np.concatenate([EmuN[:, None], pA[:, None] * dA], axis=1)
-    pi_cm = np.concatenate([np.sqrt(m_pi ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
-    p_muN = _boost_to_lab(muN_cm, P); p_pi = _boost_to_lab(pi_cm, P)
-    I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, s23, m_pi ** 2), 1e-12, None)
-    # split B: muN -> mu + N
-    Emu = (s23 + M_MU ** 2 - m_Nf ** 2) / (2 * rs23); pB = rs23 * _sqlam(s23, M_MU ** 2, m_Nf ** 2) / 2
-    ctB = 2 * u[:, 8] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 9]
-    dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
-    mu_cm = np.concatenate([Emu[:, None], pB[:, None] * dB], axis=1)
-    N_cm = np.concatenate([np.sqrt(m_Nf ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
-    k_mu = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
-    I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, m_Nf ** 2), 1e-12, None)
-    density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
-    J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
-    # ACHILLES QESpectralMapper removal-energy ceiling (HadronicMapper.cc:50-53), Smin = 3-body
-    # threshold here.  Without it the importance sampler over-populates the high-|p|/high-E tail.
+    tb = _sample_3body(k_nu, p_struck, m_pi, m_Nf, u[:, 5:10])  # same random dims as before
+    # ACHILLES QESpectralMapper removal-energy ceiling (HadronicMapper.cc:50-53), Smin = 3-body thr.
     det_e = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
     emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
-    valid = ((s > Smin) & (s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0)
-             & (_sqlam(s23, M_MU ** 2, m_Nf ** 2) > 0) & (energy < emax))
-    return dict(k_nu=k_nu, p_struck=p_struck, k_mu=k_mu, p_N=p_N, p_pi=p_pi,
-                J=J_beam * J_had * J_3body, mom=mom, energy=energy, Enu=Enu, E_GeV=E_GeV, valid=valid)
+    valid = ((tb["s"] > Smin) & tb["valid3"] & (energy < emax))
+    return dict(k_nu=k_nu, p_struck=p_struck, k_mu=tb["k_mu"], p_N=tb["p_N"], p_pi=tb["p_pi"],
+                J=J_beam * J_had * tb["J_3body"], mom=mom, energy=energy, Enu=Enu, E_GeV=E_GeV, valid=valid)
 
 
 # --- ACHILLES-faithful ProcessGroup mirror -------------------------------------------------- #

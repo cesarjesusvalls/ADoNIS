@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np, jax; jax.config.update("jax_enable_x64", True)
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
-from adonis.xsec.res_xsec import _sqlam, _boost_to_lab, M_MU, _TWO_PI, M_PIP, M_PI0, M_P, _pi_kin_mass
+from adonis.xsec.res_xsec import M_PIP, M_P, _pi_kin_mass, _sample_3body
 from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON
 
@@ -23,30 +23,10 @@ def generate(n, seed=0):
     m_pi = _pi_kin_mass(M_PIP); m_Nf = M_P    # mpi0 to match ACHILLES (see res_xsec.MATCH_ACHILLES_PION_MASS)
     knu = np.tile([E_NU, 0, 0, E_NU], (n, 1)).astype(float)
     pst = np.tile([M_STRUCK, 0, 0, 0], (n, 1)).astype(float)
-    P = knu + pst
-    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
-    sqrts = np.sqrt(np.clip(s, 1e-9, None))
-    s23max = (sqrts - m_pi) ** 2; s23min = max((M_MU + m_Nf) ** 2, 1e-8)
-    s23 = s23min + (s23max - s23min) * u[:, 0]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
-    # split A: total -> (muN) + pi
-    EmuN = (s + s23 - m_pi ** 2) / (2 * sqrts); pA = sqrts * _sqlam(s, s23, m_pi ** 2) / 2
-    ctA = 2 * u[:, 1] - 1; stA = np.sqrt(np.clip(1 - ctA ** 2, 0, None)); phA = _TWO_PI * u[:, 2]
-    dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
-    muN_cm = np.concatenate([EmuN[:, None], pA[:, None] * dA], axis=1)
-    pi_cm = np.concatenate([np.sqrt(m_pi ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
-    p_muN = _boost_to_lab(muN_cm, P); p_pi = _boost_to_lab(pi_cm, P)
-    I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, s23, m_pi ** 2), 1e-12, None)
-    # split B: (muN) -> mu + N
-    Emu = (s23 + M_MU ** 2 - m_Nf ** 2) / (2 * rs23); pB = rs23 * _sqlam(s23, M_MU ** 2, m_Nf ** 2) / 2
-    ctB = 2 * u[:, 3] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 4]
-    dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
-    mu_cm = np.concatenate([Emu[:, None], pB[:, None] * dB], axis=1)
-    N_cm = np.concatenate([np.sqrt(m_Nf ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
-    k_mu = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
-    I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, m_Nf ** 2), 1e-12, None)
-    density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
-    J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
-    valid = ((s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0) & (_sqlam(s23, M_MU ** 2, m_Nf ** 2) > 0))
+    # SHARED 3-body core (adonis.xsec.res_xsec._sample_3body) -- same scaffolding as the 12C path;
+    # free proton differs only in the trivial initial state (mono beam, struck at rest, 1 channel).
+    tb = _sample_3body(knu, pst, m_pi, m_Nf, u)
+    k_mu, p_N, p_pi, J_3body, valid = tb["k_mu"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
     # weights: amps2 * flux * spinavg * J_3body (initwgt=1, mono beam -> no beam jac)
     a2 = np.zeros(n); ch = 1000
     for i in range(0, n, ch):
