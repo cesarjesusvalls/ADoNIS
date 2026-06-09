@@ -28,13 +28,13 @@ def make(npz, hepmc, out, lbins, qbins, title, w_is_total_over_N=False):
     print(f"  wrote {out}  (chi2/ndf W={c2W:.2f} Q2={c2Q:.2f})", flush=True)
 
 # Free proton (mono 1 GeV): tight bins; npz w sums to N*sigma
-make("scripts/free_proton_2M_mpi0.npz", str(ACH / "_resrun_out/nofsi_res_H_mono_1M.hepmc"),
-     "paper_figures/res_WQ2_free_proton_mpi0_2M.png",
+make("scripts/free_proton_2M_unified.npz", str(ACH / "_resrun_out/nofsi_res_H_mono_1M.hepmc"),
+     "paper_figures/res_WQ2_free_proton_unified.png",
      np.linspace(1080, 1560, 22), np.linspace(0, 1.15, 22),
-     "RES free proton (mono 1 GeV) ABSOLUTE", w_is_total_over_N=True)
+     "RES free proton (mono 1 GeV) ABSOLUTE [unified engine]", w_is_total_over_N=True)
 
 # 12C (T2K flux): wider bins; npz w already sums to sigma
-make("scripts/res_events_spline_1M_mpi0.npz", str(ACH / "_drvout/nofsi_res_hi_1M.hepmc"),
-     "paper_figures/res_WQ2_12C_mpi0_1M.png",
+make("scripts/res_events_spline_1M_unified.npz", str(ACH / "_drvout/nofsi_res_hi_1M.hepmc"),
+     "paper_figures/res_WQ2_12C_unified.png",
      np.linspace(1080, 2000, 16), np.linspace(0, 2.0, 18),
-     "RES 12C (T2K flux) ABSOLUTE", w_is_total_over_N=False)
+     "RES 12C (T2K flux) ABSOLUTE [unified engine]", w_is_total_over_N=False)
