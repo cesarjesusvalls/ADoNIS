@@ -49,6 +49,9 @@ _NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * C.mn) ** 2)      # mn = neutron (ACH
 # Forward-generator amplitude interpolation: "bilinear" (~45x faster, ~0.3% vs spline) for the
 # fast diagnostic loop; set to "spline" for a bit-faithful-to-ACHILLES final number.
 BATCH_INTERP = "bilinear"
+# Diagnostic override for the AMPLITUDE-INTERNAL pion mass (build_zmtx: qc, pion-pole facpp).
+# None -> use the per-channel hPID mass.  Used to determine which m_pi ACHILLES uses in the amplitude.
+AMP_MPI_OVERRIDE = None
 # The DCC partial-wave amplitude is built with the momentum transfer q as the quantization (z) axis
 # (ACHILLES does this via TransformQZ before computing the current). amps2 is a Lorentz scalar but
 # this implementation is only correct when q is along +z, so we rotate every event into that frame.
@@ -225,7 +228,8 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
         vec, isv, axial = _AMP.amplitudes_spline_np(wcm, Q2, DCCKnobs())
     else:
         vec, isv, axial = _AMP.amplitudes_bilinear_np(wcm, Q2, DCCKnobs())
-    zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, mpi))  # (N,8,npw)
+    amp_mpi = AMP_MPI_OVERRIDE if AMP_MPI_OVERRIDE is not None else mpi
+    zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, amp_mpi))  # (N,8,npw)
     tiz = itiz / 2.0; tpinz = tcrz + tiz; tmax = tm_f + 0.5 + _EPS_TPIN
     IGM1 = (-1, 0, 1, 2)
     zcrnt = np.zeros((N, 2, 2, 4), complex)
