@@ -24,7 +24,7 @@ MU_LO = 250.0; COSMU = -0.6; P_LO, P_HI = 450.0, 1000.0; COSP = 0.4
 _CFG = lambda **k: DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=325, **k)
 
 
-def _cc0pi(mu, lead, w):
+def _cc0pi(knu, mu, lead, w):
     pmu = np.linalg.norm(mu[:, 1:], axis=1); cmu = mu[:, 3] / np.clip(pmu, 1e-9, None)
     pl = np.linalg.norm(lead[:, 1:], axis=1); cl = lead[:, 3] / np.clip(pl, 1e-9, None)
     sel = (w > 0) & (pmu > MU_LO) & (cmu > COSMU) & (pl > P_LO) & (pl < P_HI) & (cl > COSP)
@@ -32,7 +32,8 @@ def _cc0pi(mu, lead, w):
     dpt = np.linalg.norm(dv, axis=1)
     c = -np.sum(lt * dv, axis=1) / (np.linalg.norm(lt, axis=1) * dpt + 1e-9)
     dat = np.arccos(np.clip(c, -1, 1))
-    return dpt[sel], dat[sel], w[sel]
+    q = knu - mu; Q2 = ((q[:, 1:] ** 2).sum(1) - q[:, 0] ** 2) / 1e6      # leptonic Q^2 [GeV^2]
+    return dpt[sel], dat[sel], Q2[sel], w[sel]
 
 
 def qe_sample(n, seed):
@@ -47,14 +48,14 @@ def qe_sample(n, seed):
                      W=jnp.zeros(len(w)), Q2_adj=jnp.zeros(len(w)))
     ev = DiscreteNucleonFSI(_CFG(seed=2)).apply(None, ev, key=jax.random.PRNGKey(seed + 7))
     mu = np.asarray(ev.kp); lead = np.asarray(ev.p_N)
-    return _cc0pi(mu, lead, w)
+    return _cc0pi(np.asarray(r["k_nu"]), mu, lead, w)
 
 
 def res_absorbed_sample(n, seed):
     r = res_xsec.generate(n, seed=seed, return_events=True); e = r["events"]
     m = len(e["w"])
     if m == 0:
-        return np.array([]), np.array([]), np.array([])
+        return np.array([]), np.array([]), np.array([]), np.array([])
     ev = EventRecord(k=jnp.asarray(e["k_nu"]), kp=jnp.asarray(e["k_mu"]), p_struck=jnp.asarray(e["p_struck"]),
                      p_pi=jnp.asarray(e["p_pi"]), p_N=jnp.asarray(e["p_N"]), w=jnp.asarray(e["w"]),
                      channel=jnp.zeros(m, jnp.int32),
@@ -71,30 +72,32 @@ def res_absorbed_sample(n, seed):
     lead = np.where((mom_abs > mom_prim)[:, None], abs_p, pN)
     has_p = (mom_abs > 1) | prim_is_p
     w = np.asarray(e["w"]) * (absorbed & has_p)                  # CC0pi only if pion absorbed
-    return _cc0pi(mu, lead, w)
+    return _cc0pi(np.asarray(e["k_nu"]), mu, lead, w)
 
 
 def generate(n_qe=400000, n_res=120000, seed=0):
     qd = qe_sample(n_qe, seed)
     rd = res_absorbed_sample(n_res, seed)
     dpt = np.concatenate([qd[0], rd[0]]); dat = np.concatenate([qd[1], rd[1]])
-    w = np.concatenate([qd[2], rd[2]])
-    return dict(dpt=dpt, dalphat=dat, w=w, sig_qe=qd[2].sum(), sig_res=rd[2].sum())
+    Q2 = np.concatenate([qd[2], rd[2]]); w = np.concatenate([qd[3], rd[3]])
+    return dict(dpt=dpt, dalphat=dat, Q2=Q2, w=w, sig_qe=qd[3].sum(), sig_res=rd[3].sum())
 
 
 if __name__ == "__main__":
     n_qe = int(sys.argv[1]) if len(sys.argv) > 1 else 400000
     n_res = int(sys.argv[2]) if len(sys.argv) > 2 else 120000
     nseed = int(sys.argv[3]) if len(sys.argv) > 3 else 1
-    acc = {"dpt": [], "dalphat": [], "w": []}; sq = sr = 0.0
+    import time as _t; _t0 = _t.time()
+    acc = {"dpt": [], "dalphat": [], "Q2": [], "w": []}; sq = sr = 0.0; ntot = 0
     for sd in range(nseed):
         d = generate(n_qe, n_res, seed=sd)
         for k in acc:
             acc[k].append(d[k])
-        sq += d["sig_qe"]; sr += d["sig_res"]
-        print(f"  seed {sd}: {len(d['w'])} CC0pi events")
-    dpt = np.concatenate(acc["dpt"]); dat = np.concatenate(acc["dalphat"]); w = np.concatenate(acc["w"])
+        sq += d["sig_qe"]; sr += d["sig_res"]; ntot += len(d["w"])
+        print(f"  seed {sd+1}/{nseed}: +{len(d['w'])} -> {ntot} CC0pi events  ({_t.time()-_t0:.0f}s)", flush=True)
+    dpt = np.concatenate(acc["dpt"]); dat = np.concatenate(acc["dalphat"])
+    Q2 = np.concatenate(acc["Q2"]); w = np.concatenate(acc["w"])
     f = sr / (sq + sr) if (sq + sr) > 0 else 0
     print(f"CC0pi-Np TOTAL: {len(w)} events  RES-absorbed fraction = {100*f:.1f}%")
-    np.savez(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_xsec.npz", dpt=dpt, dalphat=dat, w=w)
+    np.savez(ROOT / "data" / "oracle" / "t2k_cc0pi_tki_adonis_xsec.npz", dpt=dpt, dalphat=dat, Q2=Q2, w=w)
     print("wrote data/oracle/t2k_cc0pi_tki_adonis_xsec.npz")
