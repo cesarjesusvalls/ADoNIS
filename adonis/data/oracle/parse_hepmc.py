@@ -46,13 +46,15 @@ def parse_events(path: Path):
             if tag == "E ":
                 if evt is not None:
                     yield evt
-                evt = {"w": None, "gen_xs": None, "parts": []}
+                evt = {"w": None, "gen_xs": None, "proc": None, "parts": []}
             elif evt is None:
                 continue
             elif tag == "W ":
                 evt["w"] = float(line.split()[1])
             elif tag == "A " and "GenCrossSection" in line:
                 evt["gen_xs"] = float(line.split()[3])
+            elif tag == "A " and "signal_process_id" in line:
+                evt["proc"] = int(line.split()[3])
             elif tag == "P ":
                 f = line.split()
                 # P id vtx pid px py pz E m status
