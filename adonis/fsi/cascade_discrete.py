@@ -33,7 +33,16 @@ from adonis.fsi.cascade_real import (_load_density, _rho_species, _kf_local, _tw
                                      _boost, MB_TO_FM2, _CH_MASS, _CH_PID)
 
 M_N = ox.M_N
+HBARC = ox.HBARC
 _CFG = {}
+
+
+def _formation_zone(p_in, p_out):
+    """ACHILLES Particle::SetFormationZone: fz = E_in * hbarc / |mN^2 - p_in.p_out|  [fm].
+    p_in (n,4) = incoming nucleon momentum, p_out (n,4) = outgoing.  Forward scatters (p_in~p_out)
+    -> |mN^2 - p_in.p_out| -> 0 -> large fz (free-streams out); wide scatters -> small fz."""
+    dot4 = p_in[:, 0] * p_out[:, 0] - jnp.sum(p_in[:, 1:] * p_out[:, 1:], axis=1)
+    return p_in[:, 0] * HBARC / jnp.clip(jnp.abs(M_N ** 2 - dot4), 1e-6, None)
 
 
 def _load_qmc_configs(nmax=20000, name="QMC_configs.out.gz"):
@@ -128,7 +137,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
         sa_j = sa[ar, j]; sig_j = sig[ar, j]; W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
         p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)
-        is_abs = has_hit & (jax.random.uniform(kc, (n,)) < p_abs)
+        chose_abs = has_hit & (jax.random.uniform(kc, (n,)) < p_abs)          # channel pick (abs vs scatter)
 
         # ----- pion ABSORPTION final state (ACHILLES PionAbsorption::GenerateMomentum) -----
         # piNN -> NN: pion + struck nucleon j + closest background nucleon (FindClosest is by
@@ -139,8 +148,13 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         pN_p = nmom[ar, pj]
         qpi = 1 - ch                                                           # 0:pi+ ->+1, 2:pi- ->-1
         nprot_out = qpi + nisp[ar, j].astype(jnp.int32) + nisp[ar, pj].astype(jnp.int32)
+        # local Fermi momenta at the two outgoing-nucleon positions: product A inherits the PION
+        # position (particle1), product B the struck nucleon position (particle2) -- ACHILLES
+        # PionAbsorption::GenerateMomentum places paOut@part1.Position, pbOut@part2.Position.
+        kf_pi = _kf_local(_rho_species(jnp.linalg.norm(pos, axis=1), rgrid, rho))   # (n,)
+        kf_absB = kf_n[ar, j]
 
-        def abs_one(p_pi_i, pNj_i, pNp_i, npr, k):
+        def abs_one(p_pi_i, pNj_i, pNp_i, npr, kfA, kfB, k):
             P = p_pi_i + pNj_i + pNp_i
             s = P[0] ** 2 - jnp.sum(P[1:] ** 2)
             sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
@@ -154,10 +168,16 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             pa = _boost(jnp.concatenate([Estar[None], pstar * dirn]), beta)
             pb = _boost(jnp.concatenate([Estar[None], -pstar * dirn]), beta)
             ma = jnp.linalg.norm(pa[1:]); mb = jnp.linalg.norm(pb[1:])
+            # ACHILLES FinalizeMomentum Pauli-blocks BOTH outgoing nucleons; reject if either
+            # falls below the local Fermi momentum (then the pion is NOT absorbed, it continues).
+            blocked = (ma < kfA) | (mb < kfB)
             faster = jnp.where(ma >= mb, pa, pb)
             one_p = jnp.where(jax.random.uniform(k3) < 0.5, pa, pb)            # which of the two is p
-            return jnp.where(npr >= 2, faster, jnp.where(npr == 1, one_p, jnp.zeros(4)))
-        abs_lead = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out, jax.random.split(kab, n))
+            lead = jnp.where(npr >= 2, faster, jnp.where(npr == 1, one_p, jnp.zeros(4)))
+            return lead, blocked
+        abs_lead, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out, kf_pi, kf_absB,
+                                                  jax.random.split(kab, n))
+        is_abs = chose_abs & ~abs_blocked                                     # absorption survives Pauli
         best_abs = jnp.where(is_abs[:, None], abs_lead, best_abs)             # one absorption / pion
 
         # scatter: out-pion charge ~ sig_io[j], DCC angle, Pauli-block recoil
@@ -173,7 +193,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
         p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_j, cos_cm, jax.random.split(sk, n))
 
-        is_scat = has_hit & ~is_abs & ~blocked
+        is_scat = has_hit & ~chose_abs & ~blocked    # scatter channel chosen, recoil not Pauli-blocked
         p_pi = jnp.where(is_scat[:, None], p_out, p_pi)
         ch = jnp.where(is_scat, out_ch, ch)
         nsc = nsc + is_scat.astype(jnp.int32)
@@ -240,19 +260,26 @@ from adonis.fsi.nucleon_cascade import nn_elastic_sigma
 
 
 @partial(jax.jit, static_argnums=(6,))
-def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key):
+def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, fz0):
     """Leading nucleon walks through the background config via NN-elastic scatter (isotropic CM,
     as ACHILLES NucleonNucleon::GenerateMomentum), Pauli-blocking BOTH outgoing nucleons, consuming
-    the struck one.  No absorption.  isp0 (n,) proton-mask of the leading nucleon."""
+    the struck one.  No absorption.  isp0 (n,) proton-mask of the leading nucleon.  fz0 (n,) initial
+    formation zone [fm] (ACHILLES: 0 for the primary nucleon).  A nucleon cannot interact while
+    fz>0; fz decrements by timeStep=step/beta each step and resets on every scatter to
+    E_in*hbarc/|mN^2-p_in.p_out| (ACHILLES SetFormationZone -> suppresses rapid forward re-scatter)."""
     rgrid, rho, radius = _load_density(cfg.nucleus)
     n, A = nisp.shape
     keys = jax.random.split(key, cfg.max_steps)
     ar = jnp.arange(n)
 
     def body(carry, sk):
-        pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos = carry
+        pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz = carry
         outward = jnp.sum(pos * dhat, axis=1) > 0
         alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
+        # formation zone: timeStep = step/beta (ACHILLES AdaptiveStep); interact only when fz<=0
+        beta = jnp.linalg.norm(p_N[:, 1:], axis=1) / jnp.clip(p_N[:, 0], 1e-9, None)
+        timeStep = cfg.step / jnp.clip(beta, 1e-6, None)
+        can_int = fz <= 0.0
         rel = npos - pos[:, None, :]
         par = jnp.sum(rel * dhat[:, None, :], axis=2)
         perp2 = jnp.sum(rel ** 2, axis=2) - par ** 2
@@ -270,7 +297,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         passes = in_slab & (jax.random.uniform(ku, (n, A)) < prob)
         big = jnp.where(passes, perp2, jnp.inf)
         j = jnp.argmin(big, axis=1)
-        has_hit = jnp.isfinite(big[ar, j]) & alive
+        has_hit = jnp.isfinite(big[ar, j]) & alive & can_int          # blocked while in formation zone
         pN_j = nmom[ar, j]
         rnuc = jnp.linalg.norm(npos, axis=2); kf_n = _kf_local(_rho_species(rnuc, rgrid, rho))
         kf_j = kf_n[ar, j]
@@ -289,23 +316,31 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         ko_better = do & bg_proton & (jnp.linalg.norm(recoil[:, 1:], axis=1) > jnp.linalg.norm(best_ko[:, 1:], axis=1))
         best_ko = jnp.where(ko_better[:, None], recoil, best_ko)
         best_ko_pos = jnp.where(ko_better[:, None], npos[ar, j], best_ko_pos)   # knockout production vertex
+        # ACHILLES gives BOTH outgoing nucleons a formation zone, w/ p1 = the incoming (p_N):
+        fz_new = _formation_zone(p_N, p_out)                          # leading: E_in*hbarc/|mN^2-p_in.p_out|
+        fz_ko = _formation_zone(p_N, recoil)                          # recoil/knockout's formation zone
+        best_ko_fz = jnp.where(ko_better, fz_ko, best_ko_fz)
         p_N = jnp.where(do[:, None], p_out, p_N)
         nsc = nsc + do.astype(jnp.int32)
         consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & do[:, None])
+        fz = jnp.where((fz > 0.0) & alive, fz - timeStep, fz)         # propagate: decrement formation zone
+        fz = jnp.where(do, fz_new, fz)                                # reset on scatter
         d3 = p_N[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
         pos = pos + cfg.step * dhat * alive[:, None]
-        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos), None
+        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), None
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
-            jnp.zeros((n, A), bool), jnp.zeros((n, 4)), jnp.zeros((n, 3)))
-    (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos), _ = jax.lax.scan(body, init, keys)
-    return p_N, nsc, best_ko, best_ko_pos
+            jnp.zeros((n, A), bool), jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0)
+    (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), _ = jax.lax.scan(body, init, keys)
+    return p_N, nsc, best_ko, best_ko_pos, best_ko_fz
 
 
-def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key):
+def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None):
     _load_density(cfg.nucleus)
-    return _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key)
+    if fz0 is None:
+        fz0 = jnp.zeros(p_N0.shape[0])
+    return _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0)
 
 
 class DiscreteNucleonFSI:
@@ -325,17 +360,18 @@ class DiscreteNucleonFSI:
         vtx = jax.random.randint(kv, (n,), 0, A)
         pos0 = npos[jnp.arange(n), vtx]
         isp0 = jnp.asarray(np.asarray(event.pid_N) == 2212)
-        p_N, nsc, best_ko, best_ko_pos = propagate_nucleon_discrete(pos0, event.p_N, isp0, npos,
-                                                                    nmom, nisp, self.cfg, kp)
+        p_N, nsc, best_ko, best_ko_pos, best_ko_fz = propagate_nucleon_discrete(
+            pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp)
         # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
         # Re-propagate the leading knockout through the same background; its final state can be the
         # leading proton.  (One secondary generation -- the dominant multi-nucleon contribution.)
+        # The knockout carries the formation zone ACHILLES assigned it at creation (best_ko_fz).
         kp2 = jax.random.fold_in(kp, 99)
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
-        ko_f, _, ko_ko, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
-                                                       nisp, self.cfg, kp2)
+        ko_f, _, ko_ko, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+                                                          nisp, self.cfg, kp2, fz0=best_ko_fz)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))
         ko_ko = jnp.where(has_ko[:, None], ko_ko, jnp.zeros((n, 4)))     # 2nd-gen knockout proton
         # leading proton = highest-momentum proton among {primary, re-cascaded knockout, 2nd-gen ko}
