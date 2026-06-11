@@ -92,7 +92,7 @@ def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
 
 
 @partial(jax.jit, static_argnums=(6,))
-def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key):
+def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, consumed0):
     rgrid, rho, radius = _load_density(cfg.nucleus)
     n, A = nisp.shape
     keys = jax.random.split(key, cfg.max_steps)
@@ -209,18 +209,20 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
     dhat0 = p_pi0[:, 1:] / jnp.clip(jnp.linalg.norm(p_pi0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
-            jnp.zeros(n, jnp.int32), jnp.zeros((n, A), bool), jnp.zeros((n, 4)))
+            jnp.zeros(n, jnp.int32), consumed0, jnp.zeros((n, 4)))
     (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), _ = jax.lax.scan(body, init, keys)
     return p_pi, ch, absorbed, nsc, best_abs
 
 
-def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key):
+def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0=None):
     """Discrete-Glauber transport of a batch of pions through explicit nucleons.
     Returns (p_pi (N,4), charge_idx (N,), absorbed (N,), n_scatter (N,), abs_lead_p (N,4)).
     abs_lead_p is the leading absorption PROTON 4-momentum for absorbed events (piNN->NN), zeros
     otherwise -- this is what populates the CC0pi high-delta_pT tail."""
     _load_density(cfg.nucleus); cascade_mb._jax_grids(); cascade_mb._build_angular()
-    return _propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key)
+    if consumed0 is None:
+        consumed0 = jnp.zeros((nisp.shape[0], nisp.shape[1]), bool)
+    return _propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0)
 
 
 # pid <-> charge index (0:pi+, 1:pi0, 2:pi-)
@@ -243,12 +245,18 @@ class DiscreteCascadeFSI:
         n = event.p_pi.shape[0]
         npos, nmom, nisp = sample_nucleons(kn, n, self.cfg)
         A = nisp.shape[1]
-        # production vertex = a random config nucleon position; that nucleon is consumed
-        vtx = jax.random.randint(kv, (n,), 0, A)
+        # production vertex = the STRUCK nucleon (pid_Ni; isospin-correct), CONSUMED from the
+        # background.  RES on a struck NEUTRON (nu n -> N pi) leaves 6p5n spectators; since pi+p
+        # scatter (Delta++) >> pi+n, leaving the struck neutron in the background under-scatters the
+        # pi+ -> it over-absorbs.  Removing the correct struck nucleon fixes the spectator isospin.
+        struck_isp = jnp.asarray(np.asarray(event.pid_Ni) == 2212)       # True if struck proton
+        rsel = jnp.where(nisp == struck_isp[:, None], jax.random.uniform(kv, (n, A)), -1.0)
+        vtx = jnp.argmax(rsel, axis=1)
         pos0 = npos[jnp.arange(n), vtx]
+        consumed0 = jax.nn.one_hot(vtx, A).astype(bool)
         ch0 = jnp.asarray([_PID_TO_CH.get(int(p), 1) for p in np.asarray(event.pid_pi)], dtype=jnp.int32)
         p_pi, ch, absorbed, nsc, abs_lead = propagate_discrete(pos0, event.p_pi, ch0, npos, nmom,
-                                                               nisp, self.cfg, kp)
+                                                               nisp, self.cfg, kp, consumed0=consumed0)
         self.last_abs_proton = abs_lead          # leading absorption proton (piNN->NN), for CC0pi
         self.last_absorbed = absorbed
         keep = (~absorbed)[:, None]
@@ -260,7 +268,7 @@ from adonis.fsi.nucleon_cascade import nn_elastic_sigma
 
 
 @partial(jax.jit, static_argnums=(6,))
-def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, fz0):
+def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, fz0, consumed0):
     """Leading nucleon walks through the background config via NN-elastic scatter (isotropic CM,
     as ACHILLES NucleonNucleon::GenerateMomentum), Pauli-blocking BOTH outgoing nucleons, consuming
     the struck one.  No absorption.  isp0 (n,) proton-mask of the leading nucleon.  fz0 (n,) initial
@@ -331,16 +339,19 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
-            jnp.zeros((n, A), bool), jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0)
+            consumed0, jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0)
     (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), _ = jax.lax.scan(body, init, keys)
     return p_N, nsc, best_ko, best_ko_pos, best_ko_fz
 
 
-def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None):
+def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None):
     _load_density(cfg.nucleus)
+    n, A = nisp.shape
     if fz0 is None:
         fz0 = jnp.zeros(p_N0.shape[0])
-    return _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0)
+    if consumed0 is None:
+        consumed0 = jnp.zeros((n, A), bool)
+    return _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0, consumed0)
 
 
 class DiscreteNucleonFSI:
@@ -357,11 +368,19 @@ class DiscreteNucleonFSI:
         n = event.p_N.shape[0]
         npos, nmom, nisp = sample_nucleons(kn, n, self.cfg)
         A = nisp.shape[1]
-        vtx = jax.random.randint(kv, (n,), 0, A)
+        # production vertex = the STRUCK nucleon (pid_Ni; a neutron for nu_mu QE).  Start the leading
+        # nucleon at its config position and CONSUME it from the spectator background: ACHILLES turns
+        # the struck nucleon INTO the outgoing one, so the proton scatters off the A-1 spectators of
+        # the correct isospin (6p5n for 12C QE).  pn elastic sigma > pp, so leaving the struck neutron
+        # in the background over-removes the proton from the window (~4%).
+        struck_isp = jnp.asarray(np.asarray(event.pid_Ni) == 2212)       # True if struck nucleon is a proton
+        rsel = jnp.where(nisp == struck_isp[:, None], jax.random.uniform(kv, (n, A)), -1.0)
+        vtx = jnp.argmax(rsel, axis=1)
         pos0 = npos[jnp.arange(n), vtx]
+        consumed0 = jax.nn.one_hot(vtx, A).astype(bool)                  # struck nucleon removed from background
         isp0 = jnp.asarray(np.asarray(event.pid_N) == 2212)
         p_N, nsc, best_ko, best_ko_pos, best_ko_fz = propagate_nucleon_discrete(
-            pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp)
+            pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0)
         # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
         # Re-propagate the leading knockout through the same background; its final state can be the
         # leading proton.  (One secondary generation -- the dominant multi-nucleon contribution.)
@@ -371,7 +390,7 @@ class DiscreteNucleonFSI:
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
         ko_f, _, ko_ko, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
-                                                          nisp, self.cfg, kp2, fz0=best_ko_fz)
+                                                          nisp, self.cfg, kp2, fz0=best_ko_fz, consumed0=consumed0)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))
         ko_ko = jnp.where(has_ko[:, None], ko_ko, jnp.zeros((n, 4)))     # 2nd-gen knockout proton
         # leading proton = highest-momentum proton among {primary, re-cascaded knockout, 2nd-gen ko}
