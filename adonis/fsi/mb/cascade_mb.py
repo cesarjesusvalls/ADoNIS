@@ -84,10 +84,23 @@ def _jax_grids():
 
 
 # --- DCC angular distribution sampler (replaces isotropic CM scatter in the cascade) -------- #
-# Precompute the inverse CDF of dsigma/dOmega(cos) over a W grid (pi+ p, P33/Delta-dominated --
-# the 1+3cos^2 shape the ACHILLES MesonBaryonInteraction samples), then sample cos_cm by bilinear
-# inverse-CDF lookup.  The same angular shape is used for every piN charge channel (Delta-driven).
+# Precompute the inverse CDF of dsigma/dOmega(cos) over a W grid, PER (pi_in, nucleon, pi_out)
+# channel -- ACHILLES MesonBaryonInteraction::GenerateMomentum samples cos_CMS from the channel-
+# specific partial-wave dsigma/dOmega (Get_CSpoly_W(W, ichan, fchan)).  Each channel's isospin
+# Clebsch weights cg = {3: c_{3/2}, 1: c_{1/2}} come from _CHANNELS.  Channel index is
+# chan = pi_in*6 + nuc*3 + pi_out  (pi in/out in {0:pi+,1:pi0,2:pi-}, nuc 0=proton 1=neutron).
 _ANG = {}
+_NCHAN = 18                                          # 3 pi_in x 2 nuc x 3 pi_out
+
+
+def _cg_for_channel(pin, nuc_idx, pout):
+    """Isospin cg for (pi_in, nucleon, pi_out); falls back to pure I=3/2 for non-physical combos
+    (those have sigma=0 so the angular table is never sampled there)."""
+    nuc = "p" if nuc_idx == 0 else "n"
+    for (po, no, cg) in _CHANNELS.get((pin, nuc), []):
+        if po == pout:
+            return cg
+    return {3: 1.0}
 
 
 def _build_angular():
@@ -95,32 +108,37 @@ def _build_angular():
         return _ANG
     from adonis.fsi.mb.anl_xsec import dsigma_dOmega
     Wg = np.linspace(1085.0, 1700.0, 96)             # W grid [MeV]
-    cg = np.linspace(-1.0, 1.0, 181)                 # cos(theta_cm) grid
+    cg_grid = np.linspace(-1.0, 1.0, 181)            # cos(theta_cm) grid
     ug = np.linspace(0.0, 1.0, 64)                   # uniform grid for the inverse CDF
-    inv = np.zeros((Wg.size, ug.size))
-    for i, W in enumerate(Wg):
-        d = np.clip(np.asarray(dsigma_dOmega(float(W), cg)), 0.0, None)
-        cdf = np.concatenate([[0.0], np.cumsum(0.5 * (d[1:] + d[:-1]) * np.diff(cg))])
-        cdf = cdf / cdf[-1] if cdf[-1] > 0 else np.linspace(0, 1, cg.size)
-        inv[i] = np.interp(ug, cdf, cg)              # cos as a function of the CDF value
-    _ANG["W"] = _jnp.asarray(Wg); _ANG["u"] = _jnp.asarray(ug); _ANG["inv"] = _jnp.asarray(inv)
+    inv = np.zeros((_NCHAN, Wg.size, ug.size))
+    for pin in range(3):
+        for nuc in range(2):
+            for pout in range(3):
+                ci = pin * 6 + nuc * 3 + pout
+                cg = _cg_for_channel(pin, nuc, pout)
+                for i, W in enumerate(Wg):
+                    d = np.clip(np.asarray(dsigma_dOmega(float(W), cg_grid, cg)), 0.0, None)
+                    cdf = np.concatenate([[0.0], np.cumsum(0.5 * (d[1:] + d[:-1]) * np.diff(cg_grid))])
+                    cdf = cdf / cdf[-1] if cdf[-1] > 0 else np.linspace(0, 1, cg_grid.size)
+                    inv[ci, i] = np.interp(ug, cdf, cg_grid)    # cos as a function of the CDF value
+    _ANG["inv"] = _jnp.asarray(inv)                  # (NCHAN, nW, nu)
     _ANG["W0"] = float(Wg[0]); _ANG["dW"] = float(Wg[1] - Wg[0]); _ANG["nW"] = Wg.size
     _ANG["nu"] = ug.size
     return _ANG
 
 
-def jax_sample_cos_cm(W, u):
-    """Sample cos(theta_cm) (N,) from the DCC angular distribution at invariant mass W (N,),
-    with u (N,) ~ U[0,1].  Bilinear inverse-CDF lookup over the precomputed (W, u) table."""
+def jax_sample_cos_cm(W, u, chan=0):
+    """Sample cos(theta_cm) (N,) from the channel-specific DCC angular distribution at invariant
+    mass W (N,), u (N,) ~ U[0,1].  chan (N,) or scalar = pi_in*6 + nuc*3 + pi_out (default 0 =
+    pi+ p -> pi+ p, pure I=3/2).  Bilinear inverse-CDF lookup over the precomputed (chan, W, u) table."""
     t = _build_angular()
     inv = t["inv"]; nW = t["nW"]; nu = t["nu"]
+    ch = _jnp.broadcast_to(_jnp.asarray(chan, _jnp.int32), W.shape)
     wf = _jnp.clip((W - t["W0"]) / t["dW"], 0.0, nW - 1.0001)
     iw = wf.astype(_jnp.int32); fw = wf - iw
     uf = _jnp.clip(u * (nu - 1), 0.0, nu - 1.0001)
     iu = uf.astype(_jnp.int32); fu = uf - iu
-    def cell(iw_, iu_):
-        return inv[iw_, iu_]
-    c00 = inv[iw, iu]; c01 = inv[iw, iu + 1]; c10 = inv[iw + 1, iu]; c11 = inv[iw + 1, iu + 1]
+    c00 = inv[ch, iw, iu]; c01 = inv[ch, iw, iu + 1]; c10 = inv[ch, iw + 1, iu]; c11 = inv[ch, iw + 1, iu + 1]
     c0 = c00 * (1 - fu) + c01 * fu
     c1 = c10 * (1 - fu) + c11 * fu
     return _jnp.clip(c0 * (1 - fw) + c1 * fw, -1.0, 1.0)
