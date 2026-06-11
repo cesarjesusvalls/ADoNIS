@@ -23,7 +23,10 @@ from adonis.fsi.cascade_discrete import DiscreteCascadeFSI, DiscreteNucleonFSI, 
 from scripts.h_cc0pi import generate_H
 
 MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
-_CFG = lambda **k: DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=325, **k)
+_MODE = sys.argv[1] if len(sys.argv) > 1 else "cylinder"        # "cylinder" (T2K) or "gaussian"
+_CYL = _MODE != "gaussian"
+_OUT = "data/oracle/cc0pi_disaggregated.npz" if _CYL else "data/oracle/cc0pi_disaggregated_gaussian.npz"
+_CFG = lambda **k: DiscreteCascadeConfig(cylinder=_CYL, step=0.04, max_steps=325, **k)
 NQE, NRES, NH, NSEED = 200000, 200000, 2000, 4   # H contributes 0 CC0pi (free p can't absorb) -> token NH
 
 
@@ -112,8 +115,8 @@ if __name__ == "__main__":
         CONTRIB[("QE-C", fsi)] = accumulate(qe_C, NQE, fsi, NSEED)
         CONTRIB[("RES-C", fsi)] = accumulate(res_C, NRES, fsi, NSEED)
         CONTRIB[("RES-H", fsi)] = accumulate(res_H, NH, fsi, NSEED)
-    np.savez("data/oracle/cc0pi_disaggregated.npz",
-             **{f"{c}_{f}_{k}": CONTRIB[(c, f)][k] for (c, f) in CONTRIB for k in CONTRIB[(c, f)]})
+    np.savez(_OUT, **{f"{c}_{f}_{k}": CONTRIB[(c, f)][k] for (c, f) in CONTRIB for k in CONTRIB[(c, f)]})
+    print(f"  [{_MODE}] wrote {_OUT}", flush=True)
     for (c, f), d in CONTRIB.items():
         print(f"  {c:6s} FSI={str(f):5s}: sigma_CC0pi = {d['w'].sum():.4e} nb  ({len(d['w'])} ev)")
 
@@ -142,4 +145,5 @@ if __name__ == "__main__":
     fig.suptitle("ADoNIS CC0$\\pi$-Np disaggregated (absolute, first-principles): QE/RES x C/H x FSI   "
                  "[QE-H=0; RES no-FSI=0]", fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.99])
-    fig.savefig("paper_figures/cc0pi_disaggregated.png", dpi=120); print("wrote paper_figures/cc0pi_disaggregated.png")
+    _fig = f"paper_figures/cc0pi_disaggregated_{_MODE}.png"
+    fig.savefig(_fig, dpi=120); print("wrote", _fig)
