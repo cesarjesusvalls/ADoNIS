@@ -74,14 +74,23 @@ The per-nucleon physics is bit-identical — the residual is NOT in any single i
 
 Every per-interaction component is identical, so the residual is in the **multi-nucleon transport
 accumulation** (how the discrete-Glauber walk combines the matched per-step physics across scatters).
-Decisive measurements, in order:
-1. Instrument ADoNIS to dump per-σ-eval inputs (dens, vrel, W) over the transparency and compare the
-   *distributions* to ACHILLES `/tmp/instr.log` (OSETABS/MBSCAT). If they match → it's purely the walk
-   combination; if they differ (e.g. ADoNIS evaluating at higher density) → smoking gun.
-2. If (1) matches: rebuild an instrumented ACHILLES that dumps the **per-pion interaction sequence**
-   (n_scatter before absorb/escape, positions) and compare the scatter-multiplicity distribution to
-   ADoNIS (`propagate_discrete` returns `nseg`). The hepmc only records the final state (no history),
-   so this needs the rebuild.
+
+**Measurement (1) DONE — inputs match (`/tmp/eval_dist.py`):** ADoNIS's per-eval input distributions
+over the matched beam are nearly identical to ACHILLES `/tmp/instr.log` (OSETABS/MBSCAT):
+dens mean 0.0987 vs 0.0986 (percentiles match), vrel 0.866 vs 0.859, W 1233 vs 1229, fermi 211 vs 211,
+~12 nucleons passed/pion. So the geometry, which-nucleons, and per-eval kinematics are CORRECT. The
++5% is therefore **definitively** in the transport walk, not the inputs. (The vrel +0.8% is even the
+wrong sign: σ_abs∝1/vrel → would make ADoNIS absorb *less*.)
+
+**Next — measurement (2):** rebuild an instrumented `achilles:cascade-instr` that dumps the **per-pion
+interaction sequence** (n_scatter before absorb/escape, and the interaction positions) and compare the
+scatter-multiplicity distribution to ADoNIS (`propagate_discrete` returns `nseg`). The hepmc records
+only the final state (no history), so this needs the rebuild. The signature to explain: ADoNIS
+**scatter −7%, absorption +5%** with identical per-step physics — i.e. ADoNIS pions undergo fewer
+net scatters and tip to absorption, despite matched cross sections, geometry, Pauli, and kinematics.
+Candidate walk-level effects to test once ACHILLES's per-pion sequence is in hand: (a) order/timing of
+the consume + re-evaluation across a scatter, (b) whether ACHILLES re-rolls already-passed nucleons
+after a direction change differently, (c) multi-nucleon shadowing along the path.
 
 ## Key artifacts / reproduction
 
