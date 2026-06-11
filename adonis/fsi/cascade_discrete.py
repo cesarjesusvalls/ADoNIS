@@ -196,13 +196,18 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         chose_abs = has_hit & (jax.random.uniform(kc, (n,)) < p_abs)          # channel pick (abs vs scatter)
 
         # ----- pion ABSORPTION final state (ACHILLES PionAbsorption::GenerateMomentum) -----
-        # piNN -> NN: pion + struck nucleon j + closest background nucleon (FindClosest is by
-        # distance to the struck nucleon); 2 outgoing nucleons isotropic in the 3-body CM.
-        d2 = jnp.sum((npos - npos[ar, j][:, None, :]) ** 2, axis=2)             # (n,A)
-        d2 = jnp.where((jnp.arange(A)[None, :] == j[:, None]) | consumed, jnp.inf, d2)
-        pj = jnp.argmin(d2, axis=1)                                            # partner index
-        pN_p = nmom[ar, pj]
+        # piNN -> NN: pion + struck nucleon j + closest background nucleon; 2 outgoing nucleons
+        # isotropic in the 3-body CM.  ACHILLES FindClosest picks the partner of the charge REQUIRED
+        # by the channel (charge conservation): pi+ p forces a neutron partner, pi- n forces a proton.
         qpi = 1 - ch                                                           # 0:pi+ ->+1, 2:pi- ->-1
+        struck_p = nisp[ar, j].astype(jnp.int32)                              # struck nucleon proton(1)/neutron(0)
+        forced_n = (qpi + struck_p) > 1                                        # only a neutron partner conserves charge
+        forced_p = (qpi + struck_p) < 0                                        # only a proton partner conserves charge
+        bad_chg = (forced_n[:, None] & nisp) | (forced_p[:, None] & ~nisp)     # (n,A) charge-forbidden partners
+        d2 = jnp.sum((npos - npos[ar, j][:, None, :]) ** 2, axis=2)             # (n,A)
+        d2 = jnp.where((jnp.arange(A)[None, :] == j[:, None]) | consumed | bad_chg, jnp.inf, d2)
+        pj = jnp.argmin(d2, axis=1)                                            # partner index (closest of allowed charge)
+        pN_p = nmom[ar, pj]
         nprot_out = qpi + nisp[ar, j].astype(jnp.int32) + nisp[ar, pj].astype(jnp.int32)
         # local Fermi momenta at the two outgoing-nucleon positions: product A inherits the PION
         # position (particle1), product B the struck nucleon position (particle2) -- ACHILLES
