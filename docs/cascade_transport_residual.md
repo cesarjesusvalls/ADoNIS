@@ -1,6 +1,60 @@
-# Pion-cascade ADoNIS↔ACHILLES residual (~5% absorption) — investigation log
+# Pion-cascade ADoNIS↔ACHILLES residual — investigation log
 
-Status: **OPEN**. Last updated 2026-06 (this session).
+Status: **absorption SOLVED** (commit `9124afb`); a separate **~4% scatter-RATE deficit** remains
+OPEN. Last updated 2026-06 (this session).
+
+## RESOLUTION of the +5% absorption (commit `9124afb`)
+
+**Root cause:** the pion-absorption cross section that competes in the cascade is isospin-decomposed
+by partner channel (Nucl.Phys.A568 Table 1; `PionAbsorption.cc:85-136`, see analysis below). For
+**LIKE-CHARGE pairs (π⁺p, π⁻n)** charge conservation forces both outgoing nucleons identical (p+p /
+n+n), so only the opposite-isospin partner channel survives and the absorption seen by the cascade is
+**(5/6)·oset_abs**, not the full `oset_abs`. Every other (π,N) pair keeps the full `oset_abs` (its 3
+modes sum back to it). ADoNIS used the full `oset_abs` for *all* pairs → over-absorbed π⁺ on protons
+(the dominant Δ⁺⁺ channel) → the documented ~5%.
+
+This enters BOTH the interaction probability and the branching: `Interaction::TotalCrossSection`
+(`Interactions.cc:38`) sums all channel xsecs, including the reduced absorption, and that total drives
+`prob = exp(−πb²/σ_tot·0.1)` (`Cascade.cc:644/671`) and `SelectChannel`.
+
+**Fix** (`cascade_discrete.py`, after the σ eval): `sa *= where((π⁺&p)|(π⁻&n), 5/6, 1)`. No tuned
+constants. Effect on absolute ABSORPTION (mb), 1M ADoNIS vs 1.2M-att ACHILLES:
+
+| p (MeV) | ABS ach / ado before | ABS ach / ado AFTER |
+|---|---|---|
+| 245 | 173.9 / 181.5 (+4.4%) | 173.9 / **173.2** (−0.4%) |
+| 305 | 166.2 / 175.6 (+5.7%) | 166.2 / **164.9** (−0.8%) |
+| 335 | 143.9 / 151.7 (+5.4%) | 143.9 / **141.9** (−1.4%) |
+
+**How it was localized — per-pion CASCSEQ instrumentation.** Built `achilles:cascade-seq` (dumps, per
+event, `CASCSEQ nscat=N nabs=N` = pion scatters / absorptions; counting only pion interactions, scatter
+vs abs by presence of an outgoing pion — see *Build & usage* below). Over 354k matched-beam events vs
+ADoNIS's `nsc`:
+
+| metric (among reacted π) | ACHILLES | ADoNIS (pre-fix) | ADO/ACH |
+|---|---|---|---|
+| mean scatters / reacted π | 1.055 | 1.051 | **0.996** |
+| abs fraction / reacted π | 0.309 | 0.331 | **1.070** |
+
+The scatter *multiplicity matched* — the gap was entirely the **vertex abs/scatter branching** (+7%),
+NOT the transport walk (which the earlier hypothesis blamed). That pointed straight at σ_abs entering
+the branching, and reading `PionAbsorption::CrossSection` exposed the isospin partition ADoNIS lacked.
+
+## OPEN: residual ~4% scatter-RATE deficit
+
+With absorption fixed, REACTION (=scatter+abs) is now uniformly low: ach/ado **0.959 / 0.954 / 0.961**
+at p=245/305/335. Absorption matches (above), so this is a **scatter-rate** deficit (~4%, energy-
+INDEPENDENT → geometric/normalization, not physics-of-vertex). Per-eval σ_scat already matches ACHILLES
+to 0.3% (`compare_mb_scat.py`), so it is NOT the per-nucleon scatter magnitude. Leading hypothesis:
+**smooth ρ(r) sampling (ADoNIS) vs the discrete correlated QMC configs (ACHILLES `cascade.yml`
+`Configs: data/configurations/QMC_configs.out.gz`)** — the only remaining un-matched geometry input,
+and a deliberate ADoNIS differentiability choice. ~2% of the 4% is the correct consequence of the
+absorption fix (lower σ_tot for π⁺p lowers prob); ACHILLES has the same lower σ_tot yet reacts more, so
+the rest is the nucleon-configuration difference. NOT yet confirmed/closed.
+
+---
+
+# (historical) Original investigation: the +5% absorption
 
 ## The observable
 
@@ -91,6 +145,32 @@ net scatters and tip to absorption, despite matched cross sections, geometry, Pa
 Candidate walk-level effects to test once ACHILLES's per-pion sequence is in hand: (a) order/timing of
 the consume + re-evaluation across a scatter, (b) whether ACHILLES re-rolls already-passed nucleons
 after a direction change differently, (c) multi-nucleon shadowing along the path.
+
+## Build & usage: `achilles:cascade-seq` (per-pion interaction-sequence dump)
+
+Instrumentation (in the ACHILLES source tree, `git diff` shows it; ~18 lines):
+- `include/Achilles/Cascade.hh`: `mutable size_t m_nscat_seq{}, m_nabs_seq{};` member counters.
+- `src/Achilles/Cascade.cc` `Evolve`: reset both to 0 at start; before `Reset()` at the end,
+  `fprintf(stderr, "CASCSEQ nscat=%zu nabs=%zu\n", m_nscat_seq, m_nabs_seq);`.
+- `Cascade.cc` `FinalizeMomentum`, inside `if(hit)`: if either particle is a pion, scan
+  `particles_out` — `has_pi_out ? m_nscat_seq++ : m_nabs_seq++` (scatter vs absorption).
+  (`OsetCrossSections.cc` / `MesonBaryonInteractions.cc` also carry the older OSETABS/MBSCAT dumps.)
+
+Build the image (local; do NOT pass `--platform`):
+```
+cd Achilles && docker build -t achilles:cascade-seq .
+```
+Run one config (stderr carries the CASCSEQ lines):
+```
+docker run --rm -v "$PWD/_oracle_out:/out" --entrypoint /achilles/bin/achilles-cascade \
+    achilles:cascade-seq /out/absrun/<cfg>.yml 2> cascseq.log
+```
+Batch over seeds to accumulate ~100k+ events (`/tmp/ach_seq_batch.sh`): for each seed it `sed`s
+`cascade_virt_c12.yml` (seed, `NEvents: 30000`, output hepmc name) and runs the image, appending
+stderr to one log; ~30k events in ~25s, sporadic SIGSEGV (exit 139) but the CASCSEQ lines already
+flushed are valid. Parse: `grep CASCSEQ <log> | sort | uniq -c` → the joint (nscat,nabs) histogram;
+"reacted" = any line with nscat≥1 or nabs≥1, "absorbed" = nabs≥1. Compare to ADoNIS `propagate_discrete`
+`nsc`/`absorbed` over the matched beam (`/tmp/ado_seq.py`).
 
 ## Key artifacts / reproduction
 
