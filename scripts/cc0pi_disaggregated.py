@@ -43,12 +43,13 @@ def _obs(knu, kmu, pstr, lead, w):
     return dict(W=W[sel], Q2=Q2[sel], dalphat=dat[sel], dpt=dpt[sel], w=w[sel])
 
 
-def _ev(knu, kmu, pstr, ppi, pN, w, pid_pi):
+def _ev(knu, kmu, pstr, ppi, pN, w, pid_pi, pid_Ni=2112):
     m = len(w)
+    pid_Ni = np.full(m, pid_Ni, np.int32) if np.ndim(pid_Ni) == 0 else np.asarray(pid_Ni, np.int32)
     return EventRecord(k=jnp.asarray(knu), kp=jnp.asarray(kmu), p_struck=jnp.asarray(pstr),
                        p_pi=jnp.asarray(ppi), p_N=jnp.asarray(pN), w=jnp.asarray(w),
                        channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.asarray(pid_pi, jnp.int32),
-                       pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.full((m,), 2112, jnp.int32),
+                       pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.asarray(pid_Ni),
                        W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
 
 
@@ -69,9 +70,10 @@ def res_C(n, seed, fsi):
     e = res_xsec.generate(n, seed=seed, return_events=True)["events"]
     knu = np.asarray(e["k_nu"]); kmu = np.asarray(e["k_mu"]); pstr = np.asarray(e["p_struck"])
     ppi = np.asarray(e["p_pi"]); pN = np.asarray(e["p_N"]); w = np.asarray(e["w"]); ppid = np.asarray(e["ppid"])
+    ipid = np.asarray(e["ipid"])                                 # struck nucleon: 2112 n / 2212 p (per channel)
     if not fsi:
         return _obs(knu, kmu, pstr, pN, w * 0.0)                 # pion survives -> no CC0pi
-    ev = _ev(knu, kmu, pstr, ppi, pN, w, ppid)
+    ev = _ev(knu, kmu, pstr, ppi, pN, w, ppid, pid_Ni=ipid)
     pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
     absorbed = np.asarray(pion.last_absorbed); abs_p = np.asarray(pion.last_abs_proton)
     ev = DiscreteNucleonFSI(_CFG(seed=2)).apply(None, ev, key=jax.random.PRNGKey(seed + 13))

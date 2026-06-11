@@ -233,7 +233,7 @@ def generate_importance(n=20000, seed=0, return_events=False):
     flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     sf = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
     out = {}; sig = 0.0
-    ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid")}
+    ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
         Npid = 2212 if mNf == M_P else 2112
         s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf)   # mpi0 to match ACHILLES
@@ -264,6 +264,7 @@ def generate_importance(n=20000, seed=0, return_events=False):
             # weight per event so that sum(w_event) over the sampled set = sigma_channel
             ev["w"].append(w[keep] / n)
             ev["ppid"].append(np.full(keep.sum(), ppid)); ev["Npid"].append(np.full(keep.sum(), Npid))
+            ev["ipid"].append(np.full(keep.sum(), ipid))   # struck (initial) nucleon: 2112 n / 2212 p
     out["sigma"] = sig
     if return_events:
         out["events"] = {k: np.concatenate(ev[k]) if ev[k] else np.empty((0,)) for k in ev}
