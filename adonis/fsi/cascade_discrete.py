@@ -92,7 +92,12 @@ def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
 
 
 @partial(jax.jit, static_argnums=(6,))
-def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, consumed0):
+def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, consumed0,
+                        sabs, sscat):
+    """sabs, sscat scale the Oset absorption / MB-scatter cross sections.  The absorb-vs-scatter
+    BRANCHING is kind-1 reweighted (sampled against the nominal p_abs, theta enters via the
+    likelihood ratio in w_fsi); scales=1 -> w_fsi=1 (the nominal forward result), so d/d(scale)
+    E[absorbed obs] is exact and differentiable."""
     rgrid, rho, radius = _load_density(cfg.nucleus)
     n, A = nisp.shape
     keys = jax.random.split(key, cfg.max_steps)
@@ -136,7 +141,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         has_hit = jnp.isfinite(big[ar, j]) & alive
 
         sa_j = sa[ar, j]; sig_j = sig[ar, j]; W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
-        p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)
+        p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)                           # NOMINAL branch prob
         chose_abs = has_hit & (jax.random.uniform(kc, (n,)) < p_abs)          # channel pick (abs vs scatter)
 
         # ----- pion ABSORPTION final state (ACHILLES PionAbsorption::GenerateMomentum) -----
@@ -205,24 +210,36 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
         d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
         pos = pos + cfg.step * dhat * alive[:, None]
-        return (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), None
+        # record the per-step branching decision (DETACHED) for the kind-1 reweight done OUTSIDE the scan
+        rec = jax.lax.stop_gradient((has_hit, chose_abs, sa_j, sig_j))
+        return (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), rec
 
     dhat0 = p_pi0[:, 1:] / jnp.clip(jnp.linalg.norm(p_pi0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
             jnp.zeros(n, jnp.int32), consumed0, jnp.zeros((n, 4)))
-    (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), _ = jax.lax.scan(body, init, keys)
-    return p_pi, ch, absorbed, nsc, best_abs
+    (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), recs = jax.lax.scan(body, init, keys)
+    # kind-1 branching reweight, OUTSIDE the scan: the records are detached, so ONLY the (sabs, sscat)
+    # knobs carry gradient -- no NaN VJPs from the cascade's final-state sampling can reach it.
+    hh, ca, saj, sigj = recs                                      # each (max_steps, n)
+    saj = jnp.where(hh, saj, 1.0); sigj = jnp.where(hh, sigj, 2.0)   # safe dummies for no-hit steps
+    ssj = jnp.clip(sigj - saj, 1e-6, None)
+    p_abs_d = jnp.clip(saj / sigj, 1e-6, 1.0 - 1e-6)
+    p_abs_k = jnp.clip((sabs * saj) / (sabs * saj + sscat * ssj), 1e-6, 1.0 - 1e-6)
+    br = jnp.where(hh, jnp.where(ca, p_abs_k / p_abs_d, (1.0 - p_abs_k) / (1.0 - p_abs_d)), 1.0)
+    w_fsi = jnp.prod(br, axis=0)
+    return p_pi, ch, absorbed, nsc, best_abs, w_fsi
 
 
-def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0=None):
+def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0=None,
+                       sabs=1.0, sscat=1.0):
     """Discrete-Glauber transport of a batch of pions through explicit nucleons.
-    Returns (p_pi (N,4), charge_idx (N,), absorbed (N,), n_scatter (N,), abs_lead_p (N,4)).
-    abs_lead_p is the leading absorption PROTON 4-momentum for absorbed events (piNN->NN), zeros
-    otherwise -- this is what populates the CC0pi high-delta_pT tail."""
+    Returns (p_pi, charge_idx, absorbed, n_scatter, abs_lead_p, w_fsi).  w_fsi is the kind-1
+    branching reweight for the (sabs, sscat) cross-section scales (1 at nominal)."""
     _load_density(cfg.nucleus); cascade_mb._jax_grids(); cascade_mb._build_angular()
     if consumed0 is None:
         consumed0 = jnp.zeros((nisp.shape[0], nisp.shape[1]), bool)
-    return _propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0)
+    return _propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0,
+                               jnp.asarray(sabs, float), jnp.asarray(sscat, float))
 
 
 # pid <-> charge index (0:pi+, 1:pi0, 2:pi-)
@@ -239,7 +256,7 @@ class DiscreteCascadeFSI:
         self.cfg = cfg
         self.protfrac = float(protfrac)
 
-    def apply(self, params, event, key=None):
+    def apply(self, params, event, key=None, sabs=1.0, sscat=1.0):
         key = jax.random.PRNGKey(self.cfg.seed) if key is None else key
         kn, kv, kp = jax.random.split(key, 3)
         n = event.p_pi.shape[0]
@@ -255,12 +272,14 @@ class DiscreteCascadeFSI:
         pos0 = npos[jnp.arange(n), vtx]
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)
         ch0 = jnp.asarray([_PID_TO_CH.get(int(p), 1) for p in np.asarray(event.pid_pi)], dtype=jnp.int32)
-        p_pi, ch, absorbed, nsc, abs_lead = propagate_discrete(pos0, event.p_pi, ch0, npos, nmom,
-                                                               nisp, self.cfg, kp, consumed0=consumed0)
+        p_pi, ch, absorbed, nsc, abs_lead, w_fsi = propagate_discrete(
+            pos0, event.p_pi, ch0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sabs=sabs, sscat=sscat)
         self.last_abs_proton = abs_lead          # leading absorption proton (piNN->NN), for CC0pi
         self.last_absorbed = absorbed
+        self.last_w_fsi = w_fsi                   # kind-1 branching reweight (1 at nominal scales)
         keep = (~absorbed)[:, None]
-        return event._replace(p_pi=p_pi * keep, pid_pi=jnp.where(absorbed, 0, _CH_PID[ch]))
+        return event._replace(p_pi=p_pi * keep, pid_pi=jnp.where(absorbed, 0, _CH_PID[ch]),
+                              w=event.w * w_fsi)
 
 
 # ===== discrete-Glauber NUCLEON cascade (proton/neutron FSI for the TKI observables) ========= #
