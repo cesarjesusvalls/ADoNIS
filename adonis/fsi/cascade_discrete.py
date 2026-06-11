@@ -177,6 +177,14 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         else:
             sa, ss, sio, W = _xsec(nmom, npos)
             sig_io = sio.reshape(n * A, 3)
+        # ACHILLES PionAbsorption isospin partition (Nucl.Phys.A568 Table 1, PionAbsorption.cc:85-136):
+        # the absorption xsec entering the cascade competition is split by partner-channel isospin.
+        # For LIKE-CHARGE pairs (pi+ p, pi- n) charge conservation forces identical outgoing nucleons
+        # (p+p / n+n) -> only the opposite-isospin partner channel survives -> abs = (5/6)*oset_abs.
+        # All other (pi,N) pairs keep the full oset_abs (the 3 modes sum back to it).  ADoNIS used the
+        # full oset for all, over-absorbing pi+ on protons (the dominant Delta++ channel).
+        like_charge = ((ch == 0)[:, None] & nisp) | ((ch == 2)[:, None] & (~nisp))   # (n,A)
+        sa = sa * jnp.where(like_charge, 5.0 / 6.0, 1.0)
         sig = sa + ss                                                # mb
 
         if cfg.cylinder:
