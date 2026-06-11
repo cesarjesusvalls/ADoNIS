@@ -44,13 +44,28 @@ the branching, and reading `PionAbsorption::CrossSection` exposed the isospin pa
 
 With absorption fixed, REACTION (=scatter+abs) is now uniformly low: ach/ado **0.959 / 0.954 / 0.961**
 at p=245/305/335. Absorption matches (above), so this is a **scatter-rate** deficit (~4%, energy-
-INDEPENDENT → geometric/normalization, not physics-of-vertex). Per-eval σ_scat already matches ACHILLES
-to 0.3% (`compare_mb_scat.py`), so it is NOT the per-nucleon scatter magnitude. Leading hypothesis:
-**smooth ρ(r) sampling (ADoNIS) vs the discrete correlated QMC configs (ACHILLES `cascade.yml`
-`Configs: data/configurations/QMC_configs.out.gz`)** — the only remaining un-matched geometry input,
-and a deliberate ADoNIS differentiability choice. ~2% of the 4% is the correct consequence of the
-absorption fix (lower σ_tot for π⁺p lowers prob); ACHILLES has the same lower σ_tot yet reacts more, so
-the rest is the nucleon-configuration difference. NOT yet confirmed/closed.
+INDEPENDENT → geometric/normalization, not vertex physics). Cause **currently UNIDENTIFIED**; ~2% of
+the 4% is the correct consequence of the absorption fix (lower σ_tot for π⁺p lowers prob — yet ACHILLES
+has the same lower σ_tot and still reacts more, so a real residual remains).
+
+**Ruled OUT this session (read both sources / config):**
+- *Nucleon positions* — ADoNIS already samples the SAME QMC configs ACHILLES uses
+  (`cascade_discrete.sample_nucleons` → `_load_qmc_configs`, weighted `jax.random.choice`;
+  `cascade.yml Configs: QMC_configs.out.gz`). NOT smooth-ρ. (An earlier draft wrongly blamed smooth-vs-QMC.)
+- *SRC / Fermi gas* — oracle is `FermiGas: Type Local, Params: []` (no correlated SRC tail); ADoNIS
+  uses the same local FG `kf·∛U`. Configs are exactly CM-centered (centroid 0.0000 fm).
+- *Pauli blocking* — ACHILLES `PauliBlocking` uses the LOCAL per-species kf (`∛(ρ_species·3π²)·ℏc`)
+  at the outgoing-nucleon position; matches ADoNIS `_kf_local` (211 vs 211 MeV at vertices).
+- *Selection* — ACHILLES `Interacted`+`Project`+`BetweenPlanes` = smallest-impact-parameter passer with
+  independent per-nucleon Gaussian rolls = ADoNIS step pick. Consume-on-interaction, escape (sphere vs
+  external_test plane), σ_scat magnitude (0.3%), step 0.04 — all match.
+- *Reaction definition* — ACHILLES accepts (writes) iff `event.History().size()>0`; a Pauli-blocked
+  attempt records no node (`if(hit)` guard, `Cascade.cc:739`), same as ADoNIS (`interacted=is_abs|is_scat`).
+
+**Open candidate under test:** the only un-matched step is ACHILLES's per-event **rigid random rotation**
+of each config (`Configuration.cc:77-89`) — ADoNIS fires all pions along +z through UNROTATED configs.
+Argued negligible (centered, isotropic, 36000 samples) but being verified directly (`/tmp/ado_rot.py`,
+rotated vs unrotated reaction).
 
 ---
 
