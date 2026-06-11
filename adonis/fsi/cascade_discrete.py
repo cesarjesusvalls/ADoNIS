@@ -287,7 +287,7 @@ from adonis.fsi.nucleon_cascade import nn_elastic_sigma
 
 
 @partial(jax.jit, static_argnums=(6,))
-def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, fz0, consumed0):
+def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, fz0, consumed0, sscat):
     """Leading nucleon walks through the background config via NN-elastic scatter (isotropic CM,
     as ACHILLES NucleonNucleon::GenerateMomentum), Pauli-blocking BOTH outgoing nucleons, consuming
     the struck one.  No absorption.  isp0 (n,) proton-mask of the leading nucleon.  fz0 (n,) initial
@@ -325,6 +325,11 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         big = jnp.where(passes, perp2, jnp.inf)
         j = jnp.argmin(big, axis=1)
         has_hit = jnp.isfinite(big[ar, j]) & alive & can_int          # blocked while in formation zone
+        # record the closest in-slab nucleon (perp2, sigma) for the kind-1 sigma_scatter reweight;
+        # clamp perp2 to a finite dummy when there is NO in-slab nucleon (else exp(-inf/sscat) NaNs the grad)
+        perp2_is = jnp.where(in_slab, perp2, jnp.inf); cidx = jnp.argmin(perp2_is, axis=1)
+        has_slab = jnp.any(in_slab, axis=1)
+        perp2_c = jnp.where(has_slab, perp2_is[ar, cidx], 1e6); sig_c = sig[ar, cidx]
         pN_j = nmom[ar, j]
         rnuc = jnp.linalg.norm(npos, axis=2); kf_n = _kf_local(_rho_species(rnuc, rgrid, rho))
         kf_j = kf_n[ar, j]
@@ -354,23 +359,32 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         fz = jnp.where(do, fz_new, fz)                                # reset on scatter
         d3 = p_N[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
         pos = pos + cfg.step * dhat * alive[:, None]
-        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), None
+        rec = jax.lax.stop_gradient((has_hit, perp2_c, sig_c))
+        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), rec
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
             consumed0, jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0)
-    (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), _ = jax.lax.scan(body, init, keys)
-    return p_N, nsc, best_ko, best_ko_pos, best_ko_fz
+    (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), recs = jax.lax.scan(body, init, keys)
+    # kind-1 sigma_scatter reweight (closest-in-slab Bernoulli approximation), OUTSIDE the scan:
+    hh, perp2_c, sig_c = recs                                      # (max_steps, n)
+    a_nom = jnp.pi * perp2_c / jnp.clip(sig_c * MB_TO_FM2, 1e-12, None)
+    p_nom = jnp.clip(jnp.where(jnp.isfinite(perp2_c), jnp.exp(-a_nom), 0.0), 1e-6, 1.0 - 1e-6)
+    p_knb = jnp.clip(jnp.where(jnp.isfinite(perp2_c), jnp.exp(-a_nom / sscat), 0.0), 1e-6, 1.0 - 1e-6)
+    br = jnp.where(hh, p_knb / p_nom, (1.0 - p_knb) / (1.0 - p_nom))
+    w_scat = jnp.prod(br, axis=0)
+    return p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat
 
 
-def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None):
+def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
     _load_density(cfg.nucleus)
     n, A = nisp.shape
     if fz0 is None:
         fz0 = jnp.zeros(p_N0.shape[0])
     if consumed0 is None:
         consumed0 = jnp.zeros((n, A), bool)
-    return _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0, consumed0)
+    return _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0, consumed0,
+                                       jnp.asarray(sscat, float))
 
 
 class DiscreteNucleonFSI:
@@ -381,7 +395,7 @@ class DiscreteNucleonFSI:
         self.cfg = cfg
         self.protfrac = float(protfrac)
 
-    def apply(self, params, event, key=None):
+    def apply(self, params, event, key=None, sscat=1.0):
         key = jax.random.PRNGKey(self.cfg.seed + 5) if key is None else key
         kn, kv, kp = jax.random.split(key, 3)
         n = event.p_N.shape[0]
@@ -398,8 +412,8 @@ class DiscreteNucleonFSI:
         pos0 = npos[jnp.arange(n), vtx]
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)                  # struck nucleon removed from background
         isp0 = jnp.asarray(np.asarray(event.pid_N) == 2212)
-        p_N, nsc, best_ko, best_ko_pos, best_ko_fz = propagate_nucleon_discrete(
-            pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0)
+        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1 = propagate_nucleon_discrete(
+            pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sscat=sscat)
         # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
         # Re-propagate the leading knockout through the same background; its final state can be the
         # leading proton.  (One secondary generation -- the dominant multi-nucleon contribution.)
@@ -408,12 +422,14 @@ class DiscreteNucleonFSI:
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
-        ko_f, _, ko_ko, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
-                                                          nisp, self.cfg, kp2, fz0=best_ko_fz, consumed0=consumed0)
+        ko_f, _, ko_ko, _, _, w_sc2 = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+                                                                 nisp, self.cfg, kp2, fz0=best_ko_fz,
+                                                                 consumed0=consumed0, sscat=sscat)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))
         ko_ko = jnp.where(has_ko[:, None], ko_ko, jnp.zeros((n, 4)))     # 2nd-gen knockout proton
         # leading proton = highest-momentum proton among {primary, re-cascaded knockout, 2nd-gen ko}
         cands = jnp.stack([p_N, ko_f, ko_ko], axis=1)                   # (n,3,4)
         mom = jnp.linalg.norm(cands[:, :, 1:], axis=2)                  # (n,3)
         lead = cands[jnp.arange(n), jnp.argmax(mom, axis=1)]
-        return event._replace(p_N=lead)
+        self.last_w_scat = w_sc1 * jnp.where(has_ko, w_sc2, 1.0)        # kind-1 sigma_scatter reweight (1 at nominal)
+        return event._replace(p_N=lead, w=event.w * self.last_w_scat)
