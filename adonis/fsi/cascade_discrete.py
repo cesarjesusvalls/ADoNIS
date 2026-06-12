@@ -132,9 +132,16 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     def body(carry, sk):
         pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs = carry
         if cfg.algo == "step":
-            # escape: outward-moving pion past the radius (interaction-mode escapes via "no passer")
+            # Escape (ACHILLES Cascade.cc:532-553).  The un-scattered BEAM pion is external_test:
+            # it escapes at the z>=radius PLANE (continues while Z<radius), so it traverses the whole
+            # nucleus regardless of impact parameter.  Once it interacts (nsc>0 -> internal) it escapes
+            # at the |pos|>radius SPHERE.  Using the sphere for the beam pion (the old code) cut off
+            # off-axis pions early at z=sqrt(R^2-b^2), missing exit-side nucleons (~2% fewer reactions).
+            ext = nsc == 0                                            # external_test: not yet scattered
             outward = jnp.sum(pos * dhat, axis=1) > 0
-            alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
+            esc_plane = ext & (pos[:, 2] >= radius)                   # beam pion: z>=radius plane
+            esc_sphere = (~ext) & (jnp.linalg.norm(pos, axis=1) > radius) & outward
+            alive = alive & ~(esc_plane | esc_sphere)
 
         rel = npos - pos[:, None, :]
         par = jnp.sum(rel * dhat[:, None, :], axis=2)

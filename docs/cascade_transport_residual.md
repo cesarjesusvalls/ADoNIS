@@ -145,23 +145,24 @@ unless noted.
    (not a b↔σ correlation / roll-accumulation bug). Decisive.
 9. **ADoNIS analytic on OWN 36k configs @305** (same calc as #8): 0.2100 ±0.0009 vs ACHILLES no-Pauli
    0.2123 ±0.0058 → 0.4σ, consistent (ACHILLES no-Pauli stat too loose to resolve 1%).
-10. **WITH-Pauli replay** (instr `ACHILLES_DUMPCFG` with Pauli ON; 125k dumped configs at 305; replay
-    `propagate_discrete` Pauli-ON on the identical nuclei, 4 RNG keys): ADoNIS **0.1901** vs ACHILLES
-    with-Pauli empirical **0.1932 ±0.0011** = **0.984 (−2.7σ)**. So WITH Pauli, on identical configs,
-    ADoNIS reacts −1.6% — but step #8 (NO Pauli, identical configs) MATCHED. **⇒ the residual IS the
-    Pauli step.** On identical nuclei: ADoNIS removes ~11% of the no-Pauli reaction via Pauli; ACHILLES
-    removes ~9%. **ADoNIS over-blocks by ~2pp.** This overturns the earlier "Pauli faithful / block
-    fractions bracket 0.263" reads (those were over the full [80,500] beam with the *averaged* σ; the
-    `ACHILLES_NO_PAULI` first-pass localization was stat-limited on the ACHILLES side).
-11. **OPEN NEXT**: pin WHY ADoNIS over-blocks scatters. At high energy (above Δ) scatters are
-    forward-peaked → small recoil → recoil < kf → blocked. Candidate: ADoNIS's scatter ANGULAR
-    distribution at high W is more forward than ACHILLES (`Get_CSpoly_W`), or a recoil/kf detail.
-    Measure: compare scatter-recoil |p| distribution + block fraction (ACHILLES `SCATREC` dump vs ADoNIS)
-    on identical configs at 305.
+10. **WITH-Pauli replay** (`ACHILLES_DUMPCFG` Pauli ON; 103302 configs @305; `propagate_discrete`
+    Pauli-ON on identical nuclei): ADoNIS 0.1908 vs ACHILLES 0.1952 = −2.3%. *Provisional read "it's the
+    Pauli step" — WRONG, see #12.*
+11. **scatter block fraction on identical configs**: ADoNIS 0.2362 vs ACHILLES `SCATREC` 0.2324; recoil
+    |p| 320.9 vs 320.7; kf 203.5 vs 201.9 — **nearly equal**. A 1.6%-rel block diff cannot make −2.3%
+    reaction. → the Pauli *block fraction* is NOT the cause. (Killed the #10 read.)
+12. **cascade vs its OWN analytic, identical configs** (the tell): no-Pauli CASCADE 0.2070 vs no-Pauli
+    ANALYTIC `1−Π(1−p)` 0.2120 — **disagree +2.4%**, yet the analytic matched ACHILLES (#8). So the bug
+    is INSIDE the discrete cascade, not σ. **Disabling the escape** → cascade no-Pauli 0.2121 (= analytic
+    0.2120 ✓) AND cascade with-Pauli 0.1953 (= ACHILLES 0.1952 ✓✓). **ROOT CAUSE = the escape geometry.**
 
-Conclusion so far: the ~1.3% residual is **ADoNIS Pauli-blocking ~2% more scatters than ACHILLES at
-high pion energy** — NOT a σ, geometry, sampling, or first-pass effect (all matched on identical nuclei).
-Root mechanism (angular distribution vs recoil/kf) being pinned in #11.
+**ROOT CAUSE (FIXED).** ADoNIS escaped the *beam* pion on a **sphere** `|pos|>radius`; ACHILLES's
+un-scattered beam pion is `external_test` and escapes at the **z≥radius PLANE** (`Cascade.cc:532-553`,
+`if(status==external_test){ if(Z<radius) continue; }`). For an off-axis pion the sphere cuts the track
+at z=√(R²−b²) < R, dropping the exit-side nucleons → ~1–2% fewer reactions, worst at high energy/large b.
+Fix (`cascade_discrete.py` step escape): beam pion (`nsc==0`) → plane `pos_z≥radius`; once it scatters
+(`nsc>0`, internal) → sphere. (This was wrongly "ruled out as negligible" early on — it is THE residual.)
+Validated on identical configs (#12) and on the high-stat transparency (§3 will be updated).
 
 ---
 
