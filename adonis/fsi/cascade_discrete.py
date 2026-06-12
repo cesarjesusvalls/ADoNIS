@@ -86,6 +86,10 @@ class DiscreteCascadeConfig:
     prob: str = ""           # interaction-probability model: "gaussian"/"cylinder"/"pion".  Empty ->
                              # back-compat: cylinder bool picks Cylinder vs Gaussian.  "pion" =
                              # ACHILLES Probability: Pion, exp(-sqrt(2 pi/sigma) b) (Cascade.cc:47-52).
+                             # WARNING: "pion" is NOT reliable -- ACHILLES itself flags it with
+                             # "TODO: This does not work, we need to rethink this" (Cascade.cc:49) and
+                             # no ACHILLES run-card uses it.  Provided for parity only; prefer
+                             # gaussian (Fig-3 oracle) or cylinder (T2K run-card).
     fast_xsec: bool = True   # evaluate Oset/DCC cross sections only for the K nearest in-slab nucleons
                              # (scatter back into the (n,A) grid); bit-exact, ~4x cheaper per step.
     pauli: bool = True       # Pauli-block the outgoing nucleon(s) of scatter/absorption (ACHILLES
@@ -206,6 +210,8 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         elif _mode == "pion":
             # ACHILLES Probability: Pion -- exp(-sqrt(2 pi/sigma) b), b=sqrt(perp2) (Cascade.cc:47-52).
             # Integrates over the impact-parameter plane to sigma, like Gaussian/Cylinder.
+            # WARNING: NOT reliable -- ACHILLES marks this form "TODO: This does not work, we need to
+            # rethink this" (Cascade.cc:49); no run-card uses it.  Here for parity, not for production.
             prob = jnp.where(cand, jnp.exp(-jnp.sqrt(2.0 * jnp.pi * perp2 / _sfm)), 0.0)
         else:
             prob = jnp.where(cand, jnp.exp(-jnp.pi * perp2 / _sfm), 0.0)
