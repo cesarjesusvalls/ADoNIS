@@ -105,10 +105,11 @@ ADoNIS `propagate_discrete`):
 | **335** ADO | 0.1645 (−1.4%) | 0.0464 (**matched**) | 0.1181 (−2.3%) | *(measuring)* |
 
 So with σ_scat, σ_abs and the abs/scatter branching all matched, ADoNIS produces fewer
-**scattered-and-survived** pions at high energy. Absorption (terminal) is unaffected → this is not a
-vertex/branching effect; it is in how scatters accumulate (multiplicity / re-scatter geometry).
-Next measurement: ADoNIS per-pion `nsc` distribution vs ACHILLES `mean nscat/pion` (0.2120 / 0.1942) at
-fixed 305/335 — if ADoNIS multiplicity is low, it is a transport (re-scatter) deficit.
+**scattered-and-survived** pions at high energy. **Root cause (found via the event-by-event replay, see
+Logbook #8/#10): ADoNIS Pauli-blocks ~2% more scatters than ACHILLES at high pion energy.** On identical
+nuclei the no-Pauli first-pass MATCHES (1.009) but the with-Pauli reaction is −1.6% — so it is neither a
+σ/geometry nor a multiplicity effect; it is the Pauli scatter-blocking step. (The earlier
+"multiplicity matched / it's in the accumulation" framing was wrong.)
 
 **Ruled OUT for this residual (all measured / matched):**
 - **σ_scat(W)** — charge-resolved σ matches ACHILLES `MBSCAT` dump to **<0.5% in every W bin** for both
@@ -144,13 +145,23 @@ unless noted.
    (not a b↔σ correlation / roll-accumulation bug). Decisive.
 9. **ADoNIS analytic on OWN 36k configs @305** (same calc as #8): 0.2100 ±0.0009 vs ACHILLES no-Pauli
    0.2123 ±0.0058 → 0.4σ, consistent (ACHILLES no-Pauli stat too loose to resolve 1%).
-10. **OPEN NEXT**: the SOLID residual is WITH Pauli (step 2, 4σ); the replay (#8) was no-Pauli. Run the
-    **with-Pauli replay** — feed the dumped configs into `propagate_discrete` (Pauli on) and compare to
-    ACHILLES with-Pauli dumped outcomes. Tests whether the residual is the Pauli step on identical nuclei.
+10. **WITH-Pauli replay** (instr `ACHILLES_DUMPCFG` with Pauli ON; 125k dumped configs at 305; replay
+    `propagate_discrete` Pauli-ON on the identical nuclei, 4 RNG keys): ADoNIS **0.1901** vs ACHILLES
+    with-Pauli empirical **0.1932 ±0.0011** = **0.984 (−2.7σ)**. So WITH Pauli, on identical configs,
+    ADoNIS reacts −1.6% — but step #8 (NO Pauli, identical configs) MATCHED. **⇒ the residual IS the
+    Pauli step.** On identical nuclei: ADoNIS removes ~11% of the no-Pauli reaction via Pauli; ACHILLES
+    removes ~9%. **ADoNIS over-blocks by ~2pp.** This overturns the earlier "Pauli faithful / block
+    fractions bracket 0.263" reads (those were over the full [80,500] beam with the *averaged* σ; the
+    `ACHILLES_NO_PAULI` first-pass localization was stat-limited on the ACHILLES side).
+11. **OPEN NEXT**: pin WHY ADoNIS over-blocks scatters. At high energy (above Δ) scatters are
+    forward-peaked → small recoil → recoil < kf → blocked. Candidate: ADoNIS's scatter ANGULAR
+    distribution at high W is more forward than ACHILLES (`Get_CSpoly_W`), or a recoil/kf detail.
+    Measure: compare scatter-recoil |p| distribution + block fraction (ACHILLES `SCATREC` dump vs ADoNIS)
+    on identical configs at 305.
 
-Working hypothesis after #8–9: the no-Pauli first-pass matches on identical configs, so the residual is
-either (a) the with-Pauli scatter-blocking step at high energy, or (b) ACHILLES no-Pauli stats too loose
-to have caught a ~1% first-pass gap — #10 discriminates.
+Conclusion so far: the ~1.3% residual is **ADoNIS Pauli-blocking ~2% more scatters than ACHILLES at
+high pion energy** — NOT a σ, geometry, sampling, or first-pass effect (all matched on identical nuclei).
+Root mechanism (angular distribution vs recoil/kf) being pinned in #11.
 
 ---
 
