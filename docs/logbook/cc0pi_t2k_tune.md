@@ -115,3 +115,23 @@ real-chain differentiability test (test_cascade_reweight_records.py), dpt fit + 
 dat fit + figure, ACHILLES reference chi2. Possible follow-ups (not started): joint
 (dpt, dat) fit blocked on missing cross-covariance; physics-side question of the common
 A~0.88 norm excess; Hessian guard at clip rails in the tune script.
+
+## #5 — closure + M_A third knob (2026-06-12, commit bc0c793)
+
+- M_A knob (exact): amps2 is QUADRATIC in the axial scale -> 3 evals per frozen proposal
+  give per-event (a,b,c); fit-time weight elementwise via axial_reweight_dipole at the
+  event's amplitude Q2 (QE: leptonic Q2/dirac convention; RES: de-Forest-shifted Q2 via
+  return_q2). Gates: nominal bit-identical, quadratic identity 5e-15, AD==FD 3.5e-8,
+  =1 exactly at MA=1 (tests/test_ma_reweight.py). Effect: MA=1.15 -> +14..19%/bin;
+  FSI (1.6,0.7) -> +8..52%/bin. NaN fix: zero-weight rejected QE draws (negative Q2)
+  sanitized to identity records.
+- Closure machinery (scripts/cc0pi_tune_closure.py): pseudo-data = ADoNIS @ theta* from
+  4 INDEPENDENT walks; exact tune machinery recovers from nominal. Optimisation history
+  persisted to /tmp/adonis_tune_runs/*.npz; --plot-only re-renders figures w/o recompute
+  (also added to the data-fit driver).
+- Closure result (dpt, theta*=(1.6, 0.7), MA free at truth 1.0, norm profiled):
+  sigma_abs 1.65+/-1.30 (pull +0.04), sigma_scatter 0.90+/-0.39 (+0.51), M_A 0.96+/-0.17
+  (-0.25); chi2/ndf 0.07->0.26. UNBIASED recovery; errors honest and large because the
+  profiled norm absorbs most of the theta* effect (A_nom=1.143; residual shape 0.07) --
+  quantifies the weak knob sensitivity of norm-profiled single-STV fits.
+- Running: 3-knob closures with MA*=1.15, profiled + ABSOLUTE-norm variants.
