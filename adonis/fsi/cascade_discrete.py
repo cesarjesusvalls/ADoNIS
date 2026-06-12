@@ -45,8 +45,11 @@ def _formation_zone(p_in, p_out):
     return p_in[:, 0] * HBARC / jnp.clip(jnp.abs(M_N ** 2 - dot4), 1e-6, None)
 
 
-def _load_qmc_configs(nmax=20000, name="QMC_configs.out.gz"):
-    """Load A-nucleon configurations (positions [fm], isospin proton-mask, per-config weight)."""
+def _load_qmc_configs(nmax=36000, name="QMC_configs.out.gz"):
+    """Load A-nucleon configurations (positions [fm], isospin proton-mask, per-config weight).
+    nmax=36000 = ALL configs in QMC_configs.out.gz (ACHILLES uses the full set); verified the
+    transparency is unchanged vs the old 20000 cap (first-20k and full-36k have identical rms radius
+    and both sample ∝ weight)."""
     if name in _CFG:
         return _CFG[name]
     path = Path(__file__).resolve().parents[2].parent / "Achilles" / "data" / "configurations" / name
