@@ -82,6 +82,8 @@ class DiscreteCascadeConfig:
                              # exp(-pi b^2/sigma).  T2K run-card uses Cylinder; Fig-3 oracle Gaussian.
     fast_xsec: bool = True   # evaluate Oset/DCC cross sections only for the K nearest in-slab nucleons
                              # (scatter back into the (n,A) grid); bit-exact, ~4x cheaper per step.
+    pauli: bool = True       # Pauli-block the outgoing nucleon(s) of scatter/absorption (ACHILLES
+                             # FinalizeMomentum); set False for ablation (no-blocking) studies.
     algo: str = "step"       # "step": fixed-step Glauber march (reference).  "interaction": jump
                              # directly to the next interaction (same probability model, ~20x fewer
                              # iterations).  Statistically equivalent; validated against "step".
@@ -247,6 +249,8 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             return lead, blocked
         abs_lead, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out, kf_pi, kf_absB,
                                                   jax.random.split(kab, n))
+        if not cfg.pauli:
+            abs_blocked = abs_blocked & False
         is_abs = chose_abs & ~abs_blocked                                     # absorption survives Pauli
         best_abs = jnp.where(is_abs[:, None], abs_lead, best_abs)             # one absorption / pion
 
@@ -266,6 +270,8 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             p_rec = (p_pi_i + pN_i) - p_out
             return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
         p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_j, cos_cm, jax.random.split(sk, n))
+        if not cfg.pauli:
+            blocked = blocked & False
 
         is_scat = has_hit & ~chose_abs & ~blocked    # scatter channel chosen, recoil not Pauli-blocked
         p_pi = jnp.where(is_scat[:, None], p_out, p_pi)

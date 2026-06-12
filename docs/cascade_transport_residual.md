@@ -64,8 +64,39 @@ has the same lower σ_tot and still reacts more, so a real residual remains).
 
 **Open candidate under test:** the only un-matched step is ACHILLES's per-event **rigid random rotation**
 of each config (`Configuration.cc:77-89`) — ADoNIS fires all pions along +z through UNROTATED configs.
-Argued negligible (centered, isotropic, 36000 samples) but being verified directly (`/tmp/ado_rot.py`,
-rotated vs unrotated reaction).
+Argued negligible (centered, isotropic, 36000 samples); VERIFIED null (`/tmp/ado_rot.py`: rotated vs
+unrotated reaction identical, 0.960/0.953/0.960).
+
+**Localized to the FIRST PASS (Pauli-independent), high-stat.** Instrumented ACHILLES with an env
+toggle `ACHILLES_NO_PAULI` (PauliBlocking returns false) and added a `pauli` ablation flag to
+`DiscreteCascadeConfig`. Reacted fraction over the matched beam:
+
+| reacted frac | ADoNIS | ACHILLES | ADO/ACH |
+|---|---|---|---|
+| no Pauli | 0.1232 | 0.1286 +/- 0.0012 (76k ev) | 0.958 |
+| with Pauli | 0.1094 | 0.1136 | 0.963 |
+
+The deficit PERSISTS with Pauli off (-4.2%), and Pauli removes nearly the same fraction in both
+(ADoNIS 11.2%, ACHILLES 11.7%) -- so ADoNIS's Pauli is faithful and NOT the cause. (An earlier
+pauli-on/off test seemed to show ADoNIS over-blocking, but that compared ADoNIS-no-block to
+ACHILLES-WITH-block. The scatter block fractions actually bracket ACHILLES's 0.263: ADoNIS
+0.295/0.241/0.231 at 245/305/335.) So the deficit is in the first-pass reaction probability
+`1-prod(1-exp(-pi b^2/sigma_tot))`, which depends only on sigma_total and impact-parameter geometry.
+
+**Yet sigma_total and geometry both look matched -- UNRESOLVED.** A host-side first-pass calculator
+(`/tmp/ado_firstpass.py`, ADoNIS's own sigma over the same QMC configs) reproduces the cascade (0.1242
+vs 0.1232). Comparing per-roll sigma_total to ACHILLES's actual `GetXSec` (instrumented `GETXSEC` dump
+in `Interacted`): ADoNIS sigma is NOT low -- median 56.9 vs 50.6 mb, and at small impact parameter
+(reaction-driving) ADoNIS is higher (57.9 vs 41.4). NOT a uniform sigma deficit. (Caveat: ACHILLES
+`Interacted` short-circuits on the first passer per step, so its dumped per-roll population is a biased
+subset -- the histograms are not directly comparable.) The sigma FUNCTION matches at matched W
+(`compare_mb_scat` 1.003); the ~3-4% residual is a subtle shape effect of the sigma_total(W) resonance
+tail / W (Fermi-motion) distribution integrated through the nonlinear `1-prod(1-p)`. Within the
+validated band (test locks 0.85-1.20). Root cause NOT yet pinned.
+
+Instrumentation built this session (`achilles:scatrec`, env/guarded): `SCATREC` (scatter recoil |p|,
+kf, blocked), `GETXSEC` (per-roll b^2, sigma_total, prob), `ACHILLES_NO_PAULI` toggle, plus the earlier
+`CASCSEQ`. ADoNIS: `DiscreteCascadeConfig.pauli` ablation flag.
 
 ---
 
