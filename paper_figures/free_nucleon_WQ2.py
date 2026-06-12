@@ -1,4 +1,4 @@
-"""FREE-NUCLEON bisection (docs/res_investigation_log.md Iter 3): dsigma/dW(omega) & dsigma/dQ^2
+"""FREE-NUCLEON bisection (res_investigation_log.md Iter 3; doc retired to git history): dsigma/dW(omega) & dsigma/dQ^2
 for a struck nucleon AT REST (on-shell) -- de Forest shift ~0, no Fermi/spectral smearing -- so
 the comparison isolates the ELEMENTARY DCC current (RES) / QE current Q^2 dependence.
 

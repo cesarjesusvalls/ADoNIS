@@ -88,5 +88,5 @@ ACHILLES side (instrumentation, env/counter-gated — see the ACHILLES repo work
 - One W-threshold bin in the mono figure: ADoNIS uses the π⁺ kinematic mass 139.57 where ACHILLES
   uses 134.977 → πN threshold W_min ~4.6 MeV higher → lowest-W bin depleted.
 
-Superseded notes: the earlier `docs/res_WQ2_investigation_findings.md` recorded many dead-end leads
+Superseded notes: the earlier `docs/res_WQ2_investigation_findings.md` (removed; in git history) recorded many dead-end leads
 (pion mass, phase-space weight, Vegas, de Forest) — all wrong; kept only as a record of the hunt.

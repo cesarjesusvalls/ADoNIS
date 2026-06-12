@@ -1,6 +1,6 @@
 """CANONICAL RES/QE diagnostic: dsigma/dW(or omega) & dsigma/dQ^2, ADoNIS vs the REAL ACHILLES
 hepmc events, with ratio panels.  This is the standing diagnostic for the RES low-Q^2 deficit
-investigation (docs/res_investigation_log.md).  Regenerate after every candidate fix.
+investigation (res_investigation_log.md; doc retired to git history).  Regenerate after every candidate fix.
 
 ACHILLES reference: unweighted events from a NuHepMC hepmc.  sigma_total read from the final
 GenCrossSection (pb -> nb).  Q^2 = -(k_nu - k_mu)^2 with k_nu = MAX-ENERGY pid14 (the status-2

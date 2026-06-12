@@ -1,6 +1,7 @@
 # Phase logs
 
-One markdown file per phase of `docs/REPRODUCTION_PLAN.md`, written so work is
+One markdown file per phase of the reproduction plan (originally `docs/REPRODUCTION_PLAN.md`,
+now retired to git history), written so work is
 **resumable**: each records what was verified, what was built, the gates that pass,
 the exact commands, and the open issues / next steps. Read the relevant phase doc
 before continuing that phase.

@@ -29,7 +29,7 @@ adonis/                 the package
 scripts/                thin drivers (validate / make figures / generate oracle)
 tests/                  per-module closure (autodiff==FD) + oracle gates
 data/                   oracle/ (targets+inputs), model/ (events), cache/ (fit/plot caches)
-docs/                   STATUS.md, INPUTS.md, CONTAINER.md, STRATEGY.md, REPRODUCTION_PLAN.md
+docs/                   STATUS.md, INPUTS.md, CONTAINER.md, STRATEGY.md, phases/, logbook/
 .github/workflows/      ci.yml (tests + figures) + oracle.yml (image-backed oracle)
 ```
 
