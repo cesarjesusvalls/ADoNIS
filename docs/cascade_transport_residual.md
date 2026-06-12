@@ -124,8 +124,33 @@ fixed 305/335 — if ADoNIS multiplicity is low, it is a transport (re-scatter) 
   out there), **W distribution** (Δ-peak frac [1200,1260] identical 0.207, med within 4 MeV), **Pauli**
   (faithful; block fractions bracket ACHILLES 0.263). See §6 for the full ledger.
 
-So every per-eval input matches; the residual lives in the multi-scatter transport accumulation at high
-energy. It is small (~1.3%, ~3σ) and one-sided. Not yet pinned.
+### Logbook — chasing the ~1.3% (do NOT re-run these; sequential)
+
+Convention: "reacted" = P(≥1 interaction). Fixed-energy = KickMomentum [pe−3,pe+3]. Numbers at 305 MeV
+unless noted.
+
+1. **charge-resolved σ fix** → reaction 0.959/0.954/0.961 ⇒ 0.997/0.986/0.988. Closed 4% → ~1.3%.
+2. **tightened oracle** (6.5M att): abs fully matched (≤0.6%); reaction 245 matched, **305/335 ~1.3% low
+   (3–4σ)**. This is the residual.
+3. **σ_scat(W)** vs ACHILLES MBSCAT dump: <0.5% in every W bin (π⁺p & π⁺n). → NOT σ_scat.
+4. **σ_abs** vs ACHILLES OSETABS at 305 (ACHILLES's exact Tpi/dens/fermi/vrel): ratio 0.9998. → NOT σ_abs.
+5. **config rotation** (added to ADoNIS, charge-res σ): null (≤0.2%). → NOT rotation.
+6. **config count** 20000→all 36000: transparency-neutral. → NOT config count.
+7. **nucleon momentum sampling**: ADoNIS local-FG `kf·∛U` vs ACHILLES *dumped* |p|: mean 158.2 vs 158.3,
+   rms 169.1 vs 169.2, |p|/kf=0.751, frac|p|>kf=0.0007 (no SRC tail). → NOT momentum sampling.
+8. **EVENT-BY-EVENT REPLAY, no-Pauli** (instr `ACHILLES_DUMPCFG` dumps beam+12 nucleons+outcome; replay
+   ADoNIS analytic P(react) on the *identical* dumped nuclei): ADoNIS **0.2142** vs ACHILLES empirical
+   **0.2123 ±0.0058** = **1.009 (+0.3σ) MATCHED**. → ADoNIS's per-config first-pass physics is CORRECT
+   (not a b↔σ correlation / roll-accumulation bug). Decisive.
+9. **ADoNIS analytic on OWN 36k configs @305** (same calc as #8): 0.2100 ±0.0009 vs ACHILLES no-Pauli
+   0.2123 ±0.0058 → 0.4σ, consistent (ACHILLES no-Pauli stat too loose to resolve 1%).
+10. **OPEN NEXT**: the SOLID residual is WITH Pauli (step 2, 4σ); the replay (#8) was no-Pauli. Run the
+    **with-Pauli replay** — feed the dumped configs into `propagate_discrete` (Pauli on) and compare to
+    ACHILLES with-Pauli dumped outcomes. Tests whether the residual is the Pauli step on identical nuclei.
+
+Working hypothesis after #8–9: the no-Pauli first-pass matches on identical configs, so the residual is
+either (a) the with-Pauli scatter-blocking step at high energy, or (b) ACHILLES no-Pauli stats too loose
+to have caught a ~1% first-pass gap — #10 discriminates.
 
 ---
 
