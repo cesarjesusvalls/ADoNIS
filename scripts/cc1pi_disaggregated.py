@@ -40,7 +40,8 @@ def res_C(n, seed, fsi):
         # DIAGNOSTIC the no-FSI cells carry the discrimination; FSI cells store the observables only.
         d.update(W=np.zeros(len(d["w"])), Q2=np.zeros(len(d["w"])), Enu=np.zeros(len(d["w"])))
         return d
-    sel = ((ppid == 211) & (w > 0) & F._acc(kmu, F.MU_LO, F.MU_HI)
+    Npid = np.asarray(e["Npid"])
+    sel = ((ppid == 211) & (Npid == 2212) & (w > 0) & F._acc(kmu, F.MU_LO, F.MU_HI)
            & F._acc(ppi, F.PI_LO, F.PI_HI) & F._acc(pN, F.P_LO, F.P_HI))
     dptt, pn, dat, dpt = F.observables(kmu[sel], ppi[sel], pN[sel], np.zeros(int(sel.sum()), bool), seed)
     W, Q2, Enu = _vertex(knu[sel], kmu[sel], pstr[sel])

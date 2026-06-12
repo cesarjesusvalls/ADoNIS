@@ -106,3 +106,23 @@ Open next steps:
   excess reproduces at fixed energy (then bisect: amplitudes/spline vs phase space vs
   W-dependent factors in currents_pi_dcc at high W). The earlier fixed-E validations were
   at lower E_nu where W>1400 is barely populated.
+
+## #5 — CORRECTION: the "2-3x primary W-tail excess" (#3/#4) was a DIAGNOSTIC ARTIFACT
+
+- My no-FSI diagnostic selections (ad-hoc primary script AND cc1pi_disaggregated res_C
+  fsi=False) were MISSING the proton-PID requirement: for n -> n pi+ events (large at high W)
+  ADoNIS counted NEUTRONS in the proton window, inflating its selected W tail 2-3x. The
+  figure-level chains (cc1pi_fig_tki) always had the pid check -- their numbers stand.
+- With the proton PID required on both sides (ACH: any in-window PROTON via the new prot_ok
+  extraction; ADO: Npid==2212), the FULL-signal acceptance vs W agrees to <=13%:
+  ACH/ADO = .146/.147 | .078/.084 | .054/.061 | .025/.017  (W 1100-1400|1400-1600|
+  1600-1800|1800-2000).  n_pi == 1 for ALL ACH no-FSI RES events (multi-meson veto nil).
+- Corrected conclusions: vertex distributions agree unselected (W shape 0.92-1.01);
+  the GENUINE residual is an 8-15% pi+-acceptance excess at W 1400-1800 driven by
+  10-20% shape differences in the piN final-state kinematics (pi cos-theta wiggles
+  0.73-1.22 within W slices; pi |p| slice edges) -- consistent with PHASE_I's known
+  cos-theta* chi2/ndf 4.5-7.3 and integrating to the observed ~8% carbon CC1pi excess.
+- cc1pi_disaggregated.py res_C(fsi=False) pid bug FIXED (Npid==2212).
+- NEXT: the angular distribution at high W -- fixed-(W,Q2) angular comparison of the
+  exclusive amps2 against an ACHILLES RESDUMP-style oracle in the second-resonance region
+  (the Delta-region angular validation passed; W>1400 was never gated).
