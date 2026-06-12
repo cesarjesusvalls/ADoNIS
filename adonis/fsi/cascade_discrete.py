@@ -146,9 +146,11 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         rnuc = jnp.linalg.norm(npos, axis=2)
         kf_n = _kf_local(_rho_species(rnuc, rgrid, rho))             # (n,A) cheap; used at the hit index j
 
-        def _xsec(nm, npo):
-            """Oset abs + DCC scatter cross sections for nucleon states nm (..,4), npo (..,3) vs the
-            current pion (pE,pmom,m_pi,vpi,ch).  Returns sa, ss, sig_io(...,3), W -- same leading shape."""
+        def _xsec(nm, npo, nip):
+            """Oset abs + DCC scatter cross sections for nucleon states nm (..,4), npo (..,3),
+            proton-mask nip (..) vs the current pion (pE,pmom,m_pi,vpi,ch).  Returns sa, ss,
+            sig_io(...,3), W -- same leading shape.  Scatter sigma is CHARGE-RESOLVED by the struck
+            nucleon (ACHILLES GetCchannel(pion,baryon)): sigma(pi+ p) ~ 3x sigma(pi+ n) at the Delta."""
             vN = nm[..., 1:] / nm[..., 0:1]
             vrel = jnp.clip(jnp.linalg.norm(vpi[:, None, :] - vN, axis=-1), 1e-3, None)
             rho_t = 2.0 * _rho_species(jnp.linalg.norm(npo, axis=-1), rgrid, rho)
@@ -159,8 +161,10 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
                            pmom[:, None] + 0 * Wl, vrel, jnp.clip(kf, 1e-6, None),
                            jnp.clip(rho_t, 1e-9, None)), 0.0, None)
             K_ = Wl.shape[1]
-            sio = cascade_mb.jax_channel_sigmas(Wl.reshape(-1),
-                      jnp.broadcast_to(ch[:, None], (n, K_)).reshape(-1)).reshape(n, K_, 3)
+            nuc_i = jnp.where(nip, 0, 1).astype(jnp.int32)           # 0=proton 1=neutron
+            sio = cascade_mb.jax_channel_sigmas_resolved(Wl.reshape(-1),
+                      jnp.broadcast_to(ch[:, None], (n, K_)).reshape(-1),
+                      nuc_i.reshape(-1)).reshape(n, K_, 3)
             ssl = jnp.clip(jnp.sum(sio, axis=-1), 0.0, None)
             return sal, ssl, sio, Wl
 
@@ -171,13 +175,13 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             score = jnp.where(cand, -perp2, -jnp.inf)
             _, idx = jax.lax.top_k(score, _KSLAB)                    # (n,K) nearest-impact in-slab nucleons
             gi = (ar[:, None], idx)
-            sa_k, ss_k, sio_k, W_k = _xsec(nmom[ar[:, None], idx], npos[ar[:, None], idx])
+            sa_k, ss_k, sio_k, W_k = _xsec(nmom[ar[:, None], idx], npos[ar[:, None], idx], nisp[ar[:, None], idx])
             sa = jnp.zeros((n, A)).at[gi].set(sa_k)
             ss = jnp.zeros((n, A)).at[gi].set(ss_k)
             sig_io = jnp.zeros((n, A, 3)).at[gi].set(sio_k).reshape(n * A, 3)
             W = jnp.zeros((n, A)).at[gi].set(W_k)
         else:
-            sa, ss, sio, W = _xsec(nmom, npos)
+            sa, ss, sio, W = _xsec(nmom, npos, nisp)
             sig_io = sio.reshape(n * A, 3)
         # ACHILLES PionAbsorption isospin partition (Nucl.Phys.A568 Table 1, PionAbsorption.cc:85-136):
         # the absorption xsec entering the cascade competition is split by partner-channel isospin.

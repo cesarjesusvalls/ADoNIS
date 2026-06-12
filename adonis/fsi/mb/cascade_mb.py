@@ -83,6 +83,37 @@ def _jax_grids():
     return _JGRID["W"], _JGRID["sig"]
 
 
+def _jax_grids_resolved():
+    """CHARGE-RESOLVED sig_out[pion_in, nucleon, pion_out](W) -- NOT averaged over p/n.
+    ACHILLES MesonBaryonInteraction uses GetCchannel(pion, baryon), i.e. the cross section for the
+    SPECIFIC struck nucleon (sigma(pi+ p) ~ 3x sigma(pi+ n) at the Delta).  Shape jsig (3 in, 2 nuc,
+    3 out, nW), nuc 0=proton 1=neutron."""
+    if "sigr" in _JGRID:
+        return _JGRID["W"], _JGRID["sigr"]
+    t = _build_table(); Wt = t["W"]; grid = t["grid"]
+    sig = np.zeros((3, 2, 3, len(Wt)))
+    for (pin, nuc), outs in _CHANNELS.items():
+        ni = 0 if nuc == "p" else 1
+        for (pout, nout, cg) in outs:
+            sig[pin, ni, pout] += np.clip(grid[(pin, nuc, pout)], 0.0, None)
+    if "W" not in _JGRID:
+        _JGRID["W"] = _jnp.asarray(Wt)
+    _JGRID["sigr"] = _jnp.asarray(sig)
+    return _JGRID["W"], _JGRID["sigr"]
+
+
+def jax_channel_sigmas_resolved(W, pion_in_idx_arr, nuc_idx_arr):
+    """sig_out (N,3) [mb] for the SPECIFIC struck nucleon: W (N,), pion_in_idx (N,) in {0,1,2},
+    nuc_idx (N,) in {0:proton,1:neutron}.  Charge-resolved (NOT p/n-averaged) -- matches ACHILLES."""
+    jW, jsig = _jax_grids_resolved()                  # (nW,), (3,2,3,nW)
+    all_io = _jnp.stack([_jnp.stack([_jnp.stack(
+        [_jnp.interp(W, jW, jsig[i, nu, o], left=0.0, right=0.0) for o in range(3)], axis=-1)
+        for nu in range(2)], axis=0) for i in range(3)], axis=0)      # (3 in, 2 nuc, N, 3 out)
+    flat = all_io.reshape(6, -1, 3)                                   # (in*nuc, N, 3)
+    sel = (pion_in_idx_arr * 2 + nuc_idx_arr).astype(_jnp.int32)      # (N,)
+    return _jnp.take_along_axis(flat, sel[None, :, None], axis=0)[0]  # (N,3)
+
+
 # --- DCC angular distribution sampler (replaces isotropic CM scatter in the cascade) -------- #
 # Precompute the inverse CDF of dsigma/dOmega(cos) over a W grid, PER (pi_in, nucleon, pi_out)
 # channel -- ACHILLES MesonBaryonInteraction::GenerateMomentum samples cos_CMS from the channel-
