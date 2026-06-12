@@ -1,7 +1,41 @@
 # Pion-cascade ADoNIS↔ACHILLES residual — investigation log
 
-Status: **absorption SOLVED** (commit `9124afb`); a separate **~4% scatter-RATE deficit** remains
-OPEN. Last updated 2026-06 (this session).
+Status: **BOTH SOLVED.** Absorption (commit `9124afb`, isospin partition) AND the ~4% reaction-rate
+deficit (commit `1ad6cf0`, charge-resolved scatter sigma). π⁺¹²C transparency now matches ACHILLES to
+~1% in BOTH reaction and absorption at 245/305/335 MeV. Last updated 2026-06 (this session).
+
+## RESOLUTION of the ~4% reaction deficit (commit `1ad6cf0`)
+
+**Root cause:** the DCC scatter cross section was isospin-AVERAGED over a p/n target
+(`cascade_mb.jax_channel_sigmas`), so every nucleon saw `(sigma_piN_p + sigma_piN_n)/2` regardless of
+its charge. ACHILLES `MesonBaryonInteraction` uses `GetCchannel(pion, baryon)` -- the cross section for
+the SPECIFIC struck nucleon. At the Delta the asymmetry is large: sigma(pi+ p) = 198 mb (pure-I=3/2
+Delta++) vs sigma(pi+ n) = 68 mb (ratio ~2.9). Because reaction is NONLINEAR in sigma
+(`1-prod(1-exp(-pi b^2/sigma))`), averaging the dominant Delta++ proton channel down to 133 mb
+suppressed proton scattering and the neutron over-estimate did not compensate -> a ~4% first-pass
+reaction deficit. (NOTE: this matters only for the *discrete* per-nucleon cascade, where the nonlinear
+`exp(-pi b^2/sigma)` is evaluated for a specific nucleon. The mean-field `cascade_real` uses lambda =
+rho*sigma which is LINEAR, so p/n averaging is exact there for N=Z.)
+
+**Fix:** `jax_channel_sigmas_resolved(W, pion_in, nuc_idx)` from the per-(pin,nuc,pout) grid (no p/n
+average); thread the struck nucleon charge (`nisp`) into the cascade sigma eval. Now consistent with the
+already-charge-resolved scatter ANGLE (`d109552`). REACTION mb (ach/ado), 1M vs 1.2M-att:
+
+| p (MeV) | REACTION before | REACTION AFTER | ABSORPTION ach/ado |
+|---|---|---|---|
+| 245 | 0.959 | **0.995** (575.4 / 578.5) | 0.973 |
+| 305 | 0.954 | **0.986** (597.8 / 606.0) | 0.999 |
+| 335 | 0.961 | **0.988** (518.9 / 525.0) | 1.001 |
+
+**How it was found:** isolated the deficit to the first-pass reaction (Pauli-independent via the
+`ACHILLES_NO_PAULI` toggle), then a host-side first-pass calculator (`/tmp/ado_chargeres.py`) directly
+compared averaged vs charge-resolved sigma_scat: 0.1242 -> 0.1290, matching ACHILLES 0.1286. The earlier
+"sigma matches (compare_mb_scat 1.003)" check only validated the AVERAGE -- which matches on average but
+is wrong per-nucleon, and the nonlinearity does not commute with the p/n average.
+
+---
+
+# (historical) the two residuals, as found
 
 ## RESOLUTION of the +5% absorption (commit `9124afb`)
 
