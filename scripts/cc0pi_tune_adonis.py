@@ -164,7 +164,7 @@ def build_replica(kcasc, qe, qw, res, rw):
         r_keep=r_keep, r_w0=jnp.asarray(rw) * absb * has_p.astype(float),
         r_brec=pion.last_brec, r_srec=nf2.last_srec)
     # overflow guards on the compressed records (capacities _K_BR / _K_SLAB_REC)
-    nh = int(jnp.max(R["r_brec"][3]))
+    nh = int(jnp.max(R["r_brec"][4]))
     nsmax = max(int(jnp.max(s[2])) for s in (R["q_srec"][0], R["q_srec"][1], R["r_srec"][0], R["r_srec"][1]))
     assert nh <= R["r_brec"][1].shape[1] and nsmax <= R["q_srec"][0][1].shape[1], (nh, nsmax)
     return jax.block_until_ready(R)

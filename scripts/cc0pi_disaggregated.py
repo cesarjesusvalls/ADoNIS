@@ -96,8 +96,9 @@ def res_C(n, seed, fsi):
     has_p = (mom_a > 1) | (np.asarray(ev.pid_N) == 2212)
     ma = build_res_ma_records(knu, kmu, pstr, pN, ppi, ipid, ppid)
     recs = {f"{k}": v for k, v in zip(("ma_a", "ma_b", "ma_c", "ma_q2"), ma)}
-    ca, sa, sig, nh = pion.last_brec
-    recs.update(b_ca=np.asarray(ca), b_sa=np.asarray(sa), b_sig=np.asarray(sig), b_nh=np.asarray(nh))
+    bc, sa, ss, si, nh = pion.last_brec
+    recs.update(b_bc=np.asarray(bc), b_sa=np.asarray(sa), b_ss=np.asarray(ss),
+                b_si=np.asarray(si), b_nh=np.asarray(nh))
     (h1, a1, n1), (h2, a2, n2), ko = nf2.last_srec
     recs.update(s1_hh=np.asarray(h1), s1_a=np.asarray(a1), s1_ns=np.asarray(n1),
                 s2_hh=np.asarray(h2), s2_a=np.asarray(a2), s2_ns=np.asarray(n2), has_ko=np.asarray(ko))

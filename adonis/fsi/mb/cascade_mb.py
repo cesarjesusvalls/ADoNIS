@@ -184,3 +184,24 @@ def jax_channel_sigmas(W, pion_in_idx_arr):
                                      for o in range(3)], axis=-1)
                          for i in range(3)], axis=0)  # (3 in, N, 3 out)
     return _jnp.take_along_axis(all_io, pion_in_idx_arr[None, :, None], axis=0)[0]  # (N,3)
+
+
+# --- piN -> {etaN, KLambda, KSigma} conversion sigma (in-medium competition) ------------- #
+def _jax_grid_conversion():
+    """numpy-cached (W grid, sig_conv (3 pion, 2 nucleon, nW)) from anl_xsec.conversion_sigma_grid
+    (faithful ACHILLES MesonBaryonAmplitudes port; thresholds/table-end -> 0 via interp edges)."""
+    if "conv_np" not in _JGRID:
+        from adonis.fsi.mb.anl_xsec import conversion_sigma_grid
+        Wg, sig = conversion_sigma_grid()
+        _JGRID["convW_np"] = np.asarray(Wg); _JGRID["conv_np"] = np.asarray(sig)
+    return _jnp.asarray(_JGRID["convW_np"]), _jnp.asarray(_JGRID["conv_np"])
+
+
+def jax_conversion_sigma(W, pion_in_idx_arr, nuc_idx_arr):
+    """Total conversion sigma [mb] (N,): pion charge index (0 pi+, 1 pi0, 2 pi-), nucleon
+    index (0 p, 1 n), at invariant mass W (N,) [MeV].  0 below threshold / beyond the table."""
+    jW, jsig = _jax_grid_conversion()
+    flat = _jnp.stack([_jnp.interp(W, jW, jsig[i, nu], left=0.0, right=0.0)
+                       for i in range(3) for nu in range(2)], axis=0)      # (6, N)
+    sel = (pion_in_idx_arr * 2 + nuc_idx_arr).astype(_jnp.int32)
+    return _jnp.take_along_axis(flat, sel[None, :], axis=0)[0]

@@ -50,10 +50,10 @@ def tuned_weights(theta):
                                                 jnp.asarray(g("s2_ns"))), sscat))
         ws = ws * np.where(np.asarray(g("has_ko")), ws2, 1.0)
         wb = 1.0
-        if f"{c}_True_rec_b_ca" in dis.files:                      # pion cascade (RES only)
-            wb = np.asarray(pion_branch_reweight((jnp.asarray(g("b_ca")), jnp.asarray(g("b_sa")),
-                                                  jnp.asarray(g("b_sig")), jnp.asarray(g("b_nh"))),
-                                                 sabs, sscat))
+        if f"{c}_True_rec_b_bc" in dis.files:                      # pion cascade (RES only)
+            wb = np.asarray(pion_branch_reweight((jnp.asarray(g("b_bc")), jnp.asarray(g("b_sa")),
+                                                  jnp.asarray(g("b_ss")), jnp.asarray(g("b_si")),
+                                                  jnp.asarray(g("b_nh"))), sabs, sscat))
         out.append(w * wma * ws * wb)
     return np.concatenate(out)
 

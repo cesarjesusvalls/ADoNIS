@@ -59,7 +59,7 @@ def test_records_match_propagation():
 
 
 def test_records_capacity():
-    assert int(jnp.max(_PION.last_brec[3])) <= _PION.last_brec[1].shape[1]
+    assert int(jnp.max(_PION.last_brec[4])) <= _PION.last_brec[1].shape[1]
     s1, s2, _ = _NUC.last_srec
     assert int(jnp.max(s1[2])) <= s1[1].shape[1]
     assert int(jnp.max(s2[2])) <= s2[1].shape[1]

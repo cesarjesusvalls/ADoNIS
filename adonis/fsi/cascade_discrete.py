@@ -82,17 +82,21 @@ _K_SLAB_REC = 48             # compressed-record slots for the nucleon sigma_sca
 
 
 def pion_branch_reweight(brec, sabs, sscat):
-    """Kind-1 abs/scatter branching reweight from compressed walk records brec =
-    (chose_abs (n,K), sa (n,K), sig (n,K), n_hits (n,)).  Pure in (sabs, sscat) and bit-exact
-    equal to the in-propagation w_fsi -- the walk is theta-independent, so a fit can run the
-    cascade ONCE (records out) and re-evaluate/differentiate this cheaply per theta."""
-    ca, sa, sig, nh = brec
+    """Kind-1 branching reweight from compressed walk records brec =
+    (branch (n,K) int {0 scatter, 1 abs, 2 conversion}, sa, ss, si (n,K), n_hits (n,)).
+    Per-hit likelihood ratio p_branch(theta)/p_branch(nominal) with
+    p_abs = sabs*sa/D, p_scat = sscat*ss/D, p_conv = si/D, D = sabs*sa + sscat*ss + si
+    (conversion sigma unscaled).  Pure in (sabs, sscat); == in-propagation w_fsi; reduces to
+    the previous two-branch formula where si = 0."""
+    bc, sa, ss, si, nh = brec
     valid = jnp.arange(sa.shape[1])[None, :] < nh[:, None]
-    ss = jnp.clip(sig - sa, 1e-6, None)
-    p_d = jnp.clip(sa / sig, 1e-6, 1.0 - 1e-6)
-    p_k = jnp.clip((sabs * sa) / (sabs * sa + sscat * ss), 1e-6, 1.0 - 1e-6)
-    br = jnp.where(valid, jnp.where(ca, p_k / p_d, (1.0 - p_k) / (1.0 - p_d)), 1.0)
-    return jnp.prod(br, axis=1)
+    ss = jnp.clip(ss, 1e-6, None)
+    D0 = sa + ss + si
+    Dk = sabs * sa + sscat * ss + si
+    num = jnp.where(bc == 1, sabs * sa, jnp.where(bc == 2, si, sscat * ss))
+    den = jnp.where(bc == 1, sa, jnp.where(bc == 2, si, ss))
+    br = (num / Dk) / jnp.clip(den / D0, 1e-12, None)
+    return jnp.prod(jnp.where(valid, br, 1.0), axis=1)
 
 
 def nucleon_scat_reweight(srec, sscat):
@@ -169,7 +173,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
     def body(carry, sk):
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz) = carry
+         best_rec, best_rec_pos, best_rec_fz, conv) = carry
         if cfg.algo == "step":
             # Escape (ACHILLES Cascade.cc:532-553).  The un-scattered BEAM pion is external_test:
             # it escapes at the z>=radius PLANE (continues while Z<radius), so it traverses the whole
@@ -222,7 +226,12 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
                       jnp.broadcast_to(ch[:, None], (n, K_)).reshape(-1),
                       nuc_i.reshape(-1)).reshape(n, K_, 3)
             ssl = jnp.clip(jnp.sum(sio, axis=-1), 0.0, None)
-            return sal, ssl, sio, Wl
+            # piN -> {etaN, KLambda, KSigma} conversion (ACHILLES MesonBaryonAmplitudes open
+            # channels; W > ~1.49 GeV) -- removes the pion from the pi system.
+            sil = jnp.clip(cascade_mb.jax_conversion_sigma(Wl.reshape(-1),
+                      jnp.broadcast_to(ch[:, None], (n, K_)).reshape(-1),
+                      nuc_i.reshape(-1)).reshape(n, K_), 0.0, None)
+            return sal, ssl, sil, sio, Wl
 
         if cfg.fast_xsec and cfg.algo == "step":
             # evaluate the cross sections ONLY for the K nearest in-slab nucleons, scatter back into
@@ -231,13 +240,14 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             score = jnp.where(cand, -perp2, -jnp.inf)
             _, idx = jax.lax.top_k(score, _KSLAB)                    # (n,K) nearest-impact in-slab nucleons
             gi = (ar[:, None], idx)
-            sa_k, ss_k, sio_k, W_k = _xsec(nmom[ar[:, None], idx], npos[ar[:, None], idx], nisp[ar[:, None], idx])
+            sa_k, ss_k, si_k, sio_k, W_k = _xsec(nmom[ar[:, None], idx], npos[ar[:, None], idx], nisp[ar[:, None], idx])
             sa = jnp.zeros((n, A)).at[gi].set(sa_k)
             ss = jnp.zeros((n, A)).at[gi].set(ss_k)
+            si = jnp.zeros((n, A)).at[gi].set(si_k)
             sig_io = jnp.zeros((n, A, 3)).at[gi].set(sio_k).reshape(n * A, 3)
             W = jnp.zeros((n, A)).at[gi].set(W_k)
         else:
-            sa, ss, sio, W = _xsec(nmom, npos, nisp)
+            sa, ss, si, sio, W = _xsec(nmom, npos, nisp)
             sig_io = sio.reshape(n * A, 3)
         # ACHILLES PionAbsorption isospin partition (Nucl.Phys.A568 Table 1, PionAbsorption.cc:85-136):
         # the absorption xsec entering the cascade competition is split by partner-channel isospin.
@@ -247,7 +257,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         # full oset for all, over-absorbing pi+ on protons (the dominant Delta++ channel).
         like_charge = ((ch == 0)[:, None] & nisp) | ((ch == 2)[:, None] & (~nisp))   # (n,A)
         sa = sa * jnp.where(like_charge, 5.0 / 6.0, 1.0)
-        sig = sa + ss                                                # mb
+        sig = sa + ss + si                                           # mb (total interaction reach)
 
         _mode = cfg.prob if cfg.prob else ("cylinder" if cfg.cylinder else "gaussian")
         _sfm = jnp.clip(sig * MB_TO_FM2, 1e-12, None)                 # sigma in fm^2
@@ -269,9 +279,13 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         j = jnp.argmin(metric, axis=1)
         has_hit = jnp.isfinite(metric[ar, j]) & alive
 
-        sa_j = sa[ar, j]; sig_j = sig[ar, j]; W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
-        p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)                           # NOMINAL branch prob
-        chose_abs = has_hit & (jax.random.uniform(kc, (n,)) < p_abs)          # channel pick (abs vs scatter)
+        sa_j = sa[ar, j]; si_j = si[ar, j]; sig_j = sig[ar, j]
+        W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
+        p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)                           # NOMINAL branch probs
+        p_conv = si_j / jnp.clip(sig_j, 1e-12, None)
+        u_br = jax.random.uniform(kc, (n,))                                   # ONE roll, 3-way split
+        chose_abs = has_hit & (u_br < p_abs)                                  # abs | conversion | scatter
+        chose_conv = has_hit & ~chose_abs & (u_br < p_abs + p_conv)           # (si=0 -> never fires)
 
         # ----- pion ABSORPTION final state (ACHILLES PionAbsorption::GenerateMomentum) -----
         # piNN -> NN: pion + struck nucleon j + closest background nucleon; 2 outgoing nucleons
@@ -341,7 +355,13 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         if not cfg.pauli:
             blocked = blocked & False
 
-        is_scat = has_hit & ~chose_abs & ~blocked    # scatter channel chosen, recoil not Pauli-blocked
+        # pion CONVERSION (piN -> etaN/KLambda/KSigma): the pion leaves the pi system.  The
+        # eta/K + baryon products are NOT propagated (declared approximation; both CC0pi and
+        # CC1pi signal definitions veto these events regardless).  No Pauli check on the
+        # conversion products (declared; their nucleons are far above kF near the thresholds).
+        is_conv = chose_conv
+        conv = conv | is_conv
+        is_scat = has_hit & ~chose_abs & ~chose_conv & ~blocked    # scatter chosen, recoil not Pauli-blocked
         # pion-scatter RECOIL nucleon (ACHILLES FinalizeMomentum emits it as a propagating
         # particle with fz = SetFormationZone(p_pi_in, p_rec); pid from the charge-resolved
         # channel: q_rec = q_struck + q_pi_in - q_pi_out).  Track the LEADING PROTON recoil
@@ -360,9 +380,9 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         ch = jnp.where(is_scat, out_ch, ch)
         nsc = nsc + is_scat.astype(jnp.int32)
         absorbed = absorbed | is_abs
-        alive = alive & ~is_abs
+        alive = alive & ~is_abs & ~is_conv
         # consume the struck nucleon on any (non-Pauli-blocked) interaction
-        interacted = is_abs | is_scat
+        interacted = is_abs | is_scat | is_conv
         consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & interacted[:, None])
 
         d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
@@ -374,22 +394,25 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             pos = jnp.where((has_hit & alive)[:, None], npos[ar, j], pos)
             alive = alive & has_hit
         # record the per-step branching decision (DETACHED) for the kind-1 reweight done OUTSIDE the scan
-        rec = jax.lax.stop_gradient((has_hit, chose_abs, sa_j, sig_j))
+        # branch code per hit: 0 = scatter picked (incl. Pauli-blocked), 1 = abs, 2 = conversion
+        bcode = jnp.where(chose_abs, 1, jnp.where(chose_conv, 2, 0)).astype(jnp.int32)
+        ss_j = sig_j - sa_j - si_j                                            # elastic sigma at the hit
+        rec = jax.lax.stop_gradient((has_hit, bcode, sa_j, ss_j, si_j))
         return (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-                best_rec, best_rec_pos, best_rec_fz), rec
+                best_rec, best_rec_pos, best_rec_fz, conv), rec
 
     dhat0 = p_pi0[:, 1:] / jnp.clip(jnp.linalg.norm(p_pi0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
             jnp.zeros(n, jnp.int32), consumed0, jnp.zeros((n, 4)),
-            jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n))
+            jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, bool))
     if cfg.early_exit:
         # EARLY-EXIT walk (bit-exact): while_loop over the SAME per-step keys, stopping once no
         # particle can interact again.  A pion outside the nuclear radius moving OUTWARD is INERT:
         # it can never re-enter (straight line, rho=0 outside), so its remaining march to the
         # escape boundary only advances `pos` (not returned) -- skipping those steps changes no
         # output.  Branch records are compressed ON THE FLY (same step order as the scan cumsum).
-        bufs0 = (jnp.zeros((_K_BR, n), bool), jnp.ones((_K_BR, n)), jnp.full((_K_BR, n), 2.0),
-                 jnp.zeros(n, jnp.int32))
+        bufs0 = (jnp.zeros((_K_BR, n), jnp.int32), jnp.ones((_K_BR, n)), jnp.ones((_K_BR, n)),
+                 jnp.zeros((_K_BR, n)), jnp.zeros(n, jnp.int32))
 
         def wcond(st):
             i, carry, _ = st
@@ -401,42 +424,44 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         def wbody(st):
             i, carry, bufs = st
             carry2, rec = body(carry, keys[i])
-            hh, ca, saj, sigj = rec
-            ca_c, sa_c, sig_c, nh = bufs
+            hh, bcj, saj, ssj, sij = rec
+            bc_c, sa_c, ss_c, si_c, nh = bufs
             slot = jnp.where(hh, nh, _K_BR)                        # _K_BR = out of range -> dropped
-            ca_c = ca_c.at[slot, ar].set(ca, mode="drop")
+            bc_c = bc_c.at[slot, ar].set(bcj, mode="drop")
             sa_c = sa_c.at[slot, ar].set(saj, mode="drop")
-            sig_c = sig_c.at[slot, ar].set(sigj, mode="drop")
-            return i + 1, carry2, (ca_c, sa_c, sig_c, nh + hh.astype(jnp.int32))
+            ss_c = ss_c.at[slot, ar].set(ssj, mode="drop")
+            si_c = si_c.at[slot, ar].set(sij, mode="drop")
+            return i + 1, carry2, (bc_c, sa_c, ss_c, si_c, nh + hh.astype(jnp.int32))
 
         _, carry, bufs = jax.lax.while_loop(wcond, wbody, (jnp.int32(0), init, bufs0))
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz) = carry
-        ca_c, sa_c, sig_c, nh = bufs
+         best_rec, best_rec_pos, best_rec_fz, conv) = carry
+        bc_c, sa_c, ss_c, si_c, nh = bufs
         # truly truncated = still able to interact at the cap (inert walkers excluded)
         outward = jnp.sum(pos * dhat, axis=1) > 0
         inert = (jnp.linalg.norm(pos, axis=1) > radius) & outward
         n_trunc = jnp.sum((alive & ~absorbed & ~inert).astype(jnp.int32))
     else:
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz), recs = jax.lax.scan(body, init, keys)
+         best_rec, best_rec_pos, best_rec_fz, conv), recs = jax.lax.scan(body, init, keys)
         # kind-1 branching reweight, OUTSIDE the scan: the records are detached, so ONLY the
         # (sabs, sscat) knobs carry gradient -- no NaN VJPs from the cascade's final-state
         # sampling can reach it.  Compress to the <=_K_BR hit slots (in step order): the walk is
         # theta-INDEPENDENT, so the reweight is a pure function of these records.
-        hh, ca, saj, sigj = recs                                  # each (max_steps, n)
+        hh, bcj, saj, ssj, sij = recs                             # each (max_steps, n)
         slot = jnp.cumsum(hh.astype(jnp.int32), axis=0) - 1
         slot = jnp.where(hh, slot, _K_BR)                          # _K_BR = out of range -> dropped
         arn = jnp.broadcast_to(jnp.arange(hh.shape[1])[None, :], slot.shape)
-        ca_c = jnp.zeros((_K_BR, hh.shape[1]), bool).at[slot, arn].set(ca, mode="drop")
+        bc_c = jnp.zeros((_K_BR, hh.shape[1]), jnp.int32).at[slot, arn].set(bcj, mode="drop")
         sa_c = jnp.ones((_K_BR, hh.shape[1])).at[slot, arn].set(saj, mode="drop")
-        sig_c = jnp.full((_K_BR, hh.shape[1]), 2.0).at[slot, arn].set(sigj, mode="drop")
+        ss_c = jnp.ones((_K_BR, hh.shape[1])).at[slot, arn].set(ssj, mode="drop")
+        si_c = jnp.zeros((_K_BR, hh.shape[1])).at[slot, arn].set(sij, mode="drop")
         nh = jnp.sum(hh.astype(jnp.int32), axis=0)
         n_trunc = jnp.sum((alive & ~absorbed).astype(jnp.int32))   # still propagating at the cap
-    brec = (ca_c.T, sa_c.T, sig_c.T, nh)                           # (n,K)x3 + (n,)
+    brec = (bc_c.T, sa_c.T, ss_c.T, si_c.T, nh)                    # (n,K)x4 + (n,)
     w_fsi = pion_branch_reweight(brec, sabs, sscat)
     nseg = nh                                       # per-event interaction-ATTEMPT count (segments); for MAX_SEG sizing
-    return (p_pi, ch, absorbed, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
+    return (p_pi, ch, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
             (best_rec, best_rec_pos, best_rec_fz))
 
 
@@ -484,7 +509,7 @@ class DiscreteCascadeFSI:
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)
         # pion pid -> channel index (211->0, 111->1, -211->2, default->1), trace-safe
         ch0 = jnp.where(event.pid_pi == 211, 0, jnp.where(event.pid_pi == -211, 2, 1)).astype(jnp.int32)
-        (p_pi, ch, absorbed, nsc, abs_lead, w_fsi, nseg, n_trunc, brec, scat_ko) = propagate_discrete(
+        (p_pi, ch, absorbed, conv, nsc, abs_lead, w_fsi, nseg, n_trunc, brec, scat_ko) = propagate_discrete(
             pos0, event.p_pi, ch0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sabs=sabs, sscat=sscat)
         self.last_abs_proton = abs_lead          # leading absorption proton (piNN->NN), for CC0pi
         self.last_absorbed = absorbed
@@ -496,8 +521,11 @@ class DiscreteCascadeFSI:
         self.last_nseg = nseg                     # per-event interaction-attempt count (segments)
         self.last_nsc = nsc                       # per-event scatter count
         self.last_n_trunc = n_trunc               # # pions truncated at MAX_SEG (should be 0)
-        keep = (~absorbed)[:, None]
-        return event._replace(p_pi=p_pi * keep, pid_pi=jnp.where(absorbed, 0, _CH_PID[ch]),
+        self.last_converted = conv               # pion converted to etaN/KLambda/KSigma (not a pion)
+        gone = absorbed | conv
+        keep = (~gone)[:, None]
+        return event._replace(p_pi=p_pi * keep,
+                              pid_pi=jnp.where(absorbed, 0, jnp.where(conv, -1, _CH_PID[ch])),
                               w=event.w * w_fsi)
 
 

@@ -60,3 +60,29 @@ Open next steps:
   brec records + pion_branch_reweight with the inelastic sigma (unscaled by sscat initially);
   gates: sigma vs the published eta/KLambda shapes + bit-exact records + CC1pi rerun
   (expect the pi_p ratio slope 0.55->1 and the carbon integral 1.08->~1).
+
+## #3 — conversion channels implemented; REFRAME: the offender is the PRIMARY spectrum
+
+- Conversion channels PORTED (anl_xsec.conversion_sigma_grid: ACHILLES initIso CGcof +
+  CalcCrossSectionW_grid verbatim incl. the ANL-code masses 138.5/938.5 and the KSigma
+  I=1/2 sign quirk AS CODED; gate: identical to the Phase-E eta/KLambda functions when the
+  mass convention is aligned -- the 4.3% gap was purely the PF masses, ACHILLES uses 138.5).
+  Wired as a 3rd cascade branch (same uniform roll -> bit-exact when si=0; brec now
+  (branch, sa, ss, si, nh); pion_branch_reweight = per-branch likelihood ratio; converted
+  pion -> pid_pi = -1, not absorbed; 10 gates pass). MEASURED effect: ~0.3% removal --
+  correct fidelity, NOT the offender (sigma_conv 0.5-3 mb vs ~20-40 mb elastic).
+- Run-card check: T2K cascade = PionInteraction {MesonBaryonInteraction + 
+  PionAbsorptionOneStep} + NucleonNucleon GiBUU -- structurally what ADoNIS models.
+- DECISIVE: PRIMARY-level comparison (T2K_CH_virt_nofsi.hepmc extraction vs ADoNIS res
+  events with NO cascade, same tight selection): the ACH/ADO pi-momentum SHAPE ratio falls
+  ~1.0 -> ~0.4 across 150..1200 MeV ALREADY AT THE PRIMARY LEVEL (same slope as post-FSI;
+  absolute scale of the nofsi extraction not comparable -- run-specific GenXS constant).
+  => the cascade is NOT the offender. ADoNIS's T2K-flux-folded RES primary produces ~2x
+  more high-momentum in-acceptance pi+ than ACHILLES at p_pi ~ 1 GeV. The fixed-energy
+  RES validations (sigma, dsigma/dW, dsigma/dQ2 at E_nu = const; channel fractions) never
+  probed the flux-folded high-p_pi acceptance corner.
+- NEXT (fresh session): compare ADO-vs-ACH(nofsi) primary W and E_nu distributions of the
+  signal events (extend the extractor to store W/E_nu; ADO from res events directly).
+  Candidate causes to discriminate: high-W amplitude treatment (spline coverage, W>1600
+  tail noted in res_amps2_frame_fix.md), the flux-fold high-E_nu tail, 3-body phase-space
+  vs ACHILLES at high W, or the W<2000 hard-cut handling.

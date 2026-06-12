@@ -196,3 +196,80 @@ def klambda_production(W=None, norm=1.0):
         amps = _np.stack([_np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
         Wt = _np.asarray(W)
     return Wt, _channel_sigma(amps, Wt, {1: _R23}, norm)
+
+
+# --- TOTAL piN -> {etaN, KLambda, KSigma} CONVERSION cross section ---------------------- #
+# Faithful port of ACHILLES MesonBaryonAmplitudes (initIso CGcof + CalcCrossSectionW_grid):
+# sigma(c -> f)(W) = pref(W) * sum_{L,J} (2J+1) | sum_I CG_I(c) CG_I(f) A^{0->F}_{L,J,I}(W) |^2
+# with pref using the INITIAL channel "masses in ANL code" mM=138.5, mB=938.5 (ACHILLES
+# Mass_m/Mass_b[0]) and the conversion total = sum over the OPEN final charge states with the
+# same total I3.  These channels remove the pion (eta/K production) -- in the cascade they
+# CONVERT the pion out of the pi+/pi0/pi- system.
+
+_MM_ANL, _MB_ANL = 138.5, 938.5            # ACHILLES Mass_m[0], Mass_b[0] (ANL-code masses)
+_C13, _C23 = np.sqrt(1.0 / 3.0), np.sqrt(2.0 / 3.0)
+# CG[(2*I3m, 2*I3b)] = (c_{1/2}, c_{3/2})  -- ACHILLES initIso chan 0 (piN), Condon-Shortley
+_CG_PIN = {(+2, +1): (0.0, 1.0), (+2, -1): (_C23, _C13),
+           (0, +1): (-_C13, _C23), (0, -1): (_C13, _C23),
+           (-2, +1): (-_C23, _C13), (-2, -1): (0.0, 1.0)}
+# KSigma final CGs: ACHILLES initIso chan 3 = piN CG with (meson<->baryon) swapped indices and
+# a -1 on the I=1/2 row (mirrored AS CODED).  Keys: (2*I3_K, 2*I3_Sigma), I3_K in {+-1/2}, I3_S in {-1,0,1}.
+_CG_KSIG = {(km, sb): (-_CG_PIN[(sb, km)][0], _CG_PIN[(sb, km)][1])
+            for km in (+1, -1) for sb in (+2, 0, -2) if (sb, km) in _CG_PIN}
+
+
+def _sigma_cf(amps, Wt, cg_pair):
+    """sigma(W) [mb] for one (charge-in -> charge-out) pair: cg_pair = (c_half, c_three2)
+    PRODUCTS of initial x final CGs."""
+    cg = {1: cg_pair[0], 3: cg_pair[1]}
+    by_lj = {}
+    for k, name in enumerate(WAVES):
+        L, twoI, twoJ = wave_qn(name)
+        by_lj.setdefault((L, twoJ), {})[twoI] = k
+    s = np.zeros(len(Wt))
+    for (L, twoJ), waves in by_lj.items():
+        amp = np.zeros(len(Wt), dtype=complex)
+        for twoI, k in waves.items():
+            amp += cg.get(twoI, 0.0) * amps[:, k]
+        s += (twoJ + 1.0) * np.abs(amp) ** 2
+    PF = (Wt ** 2 - _MM_ANL ** 2 - _MB_ANL ** 2) ** 2 - 4.0 * _MM_ANL ** 2 * _MB_ANL ** 2
+    pref = np.where(PF > 0, HBARC ** 2 * 10.0 * 2.0 * np.pi * 4.0 * Wt ** 2 / np.clip(PF, 1e-9, None), 0.0)
+    return pref * s
+
+
+def conversion_sigma_grid():
+    """W grid + total conversion sigma [mb] per piN charge channel, shape (3 pion, 2 nucleon, nW).
+    Pion index 0=pi+ 1=pi0 2=pi-; nucleon 0=p 1=n (cascade convention).  Sums the open
+    {etaN, KLambda, KSigma} final charge states at each total I3 (incoherent over finals,
+    coherent over I within each final)."""
+    out = None
+    Wg = None
+    for F, finals in ((1, "eta"), (2, "klam"), (3, "ksig")):
+        Wt, amps = load_anl(0, F)
+        if Wg is None:
+            Wg = Wt
+        elif not np.array_equal(Wt, Wg):                      # resample onto the first grid
+            amps = np.stack([np.interp(Wg, Wt, amps[:, k], left=0, right=0)
+                             for k in range(amps.shape[1])], axis=1)
+        if out is None:
+            out = np.zeros((3, 2, len(Wg)))
+        for pi_idx, tm in ((0, +2), (1, 0), (2, -2)):
+            for nuc_idx, tb in ((0, +1), (1, -1)):
+                ci = _CG_PIN[(tm, tb)]
+                I3tot = tm + tb                                # 2*I3 total
+                if finals == "eta":                            # eta(I=0) + N: one final, I=1/2 only
+                    if abs(I3tot) > 1:
+                        continue
+                    out[pi_idx, nuc_idx] += _sigma_cf(amps, Wg, (ci[0] * 1.0, 0.0))
+                elif finals == "klam":                         # K(1/2) + Lambda(0): one final, I=1/2
+                    if abs(I3tot) > 1:
+                        continue
+                    out[pi_idx, nuc_idx] += _sigma_cf(amps, Wg, (ci[0] * 1.0, 0.0))
+                else:                                          # K(1/2) + Sigma(1): sum open finals
+                    for km in (+1, -1):
+                        sb = I3tot - km
+                        if (km, sb) not in _CG_KSIG:
+                            continue
+                        cf = _CG_KSIG[(km, sb)]
+                        out[pi_idx, nuc_idx] += _sigma_cf(amps, Wg, (ci[0] * cf[0], ci[1] * cf[1]))
+    return Wg, out
