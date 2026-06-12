@@ -87,7 +87,7 @@ for c, (key, bins, _xs, xlab, dscale, dval, derr) in enumerate(VARS):
     if ado_w_tuned is not None:
         dt_, et_ = hist(ado[key], ado_w_tuned, bins); dt_, et_ = dt_ / bw, et_ / bw
         ax.step(bins, np.append(dt_, dt_[-1]), where="post", color="C1", lw=1.6, ls="--",
-                label=f"ADoNIS tuned $\theta$=({THETA[0]:g}, {THETA[1]:g}, {THETA[2]:g})")
+                label=f"ADoNIS tuned ($\\sigma_a$={THETA[0]:g}, $\\sigma_s$={THETA[1]:g}, $M_A$={THETA[2]:g})")
     ax.errorbar(ctr, d_y, yerr=d_e, fmt="o", color="k", ms=5, capsize=3, lw=1.4, label="T2K data", zorder=5)
     ax.set_ylabel(r"d$\sigma$/dx [nb/unit]"); ax.set_ylim(bottom=0); ax.legend()
     ax.set_title(f"CC0$\\pi$-Np   {xlab}")
