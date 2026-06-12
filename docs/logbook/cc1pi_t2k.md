@@ -154,3 +154,30 @@ Open next steps:
   production degrades the leading proton + emits a pion that enters the meson veto);
   extend the kind-1 records accordingly; gates: sigma_inel vs ACHILLES tables, fates +
   signal fraction at mono-2GeV carbon (expect 0.1697 -> ~0.148), then the T2K CC1pi figure.
+
+## #7 — NN -> N Delta inelastic PORTED; explains ~2% of the 15%, remainder OPEN
+
+- adonis/fsi/nn_inelastic.py: faithful Dmitriev-Sushkov port (MatNN2NDelta constants verbatim;
+  L=1 Blatt-Weisskopf effective width; Particles.yml masses; table = delta++ @ pcm=1GeV scaled
+  by isofactor/pcm exactly as SigmaNN2NDeltaInterp; charge combinatorics summed 4/3 pp|nn,
+  2/3 pn). Gates: sigma(pp->NDelta) peak ~24 mb at sqrts~2.4 (literature-consistent); mass
+  sampling BW-shaped; share at p_lab 1.2/1.5 GeV = 19%/46%; 1.2 GeV proton beam through 12C:
+  made-pion fraction 9%.
+- Wired into _propagate_nucleon_discrete (flagged nn_inelastic=True; fold_in keys -> elastic
+  stream untouched; Pauli on both product nucleons; walk continues with the leading product;
+  made_pi flag -> DiscreteNucleonFSI.last_made_pion; CC1pi chain vetoes made-pion events).
+  7 cascade gates pass.
+- MEASURED at mono-2GeV carbon: signal fraction 0.1697 -> 0.1670 (-1.6% rel). The in-window
+  protons (450-1200 MeV) are mostly BELOW the NN->NDelta threshold; the strongly-inelastic
+  >1.2 GeV protons rarely land in the window. The ACH-ADO gap remains ~ -12% at 2 GeV
+  (ACH 0.1478), i.e. NN inelastic was correct fidelity but NOT the main offender.
+- Declared approximations: created pion treated as final (no re-absorption, ~25% too strong a
+  veto -- conservative); leading-product isospin bookkeeping unchanged; mpi=138.04 in the
+  Delta decay split.
+- REMAINING SUSPECTS for the -12% @2GeV (diluted ~+5-7% at T2K flux): (a) ACHILLES's FULL
+  recursive multi-nucleon cascade (every kicked nucleon re-cascades; ADO tracks leading + 2
+  knockout generations) -- more in-window protons LOST and more soft protons made; (b) NN
+  elastic sigma at p>1.2 GeV; (c) Delta re-interactions. NEXT MEASUREMENT: with-cascade
+  P(in-window proton) and post-cascade leading-proton spectrum, ACH (0.6008 measured) vs ADO
+  at mono-2GeV; then a proton-beam-through-carbon oracle (resgen image, proton beam config)
+  to gate the nucleon transport in isolation at 1-2 GeV.

@@ -95,7 +95,7 @@ def res_C(n, seed):
     kn = jax.random.PRNGKey(seed + 17)
     npos2, nmom2, nisp2 = sample_nucleons(jax.random.fold_in(kn, 1), m, cfg)
     ko_in = jnp.where(jnp.asarray(has_ko)[:, None], jnp.asarray(ko), ev.p_N)   # dummy where none
-    ko_f, _, ko_ko, _, _, _, _ = propagate_nucleon_discrete(
+    ko_f, _, ko_ko, _, _, _, _, ko_made_pi = propagate_nucleon_discrete(
         jnp.asarray(ko_pos), ko_in, jnp.ones(m, bool), npos2, nmom2, nisp2, cfg,
         jax.random.fold_in(kn, 2), fz0=jnp.asarray(ko_fz))
     ko_f = np.where(has_ko[:, None], np.asarray(ko_f), 0.0)
@@ -109,8 +109,10 @@ def res_C(n, seed):
     lead = cands[np.arange(m), np.argmax(mom, axis=1)]
     has_p = inwin.any(axis=1)
     # CC1pi+ signal: the pion SURVIVED as a pi+ (absorbed -> pid 0; charge-exchange -> 111/-211),
-    # and at least one proton candidate is in the window.  All three tracks in acceptance.
-    sel = ((pid_pi == 211) & has_p & (w > 0)
+    # at least one proton candidate in the window, and the NUCLEON cascade did not create a
+    # pion (NN->NDelta->NNpi -> extra meson fails the exactly-one-pi+ requirement).
+    no_extra_pi = ~(np.asarray(nf.last_made_pion) | (has_ko & np.asarray(ko_made_pi)))
+    sel = ((pid_pi == 211) & has_p & no_extra_pi & (w > 0)
            & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
     dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)
     pim = np.linalg.norm(ppi_f[sel][:, 1:], axis=1)

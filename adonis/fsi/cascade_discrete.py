@@ -134,6 +134,10 @@ class DiscreteCascadeConfig:
     algo: str = "step"       # "step": fixed-step Glauber march (reference).  "interaction": jump
                              # directly to the next interaction (same probability model, ~20x fewer
                              # iterations).  Statistically equivalent; validated against "step".
+    nn_inelastic: bool = True  # NN -> N Delta -> N N pi in the NUCLEON cascade (ACHILLES
+                             # NucleonNucleon GiBUU ResonanceMode: Decay; adonis/fsi/nn_inelastic).
+                             # Degrades fast nucleons and CREATES a pion (meson-veto relevant).
+                             # False = the previous elastic-only walk (bit-exact).
     early_exit: bool = True  # while_loop walk that stops once NO particle can interact again
                              # (dead, or outside the radius moving outward = inert).  BIT-EXACT in
                              # every returned output (same per-step keys; skipped steps are
@@ -531,6 +535,7 @@ class DiscreteCascadeFSI:
 
 # ===== discrete-Glauber NUCLEON cascade (proton/neutron FSI for the TKI observables) ========= #
 from adonis.fsi.nucleon_cascade import nn_elastic_sigma
+from adonis.fsi import nn_inelastic as nni
 
 
 @partial(jax.jit, static_argnums=(6,))
@@ -547,7 +552,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     ar = jnp.arange(n)
 
     def body(carry, sk):
-        pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz = carry
+        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi) = carry
         outward = jnp.sum(pos * dhat, axis=1) > 0
         alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
         # formation zone: timeStep = step/beta (ACHILLES AdaptiveStep); interact only when fz<=0
@@ -562,7 +567,14 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         s = Pp[:, :, 0] ** 2 - jnp.sum(Pp[:, :, 1:] ** 2, axis=2)
         sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
         same_iso = isp0[:, None] == nisp                              # (n,A)
-        sig = jnp.clip(nn_elastic_sigma(sqrts, same_iso), 0.0, None)  # mb
+        sig_el = jnp.clip(nn_elastic_sigma(sqrts, same_iso), 0.0, None)   # mb
+        if cfg.nn_inelastic:
+            # NN -> N Delta (ACHILLES GiBUU; ExpSup=0 in the T2K card -> no density suppression)
+            pcm = jnp.sqrt(jnp.clip(s / 4.0 - M_N ** 2, 1e-6, None)) / 1000.0   # GeV
+            sig_in = jnp.clip(nni.sigma_nn_ndelta(sqrts / 1000.0, pcm, same_iso), 0.0, None)
+        else:
+            sig_in = jnp.zeros_like(sig_el)
+        sig = sig_el + sig_in                                         # total interaction reach
         if cfg.cylinder:
             prob = jnp.where(in_slab & (perp2 < jnp.clip(sig * MB_TO_FM2, 0.0, None) / jnp.pi), 1.0, 0.0)
         else:
@@ -587,7 +599,50 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
             blocked = (jnp.linalg.norm(p_out[1:]) < kf_i) | (jnp.linalg.norm(p_rec[1:]) < kf_i)
             return p_out, blocked
         p_out, blocked = jax.vmap(scat_one)(p_N, pN_j, kf_j, jax.random.split(ks, n))
-        do = has_hit & ~blocked
+        # ---- NN -> N Delta -> N N pi (inelastic) branch: fold_in keys leave the elastic
+        # stream untouched (bit-exact when nn_inelastic=False) ------------------------------
+        sig_in_j = sig_in[ar, j]; sig_el_j = sig_el[ar, j]
+        u_br = jax.random.uniform(jax.random.fold_in(sk, 101), (n,))
+        chose_inel = has_hit & (u_br < sig_in_j / jnp.clip(sig_el_j + sig_in_j, 1e-12, None))
+        Pj = p_N + pN_j
+        rs_j = jnp.sqrt(jnp.clip(Pj[:, 0] ** 2 - jnp.sum(Pj[:, 1:] ** 2, axis=1), (2 * M_N) ** 2, None))
+        u_m = jax.random.uniform(jax.random.fold_in(sk, 102), (n,))
+        m_d = jnp.clip(nni.sample_delta_mass(rs_j / 1000.0, u_m) * 1000.0,
+                       M_N + 135.0, rs_j - M_N - 1.0)                  # MeV, kinematic clamp
+        cth1 = 2 * jax.random.uniform(jax.random.fold_in(sk, 103), (n,)) - 1.0
+        phi1 = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(sk, 104), (n,))
+        cth2 = 2 * jax.random.uniform(jax.random.fold_in(sk, 105), (n,)) - 1.0
+        phi2 = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(sk, 106), (n,))
+
+        def _split2(P4, mA, mB, cth_, phi_):
+            ss = jnp.clip(P4[:, 0] ** 2 - jnp.sum(P4[:, 1:] ** 2, axis=1), (mA + mB) ** 2 * 1.0001, None)
+            rss = jnp.sqrt(ss)
+            EA = (ss + mA ** 2 - mB ** 2) / (2 * rss)
+            pf = jnp.sqrt(jnp.clip(EA ** 2 - mA ** 2, 0.0, None))
+            sth_ = jnp.sqrt(jnp.clip(1 - cth_ ** 2, 0, None))
+            d_ = jnp.stack([sth_ * jnp.cos(phi_), sth_ * jnp.sin(phi_), cth_], axis=1)
+            pa = jnp.concatenate([EA[:, None], pf[:, None] * d_], axis=1)
+            pb = jnp.concatenate([(rss - EA)[:, None], -pf[:, None] * d_], axis=1)
+            beta_ = P4[:, 1:] / P4[:, [0]]
+            b2_ = jnp.sum(beta_ ** 2, axis=1); g_ = 1 / jnp.sqrt(jnp.clip(1 - b2_, 1e-12, None))
+            def lab(p4):
+                bp_ = jnp.sum(beta_ * p4[:, 1:], axis=1)
+                E = g_ * (p4[:, 0] + bp_)
+                p3 = p4[:, 1:] + ((g_ - 1) * bp_ / jnp.clip(b2_, 1e-30, None) + g_ * p4[:, 0])[:, None] * beta_
+                return jnp.concatenate([E[:, None], p3], axis=1)
+            return lab(pa), lab(pb)
+
+        pN1, pD = _split2(Pj, jnp.full((n,), M_N), m_d, cth1, phi1)    # N + Delta
+        pN2, _pPiX = _split2(pD, jnp.full((n,), M_N), jnp.full((n,), 138.04), cth2, phi2)  # Delta -> N' pi
+        in_blocked = ((jnp.linalg.norm(pN1[:, 1:], axis=1) < kf_j)
+                      | (jnp.linalg.norm(pN2[:, 1:], axis=1) < kf_j))
+        if not cfg.pauli:
+            in_blocked = in_blocked & False
+        is_inel = chose_inel & ~in_blocked
+        lead_in = jnp.where((jnp.linalg.norm(pN1[:, 1:], axis=1)
+                             >= jnp.linalg.norm(pN2[:, 1:], axis=1))[:, None], pN1, pN2)
+        made_pi = made_pi | is_inel
+        do = has_hit & ~chose_inel & ~blocked
         # knocked-out nucleon = the struck background nucleon's recoil; if it is a PROTON track
         # the highest-momentum one (ACHILLES adds it to the final state, the analysis may pick it)
         recoil = (p_N + pN_j) - p_out
@@ -599,19 +654,19 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         fz_new = _formation_zone(p_N, p_out)                          # leading: E_in*hbarc/|mN^2-p_in.p_out|
         fz_ko = _formation_zone(p_N, recoil)                          # recoil/knockout's formation zone
         best_ko_fz = jnp.where(ko_better, fz_ko, best_ko_fz)
-        p_N = jnp.where(do[:, None], p_out, p_N)
+        p_N = jnp.where(do[:, None], p_out, jnp.where(is_inel[:, None], lead_in, p_N))
         nsc = nsc + do.astype(jnp.int32)
-        consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & do[:, None])
+        consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & (do | is_inel)[:, None])
         fz = jnp.where((fz > 0.0) & alive, fz - timeStep, fz)         # propagate: decrement formation zone
-        fz = jnp.where(do, fz_new, fz)                                # reset on scatter
+        fz = jnp.where(do, fz_new, jnp.where(is_inel, _formation_zone(p_N, lead_in), fz))                                # reset on scatter
         d3 = p_N[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
         pos = pos + cfg.step * dhat * alive[:, None]
         rec = jax.lax.stop_gradient((has_hit, perp2_c, sig_c))
-        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), rec
+        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi), rec
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
-            consumed0, jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0)
+            consumed0, jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0, jnp.zeros(n, bool))
     if cfg.early_exit:
         # EARLY-EXIT walk (bit-exact): nucleons escape on the sphere (alive -> False), so the
         # loop ends when every nucleon has escaped -- measured ~step 150-180 vs the 260/325 cap.
@@ -636,10 +691,11 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
             return i + 1, carry2, (hh_c, a_c, ns + m.astype(jnp.int32))
 
         _, carry, bufs = jax.lax.while_loop(wcond, wbody, (jnp.int32(0), init, bufs0))
-        pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz = carry
+        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi) = carry
         hh_c, a_c, ns = bufs
     else:
-        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), recs = jax.lax.scan(body, init, keys)
+        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz,
+         made_pi), recs = jax.lax.scan(body, init, keys)
         # kind-1 sigma_scatter reweight (closest-in-slab Bernoulli approximation), OUTSIDE the scan.
         # Compress to the <=_K_SLAB_REC steps with an in-slab candidate (perp2_c dummy = 1e6 marks
         # "no slab"; its br is exactly 1) -- theta-independent walk records for nucleon_scat_reweight.
@@ -654,7 +710,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         ns = jnp.sum(m.astype(jnp.int32), axis=0)
     srec = (hh_c.T, a_c.T, ns)                                     # (n,K)x2 + (n,)
     w_scat = nucleon_scat_reweight(srec, sscat)
-    return p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec
+    return p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
@@ -693,7 +749,7 @@ class DiscreteNucleonFSI:
         pos0 = npos[jnp.arange(n), vtx]
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)                  # struck nucleon removed from background
         isp0 = (event.pid_N == 2212)
-        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1 = propagate_nucleon_discrete(
+        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1 = propagate_nucleon_discrete(
             pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sscat=sscat)
         # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
         # Re-propagate the leading knockout through the same background; its final state can be the
@@ -703,7 +759,7 @@ class DiscreteNucleonFSI:
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
-        ko_f, _, ko_ko, _, _, w_sc2, srec2 = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2 = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
                                                                         nisp, self.cfg, kp2, fz0=best_ko_fz,
                                                                         consumed0=consumed0, sscat=sscat)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))
@@ -714,4 +770,6 @@ class DiscreteNucleonFSI:
         lead = cands[jnp.arange(n), jnp.argmax(mom, axis=1)]
         self.last_w_scat = w_sc1 * jnp.where(has_ko, w_sc2, 1.0)        # kind-1 sigma_scatter reweight (1 at nominal)
         self.last_srec = (srec1, srec2, has_ko)   # compressed walk records for nucleon_scat_reweight
+        self.last_made_pion = made_pi1 | (has_ko & made_pi2)   # NN->NDelta->NNpi created a pion
+                                                  # (meson-veto relevant for CC0pi/CC1pi signals)
         return event._replace(p_N=lead, w=event.w * self.last_w_scat)
