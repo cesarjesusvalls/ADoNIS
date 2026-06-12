@@ -83,3 +83,35 @@ Open items / candidate next steps (not started):
 - Reading: the best-fit curve is visually indistinguishable from nominal; ADoNIS nominal is
   statistically compatible with the T2K dpt data, FSI knobs only weakly constrained by dpt
   alone. The sigma_abs rail is a flat direction (noise-driven), not a physics pull.
+- Correction to the split commit message (7877be0): full suite count was 90 passed, not 92.
+
+## #4 — dat tune + the ACHILLES-vs-data reference (2026-06-12)
+
+dat tune (paper_figures/cc0pi_tune_adonis_dat.png): NOMINAL chi2/ndf = 2.83 (A=0.891);
+BFP s_abs = 0.30 (railed at the LOWER clip; opposite rail from dpt), s_scat = 0.868,
+chi2/ndf 2.86 (NO improvement). Hessian errors = nan at the rail (H not pos-def there;
+expected). Both observables railing sigma_abs in opposite directions with no chi2 gain =
+sigma_abs is a flat noise-driven direction; the FSI scales cannot fix the dat shape
+(model rises less steeply than data in bins 2-3 and the last bin).
+
+ACHILLES vs T2K data, SAME convention (full cov, floated norm, chi2/7), computed from
+t2k_cc0pi_tki_achilles.npz + the regenerated cc0pi_disaggregated.npz:
+
+| prediction              | dpt  | dat  | A           |
+|-------------------------|------|------|-------------|
+| ACHILLES                | 1.84 | 2.12 | 0.875/0.911 |
+| ADoNIS Cylinder (npz)   | 1.63 | n/a  | 0.892       |
+| ADoNIS Gaussian nominal | 1.76 | 2.43 | 0.881/0.891 |
+
+- ADoNIS tracks ACHILLES vs data (the project goal); both carry a common ~11% norm excess
+  over T2K (A~0.88 for BOTH) -- shared model feature, not an ADoNIS artifact.
+- The earlier "nominal 1.44" (cc0pi_tune_nominal.py, Jun 11) is NOT reproducible from
+  current files: cc0pi_disaggregated.npz (gitignored) was REGENERATED on Jun 12 morning
+  with the cascade fixes (escape plane, charge-resolved scatter); the identical
+  computation on today's npz gives 1.63. Bin edges verified identical to the data release.
+
+Status: plan items complete -- tracer fix (a9dd7bf), walk/weight split + gates (7877be0),
+real-chain differentiability test (test_cascade_reweight_records.py), dpt fit + figure,
+dat fit + figure, ACHILLES reference chi2. Possible follow-ups (not started): joint
+(dpt, dat) fit blocked on missing cross-covariance; physics-side question of the common
+A~0.88 norm excess; Hessian guard at clip rails in the tune script.
