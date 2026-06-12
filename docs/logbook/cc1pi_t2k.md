@@ -191,3 +191,29 @@ Open next steps:
   net ~cancel. The remaining +7% carbon = the open nucleon-transport proton-leg gap at
   p >~ 1 GeV (logbook #7: -12% at mono-2GeV, diluted by the T2K flux). Next: proton-beam
   12C transport oracle.
+
+## #9 — proton-beam transport oracle: components VALIDATED; remainder = chain COMPOSITION
+
+- New oracles: achilles-cascade CrossSection mode, PROTON beam (PID 2212), Cylinder, T2K NN
+  interactions, 600/900/1200/1500 MeV (60k/38k/1.5k/5.2k events; frequent SIGSEGV at high p,
+  partial output valid). KEY: cascade-mode hepmc contains INTERACTED events only -- condition
+  the ADoNIS side on >=1 interaction (my first unconditioned comparison was misleading;
+  caught via P(nsc=0)=0.80 vs the MFP expectation).
+- CONDITIONED comparison (ACH vs ADO): <p_lead> 434/432 (600), 638/634 (900), 792/809 (1200),
+  913/985 (1500); P(450-1200): 0.528/0.521, 0.811/0.801, 0.851/0.904, 0.652/0.702;
+  P(made pi): 0.000/0.000, 0.012/0.016, 0.149/0.193, 0.326/0.393.
+  => ELASTIC transport agrees <=1.5% at 600-900; ~5-8% residuals at 1200-1500 (ACH stats
+  +-3-5%); NN-inelastic pion rates same ballpark (ADO slightly higher -- no re-absorption of
+  created pions, declared).
+- CONCLUSION: every individual component is now validated at the few-% level (primary chain
+  <=1%, pion cascade fates ~1%, nucleon transport <=1.5-8%). The remaining in-event gap
+  (ADO/ACH +12% signal fraction at mono-2GeV carbon; +7% T2K CC1pi carbon) is the chain
+  COMPOSITION: ACHILLES evolves ONE shared nuclear state (pion + all nucleons co-cascade,
+  joint consumed set, true vertex positions, every knockout a proton candidate, full
+  recursion), while ADoNIS factorizes into independent cascades with resampled backgrounds
+  and a 3-candidate leading-proton set.
+- NEXT PHASE (architecture): a shared-state event cascade for the discrete chain -- one
+  nucleus per event, pion and nucleons co-evolving with a common consumed/positions state and
+  full kicked-particle recursion (still kind-1: walks at nominal, records per branch). This
+  is the remaining item between the current +7% and the <=1% goal for CC1pi; CC0pi is
+  already at ~1% because absorption events have little nucleon-side activity in-window.
