@@ -74,14 +74,18 @@ def _spinors(p3, E):
     return u, ubar
 
 
-def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc):
+def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scale=1.0):
     """All (...,4) MeV.  p_in_nuc OFF-SHELL struck nucleon (E=mN-removal); p_out_nuc outgoing
-    (mp-on-shell energy).  Returns H (...,4combo,4mu) matching ACHILLES cur(i+2*(j-1))."""
+    (mp-on-shell energy).  Returns H (...,4combo,4mu) matching ACHILLES cur(i+2*(j-1)).
+    axial_scale (scalar or (...,)) multiplies FA and FAP (FAP ~ FA): the M_A reweight hook --
+    amps2 is QUADRATIC in it, so 3 evals give the exact per-event (vec^2, interference, axial^2)
+    decomposition.  Default 1.0 = bit-exact nominal."""
     q = p_in_lep - p_out_lep
     Q2_FF = -(q[..., 0] ** 2 - jnp.sum(q[..., 1:] ** 2, axis=-1)) / 1e6     # GeV^2, ORIGINAL q
     ff = nucleon_ff(Q2_FF)
+    asc = jnp.asarray(axial_scale)
     F1 = _COUPL_CC * (ff["F1p"] - ff["F1n"]); F2 = _COUPL_CC * (ff["F2p"] - ff["F2n"])
-    FA = _COUPL_CC * ff["FA"];                FAP = _COUPL_CC * ff["FAP"]
+    FA = _COUPL_CC * ff["FA"] * asc;          FAP = _COUPL_CC * ff["FAP"] * asc
 
     # current_init_had: q(1)=omega+E_in; p1 on-shell at xmn; q(1)-=p1(1)
     p3_in = p_in_nuc[..., 1:]

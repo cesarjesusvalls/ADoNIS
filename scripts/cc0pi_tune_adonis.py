@@ -20,9 +20,11 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import qe_xsec, res_xsec
+from adonis.xsec.backend import me_cross_section
 from adonis.core.event import EventRecord
 from adonis.fsi.cascade_discrete import (DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig,
                                          pion_branch_reweight, nucleon_scat_reweight)
+from adonis.primary.dcc.form_factors import axial_reweight_dipole
 
 CFG = lambda **k: DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=260, **k)   # Gaussian (diff'able)
 # max_steps 260 (10.4 fm) is saturation-verified == 325; fast_xsec=True (default) slab-restricts the
@@ -86,6 +88,54 @@ def build_proposal():
     res = res_xsec.generate(NRES, seed=0, return_events=True)["events"]
     rw = np.asarray(res["w"])
     return qe, qw, res, rw
+
+
+# RES channel constants for the amps2 re-evaluation: (ipid, ppid) -> itiz
+_RES_ITIZ = {(2112, 211): -1, (2112, 111): -1, (2212, 211): +1}
+
+
+def build_ma_records(qe, res):
+    """ONE-TIME (per proposal) exact M_A-reweight records.  amps2 is QUADRATIC in the axial
+    scale r, so 3 evals (r = 0, 1, -1) give per-event (a, b, c) with amps2(r) = a + b r + c r^2
+    exactly (gated to 5e-15).  The fit-time weight is then elementwise:
+        w_MA = (a + b r_i + c r_i^2) / (a + b + c),   r_i = F_A_dipole(Q2_i; MA)/F_A_dipole(Q2_i; 1.0)
+    -- the established M_A knob (axial_reweight_dipole), = 1 exactly at MA = 1.0 GeV."""
+    # --- QE: axial_scale evals on the frozen kinematics; r at the ORIGINAL leptonic Q2 (dirac.py) ---
+    kn, km, ps, po = (jnp.asarray(qe[k]) for k in ("k_nu", "k_mu", "p_struck", "p_out"))
+    a1 = np.asarray(me_cross_section(kn, km, ps, po, axial_scale=1.0)["amps2"])
+    a0 = np.asarray(me_cross_section(kn, km, ps, po, axial_scale=0.0)["amps2"])
+    am = np.asarray(me_cross_section(kn, km, ps, po, axial_scale=-1.0)["amps2"])
+    q = np.asarray(kn - km); q2_qe = np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2     # MeV^2
+    # sanitize: rejected draws (proposal weight 0) sit in the arrays with unphysical kinematics
+    # (negative Q2, NaN amps2); give them the identity record (w_MA=1, grad 0) -- they carry w0=0.
+    ok = np.isfinite(a0) & np.isfinite(a1) & np.isfinite(am) & (q2_qe > 0)
+    a_, b_, c_ = np.where(ok, a0, 1.0), np.where(ok, 0.5*(a1-am), 0.0), np.where(ok, 0.5*(a1+am)-a0, 0.0)
+    qe_rec = (jnp.asarray(a_), jnp.asarray(b_), jnp.asarray(c_), jnp.asarray(np.where(ok, q2_qe, 1.0)))
+    # --- RES: per channel, r_axial evals on the frozen kinematics; r at the amplitude Q2 ---
+    n = len(res["w"])
+    A = np.zeros(n); B = np.zeros(n); Cq = np.zeros(n); Q2r = np.zeros(n)
+    for (ipid, ppid), itiz in _RES_ITIZ.items():
+        m = (np.asarray(res["ipid"]) == ipid) & (np.asarray(res["ppid"]) == ppid)
+        if not m.any():
+            continue
+        args = [res[k][m] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi")]
+        nn = int(m.sum())
+        r1, q2 = dcc.exclusive_amps2_batch(*args, itiz, ppid, r_axial=np.ones(nn), return_q2=True)
+        r0 = dcc.exclusive_amps2_batch(*args, itiz, ppid, r_axial=np.zeros(nn))
+        rm = dcc.exclusive_amps2_batch(*args, itiz, ppid, r_axial=-np.ones(nn))
+        A[m] = r0; B[m] = 0.5 * (r1 - rm); Cq[m] = 0.5 * (r1 + rm) - r0; Q2r[m] = q2
+    ok = np.isfinite(A) & np.isfinite(B) & np.isfinite(Cq) & (Q2r > 0)
+    A, B, Cq, Q2r = np.where(ok, A, 1.0), np.where(ok, B, 0.0), np.where(ok, Cq, 0.0), np.where(ok, Q2r, 1.0)
+    res_rec = (jnp.asarray(A), jnp.asarray(B), jnp.asarray(Cq), jnp.asarray(Q2r))
+    return dict(qe=qe_rec, res=res_rec)
+
+
+def ma_reweight(rec, MA):
+    """Exact per-event M_A weight from a (a, b, c, Q2) record; pure in MA, == 1 at MA = 1.0."""
+    a, b, c, q2 = rec
+    r = axial_reweight_dipole(q2, MA)
+    den = a + b + c
+    return jnp.where(den > 0, (a + b * r + c * r * r) / jnp.where(den > 0, den, 1.0), 1.0)
 
 
 def hist_nb(theta, kcasc, qe, qw, res, rw):
@@ -162,11 +212,14 @@ def _w_nuc(srec, sscat):
 
 
 @jax.jit
-def model_hist(theta, R):
-    """Differentiable CC0pi dsigma/ddpt [1e-38 units] from a precomputed walk replica."""
+def model_hist(theta, R, M=None):
+    """Differentiable CC0pi dsigma/dx [1e-38 units] from a precomputed walk replica.
+    theta = (sabs, sscat) or (sabs, sscat, MA_GeV); MA needs M = build_ma_records(...)."""
     sabs, sscat = theta[0], theta[1]
-    q_w = R["q_w0"] * _w_nuc(R["q_srec"], sscat)
-    r_w = R["r_w0"] * pion_branch_reweight(R["r_brec"], sabs, sscat) * _w_nuc(R["r_srec"], sscat)
+    w_ma_q = ma_reweight(M["qe"], theta[2]) if M is not None else 1.0
+    w_ma_r = ma_reweight(M["res"], theta[2]) if M is not None else 1.0
+    q_w = R["q_w0"] * w_ma_q * _w_nuc(R["q_srec"], sscat)
+    r_w = R["r_w0"] * w_ma_r * pion_branch_reweight(R["r_brec"], sabs, sscat) * _w_nuc(R["r_srec"], sscat)
     nb = len(EDGES) - 1
     h = (jax.ops.segment_sum(q_w * R["q_keep"], R["q_idx"], num_segments=nb)
          + jax.ops.segment_sum(r_w * R["r_keep"], R["r_idx"], num_segments=nb))
@@ -218,6 +271,11 @@ def main():
     V = 2.0 * np.linalg.inv(H); sig = np.sqrt(np.diag(V)); corr = V[0, 1] / (sig[0] * sig[1])
     log(f"BFP: s_abs={bfp[0]:.4f}+/-{sig[0]:.4f}  s_scat={bfp[1]:.4f}+/-{sig[1]:.4f}  corr={corr:+.3f}  chi2/ndf={chi2_bf/(8-2):.2f}")
 
+    os.makedirs("/tmp/adonis_tune_runs", exist_ok=True)
+    npz = f"/tmp/adonis_tune_runs/datafit_{OBS}.npz"
+    np.savez(npz, obs=OBS, A=A, data=np.asarray(DATA), derr=D_ERR, nom=nom, mb_traj=traj,
+             bfp=bfp, sig=sig, V=V, chi2_nom=chi2_nom, chi2_bf=chi2_bf, edges=EDGES)
+    log(f"history saved -> {npz}")
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     ctr = 0.5 * (EDGES[1:] + EDGES[:-1]) / (1000.0 if OBS == "dpt" else 1.0)
     XL = r"$\delta p_T$ [GeV/c]" if OBS == "dpt" else r"$\delta\alpha_T$ [rad]"
@@ -228,8 +286,10 @@ def main():
     fig, ax = plt.subplots(1, 2, figsize=(12, 4.3))
     ax[0].errorbar(ctr, np.asarray(DATA), yerr=D_ERR, fmt="o", color="k", capsize=3, label="T2K data")
     xed = EDGES / (1000.0 if OBS == "dpt" else 1.0)
+    ax[0].step(xed, np.append(nom, nom[-1]), where="post", color="0.45", lw=1.4, ls=":",
+               label="pre-tune ADoNIS (absolute, A=1)")
     ax[0].step(xed, np.append(A * nom, (A * nom)[-1]), where="post", color="C2", lw=2,
-               label=f"ADoNIS nominal ($\\chi^2$/ndf {chi2_nom/(8-2):.1f})")
+               label=f"pre-tune $\\times$ profiled A={A:.2f} ($\\chi^2$/ndf {chi2_nom/(8-2):.1f})")
     ax[0].step(xed, np.append(mb, mb[-1]), where="post", color="C0", lw=1.6, ls="--",
               label=f"ADoNIS best fit ($\\chi^2$/ndf {chi2_bf/(8-2):.1f})")
     ax[0].set(xlabel=XL, ylabel=YL,

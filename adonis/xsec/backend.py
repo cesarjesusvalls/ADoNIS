@@ -39,12 +39,13 @@ def flux_factor(p_in_lep, p_in_nuc, had_mass=MASS_PDG_NEUTRON):
     return C.HBARC2 / flux * C.TO_NB
 
 
-def me_cross_section(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, spin_avg=0.5, had_mass=MASS_PDG_NEUTRON):
+def me_cross_section(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, spin_avg=0.5, had_mass=MASS_PDG_NEUTRON,
+                     axial_scale=1.0):
     """amps2 * FluxFactor * SpinAvg  [nb] -- the matrix-element cross section WITHOUT the
     InitialStateWeight (spectral function) and WITHOUT the phase-space Jacobian.  had_mass is the
     actual struck-nucleon mass (mn neutron / mp proton) used by FluxFactor."""
     L = lepton_current(p_in_lep, p_out_lep, kind="CC_nu", anti=False)
-    H = hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc)
+    H = hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scale=axial_scale)
     amps2 = _contract(L, H)
     flux = flux_factor(p_in_lep, p_in_nuc, had_mass=had_mass)
     return dict(amps2=amps2, flux=flux, spin_avg=spin_avg,
