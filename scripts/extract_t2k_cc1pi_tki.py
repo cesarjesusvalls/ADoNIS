@@ -41,10 +41,14 @@ def cc1pip_events(path):
     for evt in parse_events(Path(path)):
         mu = pip = None
         protons = []; n_other_meson = 0; n_pip = 0; struck_p = None
+        nu = None; pstr = None
         for pid, status, p4 in evt["parts"]:
+            if pid == 14 and (nu is None or p4[0] > nu[0]):
+                nu = np.asarray(p4)                                    # beam neutrino
+            if status == 2 and pid in (2112, 2212) and pstr is None:
+                pstr = np.asarray(p4)                                  # struck nucleon (vertex W)
+                struck_p = (p4[1] ** 2 + p4[2] ** 2 + p4[3] ** 2) ** 0.5
             if status != 1:
-                if abs(pid) in (2112, 2212) and status in (4, 11, 21) and struck_p is None:
-                    struck_p = (p4[1] ** 2 + p4[2] ** 2 + p4[3] ** 2) ** 0.5   # initial nucleon |p|
                 continue
             if pid == MU:
                 mu = np.asarray(p4)
@@ -64,7 +68,7 @@ def cc1pip_events(path):
             continue
         lead = max(acc_p, key=_mom)
         is_h = struck_p is not None and struck_p < 1.0      # free proton at rest
-        yield mu, pip, lead, (evt["w"] or 1.0), is_h
+        yield mu, pip, lead, (evt["w"] or 1.0), is_h, nu, pstr
 
 
 def observables(path, seed=0):
@@ -74,8 +78,15 @@ def observables(path, seed=0):
     beam = np.array([0.0, 0.0, 1.0])
     rng = np.random.default_rng(seed)
     dptt, pn, dat, dpt, w, ish = [], [], [], [], [], []
-    pi_p, pi_cth, lp_p = [], [], []
-    for mu, pip, p, wt, is_h in cc1pip_events(path):
+    pi_p, pi_cth, lp_p, Wv, Q2v, Enu = [], [], [], [], [], []
+    for mu, pip, p, wt, is_h, nu, pstr in cc1pip_events(path):
+        if nu is not None and pstr is not None:
+            q = nu - mu; tot = q + pstr
+            Wv.append(float(np.sqrt(max(tot[0] ** 2 - tot[1] ** 2 - tot[2] ** 2 - tot[3] ** 2, 0.0))))
+            Q2v.append(float((q[1] ** 2 + q[2] ** 2 + q[3] ** 2) - q[0] ** 2))
+            Enu.append(float(nu[0]))
+        else:
+            Wv.append(0.0); Q2v.append(0.0); Enu.append(0.0)
         ish.append(bool(is_h))
         pim = float(np.linalg.norm(pip[1:])); pi_p.append(pim)
         pi_cth.append(float(pip[3] / max(pim, 1e-9)))
@@ -98,18 +109,19 @@ def observables(path, seed=0):
         pn.append(float(np.sqrt(max(dptmag ** 2 + dpL ** 2, 0.0))))
         w.append(wt)
     return (np.array(dptt), np.array(pn), np.array(dat), np.array(dpt), np.array(w), np.array(ish),
-            np.array(pi_p), np.array(pi_cth), np.array(lp_p))
+            np.array(pi_p), np.array(pi_cth), np.array(lp_p),
+            np.array(Wv), np.array(Q2v), np.array(Enu))
 
 
 if __name__ == "__main__":
     path = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else "data/oracle/t2k_cc1pi_tki_achilles.npz"
-    dptt, pn, dat, dpt, w, ish, pi_p, pi_cth, lp_p = observables(path)
+    dptt, pn, dat, dpt, w, ish, pi_p, pi_cth, lp_p, Wv, Q2v, Enu = observables(path)
     # NOTE: the status-code is_h tag fails on this hepmc (0 tagged of an 18k H component);
     # the saved is_h uses the EXACT kinematic tag instead: free-proton events have dptt == 0
     # (no Fermi motion; only 0.24% of carbon events fall within |dptt|<0.5).
     np.savez(out, dptt=dptt, pn=pn, dalphat=dat, dpt=dpt, w=w, is_h=(np.abs(dptt) < 0.5),
-             pi_p=pi_p, pi_cth=pi_cth, lp_p=lp_p)
+             pi_p=pi_p, pi_cth=pi_cth, lp_p=lp_p, W=Wv, Q2=Q2v, Enu=Enu)
     print(f"CC1pi+ signal events: {len(w)}   sum_w={w.sum():.4e} nb")
     print(f"  rms(dpTT)={np.sqrt(np.average(dptt**2, weights=w)):.1f}  <p_N>={np.average(pn, weights=w):.1f}  "
           f"<dpT>={np.average(dpt, weights=w):.1f}  <daT>={np.degrees(np.average(dat, weights=w)):.1f}deg")

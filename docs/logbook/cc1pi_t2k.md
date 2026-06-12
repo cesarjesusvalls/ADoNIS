@@ -86,3 +86,23 @@ Open next steps:
   Candidate causes to discriminate: high-W amplitude treatment (spline coverage, W>1600
   tail noted in res_amps2_frame_fix.md), the flux-fold high-E_nu tail, 3-body phase-space
   vs ACHILLES at high W, or the W<2000 hard-cut handling.
+
+## #4 — disaggregated CC1pi (cc0pi-style) localizes the offender to the W TAIL
+
+- scripts/cc1pi_disaggregated.py (cells {RES-C, RES-H} x {no-FSI, FSI} with vertex W/Q2/Enu)
+  + extractor extended (status-2 struck nucleon -> vertex W; beam pid 14 -> Enu); both
+  hepmcs re-extracted (FSI 54790 ev; nofsi 9136 ev, smaller-stats run -> SHAPE comparisons).
+- No-FSI carbon SHAPE ratios ACH/ADO (unit-normalized):
+    Enu  [200..3000]:  0.94 1.01 1.04 1.06 0.95 1.11   -> FLUX FOLD EXONERATED
+    Q2   [0..2 GeV^2]: 0.98 1.02 1.01 1.02 0.97 0.90 1.03 (0.46 last bin)
+    W    [1100..2000]: 0.97 1.10 0.99 0.47 0.28 0.41 0.51 0.89 0.58
+    pi_p [150..1200]:  1.02 1.05 1.04 0.76 0.58 0.41 0.36  (the kinematic image of W)
+  => ADoNIS RES primary over-populates W ~ 1400-1800 (second-resonance region) by 2-3x
+  in the flux-folded in-acceptance sample. mean W: ACH 1234.0 vs ADO 1245.8 (the bulk
+  agrees; it is the TAIL). Cascade fully exonerated (the FSI cells inherit the primary).
+- Consistency: ADO RES-C no-FSI sigma 2.8244e-6 nb reproduces the ad-hoc primary run.
+- NEXT: controlled fixed-energy gate at E_nu = 2 GeV (mono, free p + 12C): ACHILLES
+  dsigma/dW oracle vs ADO res_xsec with ratio+chi2 -- isolate whether the 2-3x W-tail
+  excess reproduces at fixed energy (then bisect: amplitudes/spline vs phase space vs
+  W-dependent factors in currents_pi_dcc at high W). The earlier fixed-E validations were
+  at lower E_nu where W>1400 is barely populated.
