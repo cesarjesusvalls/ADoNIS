@@ -7,10 +7,9 @@ name: CI
 # (otherwise the oracle gates skip).  See .github/workflows/oracle.yml for the
 # image-backed oracle regeneration.
 
+# push trigger disabled 2026-06-12 (was failing on every push; not a priority) --
+# run manually from the Actions tab when needed.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
