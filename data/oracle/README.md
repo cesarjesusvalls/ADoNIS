@@ -1,20 +1,12 @@
-# Oracle: ACHILLES single-pion-production reference
+# Oracle: ACHILLES reference run products
 
-ACHILLES (built at `../Achilles/build/bin/achilles`, see ../INPUTS.md for the build
-recipe) is the forward-fidelity oracle for the differentiable DCC assembly.
+This directory holds the `.npz` targets/caches the validation scripts compare against:
+ACHILLES oracle histograms/events (generated via the docker images, see
+`docs/CONTAINER.md`) and extracted experimental releases (T2K/MINERvA STV via
+`../nuisance`). Everything here except this README is **gitignored** (`*.npz`) by
+design — the files are large run products, regenerable from `scripts/gen_*.py` /
+`scripts/extract_*.py` / `scripts/make_oracle_*.py`; CI fetches its oracle from the
+`oracle-data` release asset instead (see README.md "Continuous integration").
 
-## Run
-```bash
-cd ../Achilles
-./build/bin/achilles ../diffpi/oracle/res_1pi_12C.yml   # RES single-pion only
-```
-`res_1pi_12C.yml` isolates the `RES_Spectral_Func` (DCC single-pion) nuclear model
-(QE dropped). Output: total + per-channel cross sections (the 4 single-pion charge
-channels) and `res_1pi_12C.hepmc` (events for differential distributions).
-
-`res_1pi_12C_reference.txt` records the integrated cross sections for regression.
-
-## Next
-Parse the hepmc events into differential distributions (dsigma/dQ^2, dsigma/dW,
-pion-momentum spectra) to validate the differentiable DCC cross-section assembly
-(diffpi/dcc.py) bin-by-bin against the oracle at nominal knobs.
+If a file is expensive to regenerate (multi-hour ACHILLES runs), keep a copy outside
+the repo before cleaning.

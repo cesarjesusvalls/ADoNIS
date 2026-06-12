@@ -45,11 +45,11 @@ class Generator:
             done = 0
             for k in keys:
                 m = min(chunk, n - done); done += m
-                S = self.channel.sample(k, m)
+                S = self.channel.validate_sample(self.channel.sample(k, m))
                 ev = self.fsi.apply(p, self.channel.event_record(p, S))
                 evs.append(ev)
             return _concat_events(evs)
-        S = self.channel.sample(key, n)
+        S = self.channel.validate_sample(self.channel.sample(key, n))
         primary = self.channel.event_record(p, S)
         post = self.fsi.apply(p, primary)
         if return_steps:

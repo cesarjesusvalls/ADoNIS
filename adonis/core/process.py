@@ -13,10 +13,20 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from adonis.core.sample import check_sample
 from adonis.core.validation import SelfTestMixin
 
 
 class Channel(SelfTestMixin, ABC):
+    #: declared proposal schema -- the EXACT key set `sample` returns (None = unchecked).
+    #: The Generator validates each proposal against it (see core/sample.check_sample).
+    sample_fields: tuple | None = None
+
+    def validate_sample(self, sample):
+        if self.sample_fields is not None:
+            check_sample(sample, self.sample_fields, where=type(self).__name__)
+        return sample
+
     @abstractmethod
     def sample(self, key, n):
         """Detached Sample bundle of `n` events."""

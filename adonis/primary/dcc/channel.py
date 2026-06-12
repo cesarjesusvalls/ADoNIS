@@ -209,6 +209,11 @@ class DCCSinglePion(Channel):
     """CC single-pion production (ANL-Osaka DCC).  Holds the static config + swappable
     flux / nuclear model; exposes the sample/reweight contract."""
 
+    # exact key set of sample_final_state's return (checked by the Generator)
+    sample_fields = ("hs", "n", "m_pi", "m_N", "kch", "Wc", "Q2c", "W", "Q2_adj",
+                     "cut", "prefac", "Lmn", "Kfac", "mult",
+                     "k_lab", "kp_lab", "p_pi", "p_N", "p_struck")
+
     def __init__(self, cfg: GenConfig = GenConfig(), hs: HadronStructure | None = None,
                  flux=None, nuclear=None):
         self.cfg = cfg
