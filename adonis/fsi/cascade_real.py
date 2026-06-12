@@ -56,13 +56,16 @@ _DENS = {}
 
 
 def _load_density(name="c12_density.txt"):
+    # numpy cache + per-call asarray: a jnp array first created inside a jit trace would
+    # leak the tracer context to later traces (cf. cascade_mb._jax_grids_resolved).
     if name not in _DENS:
         p = Path(__file__).resolve().parents[2] / "data" / "nuclear" / name
         d = np.loadtxt(p, comments="#")
         r, rho = d[:, 0], d[:, 1]          # col1 = rho_proton = rho_neutron (ACHILLES config)
         radius = float(r[rho > 1e-4 * rho[0]].max())   # physical boundary (~1% density), ~4.5 fm
-        _DENS[name] = (jnp.asarray(r), jnp.asarray(rho), radius)
-    return _DENS[name]
+        _DENS[name] = (r, rho, radius)
+    r, rho, radius = _DENS[name]
+    return jnp.asarray(r), jnp.asarray(rho), radius
 
 
 def _rho_species(r, rgrid, rho):

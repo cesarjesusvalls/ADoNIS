@@ -72,15 +72,15 @@ _JGRID = {}
 def _jax_grids():
     """Precompute, as jnp arrays: W grid and sig_out[pion_in, pion_out](W) averaged over a
     p/n target (12C).  Shape: jW (nW,), jsig (3 in, 3 out, nW)."""
-    if _JGRID:
-        return _JGRID["W"], _JGRID["sig"]
-    t = _build_table(); Wt = t["W"]; grid = t["grid"]
-    sig = np.zeros((3, 3, len(Wt)))
-    for (pin, nuc), outs in _CHANNELS.items():
-        for (pout, nout, cg) in outs:
-            sig[pin, pout] += 0.5 * np.clip(grid[(pin, nuc, pout)], 0.0, None)
-    _JGRID["W"] = _jnp.asarray(Wt); _JGRID["sig"] = _jnp.asarray(sig)
-    return _JGRID["W"], _JGRID["sig"]
+    # numpy cache + per-call asarray (tracer-leak safe, cf. _jax_grids_resolved)
+    if "W" not in _JGRID:
+        t = _build_table(); Wt = t["W"]; grid = t["grid"]
+        sig = np.zeros((3, 3, len(Wt)))
+        for (pin, nuc), outs in _CHANNELS.items():
+            for (pout, nout, cg) in outs:
+                sig[pin, pout] += 0.5 * np.clip(grid[(pin, nuc, pout)], 0.0, None)
+        _JGRID["W"] = Wt; _JGRID["sig"] = sig
+    return _jnp.asarray(_JGRID["W"]), _jnp.asarray(_JGRID["sig"])
 
 
 def _jax_grids_resolved():
@@ -152,7 +152,7 @@ def _build_angular():
                     cdf = np.concatenate([[0.0], np.cumsum(0.5 * (d[1:] + d[:-1]) * np.diff(cg_grid))])
                     cdf = cdf / cdf[-1] if cdf[-1] > 0 else np.linspace(0, 1, cg_grid.size)
                     inv[ci, i] = np.interp(ug, cdf, cg_grid)    # cos as a function of the CDF value
-    _ANG["inv"] = _jnp.asarray(inv)                  # (NCHAN, nW, nu)
+    _ANG["inv_np"] = inv                             # (NCHAN, nW, nu) numpy (tracer-leak safe)
     _ANG["W0"] = float(Wg[0]); _ANG["dW"] = float(Wg[1] - Wg[0]); _ANG["nW"] = Wg.size
     _ANG["nu"] = ug.size
     return _ANG
@@ -163,7 +163,7 @@ def jax_sample_cos_cm(W, u, chan=0):
     mass W (N,), u (N,) ~ U[0,1].  chan (N,) or scalar = pi_in*6 + nuc*3 + pi_out (default 0 =
     pi+ p -> pi+ p, pure I=3/2).  Bilinear inverse-CDF lookup over the precomputed (chan, W, u) table."""
     t = _build_angular()
-    inv = t["inv"]; nW = t["nW"]; nu = t["nu"]
+    inv = _jnp.asarray(t["inv_np"]); nW = t["nW"]; nu = t["nu"]
     ch = _jnp.broadcast_to(_jnp.asarray(chan, _jnp.int32), W.shape)
     wf = _jnp.clip((W - t["W0"]) / t["dW"], 0.0, nW - 1.0001)
     iw = wf.astype(_jnp.int32); fw = wf - iw

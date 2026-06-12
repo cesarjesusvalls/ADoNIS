@@ -50,21 +50,23 @@ def _load_qmc_configs(nmax=36000, name="QMC_configs.out.gz"):
     nmax=36000 = ALL configs in QMC_configs.out.gz (ACHILLES uses the full set); verified the
     transparency is unchanged vs the old 20000 cap (first-20k and full-36k have identical rms radius
     and both sample ∝ weight)."""
-    if name in _CFG:
-        return _CFG[name]
-    path = Path(__file__).resolve().parents[2].parent / "Achilles" / "data" / "configurations" / name
-    A = 12
-    iso = np.zeros((nmax, A), bool); pos = np.zeros((nmax, A, 3)); wt = np.zeros(nmax)
-    with gzip.open(path, "rt") as f:
-        f.readline()
-        for c in range(nmax):
-            for i in range(A):
-                t = f.readline().split()
-                iso[c, i] = float(t[0]) > 0
-                pos[c, i] = [float(t[1]), float(t[2]), float(t[3])]
-            wt[c] = float(f.readline()); f.readline()
-    _CFG[name] = (jnp.asarray(pos), jnp.asarray(iso), jnp.asarray(wt / wt.sum()), A)
-    return _CFG[name]
+    # Cache as NUMPY (not jnp): a jnp array first created inside a jit trace would leak the
+    # tracer context to later traces (cf. cascade_mb._jax_grids_resolved); asarray per-call is free.
+    if name not in _CFG:
+        path = Path(__file__).resolve().parents[2].parent / "Achilles" / "data" / "configurations" / name
+        A = 12
+        iso = np.zeros((nmax, A), bool); pos = np.zeros((nmax, A, 3)); wt = np.zeros(nmax)
+        with gzip.open(path, "rt") as f:
+            f.readline()
+            for c in range(nmax):
+                for i in range(A):
+                    t = f.readline().split()
+                    iso[c, i] = float(t[0]) > 0
+                    pos[c, i] = [float(t[1]), float(t[2]), float(t[3])]
+                wt[c] = float(f.readline()); f.readline()
+        _CFG[name] = (pos, iso, wt / wt.sum(), A)
+    pos, iso, w, A = _CFG[name]
+    return jnp.asarray(pos), jnp.asarray(iso), jnp.asarray(w), A
 
 
 _KSLAB = 3                   # # of nearest in-slab nucleons whose cross sections are evaluated per step
