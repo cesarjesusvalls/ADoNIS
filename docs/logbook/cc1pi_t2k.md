@@ -126,3 +126,31 @@ Open next steps:
 - NEXT: the angular distribution at high W -- fixed-(W,Q2) angular comparison of the
   exclusive amps2 against an ACHILLES RESDUMP-style oracle in the second-resonance region
   (the Delta-region angular validation passed; W>1400 was never gated).
+
+## #6 — controlled mono-2GeV carbon gates: primary EXONERATED at <=1%; offender = NN INELASTIC in the nucleon cascade
+
+- New oracles (achilles:resgen, mono 2 GeV, carbon, 12C-only run card): no-FSI 400k events
+  (1m49s free-p; carbon similar) + WITH-cascade run (159,974 events written -- NEvents
+  semantics; ALWAYS count E-lines for denominators).
+- Free proton 2 GeV: W shape +-3%, cos-theta* flat in all W slices -> 3-body measure,
+  amplitudes, angular distributions all validated at high W (amps2 RESDUMP audit: ratio
+  1.000, spread 1e-4, ALL W and cos-theta* bins to 1950 MeV).
+- Carbon 2 GeV no-FSI (400k vs ADO mono port): unselected W shape 0.991-1.007; TOTAL tight
+  acceptance 0.2641 vs 0.2641; per-W-bin acceptance ratios 1.001/0.999/0.967/0.960 ->
+  the ENTIRE PRIMARY CHAIN agrees at <=1% (the earlier "no-FSI carbon excess" was the
+  small-stats T2K nofsi sample: ~330 events in the discrepant bins, 1.5-2 sigma noise).
+- Carbon 2 GeV WITH cascade: signal fraction ACH 0.1478 (23640/159974; my first 2.9x claim
+  was a 400k-denominator error, caught by the one-path leg recount) vs ADO 0.1697 ->
+  ADO +15%. Pion fates MATCH (pi+ survival 57.6/57.1%, pi0 20.0/20.4, abs ~20/21,
+  surviving pi+ spectra mean 342/350, frac>700 MeV 8.1/8.8%) -> pion cascade fine at 2 GeV.
+- OFFENDER: the proton leg + meson veto. ACHILLES NucleonNucleon = GiBUU with
+  ResonanceMode: Decay -> NN -> N Delta -> N N pi INELASTIC channels: fast protons are
+  degraded harder (drop out of the 450-1200 window) and extra pions are created (measured:
+  1.6% multi-pion events in the ACH cascade sample; impossible in ADoNIS, whose nucleon
+  cascade is ELASTIC-only). At T2K flux most protons sit below the NN-inelastic threshold
+  -> dilutes to the observed +8% carbon excess. CONSISTENT with all observations.
+- NEXT IMPLEMENTATION: port the GiBUU NN inelastic channel (NN -> N Delta, Delta -> N pi)
+  into DiscreteNucleonFSI (sigma_inel from ACHILLES NucleonNucleon.cc GiBUU mode; Delta
+  production degrades the leading proton + emits a pion that enters the meson veto);
+  extend the kind-1 records accordingly; gates: sigma_inel vs ACHILLES tables, fates +
+  signal fraction at mono-2GeV carbon (expect 0.1697 -> ~0.148), then the T2K CC1pi figure.
