@@ -27,6 +27,19 @@ already-charge-resolved scatter ANGLE (`d109552`). REACTION mb (ach/ado), 1M vs 
 | 305 | 0.954 | **0.986** (597.8 / 606.0) | 0.999 |
 | 335 | 0.961 | **0.988** (518.9 / 525.0) | 1.001 |
 
+**Tightened oracle (2.85M-att ACHILLES, +-2.7 mb reaction / +-1.5 mb abs).** ADO/ACH:
+| p (MeV) | REACTION | ABSORPTION |
+|---|---|---|
+| 245 | 575.4 / 574.6 = **1.001** | 169.2 / 171.2 = 0.988 (1.2 sigma) |
+| 305 | 597.8 / 606.7 = **0.985** | 166.1 / 167.0 = 0.995 |
+| 335 | 518.9 / 528.5 = **0.982** | 144.1 / 144.5 = 0.997 |
+Absorption now fully matched (the old 245 = 173.9 was an under-stat fluctuation; true 171.2). Reaction
+matched at 245; a small ~1.5-1.8% (~3 sigma) residual remains at 305/335 (above the reaction peak).
+This is NOT a sigma issue: charge-resolved sigma_scat matches ACHILLES (MBSCAT dump) to <0.5% in EVERY
+W bin for both pi+p and pi+n (1.005/1.002/1.001 across W 1150-1600). First-pass therefore matches; the
+residual is a small high-energy multi-scatter/transport effect (or residual QMC-config oracle
+systematic), under check with a larger oracle batch.
+
 **How it was found:** isolated the deficit to the first-pass reaction (Pauli-independent via the
 `ACHILLES_NO_PAULI` toggle), then a host-side first-pass calculator (`/tmp/ado_chargeres.py`) directly
 compared averaged vs charge-resolved sigma_scat: 0.1242 -> 0.1290, matching ACHILLES 0.1286. The earlier
