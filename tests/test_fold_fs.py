@@ -63,6 +63,7 @@ print(f"dsigma/dQ2  max rel diff (bins>1% peak): {np.max(np.abs(dQm-dQf)[dQf>0.0
 
 # final-state sanity: pion + nucleon on-shell, W consistency
 from adonis.constants import M_PI, MQE
+from adonis.primary.dcc.conventions import kin_m_pi
 keep = wm != 0
 mpi2 = obs._mink_dot(ev.p_pi, ev.p_pi)
 mN2 = obs._mink_dot(ev.p_N, ev.p_N)
@@ -96,7 +97,9 @@ def test_unintegration_unbiased():
 
 
 def test_final_state_onshell():
-    # reconstructed pion/nucleon masses, and W from (p_pi+p_N) vs (q+p_struck)
-    assert abs(np.sqrt(np.asarray(mpi2)[keep]).mean() - M_PI) < 1.0
+    # reconstructed pion/nucleon masses, and W from (p_pi+p_N) vs (q+p_struck).
+    # Outgoing pions are on-shell at the KINEMATIC mass (mpi0=134.98 under MATCH_ACHILLES,
+    # see conventions.kin_m_pi), not the amplitude-internal isospin average M_PI=138.04.
+    assert abs(np.sqrt(np.asarray(mpi2)[keep]).mean() - kin_m_pi(M_PI)) < 1.0
     assert abs(np.sqrt(np.asarray(mN2)[keep]).mean() - MQE) < 1.0
     assert np.max(np.abs(W_had - W_true)[keep]) < 1e-3
