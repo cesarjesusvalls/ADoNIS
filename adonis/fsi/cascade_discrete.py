@@ -130,6 +130,11 @@ class DiscreteCascadeConfig:
     algo: str = "step"       # "step": fixed-step Glauber march (reference).  "interaction": jump
                              # directly to the next interaction (same probability model, ~20x fewer
                              # iterations).  Statistically equivalent; validated against "step".
+    early_exit: bool = True  # while_loop walk that stops once NO particle can interact again
+                             # (dead, or outside the radius moving outward = inert).  BIT-EXACT in
+                             # every returned output (same per-step keys; skipped steps are
+                             # identity), gated in tests/test_cascade_early_exit.py.  max_steps
+                             # then acts as a pure safety bound.  False = the reference lax.scan.
 
 
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
@@ -360,24 +365,58 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     dhat0 = p_pi0[:, 1:] / jnp.clip(jnp.linalg.norm(p_pi0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
             jnp.zeros(n, jnp.int32), consumed0, jnp.zeros((n, 4)))
-    (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), recs = jax.lax.scan(body, init, keys)
-    # kind-1 branching reweight, OUTSIDE the scan: the records are detached, so ONLY the (sabs, sscat)
-    # knobs carry gradient -- no NaN VJPs from the cascade's final-state sampling can reach it.
-    hh, ca, saj, sigj = recs                                      # each (max_steps, n)
-    # compress the branch records to the <=_K_BR hit slots (in step order): the walk is
-    # theta-INDEPENDENT, so the (sabs, sscat) reweight is a pure function of these records --
-    # a fit can precompute the walk once and reweight cheaply (pion_branch_reweight).
-    slot = jnp.cumsum(hh.astype(jnp.int32), axis=0) - 1
-    slot = jnp.where(hh, slot, _K_BR)                              # _K_BR = out of range -> dropped
-    arn = jnp.broadcast_to(jnp.arange(hh.shape[1])[None, :], slot.shape)
-    ca_c = jnp.zeros((_K_BR, hh.shape[1]), bool).at[slot, arn].set(ca, mode="drop")
-    sa_c = jnp.ones((_K_BR, hh.shape[1])).at[slot, arn].set(saj, mode="drop")
-    sig_c = jnp.full((_K_BR, hh.shape[1]), 2.0).at[slot, arn].set(sigj, mode="drop")
-    nh = jnp.sum(hh.astype(jnp.int32), axis=0)
+    if cfg.early_exit:
+        # EARLY-EXIT walk (bit-exact): while_loop over the SAME per-step keys, stopping once no
+        # particle can interact again.  A pion outside the nuclear radius moving OUTWARD is INERT:
+        # it can never re-enter (straight line, rho=0 outside), so its remaining march to the
+        # escape boundary only advances `pos` (not returned) -- skipping those steps changes no
+        # output.  Branch records are compressed ON THE FLY (same step order as the scan cumsum).
+        bufs0 = (jnp.zeros((_K_BR, n), bool), jnp.ones((_K_BR, n)), jnp.full((_K_BR, n), 2.0),
+                 jnp.zeros(n, jnp.int32))
+
+        def wcond(st):
+            i, carry, _ = st
+            pos, _, _, dhat, alive, _, _, _, _ = carry
+            outward = jnp.sum(pos * dhat, axis=1) > 0
+            inert = (jnp.linalg.norm(pos, axis=1) > radius) & outward
+            return (i < nsteps) & jnp.any(alive & ~inert)
+
+        def wbody(st):
+            i, carry, bufs = st
+            carry2, rec = body(carry, keys[i])
+            hh, ca, saj, sigj = rec
+            ca_c, sa_c, sig_c, nh = bufs
+            slot = jnp.where(hh, nh, _K_BR)                        # _K_BR = out of range -> dropped
+            ca_c = ca_c.at[slot, ar].set(ca, mode="drop")
+            sa_c = sa_c.at[slot, ar].set(saj, mode="drop")
+            sig_c = sig_c.at[slot, ar].set(sigj, mode="drop")
+            return i + 1, carry2, (ca_c, sa_c, sig_c, nh + hh.astype(jnp.int32))
+
+        _, carry, bufs = jax.lax.while_loop(wcond, wbody, (jnp.int32(0), init, bufs0))
+        pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs = carry
+        ca_c, sa_c, sig_c, nh = bufs
+        # truly truncated = still able to interact at the cap (inert walkers excluded)
+        outward = jnp.sum(pos * dhat, axis=1) > 0
+        inert = (jnp.linalg.norm(pos, axis=1) > radius) & outward
+        n_trunc = jnp.sum((alive & ~absorbed & ~inert).astype(jnp.int32))
+    else:
+        (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs), recs = jax.lax.scan(body, init, keys)
+        # kind-1 branching reweight, OUTSIDE the scan: the records are detached, so ONLY the
+        # (sabs, sscat) knobs carry gradient -- no NaN VJPs from the cascade's final-state
+        # sampling can reach it.  Compress to the <=_K_BR hit slots (in step order): the walk is
+        # theta-INDEPENDENT, so the reweight is a pure function of these records.
+        hh, ca, saj, sigj = recs                                  # each (max_steps, n)
+        slot = jnp.cumsum(hh.astype(jnp.int32), axis=0) - 1
+        slot = jnp.where(hh, slot, _K_BR)                          # _K_BR = out of range -> dropped
+        arn = jnp.broadcast_to(jnp.arange(hh.shape[1])[None, :], slot.shape)
+        ca_c = jnp.zeros((_K_BR, hh.shape[1]), bool).at[slot, arn].set(ca, mode="drop")
+        sa_c = jnp.ones((_K_BR, hh.shape[1])).at[slot, arn].set(saj, mode="drop")
+        sig_c = jnp.full((_K_BR, hh.shape[1]), 2.0).at[slot, arn].set(sigj, mode="drop")
+        nh = jnp.sum(hh.astype(jnp.int32), axis=0)
+        n_trunc = jnp.sum((alive & ~absorbed).astype(jnp.int32))   # still propagating at the cap
     brec = (ca_c.T, sa_c.T, sig_c.T, nh)                           # (n,K)x3 + (n,)
     w_fsi = pion_branch_reweight(brec, sabs, sscat)
     nseg = nh                                       # per-event interaction-ATTEMPT count (segments); for MAX_SEG sizing
-    n_trunc = jnp.sum((alive & ~absorbed).astype(jnp.int32))   # still propagating at the cap (interaction-mode truncations)
     return p_pi, ch, absorbed, nsc, best_abs, w_fsi, nseg, n_trunc, brec
 
 
@@ -522,19 +561,46 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
             consumed0, jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0)
-    (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), recs = jax.lax.scan(body, init, keys)
-    # kind-1 sigma_scatter reweight (closest-in-slab Bernoulli approximation), OUTSIDE the scan.
-    # Compress to the <=_K_SLAB_REC steps with an in-slab candidate (perp2_c dummy = 1e6 marks
-    # "no slab"; its br is exactly 1) -- theta-independent walk records for nucleon_scat_reweight.
-    hh, perp2_c, sig_c = recs                                      # (max_steps, n)
-    a_all = jnp.pi * perp2_c / jnp.clip(sig_c * MB_TO_FM2, 1e-12, None)
-    m = perp2_c < 1e5
-    slot = jnp.cumsum(m.astype(jnp.int32), axis=0) - 1
-    slot = jnp.where(m, slot, _K_SLAB_REC)
-    arn = jnp.broadcast_to(jnp.arange(n)[None, :], slot.shape)
-    hh_c = jnp.zeros((_K_SLAB_REC, n), bool).at[slot, arn].set(hh, mode="drop")
-    a_c = jnp.full((_K_SLAB_REC, n), 50.0).at[slot, arn].set(a_all, mode="drop")
-    ns = jnp.sum(m.astype(jnp.int32), axis=0)
+    if cfg.early_exit:
+        # EARLY-EXIT walk (bit-exact): nucleons escape on the sphere (alive -> False), so the
+        # loop ends when every nucleon has escaped -- measured ~step 150-180 vs the 260/325 cap.
+        # sigma_scatter records (closest-in-slab a = pi b^2/sigma) compressed on the fly.
+        bufs0 = (jnp.zeros((_K_SLAB_REC, n), bool), jnp.full((_K_SLAB_REC, n), 50.0),
+                 jnp.zeros(n, jnp.int32))
+
+        def wcond(st):
+            i, carry, _ = st
+            return (i < cfg.max_steps) & jnp.any(carry[3])
+
+        def wbody(st):
+            i, carry, bufs = st
+            carry2, rec = body(carry, keys[i])
+            hh, perp2_c, sig_c = rec
+            a_all = jnp.pi * perp2_c / jnp.clip(sig_c * MB_TO_FM2, 1e-12, None)
+            m = perp2_c < 1e5
+            hh_c, a_c, ns = bufs
+            slot = jnp.where(m, ns, _K_SLAB_REC)
+            hh_c = hh_c.at[slot, ar].set(hh, mode="drop")
+            a_c = a_c.at[slot, ar].set(a_all, mode="drop")
+            return i + 1, carry2, (hh_c, a_c, ns + m.astype(jnp.int32))
+
+        _, carry, bufs = jax.lax.while_loop(wcond, wbody, (jnp.int32(0), init, bufs0))
+        pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz = carry
+        hh_c, a_c, ns = bufs
+    else:
+        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), recs = jax.lax.scan(body, init, keys)
+        # kind-1 sigma_scatter reweight (closest-in-slab Bernoulli approximation), OUTSIDE the scan.
+        # Compress to the <=_K_SLAB_REC steps with an in-slab candidate (perp2_c dummy = 1e6 marks
+        # "no slab"; its br is exactly 1) -- theta-independent walk records for nucleon_scat_reweight.
+        hh, perp2_c, sig_c = recs                                  # (max_steps, n)
+        a_all = jnp.pi * perp2_c / jnp.clip(sig_c * MB_TO_FM2, 1e-12, None)
+        m = perp2_c < 1e5
+        slot = jnp.cumsum(m.astype(jnp.int32), axis=0) - 1
+        slot = jnp.where(m, slot, _K_SLAB_REC)
+        arn = jnp.broadcast_to(jnp.arange(n)[None, :], slot.shape)
+        hh_c = jnp.zeros((_K_SLAB_REC, n), bool).at[slot, arn].set(hh, mode="drop")
+        a_c = jnp.full((_K_SLAB_REC, n), 50.0).at[slot, arn].set(a_all, mode="drop")
+        ns = jnp.sum(m.astype(jnp.int32), axis=0)
     srec = (hh_c.T, a_c.T, ns)                                     # (n,K)x2 + (n,)
     w_scat = nucleon_scat_reweight(srec, sscat)
     return p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec
