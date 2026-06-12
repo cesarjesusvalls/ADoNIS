@@ -75,6 +75,37 @@ _KSLAB = 3                   # # of nearest in-slab nucleons whose cross section
 _MAX_SEG = 12                # interaction-driven kernel: max interaction ATTEMPTS per particle.  Measured
                              # pion tail over 622k cascades: max=11, P(>11)=0.  A particle still
                              # propagating after _MAX_SEG segments is force-escaped (logged, not silent).
+_K_BR = 16                   # compressed-record slots for the pion branch reweight (hits/event <= _MAX_SEG
+                             # measured; nh in the records lets callers verify no overflow).
+_K_SLAB_REC = 48             # compressed-record slots for the nucleon sigma_scatter reweight (steps with
+                             # an in-slab candidate; ns in the records verifies no overflow).
+
+
+def pion_branch_reweight(brec, sabs, sscat):
+    """Kind-1 abs/scatter branching reweight from compressed walk records brec =
+    (chose_abs (n,K), sa (n,K), sig (n,K), n_hits (n,)).  Pure in (sabs, sscat) and bit-exact
+    equal to the in-propagation w_fsi -- the walk is theta-independent, so a fit can run the
+    cascade ONCE (records out) and re-evaluate/differentiate this cheaply per theta."""
+    ca, sa, sig, nh = brec
+    valid = jnp.arange(sa.shape[1])[None, :] < nh[:, None]
+    ss = jnp.clip(sig - sa, 1e-6, None)
+    p_d = jnp.clip(sa / sig, 1e-6, 1.0 - 1e-6)
+    p_k = jnp.clip((sabs * sa) / (sabs * sa + sscat * ss), 1e-6, 1.0 - 1e-6)
+    br = jnp.where(valid, jnp.where(ca, p_k / p_d, (1.0 - p_k) / (1.0 - p_d)), 1.0)
+    return jnp.prod(br, axis=1)
+
+
+def nucleon_scat_reweight(srec, sscat):
+    """Kind-1 sigma_scatter reweight from compressed nucleon-walk records srec =
+    (hit (n,K), a_nom (n,K), n_slab (n,)) with a_nom = pi b^2/(sigma fm^2) of the closest
+    in-slab nucleon at each candidate step.  Pure in sscat; bit-exact equal to the
+    in-propagation w_scat."""
+    hh, a_nom, ns = srec
+    valid = jnp.arange(a_nom.shape[1])[None, :] < ns[:, None]
+    p_nom = jnp.clip(jnp.exp(-a_nom), 1e-6, 1.0 - 1e-6)
+    p_knb = jnp.clip(jnp.exp(-a_nom / sscat), 1e-6, 1.0 - 1e-6)
+    br = jnp.where(valid, jnp.where(hh, p_knb / p_nom, (1.0 - p_knb) / (1.0 - p_nom)), 1.0)
+    return jnp.prod(br, axis=1)
 
 
 @dataclass(frozen=True)
@@ -333,15 +364,21 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     # kind-1 branching reweight, OUTSIDE the scan: the records are detached, so ONLY the (sabs, sscat)
     # knobs carry gradient -- no NaN VJPs from the cascade's final-state sampling can reach it.
     hh, ca, saj, sigj = recs                                      # each (max_steps, n)
-    saj = jnp.where(hh, saj, 1.0); sigj = jnp.where(hh, sigj, 2.0)   # safe dummies for no-hit steps
-    ssj = jnp.clip(sigj - saj, 1e-6, None)
-    p_abs_d = jnp.clip(saj / sigj, 1e-6, 1.0 - 1e-6)
-    p_abs_k = jnp.clip((sabs * saj) / (sabs * saj + sscat * ssj), 1e-6, 1.0 - 1e-6)
-    br = jnp.where(hh, jnp.where(ca, p_abs_k / p_abs_d, (1.0 - p_abs_k) / (1.0 - p_abs_d)), 1.0)
-    w_fsi = jnp.prod(br, axis=0)
-    nseg = jnp.sum(hh.astype(jnp.int32), axis=0)   # per-event interaction-ATTEMPT count (segments); for MAX_SEG sizing
+    # compress the branch records to the <=_K_BR hit slots (in step order): the walk is
+    # theta-INDEPENDENT, so the (sabs, sscat) reweight is a pure function of these records --
+    # a fit can precompute the walk once and reweight cheaply (pion_branch_reweight).
+    slot = jnp.cumsum(hh.astype(jnp.int32), axis=0) - 1
+    slot = jnp.where(hh, slot, _K_BR)                              # _K_BR = out of range -> dropped
+    arn = jnp.broadcast_to(jnp.arange(hh.shape[1])[None, :], slot.shape)
+    ca_c = jnp.zeros((_K_BR, hh.shape[1]), bool).at[slot, arn].set(ca, mode="drop")
+    sa_c = jnp.ones((_K_BR, hh.shape[1])).at[slot, arn].set(saj, mode="drop")
+    sig_c = jnp.full((_K_BR, hh.shape[1]), 2.0).at[slot, arn].set(sigj, mode="drop")
+    nh = jnp.sum(hh.astype(jnp.int32), axis=0)
+    brec = (ca_c.T, sa_c.T, sig_c.T, nh)                           # (n,K)x3 + (n,)
+    w_fsi = pion_branch_reweight(brec, sabs, sscat)
+    nseg = nh                                       # per-event interaction-ATTEMPT count (segments); for MAX_SEG sizing
     n_trunc = jnp.sum((alive & ~absorbed).astype(jnp.int32))   # still propagating at the cap (interaction-mode truncations)
-    return p_pi, ch, absorbed, nsc, best_abs, w_fsi, nseg, n_trunc
+    return p_pi, ch, absorbed, nsc, best_abs, w_fsi, nseg, n_trunc, brec
 
 
 def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0=None,
@@ -388,11 +425,12 @@ class DiscreteCascadeFSI:
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)
         # pion pid -> channel index (211->0, 111->1, -211->2, default->1), trace-safe
         ch0 = jnp.where(event.pid_pi == 211, 0, jnp.where(event.pid_pi == -211, 2, 1)).astype(jnp.int32)
-        p_pi, ch, absorbed, nsc, abs_lead, w_fsi, nseg, n_trunc = propagate_discrete(
+        p_pi, ch, absorbed, nsc, abs_lead, w_fsi, nseg, n_trunc, brec = propagate_discrete(
             pos0, event.p_pi, ch0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sabs=sabs, sscat=sscat)
         self.last_abs_proton = abs_lead          # leading absorption proton (piNN->NN), for CC0pi
         self.last_absorbed = absorbed
         self.last_w_fsi = w_fsi                   # kind-1 branching reweight (1 at nominal scales)
+        self.last_brec = brec                     # compressed walk records for pion_branch_reweight
         self.last_nseg = nseg                     # per-event interaction-attempt count (segments)
         self.last_nsc = nsc                       # per-event scatter count
         self.last_n_trunc = n_trunc               # # pions truncated at MAX_SEG (should be 0)
@@ -485,14 +523,21 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
             consumed0, jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0)
     (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz), recs = jax.lax.scan(body, init, keys)
-    # kind-1 sigma_scatter reweight (closest-in-slab Bernoulli approximation), OUTSIDE the scan:
+    # kind-1 sigma_scatter reweight (closest-in-slab Bernoulli approximation), OUTSIDE the scan.
+    # Compress to the <=_K_SLAB_REC steps with an in-slab candidate (perp2_c dummy = 1e6 marks
+    # "no slab"; its br is exactly 1) -- theta-independent walk records for nucleon_scat_reweight.
     hh, perp2_c, sig_c = recs                                      # (max_steps, n)
-    a_nom = jnp.pi * perp2_c / jnp.clip(sig_c * MB_TO_FM2, 1e-12, None)
-    p_nom = jnp.clip(jnp.where(jnp.isfinite(perp2_c), jnp.exp(-a_nom), 0.0), 1e-6, 1.0 - 1e-6)
-    p_knb = jnp.clip(jnp.where(jnp.isfinite(perp2_c), jnp.exp(-a_nom / sscat), 0.0), 1e-6, 1.0 - 1e-6)
-    br = jnp.where(hh, p_knb / p_nom, (1.0 - p_knb) / (1.0 - p_nom))
-    w_scat = jnp.prod(br, axis=0)
-    return p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat
+    a_all = jnp.pi * perp2_c / jnp.clip(sig_c * MB_TO_FM2, 1e-12, None)
+    m = perp2_c < 1e5
+    slot = jnp.cumsum(m.astype(jnp.int32), axis=0) - 1
+    slot = jnp.where(m, slot, _K_SLAB_REC)
+    arn = jnp.broadcast_to(jnp.arange(n)[None, :], slot.shape)
+    hh_c = jnp.zeros((_K_SLAB_REC, n), bool).at[slot, arn].set(hh, mode="drop")
+    a_c = jnp.full((_K_SLAB_REC, n), 50.0).at[slot, arn].set(a_all, mode="drop")
+    ns = jnp.sum(m.astype(jnp.int32), axis=0)
+    srec = (hh_c.T, a_c.T, ns)                                     # (n,K)x2 + (n,)
+    w_scat = nucleon_scat_reweight(srec, sscat)
+    return p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
@@ -531,7 +576,7 @@ class DiscreteNucleonFSI:
         pos0 = npos[jnp.arange(n), vtx]
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)                  # struck nucleon removed from background
         isp0 = (event.pid_N == 2212)
-        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1 = propagate_nucleon_discrete(
+        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1 = propagate_nucleon_discrete(
             pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sscat=sscat)
         # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
         # Re-propagate the leading knockout through the same background; its final state can be the
@@ -541,9 +586,9 @@ class DiscreteNucleonFSI:
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
-        ko_f, _, ko_ko, _, _, w_sc2 = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
-                                                                 nisp, self.cfg, kp2, fz0=best_ko_fz,
-                                                                 consumed0=consumed0, sscat=sscat)
+        ko_f, _, ko_ko, _, _, w_sc2, srec2 = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+                                                                        nisp, self.cfg, kp2, fz0=best_ko_fz,
+                                                                        consumed0=consumed0, sscat=sscat)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))
         ko_ko = jnp.where(has_ko[:, None], ko_ko, jnp.zeros((n, 4)))     # 2nd-gen knockout proton
         # leading proton = highest-momentum proton among {primary, re-cascaded knockout, 2nd-gen ko}
@@ -551,4 +596,5 @@ class DiscreteNucleonFSI:
         mom = jnp.linalg.norm(cands[:, :, 1:], axis=2)                  # (n,3)
         lead = cands[jnp.arange(n), jnp.argmax(mom, axis=1)]
         self.last_w_scat = w_sc1 * jnp.where(has_ko, w_sc2, 1.0)        # kind-1 sigma_scatter reweight (1 at nominal)
+        self.last_srec = (srec1, srec2, has_ko)   # compressed walk records for nucleon_scat_reweight
         return event._replace(p_N=lead, w=event.w * self.last_w_scat)
