@@ -1,291 +1,187 @@
 # Pion-cascade ADoNIS↔ACHILLES residual — investigation log
 
-Status: **BOTH SOLVED.** Absorption (commit `9124afb`, isospin partition) AND the ~4% reaction-rate
-deficit (commit `1ad6cf0`, charge-resolved scatter sigma). π⁺¹²C transparency now matches ACHILLES to
-~1% in BOTH reaction and absorption at 245/305/335 MeV. Last updated 2026-06 (this session).
+**Status.** The two large π⁺¹²C transparency residuals are SOLVED, each by a real ACHILLES physics
+difference (no tuned constants):
 
-## RESOLUTION of the ~4% reaction deficit (commit `1ad6cf0`)
-
-**Root cause:** the DCC scatter cross section was isospin-AVERAGED over a p/n target
-(`cascade_mb.jax_channel_sigmas`), so every nucleon saw `(sigma_piN_p + sigma_piN_n)/2` regardless of
-its charge. ACHILLES `MesonBaryonInteraction` uses `GetCchannel(pion, baryon)` -- the cross section for
-the SPECIFIC struck nucleon. At the Delta the asymmetry is large: sigma(pi+ p) = 198 mb (pure-I=3/2
-Delta++) vs sigma(pi+ n) = 68 mb (ratio ~2.9). Because reaction is NONLINEAR in sigma
-(`1-prod(1-exp(-pi b^2/sigma))`), averaging the dominant Delta++ proton channel down to 133 mb
-suppressed proton scattering and the neutron over-estimate did not compensate -> a ~4% first-pass
-reaction deficit. (NOTE: this matters only for the *discrete* per-nucleon cascade, where the nonlinear
-`exp(-pi b^2/sigma)` is evaluated for a specific nucleon. The mean-field `cascade_real` uses lambda =
-rho*sigma which is LINEAR, so p/n averaging is exact there for N=Z.)
-
-**Fix:** `jax_channel_sigmas_resolved(W, pion_in, nuc_idx)` from the per-(pin,nuc,pout) grid (no p/n
-average); thread the struck nucleon charge (`nisp`) into the cascade sigma eval. Now consistent with the
-already-charge-resolved scatter ANGLE (`d109552`). REACTION mb (ach/ado), 1M vs 1.2M-att:
-
-| p (MeV) | REACTION before | REACTION AFTER | ABSORPTION ach/ado |
-|---|---|---|---|
-| 245 | 0.959 | **0.995** (575.4 / 578.5) | 0.973 |
-| 305 | 0.954 | **0.986** (597.8 / 606.0) | 0.999 |
-| 335 | 0.961 | **0.988** (518.9 / 525.0) | 1.001 |
-
-**Tightened oracle (2.85M-att ACHILLES, +-2.7 mb reaction / +-1.5 mb abs).** ADO/ACH:
-| p (MeV) | REACTION | ABSORPTION |
+| residual | root cause | commit |
 |---|---|---|
-| 245 | 575.4 / 574.6 = **1.001** | 169.2 / 171.2 = 0.988 (1.2 sigma) |
-| 305 | 597.8 / 606.7 = **0.985** | 166.1 / 167.0 = 0.995 |
-| 335 | 518.9 / 528.5 = **0.982** | 144.1 / 144.5 = 0.997 |
-Absorption now fully matched (the old 245 = 173.9 was an under-stat fluctuation; true 171.2). Reaction
-matched at 245; a small ~1.5-1.8% (~3 sigma) residual remains at 305/335 (above the reaction peak).
-This is NOT a sigma issue: charge-resolved sigma_scat matches ACHILLES (MBSCAT dump) to <0.5% in EVERY
-W bin for both pi+p and pi+n (1.005/1.002/1.001 across W 1150-1600). First-pass therefore matches; the
-residual is a small high-energy multi-scatter/transport effect (or residual QMC-config oracle
-systematic), under check with a larger oracle batch.
+| absorption **+5%** | ACHILLES PionAbsorption **isospin partition** (π⁺p, π⁻n use (5/6)·oset_abs) | `9124afb` |
+| reaction **−4%** | DCC scatter σ was **isospin-averaged**; ACHILLES is charge-resolved per nucleon | `1ad6cf0` |
 
-**How it was found:** isolated the deficit to the first-pass reaction (Pauli-independent via the
-`ACHILLES_NO_PAULI` toggle), then a host-side first-pass calculator (`/tmp/ado_chargeres.py`) directly
-compared averaged vs charge-resolved sigma_scat: 0.1242 -> 0.1290, matching ACHILLES 0.1286. The earlier
-"sigma matches (compare_mb_scat 1.003)" check only validated the AVERAGE -- which matches on average but
-is wrong per-nucleon, and the nonlinearity does not commute with the p/n average.
+After both, π⁺¹²C transparency matches ACHILLES to ~1% in BOTH reaction and absorption at 245/305/335.
+A small **~1–1.3% reaction residual at 305/335 MeV** remains (entirely in *scatter-survived*; absorption
+matched) — OPEN, under investigation (see §4). It is the only visible ACH/ADO difference left in the
+T2K CC0π figures (it shifts the Δ region of dσ/dW). Last updated 2026-06.
+
+The observable throughout: π⁺+¹²C transparency, ACHILLES `CrossSection` mode — beam uniform in
+p∈[80,500] MeV over a disk R=10 fm; σ = πR²·P(reaction|p), πR²=3141.6 mb. ADoNIS:
+`adonis.fsi.cascade_discrete` step mode, fired from z=−12 through the same R=10 disk.
 
 ---
 
-# (historical) the two residuals, as found
+## 1. Absorption +5% → PionAbsorption isospin partition (`9124afb`)
 
-## RESOLUTION of the +5% absorption (commit `9124afb`)
+**Root cause.** The pion-absorption cross section that competes in the cascade is isospin-decomposed by
+partner channel (Nucl.Phys.A568 Table 1; `PionAbsorption.cc:85-136`). For **like-charge pairs (π⁺p,
+π⁻n)** charge conservation forces both outgoing nucleons identical (p+p / n+n), so only the
+opposite-isospin partner channel survives → the absorption seen by the cascade is **(5/6)·oset_abs**,
+not the full `oset_abs`. Every other (π,N) pair keeps the full `oset_abs` (its 3 modes sum back to it).
+ADoNIS used the full `oset_abs` for *all* pairs → over-absorbed π⁺ on protons (the dominant Δ⁺⁺
+channel). It enters BOTH the interaction probability and the branching: `Interaction::TotalCrossSection`
+(`Interactions.cc:38`) sums all channel xsecs incl. the reduced absorption.
 
-**Root cause:** the pion-absorption cross section that competes in the cascade is isospin-decomposed
-by partner channel (Nucl.Phys.A568 Table 1; `PionAbsorption.cc:85-136`, see analysis below). For
-**LIKE-CHARGE pairs (π⁺p, π⁻n)** charge conservation forces both outgoing nucleons identical (p+p /
-n+n), so only the opposite-isospin partner channel survives and the absorption seen by the cascade is
-**(5/6)·oset_abs**, not the full `oset_abs`. Every other (π,N) pair keeps the full `oset_abs` (its 3
-modes sum back to it). ADoNIS used the full `oset_abs` for *all* pairs → over-absorbed π⁺ on protons
-(the dominant Δ⁺⁺ channel) → the documented ~5%.
+**Fix** (`cascade_discrete.py`, after the σ eval): `sa *= where((π⁺&p)|(π⁻&n), 5/6, 1)`. Absolute
+ABSORPTION mb (1M ADoNIS vs 1.2M-att ACHILLES):
 
-This enters BOTH the interaction probability and the branching: `Interaction::TotalCrossSection`
-(`Interactions.cc:38`) sums all channel xsecs, including the reduced absorption, and that total drives
-`prob = exp(−πb²/σ_tot·0.1)` (`Cascade.cc:644/671`) and `SelectChannel`.
-
-**Fix** (`cascade_discrete.py`, after the σ eval): `sa *= where((π⁺&p)|(π⁻&n), 5/6, 1)`. No tuned
-constants. Effect on absolute ABSORPTION (mb), 1M ADoNIS vs 1.2M-att ACHILLES:
-
-| p (MeV) | ABS ach / ado before | ABS ach / ado AFTER |
+| p (MeV) | ABS ach/ado before | ABS ach/ado AFTER |
 |---|---|---|
 | 245 | 173.9 / 181.5 (+4.4%) | 173.9 / **173.2** (−0.4%) |
 | 305 | 166.2 / 175.6 (+5.7%) | 166.2 / **164.9** (−0.8%) |
 | 335 | 143.9 / 151.7 (+5.4%) | 143.9 / **141.9** (−1.4%) |
 
-**How it was localized — per-pion CASCSEQ instrumentation.** Built `achilles:cascade-seq` (dumps, per
-event, `CASCSEQ nscat=N nabs=N` = pion scatters / absorptions; counting only pion interactions, scatter
-vs abs by presence of an outgoing pion — see *Build & usage* below). Over 354k matched-beam events vs
-ADoNIS's `nsc`:
-
-| metric (among reacted π) | ACHILLES | ADoNIS (pre-fix) | ADO/ACH |
-|---|---|---|---|
-| mean scatters / reacted π | 1.055 | 1.051 | **0.996** |
-| abs fraction / reacted π | 0.309 | 0.331 | **1.070** |
-
-The scatter *multiplicity matched* — the gap was entirely the **vertex abs/scatter branching** (+7%),
-NOT the transport walk (which the earlier hypothesis blamed). That pointed straight at σ_abs entering
-the branching, and reading `PionAbsorption::CrossSection` exposed the isospin partition ADoNIS lacked.
-
-## OPEN: residual ~4% scatter-RATE deficit
-
-With absorption fixed, REACTION (=scatter+abs) is now uniformly low: ach/ado **0.959 / 0.954 / 0.961**
-at p=245/305/335. Absorption matches (above), so this is a **scatter-rate** deficit (~4%, energy-
-INDEPENDENT → geometric/normalization, not vertex physics). Cause **currently UNIDENTIFIED**; ~2% of
-the 4% is the correct consequence of the absorption fix (lower σ_tot for π⁺p lowers prob — yet ACHILLES
-has the same lower σ_tot and still reacts more, so a real residual remains).
-
-**Ruled OUT this session (read both sources / config):**
-- *Nucleon positions* — ADoNIS already samples the SAME QMC configs ACHILLES uses
-  (`cascade_discrete.sample_nucleons` → `_load_qmc_configs`, weighted `jax.random.choice`;
-  `cascade.yml Configs: QMC_configs.out.gz`). NOT smooth-ρ. (An earlier draft wrongly blamed smooth-vs-QMC.)
-- *SRC / Fermi gas* — oracle is `FermiGas: Type Local, Params: []` (no correlated SRC tail); ADoNIS
-  uses the same local FG `kf·∛U`. Configs are exactly CM-centered (centroid 0.0000 fm).
-- *Pauli blocking* — ACHILLES `PauliBlocking` uses the LOCAL per-species kf (`∛(ρ_species·3π²)·ℏc`)
-  at the outgoing-nucleon position; matches ADoNIS `_kf_local` (211 vs 211 MeV at vertices).
-- *Selection* — ACHILLES `Interacted`+`Project`+`BetweenPlanes` = smallest-impact-parameter passer with
-  independent per-nucleon Gaussian rolls = ADoNIS step pick. Consume-on-interaction, escape (sphere vs
-  external_test plane), σ_scat magnitude (0.3%), step 0.04 — all match.
-- *Reaction definition* — ACHILLES accepts (writes) iff `event.History().size()>0`; a Pauli-blocked
-  attempt records no node (`if(hit)` guard, `Cascade.cc:739`), same as ADoNIS (`interacted=is_abs|is_scat`).
-
-**Open candidate under test:** the only un-matched step is ACHILLES's per-event **rigid random rotation**
-of each config (`Configuration.cc:77-89`) — ADoNIS fires all pions along +z through UNROTATED configs.
-Argued negligible (centered, isotropic, 36000 samples); VERIFIED null (`/tmp/ado_rot.py`: rotated vs
-unrotated reaction identical, 0.960/0.953/0.960).
-
-**Localized to the FIRST PASS (Pauli-independent), high-stat.** Instrumented ACHILLES with an env
-toggle `ACHILLES_NO_PAULI` (PauliBlocking returns false) and added a `pauli` ablation flag to
-`DiscreteCascadeConfig`. Reacted fraction over the matched beam:
-
-| reacted frac | ADoNIS | ACHILLES | ADO/ACH |
-|---|---|---|---|
-| no Pauli | 0.1232 | 0.1286 +/- 0.0012 (76k ev) | 0.958 |
-| with Pauli | 0.1094 | 0.1136 | 0.963 |
-
-The deficit PERSISTS with Pauli off (-4.2%), and Pauli removes nearly the same fraction in both
-(ADoNIS 11.2%, ACHILLES 11.7%) -- so ADoNIS's Pauli is faithful and NOT the cause. (An earlier
-pauli-on/off test seemed to show ADoNIS over-blocking, but that compared ADoNIS-no-block to
-ACHILLES-WITH-block. The scatter block fractions actually bracket ACHILLES's 0.263: ADoNIS
-0.295/0.241/0.231 at 245/305/335.) So the deficit is in the first-pass reaction probability
-`1-prod(1-exp(-pi b^2/sigma_tot))`, which depends only on sigma_total and impact-parameter geometry.
-
-**Yet sigma_total and geometry both look matched -- UNRESOLVED.** A host-side first-pass calculator
-(`/tmp/ado_firstpass.py`, ADoNIS's own sigma over the same QMC configs) reproduces the cascade (0.1242
-vs 0.1232). Comparing per-roll sigma_total to ACHILLES's actual `GetXSec` (instrumented `GETXSEC` dump
-in `Interacted`): ADoNIS sigma is NOT low -- median 56.9 vs 50.6 mb, and at small impact parameter
-(reaction-driving) ADoNIS is higher (57.9 vs 41.4). NOT a uniform sigma deficit. (Caveat: ACHILLES
-`Interacted` short-circuits on the first passer per step, so its dumped per-roll population is a biased
-subset -- the histograms are not directly comparable.) The sigma FUNCTION matches at matched W
-(`compare_mb_scat` 1.003); the ~3-4% residual is a subtle shape effect of the sigma_total(W) resonance
-tail / W (Fermi-motion) distribution integrated through the nonlinear `1-prod(1-p)`. Within the
-validated band (test locks 0.85-1.20). Root cause NOT yet pinned.
-
-UPDATE: the W distribution is ALSO matched -- ADoNIS vs ACHILLES (MBSCAT dump) pi+p W: Delta-peak
-fraction [1200,1260] IDENTICAL at 0.207, percentiles within 4 MeV (med 1228 vs 1224). So sigma(W),
-W-distribution, geometry (same QMC configs), and Pauli are ALL matched, yet the first-pass reacted
-fraction is 0.1242 (ADoNIS) vs 0.1286 (ACHILLES). The 3.6% is not attributable to any measured input
-difference -- a genuinely subtle residual (candidates left: a per-step roll-accumulation / which-passer
-ordering subtlety, or correlations between a nucleon's impact parameter and its sigma that the marginal
-distributions miss). Deferred as a sub-band known residual; the headline absorption fix stands.
-
-Instrumentation built this session (`achilles:scatrec`, env/guarded): `SCATREC` (scatter recoil |p|,
-kf, blocked), `GETXSEC` (per-roll b^2, sigma_total, prob), `ACHILLES_NO_PAULI` toggle, plus the earlier
-`CASCSEQ`. ADoNIS: `DiscreteCascadeConfig.pauli` ablation flag.
+**How found.** Per-pion `CASCSEQ` instrumentation of ACHILLES (see §5) showed mean scatters/reacted-π
+MATCHED (ADO/ACH 0.996) but abs/reacted +7% → the gap was the **vertex abs/scatter branching**, not the
+transport walk (the earlier hypothesis). Reading `PionAbsorption::CrossSection` then exposed the
+isospin partition ADoNIS lacked.
 
 ---
 
-# (historical) Original investigation: the +5% absorption
+## 2. Reaction −4% → charge-resolved scatter σ (`1ad6cf0`)
 
-## The observable
+**Root cause.** The DCC scatter cross section was isospin-AVERAGED over a p/n target
+(`cascade_mb.jax_channel_sigmas`): every nucleon saw `(σ_πp + σ_πn)/2` regardless of its charge.
+ACHILLES `MesonBaryonInteraction` uses `GetCchannel(pion, baryon)` — the σ for the SPECIFIC struck
+nucleon. At the Δ the asymmetry is large: σ(π⁺p)=198 mb (pure-I=3/2 Δ⁺⁺) vs σ(π⁺n)=68 mb (ratio ~2.9).
+Because reaction is NONLINEAR in σ (`1−Π(1−exp(−πb²/σ))`), averaging the dominant Δ⁺⁺ proton channel
+down to 133 mb suppressed proton scattering and the neutron over-estimate did not compensate → a ~4%
+first-pass reaction deficit. (This bites only the *discrete per-nucleon* cascade where the nonlinear
+`exp(−πb²/σ)` is evaluated for a specific nucleon. The mean-field `cascade_real` uses λ=ρσ which is
+LINEAR, so p/n averaging is exact there for N=Z — `cascade_real` was not affected and not changed.)
 
-π⁺ + ¹²C transparency (ACHILLES `CrossSection` mode: beam uniform in p∈[80,500] MeV over a disk
-of radius R=10 fm, fired through ¹²C). Cross sections via `sigma = πR² · P(.|p)`, πR²=3141.6 mb.
+**Fix.** `jax_channel_sigmas_resolved(W, pion_in, nuc_idx)` from the per-(pin,nuc,pout) grid (no p/n
+average); thread the struck nucleon charge (`nisp`) into the cascade σ eval. Now consistent with the
+already-charge-resolved scatter ANGLE (`d109552`). REACTION mb (ach/ado):
 
-- ADoNIS side: `adonis.fsi.cascade_discrete` step mode, fired from z=−12, b uniform in the R=10 disk
-  (harness `/tmp/transparency*.py`, `/tmp/hi_reac_abs.py`).
-- ACHILLES side: re-ran `_oracle_out/cascade_virt_c12.yml` to **1.2M attempts** (32× the committed
-  72k oracle) to beat the error down from ±6–10 mb to **±1.5–2.5 mb** — without this the residual is
-  invisible. Batch: `/tmp/ach_batch.sh` → `_oracle_out/absrun/abs_*.hepmc`; extract with
-  `python scripts/cascade_abs_from_hepmc.py _oracle_out/absrun/abs_*.hepmc` (drop `--nbins`, it has a
-  bug that treats the value as a filename).
+| p (MeV) | REACTION before | REACTION AFTER |
+|---|---|---|
+| 245 | 0.959 | **0.995** |
+| 305 | 0.954 | **0.986** |
+| 335 | 0.961 | **0.988** |
 
-### High-stat result (1M-event ADoNIS step vs 1.2M-att ACHILLES)
+**How found.** Localized the deficit to the first-pass reaction (Pauli-INDEPENDENT via the
+`ACHILLES_NO_PAULI` toggle); a host-side first-pass calculator (`/tmp/ado_chargeres.py`) then compared
+averaged vs charge-resolved σ_scat directly: 0.1242 → 0.1290, matching ACHILLES 0.1286. The old "σ
+matches (`compare_mb_scat` 1.003)" check had only validated the AVERAGE — correct on average but wrong
+per-nucleon, and the nonlinearity does not commute with the p/n average.
 
-| p (MeV) | REACTION ach / ado | ABSORPTION ach / ado | abs/reaction ach / ado |
-|---|---|---|---|
-| 245 | 578.5±4.6 / 566.4±1.2 | 173.9±2.5 / 181.5±0.7 | 0.301 / 0.320 |
-| 305 | 606.0±4.7 / 583.8±1.2 | 166.2±2.5 / 175.6±0.7 | 0.274 / 0.301 |
-| 335 | 525.0±4.4 / 508.8±1.2 | 143.9±2.3 / 151.7±0.7 | 0.274 / 0.299 |
+---
 
-**ADoNIS: reaction −3%, absorption +5%, scatter −7%** (scatter = reaction − abs). The abs/scatter
-branching is tipped ~+8–10% toward absorption. All ~3–4σ at this stat.
+## 3. Current transparency match (tightened oracle)
 
-This is the SAME residual documented in commit `9189390`: "RES abs_frac 0.270 → 0.228 (ACH 0.218)"
-— i.e. ADoNIS pion absorption fraction ~+4.6% high. The CC0π *ratios* (QE-C 1.000, RES-C 0.987) are
-fine because the residual washes down through production/QE/signal-def; the raw absorption keeps the
-~5%. It is within the validated test band (`tests/test_cascade_vs_achilles_oracle.py` locks 0.85–1.20)
-and the level commit `449a106` claimed ("~5%"), but it is a coherent one-sided offset, not noise.
+Combined ACHILLES oracle ~6.5M attempts (±~1.8 mb reaction / ±~1.5 mb abs), 1M-event ADoNIS,
+charge-resolved + isospin-partition + all-36k-config build. ADO/ACH:
 
-## What is PROVEN to match (read both sources line-by-line + instrumented dump)
+| p (MeV) | REACTION | ABSORPTION |
+|---|---|---|
+| 245 | 575.4 / 577.0 = **0.997** (0.7σ) | 169.2 / 170.1 = 0.994 |
+| 305 | 597.8 / 606.5 = **0.986** (~4σ) | 166.1 / 166.1 = 1.000 |
+| 335 | 518.9 / 525.6 = **0.987** (~3σ) | 144.1 / 143.6 = 1.003 |
 
-The per-nucleon physics is bit-identical — the residual is NOT in any single interaction component:
+Absorption fully matched (<0.6%). Reaction matched at 245; a real ~1.3% residual at 305/335 → §4.
+
+---
+
+## 4. OPEN: ~1–1.3% reaction residual at 305/335 MeV
+
+**It is entirely in scatter-survived; absorption is matched.** Clean fixed-energy comparison, BOTH
+codes with Pauli ON, charge-resolved σ (ACHILLES `achilles:scatrec` CASCSEQ at KickMomentum [pe−3,pe+3];
+ADoNIS `propagate_discrete`):
+
+| | reacted | abs | scatter-surv (=reac−abs) | mean nscat/pion |
+|---|---|---|---|---|
+| **305** ACH | 0.1942 ±0.0007 | 0.0527 | 0.1416 | 0.2120 |
+| **305** ADO | 0.1892 (−2.6%) | 0.0532 (**matched**) | 0.1360 (−4.0%) | *(measuring)* |
+| **335** ACH | 0.1669 ±0.0010 | 0.0460 | 0.1209 | 0.1942 |
+| **335** ADO | 0.1645 (−1.4%) | 0.0464 (**matched**) | 0.1181 (−2.3%) | *(measuring)* |
+
+So with σ_scat, σ_abs and the abs/scatter branching all matched, ADoNIS produces fewer
+**scattered-and-survived** pions at high energy. Absorption (terminal) is unaffected → this is not a
+vertex/branching effect; it is in how scatters accumulate (multiplicity / re-scatter geometry).
+Next measurement: ADoNIS per-pion `nsc` distribution vs ACHILLES `mean nscat/pion` (0.2120 / 0.1942) at
+fixed 305/335 — if ADoNIS multiplicity is low, it is a transport (re-scatter) deficit.
+
+**Ruled OUT for this residual (all measured / matched):**
+- **σ_scat(W)** — charge-resolved σ matches ACHILLES `MBSCAT` dump to **<0.5% in every W bin** for both
+  π⁺p and π⁺n (1.005/1.002/1.001 across W 1150–1600).
+- **σ_abs** — ADoNIS `abs_cross_section` vs ACHILLES `OSETABS` at 305 (feeding ACHILLES's exact
+  Tpi/dens/fermi/vrel): ratio **0.9998**, median 1.0000.
+- **Nucleon positions** — ADoNIS samples the SAME QMC configs (`_load_qmc_configs`, weighted choice);
+  loading all 36000 vs the old 20000 cap is transparency-neutral (`bc1ee24`).
+- **Config rotation** — ACHILLES rotates each config; ADoNIS doesn't. VERIFIED null (`/tmp/ado_rot.py`,
+  rotated vs unrotated reaction identical, incl. with charge-resolved σ).
+- **SRC / Fermi gas** (oracle FG Local, no SRC; configs CM-centered), **max_steps/truncation** (500 vs
+  2000 identical), **fast_xsec K=3** (True==False bit-exact), **escape sphere-vs-plane** (no nucleons
+  out there), **W distribution** (Δ-peak frac [1200,1260] identical 0.207, med within 4 MeV), **Pauli**
+  (faithful; block fractions bracket ACHILLES 0.263). See §6 for the full ledger.
+
+So every per-eval input matches; the residual lives in the multi-scatter transport accumulation at high
+energy. It is small (~1.3%, ~3σ) and one-sided. Not yet pinned.
+
+---
+
+## 5. Instrumentation & reproduction
+
+ACHILLES images (LOCAL build; do NOT pass `--platform` — forces a failing pull):
+- `achilles:cascade` — clean oracle. Run: `docker run --rm -v "$PWD/_oracle_out:/out" --entrypoint
+  /achilles/bin/achilles-cascade achilles:cascade /out/absrun/<cfg>.yml`. `NEvents`≈attempts; ~83k
+  att/15s; sporadic SIGSEGV (exit 139) but partial hepmc keeps valid acc/att — batch over seeds.
+- `achilles:scatrec` — all env/guarded dumps to stderr (rebuild `docker build -f Dockerfile.cascade
+  -t achilles:scatrec .`):
+  - `CASCSEQ nscat=N nabs=N` (per event, always on) — pion scatters/absorptions; in `Evolve`
+    (reset) + `FinalizeMomentum` inside `if(hit)` (`has_pi_out ? nscat++ : nabs++`).
+  - `SCATREC pmag= kf= blocked=` (per scatter) — outgoing-nucleon |p|, local kf, Pauli flag.
+  - `GETXSEC b2= xsec= prob= rad= pid=` (per roll, env `ACHILLES_GETXSEC=1`) — the actual per-roll
+    (impact², σ_total, prob, nucleon radius/charge) in `Interacted` (un-short-circuited).
+  - `ACHILLES_NO_PAULI=1` — `PauliBlocking` returns false (first-pass / ablation studies).
+  - `OSETABS …` / `MBSCAT pidm= pidb= W= tot=` — per-eval Oset-abs / MB-scatter σ + inputs.
+
+Extraction / harnesses (scratch, in `/tmp`):
+- `scripts/cascade_abs_from_hepmc.py <hepmc...>` — reaction+absorption σ(p) from a CrossSection-mode
+  hepmc (σ = πR²·acc/att; abs = no-final-pion). Drop `--nbins` (bug: treats value as filename).
+- `/tmp/ado_seq.py` (ADoNIS reacted/abs/nsc over the matched beam), `/tmp/hi_reac_abs.py` (per-energy
+  transparency), `/tmp/ado_chargeres.py` (averaged-vs-resolved σ first-pass), `/tmp/ado_firstpass.py`
+  (host-side first-pass), `/tmp/ado_rot.py` (rotation test), `/tmp/ach_bigbatch.sh` (oracle batch).
+- ADoNIS ablation knobs: `DiscreteCascadeConfig.pauli` (Pauli on/off), `.prob` (gaussian/cylinder/pion),
+  `.fast_xsec`, `.cylinder`.
+
+---
+
+## 6. Appendix — full ruled-out ledger & per-nucleon match
+
+Per-nucleon physics proven bit-identical (read both sources + instrumented dump):
 
 | component | ACHILLES location | verdict |
 |---|---|---|
-| interaction probability `exp(−π b²/σ)`, σ=xsec/10 | `Cascade.cc:41` | bit-identical to ADoNIS `exp(−π perp²/(sig·0.1))` |
-| σ_abs (Oset p+s wave), σ_scat (DCC) | `OsetCrossSections.cc`, `MesonBaryonInteractions.cc` | bit-exact: `scratch/compare_oset_abs.py`/`compare_mb_scat.py` on `/tmp/instr.log` give 1.000 / 1.003 over all 31k samples |
-| Oset kinematics: effective `0.6·kf²` for s, actual `vrel` | `OsetCrossSections.cc:32-53` | faithfully ported (`oset_xsec._kinematics`) |
-| Fermi sampling: local FG `cbrt(ρ_species·3π²)·ℏc`, `kf·cbrt(U)` | `Nucleus.cc:165,212`,`GenerateConfig:144` | identical to `_kf_local`/`sample_nucleons`; `225` is Global-FG only (unused) |
-| nuclear density | `c12.prova.txt` | identical file to ADoNIS `c12_density.txt` (∫=6=Z, per-species) |
-| Pauli blocking `|p|<kf(pos)`, pion never blocked, block→continue | `Cascade.cc:774,695-737` | identical condition + outgoing-nucleon positions (pion@pos, struck@pos) |
-| absorption 3-body kinematics (E*=√s/2, p*, isotropic, boost) | `PionAbsorption.cc:138-197` | algebraically identical to `abs_one` |
-| scatter 2-body kinematics (E, p_f, **angle axis = incoming-pion CM dir**, masses) | `MesonBaryonInteractions.cc:65-192` | identical to `_two_body_cm_scatter`; `_CH_MASS=[139.57,134.98,139.57]` = `ParticleInfo().Mass()` |
+| interaction probability `exp(−πb²/σ)`, σ=xsec/10 | `Cascade.cc:41` | bit-identical to ADoNIS |
+| σ_abs (Oset p+s), σ_scat (DCC) | `OsetCrossSections.cc`, `MesonBaryonInteractions.cc` | `compare_oset_abs`/`compare_mb_scat` 1.000 / 1.003 (averaged); charge-resolved σ_scat <0.5%/W |
+| Oset kinematics: effective `0.6·kf²` for s, actual `vrel` | `OsetCrossSections.cc:32-53` | ported (`oset_xsec._kinematics`) |
+| Fermi sampling: local FG `∛(ρ_species·3π²)·ℏc`, `kf·∛U` | `Nucleus.cc:165,212` | identical (`_kf_local`/`sample_nucleons`); `225` Global-FG unused |
+| density | `c12.prova.txt` | identical file to ADoNIS `c12_density.txt` |
+| Pauli `|p|<kf(pos)`, pion never blocked, block→continue | `Cascade.cc:803-808,697-711` | identical |
+| absorption 3-body kinematics | `PionAbsorption.cc:138-205` | identical to `abs_one`; partner charge-conserving (`34a29b2`) |
+| scatter 2-body kinematics + angle (channel-specific dσ/dΩ) | `MesonBaryonInteractions.cc:65-192` | identical to `_two_body_cm_scatter`; channel angle `d109552` |
+| selection (smallest-impact passer, indep rolls) | `Interacted`+`Project`+`BetweenPlanes` | identical to ADoNIS step pick |
+| reaction definition (`History().size()>0`, no node on Pauli-block) | `RunCascade.cc:199`, `Cascade.cc:739` | identical to `interacted=is_abs|is_scat` |
 
-## Fixes made this session (both correct; committed; neither closes the gap)
+Wrong leads worth remembering: the **smooth-ρ-vs-QMC** guess (ADoNIS already uses QMC configs); the
+**pauli on/off "over-blocking"** read (it compared ADoNIS-no-block to ACHILLES-WITH-block — apples to
+oranges); the **σ median** comparison from `GETXSEC` (ACHILLES `Interacted` short-circuits on the first
+passer, so its dumped per-roll set is a biased subset — not directly comparable to ADoNIS's full set).
+jit-cache trap: monkeypatching a module fn or global after the first trace is silently ignored — route
+toggles through a static `cfg` field or a fresh process.
 
-1. **`d109552`** channel-specific scatter angle. ADoNIS sampled `cos_cm` from one (π⁺p, pure I=3/2)
-   dσ/dΩ for ALL channels; ACHILLES uses the channel/W-specific partial-wave dσ/dΩ (`Get_CSpoly_W`).
-   Built per-(π_in,nuc,π_out) angular table from `_CHANNELS` isospin `cg`, threaded `chan_idx`.
-   π⁺p (Δ⁺⁺, dominant) unchanged. **Effect: 305 MeV unchanged; 245 MeV abs went UP 181.5→185.7**
-   — the single-channel approx was *partially compensating* the residual (right number, wrong reason).
-2. **`34a29b2`** absorption partner must conserve charge (match `FindClosest`): π⁺p forces a neutron
-   partner, π⁻n forces a proton. Fixes a CC0π charge-violating final state. **Transparency-neutral**
-   (3-body s dominated by pion E + 2 mN; partner Fermi momentum barely shifts the Pauli block).
+## 7. Unrelated WIP (dormant)
 
-## Ruled out
-
-- **Scatter angle is the lever?** No. Forcing isotropic (a fresh-process bracket — note the jit-cache
-  trap: monkeypatching a function after the first trace is silently ignored) makes abs *worse*
-  (305: 175.6→179.6), and the correct channel-specific fix doesn't close it either.
-- **Escape (sphere vs plane).** ACHILLES external_test escapes at the z=radius plane, internal pions
-  (and ADoNIS) at the |pos|>radius sphere (`Cascade.cc:530`). Negligible: QMC nucleons only reach
-  ~5 fm, so the off-axis sphere-cut (z=√(R²−b²)) passes no extra nucleons, and post-scatter pions use
-  the sphere in both. Radius value: ACHILLES `minDensity=1e-6` (`Nucleus.cc:49`) vs ADoNIS 4e-6 → ADoNIS
-  R≈6.05 fm slightly smaller, but no nucleons out there.
-- **Gaussian-prob normalization, pion masses, partner charge** — all match / transparency-neutral.
-
-## Current hypothesis & next step
-
-Every per-interaction component is identical, so the residual is in the **multi-nucleon transport
-accumulation** (how the discrete-Glauber walk combines the matched per-step physics across scatters).
-
-**Measurement (1) DONE — inputs match (`/tmp/eval_dist.py`):** ADoNIS's per-eval input distributions
-over the matched beam are nearly identical to ACHILLES `/tmp/instr.log` (OSETABS/MBSCAT):
-dens mean 0.0987 vs 0.0986 (percentiles match), vrel 0.866 vs 0.859, W 1233 vs 1229, fermi 211 vs 211,
-~12 nucleons passed/pion. So the geometry, which-nucleons, and per-eval kinematics are CORRECT. The
-+5% is therefore **definitively** in the transport walk, not the inputs. (The vrel +0.8% is even the
-wrong sign: σ_abs∝1/vrel → would make ADoNIS absorb *less*.)
-
-**Next — measurement (2):** rebuild an instrumented `achilles:cascade-instr` that dumps the **per-pion
-interaction sequence** (n_scatter before absorb/escape, and the interaction positions) and compare the
-scatter-multiplicity distribution to ADoNIS (`propagate_discrete` returns `nseg`). The hepmc records
-only the final state (no history), so this needs the rebuild. The signature to explain: ADoNIS
-**scatter −7%, absorption +5%** with identical per-step physics — i.e. ADoNIS pions undergo fewer
-net scatters and tip to absorption, despite matched cross sections, geometry, Pauli, and kinematics.
-Candidate walk-level effects to test once ACHILLES's per-pion sequence is in hand: (a) order/timing of
-the consume + re-evaluation across a scatter, (b) whether ACHILLES re-rolls already-passed nucleons
-after a direction change differently, (c) multi-nucleon shadowing along the path.
-
-## Build & usage: `achilles:cascade-seq` (per-pion interaction-sequence dump)
-
-Instrumentation (in the ACHILLES source tree, `git diff` shows it; ~18 lines):
-- `include/Achilles/Cascade.hh`: `mutable size_t m_nscat_seq{}, m_nabs_seq{};` member counters.
-- `src/Achilles/Cascade.cc` `Evolve`: reset both to 0 at start; before `Reset()` at the end,
-  `fprintf(stderr, "CASCSEQ nscat=%zu nabs=%zu\n", m_nscat_seq, m_nabs_seq);`.
-- `Cascade.cc` `FinalizeMomentum`, inside `if(hit)`: if either particle is a pion, scan
-  `particles_out` — `has_pi_out ? m_nscat_seq++ : m_nabs_seq++` (scatter vs absorption).
-  (`OsetCrossSections.cc` / `MesonBaryonInteractions.cc` also carry the older OSETABS/MBSCAT dumps.)
-
-Build the image (local; do NOT pass `--platform`):
-```
-cd Achilles && docker build -t achilles:cascade-seq .
-```
-Run one config (stderr carries the CASCSEQ lines):
-```
-docker run --rm -v "$PWD/_oracle_out:/out" --entrypoint /achilles/bin/achilles-cascade \
-    achilles:cascade-seq /out/absrun/<cfg>.yml 2> cascseq.log
-```
-Batch over seeds to accumulate ~100k+ events (`/tmp/ach_seq_batch.sh`): for each seed it `sed`s
-`cascade_virt_c12.yml` (seed, `NEvents: 30000`, output hepmc name) and runs the image, appending
-stderr to one log; ~30k events in ~25s, sporadic SIGSEGV (exit 139) but the CASCSEQ lines already
-flushed are valid. Parse: `grep CASCSEQ <log> | sort | uniq -c` → the joint (nscat,nabs) histogram;
-"reacted" = any line with nscat≥1 or nabs≥1, "absorbed" = nabs≥1. Compare to ADoNIS `propagate_discrete`
-`nsc`/`absorbed` over the matched beam (`/tmp/ado_seq.py`).
-
-## Key artifacts / reproduction
-
-- ACHILLES image `achilles:cascade` (LOCAL build; do NOT pass `--platform` — forces a failing pull,
-  unlike the ghcr `:oracle` image). Instrumented: `achilles:cascade-instr` (dumps OSETABS/MBSCAT).
-- Run: `docker run --rm -v "$PWD/_oracle_out:/out" --entrypoint /achilles/bin/achilles-cascade
-  achilles:cascade /out/absrun/<cfg>.yml`. `NEvents`≈attempts; ~83k att in ~15s; sporadic SIGSEGV
-  (exit 139) but partial hepmc keeps valid acc/att — batch over seeds.
-- ADoNIS step-mode transparency: `/tmp/hi_reac_abs.py` (1M/energy, ±1 mb).
-- See also: docs `cc0pi_fsi_investigation.md`; commits `3cfbeea` (Fig-3 cascade validation, "~5%
-  residual is transport"), `449a106` (discrete-Glauber, oracle norm), `9189390` (struck-isospin).
-
-## Unrelated WIP in `cascade_discrete.py` (dormant, `cfg.algo` default "step")
-
-`cfg.algo="interaction"` is an experimental jump-to-next-interaction kernel (~15× faster) that is
-statistically off vs step at high pion momentum (+35–60% absorption) — a SEPARATE, larger bug, not
-this ~5% residual. `fast_xsec` (slab-restricted σ eval, bit-exact ~1.15×) is on by default in step.
+`cfg.algo="interaction"` — experimental jump-to-next-interaction kernel (~15× faster), statistically off
+vs step at high pion momentum (+35–60% absorption); a SEPARATE, larger bug. `fast_xsec` (slab-restricted
+σ eval, bit-exact ~1.15×) is on by default in step mode.
