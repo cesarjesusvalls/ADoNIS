@@ -90,52 +90,16 @@ def build_proposal():
     return qe, qw, res, rw
 
 
-# RES channel constants for the amps2 re-evaluation: (ipid, ppid) -> itiz
-_RES_ITIZ = {(2112, 211): -1, (2112, 111): -1, (2212, 211): +1}
+from adonis.analysis.ma_records import build_qe_ma_records, build_res_ma_records, ma_reweight
 
 
 def build_ma_records(qe, res):
-    """ONE-TIME (per proposal) exact M_A-reweight records.  amps2 is QUADRATIC in the axial
-    scale r, so 3 evals (r = 0, 1, -1) give per-event (a, b, c) with amps2(r) = a + b r + c r^2
-    exactly (gated to 5e-15).  The fit-time weight is then elementwise:
-        w_MA = (a + b r_i + c r_i^2) / (a + b + c),   r_i = F_A_dipole(Q2_i; MA)/F_A_dipole(Q2_i; 1.0)
-    -- the established M_A knob (axial_reweight_dipole), = 1 exactly at MA = 1.0 GeV."""
-    # --- QE: axial_scale evals on the frozen kinematics; r at the ORIGINAL leptonic Q2 (dirac.py) ---
-    kn, km, ps, po = (jnp.asarray(qe[k]) for k in ("k_nu", "k_mu", "p_struck", "p_out"))
-    a1 = np.asarray(me_cross_section(kn, km, ps, po, axial_scale=1.0)["amps2"])
-    a0 = np.asarray(me_cross_section(kn, km, ps, po, axial_scale=0.0)["amps2"])
-    am = np.asarray(me_cross_section(kn, km, ps, po, axial_scale=-1.0)["amps2"])
-    q = np.asarray(kn - km); q2_qe = np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2     # MeV^2
-    # sanitize: rejected draws (proposal weight 0) sit in the arrays with unphysical kinematics
-    # (negative Q2, NaN amps2); give them the identity record (w_MA=1, grad 0) -- they carry w0=0.
-    ok = np.isfinite(a0) & np.isfinite(a1) & np.isfinite(am) & (q2_qe > 0)
-    a_, b_, c_ = np.where(ok, a0, 1.0), np.where(ok, 0.5*(a1-am), 0.0), np.where(ok, 0.5*(a1+am)-a0, 0.0)
-    qe_rec = (jnp.asarray(a_), jnp.asarray(b_), jnp.asarray(c_), jnp.asarray(np.where(ok, q2_qe, 1.0)))
-    # --- RES: per channel, r_axial evals on the frozen kinematics; r at the amplitude Q2 ---
-    n = len(res["w"])
-    A = np.zeros(n); B = np.zeros(n); Cq = np.zeros(n); Q2r = np.zeros(n)
-    for (ipid, ppid), itiz in _RES_ITIZ.items():
-        m = (np.asarray(res["ipid"]) == ipid) & (np.asarray(res["ppid"]) == ppid)
-        if not m.any():
-            continue
-        args = [res[k][m] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi")]
-        nn = int(m.sum())
-        r1, q2 = dcc.exclusive_amps2_batch(*args, itiz, ppid, r_axial=np.ones(nn), return_q2=True)
-        r0 = dcc.exclusive_amps2_batch(*args, itiz, ppid, r_axial=np.zeros(nn))
-        rm = dcc.exclusive_amps2_batch(*args, itiz, ppid, r_axial=-np.ones(nn))
-        A[m] = r0; B[m] = 0.5 * (r1 - rm); Cq[m] = 0.5 * (r1 + rm) - r0; Q2r[m] = q2
-    ok = np.isfinite(A) & np.isfinite(B) & np.isfinite(Cq) & (Q2r > 0)
-    A, B, Cq, Q2r = np.where(ok, A, 1.0), np.where(ok, B, 0.0), np.where(ok, Cq, 0.0), np.where(ok, Q2r, 1.0)
-    res_rec = (jnp.asarray(A), jnp.asarray(B), jnp.asarray(Cq), jnp.asarray(Q2r))
-    return dict(qe=qe_rec, res=res_rec)
-
-
-def ma_reweight(rec, MA):
-    """Exact per-event M_A weight from a (a, b, c, Q2) record; pure in MA, == 1 at MA = 1.0."""
-    a, b, c, q2 = rec
-    r = axial_reweight_dipole(q2, MA)
-    den = a + b + c
-    return jnp.where(den > 0, (a + b * r + c * r * r) / jnp.where(den > 0, den, 1.0), 1.0)
+    """ONE-TIME (per proposal) exact M_A-reweight records (see adonis.analysis.ma_records)."""
+    qa, qb, qc, qq2 = build_qe_ma_records(qe["k_nu"], qe["k_mu"], qe["p_struck"], qe["p_out"])
+    ra, rb, rc, rq2 = build_res_ma_records(res["k_nu"], res["k_mu"], res["p_struck"],
+                                           res["p_N"], res["p_pi"], res["ipid"], res["ppid"])
+    j = jnp.asarray
+    return dict(qe=(j(qa), j(qb), j(qc), j(qq2)), res=(j(ra), j(rb), j(rc), j(rq2)))
 
 
 def hist_nb(theta, kcasc, qe, qw, res, rw):

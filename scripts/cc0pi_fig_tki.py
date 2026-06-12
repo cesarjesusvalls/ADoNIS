@@ -11,6 +11,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
+# optional tuned overlay: --theta SABS SSCAT MA  (reweights the stored walk/M_A records --
+# no event regeneration; requires an npz produced with records, 2026-06-12+)
+THETA = None
+if "--theta" in sys.argv:
+    i = sys.argv.index("--theta")
+    THETA = tuple(float(x) for x in sys.argv[i + 1:i + 4])
+
 ORA = Path("data/oracle")
 dis = np.load(ORA / "cc0pi_disaggregated.npz")
 ach = np.load(ORA / "t2k_cc0pi_tki_achilles.npz")
@@ -20,6 +27,38 @@ NB_PER_CM2, A_NUCLEON = 1e33, 12.0                              # per-nucleon da
 CELLS = ["QE-C", "RES-C", "RES-H"]
 ado = {k: np.concatenate([dis[f"{c}_True_{k}"] for c in CELLS]) for k in ("dalphat", "dpt", "w")}
 ach_w = np.asarray(ach["w"]) * SCALE
+
+
+def tuned_weights(theta):
+    """Per-event tuned weights w(theta) for the concatenated CELLS, from the stored records
+    (kind-1 reweight: pion branch x nucleon sigma_scatter x exact M_A quadratic)."""
+    from adonis.analysis.ma_records import ma_reweight
+    from adonis.fsi.cascade_discrete import nucleon_scat_reweight, pion_branch_reweight
+    import jax.numpy as jnp
+    sabs, sscat, MA = theta
+    out = []
+    for c in CELLS:
+        w = np.asarray(dis[f"{c}_True_w"], float).copy()
+        if f"{c}_True_rec_ma_a" not in dis.files or len(w) == 0:
+            out.append(w)                                          # RES-H: zero CC0pi, no records
+            continue
+        g = lambda k: dis[f"{c}_True_rec_{k}"]
+        wma = np.asarray(ma_reweight((g("ma_a"), g("ma_b"), g("ma_c"), g("ma_q2")), MA))
+        ws = np.asarray(nucleon_scat_reweight((jnp.asarray(g("s1_hh")), jnp.asarray(g("s1_a")),
+                                               jnp.asarray(g("s1_ns"))), sscat))
+        ws2 = np.asarray(nucleon_scat_reweight((jnp.asarray(g("s2_hh")), jnp.asarray(g("s2_a")),
+                                                jnp.asarray(g("s2_ns"))), sscat))
+        ws = ws * np.where(np.asarray(g("has_ko")), ws2, 1.0)
+        wb = 1.0
+        if f"{c}_True_rec_b_ca" in dis.files:                      # pion cascade (RES only)
+            wb = np.asarray(pion_branch_reweight((jnp.asarray(g("b_ca")), jnp.asarray(g("b_sa")),
+                                                  jnp.asarray(g("b_sig")), jnp.asarray(g("b_nh"))),
+                                                 sabs, sscat))
+        out.append(w * wma * ws * wb)
+    return np.concatenate(out)
+
+
+ado_w_tuned = tuned_weights(THETA) if THETA is not None else None
 
 # (key, T2K data edges [native], x-scale to ADoNIS units, label, data unit-scale to nb/[ADoNIS unit])
 VARS = [("dalphat", dat["dalphat_edges"], 1.0, r"$\delta\alpha_T$ [rad]",
@@ -45,6 +84,10 @@ for c, (key, bins, _xs, xlab, dscale, dval, derr) in enumerate(VARS):
     ax.errorbar(ctr, da, yerr=ea, fmt="none", ecolor="0.35", alpha=0.5)
     ax.step(bins, np.append(dd, dd[-1]), where="post", color="C0", lw=1.5, label="ADoNIS (CH, fixed)")
     ax.errorbar(ctr, dd, yerr=ed, fmt="none", ecolor="C0", alpha=0.5)
+    if ado_w_tuned is not None:
+        dt_, et_ = hist(ado[key], ado_w_tuned, bins); dt_, et_ = dt_ / bw, et_ / bw
+        ax.step(bins, np.append(dt_, dt_[-1]), where="post", color="C1", lw=1.6, ls="--",
+                label=f"ADoNIS tuned $\theta$=({THETA[0]:g}, {THETA[1]:g}, {THETA[2]:g})")
     ax.errorbar(ctr, d_y, yerr=d_e, fmt="o", color="k", ms=5, capsize=3, lw=1.4, label="T2K data", zorder=5)
     ax.set_ylabel(r"d$\sigma$/dx [nb/unit]"); ax.set_ylim(bottom=0); ax.legend()
     ax.set_title(f"CC0$\\pi$-Np   {xlab}")
@@ -60,4 +103,5 @@ for c, (key, bins, _xs, xlab, dscale, dval, derr) in enumerate(VARS):
 fig.suptitle("CC0$\\pi$-Np (T2K signal) absolute d$\\sigma$/dx — ADoNIS vs ACHILLES vs T2K data "
              "(arXiv:1802.05078)", fontsize=13)
 fig.tight_layout()
-out = "paper_figures/cc0pi_dat_dpt_data.png"; fig.savefig(out, dpi=120); print("wrote", out)
+out = "paper_figures/cc0pi_dat_dpt_data.png" if THETA is None else "paper_figures/cc0pi_dat_dpt_data_tuned.png"
+fig.savefig(out, dpi=120); print("wrote", out)

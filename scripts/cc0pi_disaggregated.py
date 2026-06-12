@@ -20,6 +20,7 @@ dcc.BATCH_INTERP = "spline"
 from adonis.xsec import qe_xsec, res_xsec
 from adonis.core.event import EventRecord
 from adonis.fsi.cascade_discrete import DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig
+from adonis.analysis.ma_records import build_qe_ma_records, build_res_ma_records
 from scripts.h_cc0pi import generate_H
 
 MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
@@ -30,8 +31,9 @@ _CFG = lambda **k: DiscreteCascadeConfig(cylinder=_CYL, step=0.04, max_steps=325
 NQE, NRES, NH, NSEED = 200000, 200000, 2000, 4   # H contributes 0 CC0pi (free p can't absorb) -> token NH
 
 
-def _obs(knu, kmu, pstr, lead, w):
-    """CC0pi-Np selection + (W_vertex, Q2, delta_alphaT, delta_pT) for the passing events."""
+def _obs(knu, kmu, pstr, lead, w, recs=None):
+    """CC0pi-Np selection + (W_vertex, Q2, delta_alphaT, delta_pT) for the passing events.
+    recs: optional dict of per-event record arrays, filtered by the same selection."""
     pmu = np.linalg.norm(kmu[:, 1:], axis=1); cmu = kmu[:, 3] / np.clip(pmu, 1e-9, None)
     pl = np.linalg.norm(lead[:, 1:], axis=1); cl = lead[:, 3] / np.clip(pl, 1e-9, None)
     sel = (w > 0) & (pmu > MU_LO) & (cmu > COSMU) & (pl > P_LO) & (pl < P_HI) & (cl > COSP)
@@ -43,7 +45,11 @@ def _obs(knu, kmu, pstr, lead, w):
     dpt = np.linalg.norm(dv, axis=1)
     c = -np.sum(lt * dv, axis=1) / (np.linalg.norm(lt, axis=1) * dpt + 1e-9)
     dat = np.arccos(np.clip(c, -1, 1))
-    return dict(W=W[sel], Q2=Q2[sel], dalphat=dat[sel], dpt=dpt[sel], w=w[sel])
+    out = dict(W=W[sel], Q2=Q2[sel], dalphat=dat[sel], dpt=dpt[sel], w=w[sel])
+    if recs is not None:
+        for k, v in recs.items():
+            out[f"rec_{k}"] = np.asarray(v)[sel] if len(np.asarray(v)) == len(sel) else np.asarray(v)
+    return out
 
 
 def _ev(knu, kmu, pstr, ppi, pN, w, pid_pi, pid_Ni=2112):
@@ -62,11 +68,15 @@ def qe_C(n, seed, fsi):
     pout = np.asarray(r["p_out"]); w = np.asarray(r["w"]) / n
     if fsi:
         ev = _ev(knu, kmu, pstr, np.zeros_like(knu), pout, w, np.zeros(len(w)))
-        ev = DiscreteNucleonFSI(_CFG(seed=2)).apply(None, ev, key=jax.random.PRNGKey(seed + 7))
+        nf = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf.apply(None, ev, key=jax.random.PRNGKey(seed + 7))
         lead = np.asarray(ev.p_N)
-    else:
-        lead = pout                                              # bare recoil proton
-    return _obs(knu, kmu, pstr, lead, w)
+        ma = build_qe_ma_records(knu, kmu, pstr, pout)
+        recs = {f"{k}": v for k, v in zip(("ma_a", "ma_b", "ma_c", "ma_q2"), ma)}
+        (h1, a1, n1), (h2, a2, n2), ko = nf.last_srec
+        recs.update(s1_hh=np.asarray(h1), s1_a=np.asarray(a1), s1_ns=np.asarray(n1),
+                    s2_hh=np.asarray(h2), s2_a=np.asarray(a2), s2_ns=np.asarray(n2), has_ko=np.asarray(ko))
+        return _obs(knu, kmu, pstr, lead, w, recs=recs)
+    return _obs(knu, kmu, pstr, pout, w)                          # bare recoil proton
 
 
 def res_C(n, seed, fsi):
@@ -79,12 +89,19 @@ def res_C(n, seed, fsi):
     ev = _ev(knu, kmu, pstr, ppi, pN, w, ppid, pid_Ni=ipid)
     pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
     absorbed = np.asarray(pion.last_absorbed); abs_p = np.asarray(pion.last_abs_proton)
-    ev = DiscreteNucleonFSI(_CFG(seed=2)).apply(None, ev, key=jax.random.PRNGKey(seed + 13))
+    nf2 = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf2.apply(None, ev, key=jax.random.PRNGKey(seed + 13))
     pNf = np.asarray(ev.p_N); mom_p = np.linalg.norm(pNf[:, 1:], axis=1) * (np.asarray(ev.pid_N) == 2212)
     mom_a = np.linalg.norm(abs_p[:, 1:], axis=1)
     lead = np.where((mom_a > mom_p)[:, None], abs_p, pNf)
     has_p = (mom_a > 1) | (np.asarray(ev.pid_N) == 2212)
-    return _obs(knu, kmu, pstr, lead, w * (absorbed & has_p))
+    ma = build_res_ma_records(knu, kmu, pstr, pN, ppi, ipid, ppid)
+    recs = {f"{k}": v for k, v in zip(("ma_a", "ma_b", "ma_c", "ma_q2"), ma)}
+    ca, sa, sig, nh = pion.last_brec
+    recs.update(b_ca=np.asarray(ca), b_sa=np.asarray(sa), b_sig=np.asarray(sig), b_nh=np.asarray(nh))
+    (h1, a1, n1), (h2, a2, n2), ko = nf2.last_srec
+    recs.update(s1_hh=np.asarray(h1), s1_a=np.asarray(a1), s1_ns=np.asarray(n1),
+                s2_hh=np.asarray(h2), s2_a=np.asarray(a2), s2_ns=np.asarray(n2), has_ko=np.asarray(ko))
+    return _obs(knu, kmu, pstr, lead, w * (absorbed & has_p), recs=recs)
 
 
 def res_H(n, seed, fsi):
@@ -97,10 +114,13 @@ def res_H(n, seed, fsi):
 
 
 def accumulate(fn, n, fsi, perseed_div):
-    """Run NSEED seeds, concatenate; divide weights so they sum to the MEAN nb sigma."""
-    acc = {k: [] for k in ("W", "Q2", "dalphat", "dpt", "w")}
+    """Run NSEED seeds, concatenate (records arrays included); divide weights so they sum to
+    the MEAN nb sigma."""
+    acc = None
     for sd in range(NSEED):
         d = fn(n, sd, fsi)
+        if acc is None:
+            acc = {k: [] for k in d}
         for k in acc: acc[k].append(d[k])
         print(f"    {fn.__name__} fsi={fsi} seed {sd+1}/{NSEED}: +{len(d['w'])}", flush=True)
     out = {k: np.concatenate(v) if v[0].size or len(v) else np.array([]) for k, v in acc.items()}
