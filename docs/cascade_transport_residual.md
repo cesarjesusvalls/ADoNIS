@@ -94,6 +94,14 @@ subset -- the histograms are not directly comparable.) The sigma FUNCTION matche
 tail / W (Fermi-motion) distribution integrated through the nonlinear `1-prod(1-p)`. Within the
 validated band (test locks 0.85-1.20). Root cause NOT yet pinned.
 
+UPDATE: the W distribution is ALSO matched -- ADoNIS vs ACHILLES (MBSCAT dump) pi+p W: Delta-peak
+fraction [1200,1260] IDENTICAL at 0.207, percentiles within 4 MeV (med 1228 vs 1224). So sigma(W),
+W-distribution, geometry (same QMC configs), and Pauli are ALL matched, yet the first-pass reacted
+fraction is 0.1242 (ADoNIS) vs 0.1286 (ACHILLES). The 3.6% is not attributable to any measured input
+difference -- a genuinely subtle residual (candidates left: a per-step roll-accumulation / which-passer
+ordering subtlety, or correlations between a nucleon's impact parameter and its sigma that the marginal
+distributions miss). Deferred as a sub-band known residual; the headline absorption fix stands.
+
 Instrumentation built this session (`achilles:scatrec`, env/guarded): `SCATREC` (scatter recoil |p|,
 kf, blocked), `GETXSEC` (per-roll b^2, sigma_total, prob), `ACHILLES_NO_PAULI` toggle, plus the earlier
 `CASCSEQ`. ADoNIS: `DiscreteCascadeConfig.pauli` ablation flag.
