@@ -113,8 +113,11 @@ def res_C(n, seed):
     sel = ((pid_pi == 211) & has_p & (w > 0)
            & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
     dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)
+    pim = np.linalg.norm(ppi_f[sel][:, 1:], axis=1)
     return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel],
-                nsc=np.asarray(pion.last_nsc)[sel])           # pion scatter count (diagnostics)
+                nsc=np.asarray(pion.last_nsc)[sel],           # pion scatter count (diagnostics)
+                pi_p=pim, pi_cth=ppi_f[sel][:, 3] / np.clip(pim, 1e-9, None),
+                lp_p=np.linalg.norm(lead[sel][:, 1:], axis=1))
 
 
 def res_H(n, seed):
