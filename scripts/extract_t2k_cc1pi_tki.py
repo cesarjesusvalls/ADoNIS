@@ -73,8 +73,9 @@ def observables(path, seed=0):
     [0,pi] for free-hydrogen events (delta_pT=0 -> undefined; NUISANCE issue 92 / PRD 103 112009)."""
     beam = np.array([0.0, 0.0, 1.0])
     rng = np.random.default_rng(seed)
-    dptt, pn, dat, dpt, w = [], [], [], [], []
+    dptt, pn, dat, dpt, w, ish = [], [], [], [], [], []
     for mu, pip, p, wt, is_h in cc1pip_events(path):
+        ish.append(bool(is_h))
         mu3, pi3, p3 = mu[1:], pip[1:], p[1:]
         zhat = np.cross(beam, mu3); zhat = zhat / (np.linalg.norm(zhat) + 1e-9)
         had3 = pi3 + p3
@@ -92,14 +93,17 @@ def observables(path, seed=0):
         dpL = 0.5 * R - (M_A1 ** 2 + dptmag ** 2) / (2.0 * max(R, 1.0))
         pn.append(float(np.sqrt(max(dptmag ** 2 + dpL ** 2, 0.0))))
         w.append(wt)
-    return (np.array(dptt), np.array(pn), np.array(dat), np.array(dpt), np.array(w))
+    return (np.array(dptt), np.array(pn), np.array(dat), np.array(dpt), np.array(w), np.array(ish))
 
 
 if __name__ == "__main__":
     path = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else "data/oracle/t2k_cc1pi_tki_achilles.npz"
-    dptt, pn, dat, dpt, w = observables(path)
-    np.savez(out, dptt=dptt, pn=pn, dalphat=dat, dpt=dpt, w=w)
+    dptt, pn, dat, dpt, w, ish = observables(path)
+    # NOTE: the status-code is_h tag fails on this hepmc (0 tagged of an 18k H component);
+    # the saved is_h uses the EXACT kinematic tag instead: free-proton events have dptt == 0
+    # (no Fermi motion; only 0.24% of carbon events fall within |dptt|<0.5).
+    np.savez(out, dptt=dptt, pn=pn, dalphat=dat, dpt=dpt, w=w, is_h=(np.abs(dptt) < 0.5))
     print(f"CC1pi+ signal events: {len(w)}   sum_w={w.sum():.4e} nb")
     print(f"  rms(dpTT)={np.sqrt(np.average(dptt**2, weights=w)):.1f}  <p_N>={np.average(pn, weights=w):.1f}  "
           f"<dpT>={np.average(dpt, weights=w):.1f}  <daT>={np.degrees(np.average(dat, weights=w)):.1f}deg")

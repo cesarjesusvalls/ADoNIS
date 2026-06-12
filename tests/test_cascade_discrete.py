@@ -28,7 +28,7 @@ def _sig(plab, n=15000, seed=0):
     pos0 = jnp.stack([b * jnp.cos(ang), b * jnp.sin(ang), jnp.full(n, -6.5)], 1)
     p0 = jnp.tile(jnp.array([Epi, 0., 0., plab]), (n, 1)); ch = jnp.zeros(n, jnp.int32)
     npos, nmom, nisp = sample_nucleons(kn, n, cfg)
-    _, _, absb, nsc, _abs_lead, _wf, _ns, _nt, _br = propagate_discrete(pos0, p0, ch, npos, nmom, nisp, cfg, kp)
+    _, _, absb, nsc, _abs_lead, _wf, _ns, _nt, _br, _ko = propagate_discrete(pos0, p0, ch, npos, nmom, nisp, cfg, kp)
     geo = np.pi * BMAX ** 2 * 10.0
     absb = np.asarray(absb)
     return geo * absb.mean(), geo * ((np.asarray(nsc) > 0) | absb).mean()

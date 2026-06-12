@@ -8,9 +8,11 @@ proton 3-body generator (pi+ always survives; no FSI).  QE contributes nothing (
 Selection/observables mirror scripts/extract_t2k_cc1pi_tki.py exactly (tight windows, theta<70deg;
 NUISANCE hydrogen prescription: flat delta_alphaT throw, carbon-mass p_N formula for all events).
 
-KNOWN MODEL DIFFERENCE vs ACHILLES (flagged, not hidden): the ADoNIS pion cascade does not emit
-pion-scatter recoil nucleons into the final state, so events whose only accepted proton is such
-a knockout are missing here -- the ACH/ADO ratio quantifies this.
+Pion-scatter RECOIL protons are emitted and re-cascaded (ACHILLES FinalizeMomentum/UpdateKicked
+mirrored via DiscreteCascadeFSI.last_scat_ko): the leading proton is the highest-momentum
+IN-WINDOW candidate among {RES nucleon, scatter knockout, its secondary knockout}.  Declared
+approximation: only the leading PROTON recoil per pion is tracked (neutron recoils' secondary
+knockouts neglected).
 
 Usage: python scripts/cc1pi_fig_tki.py [N_per_seed]   (default 200000; NSEED=4)
 """
@@ -26,7 +28,8 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import res_xsec
 from adonis.core.event import EventRecord
-from adonis.fsi.cascade_discrete import DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig
+from adonis.fsi.cascade_discrete import (DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig,
+                                         sample_nucleons, propagate_nucleon_discrete)
 from scripts.h_cc0pi import generate_H
 
 NRES = int(sys.argv[1]) if len(sys.argv) > 1 else 200000
@@ -82,15 +85,36 @@ def res_C(n, seed):
                      pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.asarray(e["ipid"], jnp.int32),
                      W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
     pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
+    ko, ko_pos, ko_fz = pion.last_scat_ko                        # leading pi-scatter recoil proton
     nf = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf.apply(None, ev, key=jax.random.PRNGKey(seed + 13))
     ppi_f = np.asarray(ev.p_pi); pid_pi = np.asarray(ev.pid_pi)
-    lead = np.asarray(ev.p_N); pid_N = np.asarray(ev.pid_N)
+    # re-cascade the scatter knockout through the nucleon transport (ACHILLES UpdateKicked);
+    # its own (proton) knockout is a further candidate.
+    has_ko = np.linalg.norm(np.asarray(ko)[:, 1:], axis=1) > 1.0
+    cfg = _CFG(seed=3)
+    kn = jax.random.PRNGKey(seed + 17)
+    npos2, nmom2, nisp2 = sample_nucleons(jax.random.fold_in(kn, 1), m, cfg)
+    ko_in = jnp.where(jnp.asarray(has_ko)[:, None], jnp.asarray(ko), ev.p_N)   # dummy where none
+    ko_f, _, ko_ko, _, _, _, _ = propagate_nucleon_discrete(
+        jnp.asarray(ko_pos), ko_in, jnp.ones(m, bool), npos2, nmom2, nisp2, cfg,
+        jax.random.fold_in(kn, 2), fz0=jnp.asarray(ko_fz))
+    ko_f = np.where(has_ko[:, None], np.asarray(ko_f), 0.0)
+    ko_ko = np.where(has_ko[:, None], np.asarray(ko_ko), 0.0)
+    # leading proton = highest-momentum IN-WINDOW candidate among
+    # {RES nucleon (if proton), re-cascaded scatter knockout, its secondary knockout}
+    lead0 = np.where((np.asarray(ev.pid_N) == 2212)[:, None], np.asarray(ev.p_N), 0.0)
+    cands = np.stack([lead0, ko_f, ko_ko], axis=1)               # (m, 3, 4)
+    inwin = np.stack([_acc(cands[:, i], P_LO, P_HI) for i in range(3)], axis=1)
+    mom = np.linalg.norm(cands[:, :, 1:], axis=2) * inwin
+    lead = cands[np.arange(m), np.argmax(mom, axis=1)]
+    has_p = inwin.any(axis=1)
     # CC1pi+ signal: the pion SURVIVED as a pi+ (absorbed -> pid 0; charge-exchange -> 111/-211),
-    # and the leading nucleon is a proton in the window.  All three tracks in acceptance.
-    sel = ((pid_pi == 211) & (pid_N == 2212) & (w > 0)
-           & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI) & _acc(lead, P_LO, P_HI))
+    # and at least one proton candidate is in the window.  All three tracks in acceptance.
+    sel = ((pid_pi == 211) & has_p & (w > 0)
+           & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
     dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)
-    return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel])
+    return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel],
+                nsc=np.asarray(pion.last_nsc)[sel])           # pion scatter count (diagnostics)
 
 
 def res_H(n, seed):
@@ -98,7 +122,7 @@ def res_H(n, seed):
     kmu, pN, pPi, w = (np.asarray(x) for x in (kmu, pN, pPi, w))
     sel = (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pPi, PI_LO, PI_HI) & _acc(pN, P_LO, P_HI)
     dptt, pN_o, dat, dpt = observables(kmu[sel], pPi[sel], pN[sel], np.ones(sel.sum(), bool), seed)
-    return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel])
+    return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel], nsc=np.zeros(int(sel.sum()), np.int32))
 
 
 def load_data(name):
