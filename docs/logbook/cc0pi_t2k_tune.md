@@ -134,4 +134,13 @@ A~0.88 norm excess; Hessian guard at clip rails in the tune script.
   (-0.25); chi2/ndf 0.07->0.26. UNBIASED recovery; errors honest and large because the
   profiled norm absorbs most of the theta* effect (A_nom=1.143; residual shape 0.07) --
   quantifies the weak knob sensitivity of norm-profiled single-STV fits.
-- Running: 3-knob closures with MA*=1.15, profiled + ABSOLUTE-norm variants.
+- 3-knob closures with theta*=(1.6, 0.7, MA*=1.15), figures cc0pi_tune_closure_dpt_ma{,_abs}.png,
+  histories /tmp/adonis_tune_runs/closure_dpt_ma{,_abs}.npz:
+  * PROFILED norm: pulls +0.21 / +0.64 / -1.19 sig; A_nom=1.306 absorbed the combined effect
+    (residual shape 0.15); M_A central value moved the WRONG way (0.96 vs 1.15) -- the
+    norm-profiled single-STV fit cannot separate M_A from the normalization.
+  * ABSOLUTE norm: pre-tune chi2/ndf 2.18 -> post-tune 0.35; pulls -0.11 / +0.46 / +0.34 sig
+    (M_A = 1.226 +/- 0.223 vs truth 1.15). The tune VISIBLY moves the prediction onto the
+    pseudo-data and recovers all three injected parameters. The model is absolutely
+    normalized, so the absolute fit is legitimate; for real data it would expose the common
+    ~12% ADoNIS/ACHILLES norm excess instead of hiding it in A.
