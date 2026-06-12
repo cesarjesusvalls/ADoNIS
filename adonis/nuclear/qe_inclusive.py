@@ -21,8 +21,7 @@ import numpy as np
 from adonis.nuclear.spectral import load_spectral
 from adonis.primary.dcc.form_factors import kelly_sachs
 
-M_N = 938.919          # MeV
-ALPHA = 1.0 / 137.036
+from adonis.constants import mN as M_N, alpha as ALPHA  # Constant::mN, precise
 
 
 def _single_nucleon_response(Q2_MeV2, q, th):

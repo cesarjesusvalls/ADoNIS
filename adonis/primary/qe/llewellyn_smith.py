@@ -29,7 +29,7 @@ from adonis.primary.dcc.form_factors import (kelly_dirac_pauli, axial_dipole,
                                              axial_zexpansion, M_N_GEV, M_PI_GEV)
 
 # weak constants
-GF = 1.1663787e-5            # [GeV^-2]
+from adonis.constants import GF_GEV as GF  # [GeV^-2]
 COSTHC = 0.97373             # cos(theta_Cabibbo)
 HBARC2_GEV2_TO_NB = 0.3893793721e6   # (hbar c)^2 = 0.389 mb GeV^2 -> nb: x1e6
 M = M_N_GEV

@@ -18,8 +18,7 @@ from adonis.nuclear.spectral import load_spectral
 from adonis.primary.dcc.structure import HadronStructure, EM_CHANNELS
 from adonis.params import PhysicsParams
 
-M_N = 938.919
-ALPHA = 1.0 / 137.036
+from adonis.constants import mN as M_N, alpha as ALPHA  # Constant::mN, precise
 _HS = {}
 
 

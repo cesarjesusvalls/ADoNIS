@@ -16,8 +16,7 @@ import numpy as np
 from adonis.xsec.spectral import _polint
 
 _ACH = Path(__file__).resolve().parents[2].parent / "Achilles"
-M_MU = 105.7
-M_P = 938.27
+from adonis.constants import MASS_PDG_MUON as M_MU, MASS_PDG_PROTON as M_P
 
 
 class T2KFlux:

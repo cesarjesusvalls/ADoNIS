@@ -16,11 +16,8 @@ from __future__ import annotations
 import jax.numpy as jnp
 
 # --- constants (Achilles/Constants.hh) --------------------------------------- #
-HBARC = 197.3269804          # MeV fm
-M_N = (938.27208816 + 939.56542054) / 2.0   # 938.918754 MeV (Constant::mN)
-M_DELTA = 1232.25            # MeV
-M_PIP = 139.57018
-M_PI0 = 134.9764
+from adonis.constants import (HBARC, mN as M_N, mdelta as M_DELTA,
+                              mpip as M_PIP, mpi0 as M_PI0)
 
 # --- Oset parametrisation constants (OsetCrossSections.hh) -------------------- #
 CONST_FACTOR = 1.0 / 12.0 / jnp.pi          # fConstFactor

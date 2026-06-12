@@ -46,6 +46,6 @@ def nucleon_ff(Q2_GeV2):
     F2p = (Gmp - Gep) / (1 + tau);        F2n = (Gmn - Gen) / (1 + tau)
     z = (jnp.sqrt(_TCUT + Q2_GeV2) - np.sqrt(_TCUT - _T0)) / (jnp.sqrt(_TCUT + Q2_GeV2) + np.sqrt(_TCUT - _T0))
     FA = _zexpand(_CC, z)
-    mpi = 139.57018
+    mpi = C.mpip
     FAP = 2.0 * C.mN2 / (Q2_GeV2 * 1e6 + mpi ** 2) * FA          # Q2 GeV^2 -> MeV^2
     return dict(F1p=F1p, F1n=F1n, F2p=F2p, F2n=F2n, FA=FA, FAP=FAP)

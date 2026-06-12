@@ -20,8 +20,7 @@ from adonis.xsec.dirac import hadron_current_qe_dirac
 _METRIC = jnp.array([1.0, -1.0, -1.0, -1.0])
 # initial-nucleon mass used by FluxFactor = ParticleInfo(<had_in>).Mass() -- the rounded
 # Particles.yml values (neutron 939.57, proton 938.27), NOT the precise Constant::mn/mp.
-MASS_PDG_NEUTRON = 939.57
-MASS_PDG_PROTON = 938.27
+from adonis.constants import MASS_PDG_NEUTRON, MASS_PDG_PROTON  # noqa: E402
 _MASS_BY_PID = {2112: MASS_PDG_NEUTRON, 2212: MASS_PDG_PROTON}
 
 

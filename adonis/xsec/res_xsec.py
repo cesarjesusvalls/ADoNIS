@@ -25,11 +25,11 @@ _MN = C.mN
 _SF_N = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
 _SF_P = SpectralFunction("data/Spectral_Functions/pke12p_tot.data")
 _IMP = SpectralImportanceSampler(_SF_N)          # struck nucleon proposal ~ |p|^2 S_n for ALL channels
-M_MU = 105.7
+from adonis.constants import MASS_PDG_MUON as M_MU
 _TWO_PI = 2 * np.pi
 N_NUC = 6
-M_PIP = 139.57018; M_PI0 = 134.9764
-M_P = 938.27; M_N = 939.57
+M_PIP = C.mpip; M_PI0 = C.mpi0
+M_P = MASS_PDG_PROTON; M_N = MASS_PDG_NEUTRON   # channel rest masses go through ParticleInfo (Particles.yml)
 SPIN_AVG = 0.5
 
 # Pion KINEMATIC mass for the 3-body phase space.  Single source of truth: conventions.kin_m_pi

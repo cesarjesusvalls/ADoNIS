@@ -25,9 +25,8 @@ import jax.numpy as jnp
 from adonis.paths import achilles_data_root
 from adonis.primary.dcc.form_factors import M_PI_GEV  # GeV; we work in MeV here
 
-HBARC = 197.32              # MeV fm
-M_PI = 139.57018           # charged pion [MeV]
-M_N = 938.27208816         # proton [MeV]
+from adonis.constants import mpip as M_PI, mp as M_N  # charged pion / proton [MeV]
+HBARC = 197.32              # MeV fm (verbatim local rounding of the ANL transcription)
 
 # wave order in the ANL files; label L_{2I,2J} -> (L, twoI, twoJ)
 WAVES = ["S11", "S31", "P11", "P13", "P31", "P33", "D13", "D15", "D33", "D35",
