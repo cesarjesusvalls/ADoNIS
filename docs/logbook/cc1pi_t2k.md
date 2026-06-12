@@ -181,3 +181,13 @@ Open next steps:
   P(in-window proton) and post-cascade leading-proton spectrum, ACH (0.6008 measured) vs ADO
   at mono-2GeV; then a proton-beam-through-carbon oracle (resgen image, proton beam config)
   to gate the nucleon transport in isolation at 1-2 GeV.
+
+## #8 — standing after all fixes (final rerun, 100k x 4)
+
+- T2K CC1pi integrals [nb/CH]: ACH 1.747e-6 / ADO 1.818e-6 = +4.1% (was +4.7% pre-NN-inel,
+  +3.6% at iteration 1 with fewer fidelity mechanisms). Carbon cell: 1.2666e-6 vs ACH-C
+  1.1808e-6 = +7.3%. H cell unchanged (-2.9%).
+- All three fidelity mechanisms now in (knockouts +1%, conversion -0.3%, NN-inel veto -0.6%);
+  net ~cancel. The remaining +7% carbon = the open nucleon-transport proton-leg gap at
+  p >~ 1 GeV (logbook #7: -12% at mono-2GeV, diluted by the T2K flux). Next: proton-beam
+  12C transport oracle.
