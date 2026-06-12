@@ -7,11 +7,14 @@ difference (no tuned constants):
 |---|---|---|
 | absorption **+5%** | ACHILLES PionAbsorption **isospin partition** (π⁺p, π⁻n use (5/6)·oset_abs) | `9124afb` |
 | reaction **−4%** | DCC scatter σ was **isospin-averaged**; ACHILLES is charge-resolved per nucleon | `1ad6cf0` |
+| reaction **−1.3% @305/335** | beam-pion **escape** was a sphere; ACHILLES uses the z≥radius **plane** | `1b938a2` |
 
-After both, π⁺¹²C transparency matches ACHILLES to ~1% in BOTH reaction and absorption at 245/305/335.
-A small **~1–1.3% reaction residual at 305/335 MeV** remains (entirely in *scatter-survived*; absorption
-matched) — OPEN, under investigation (see §4). It is the only visible ACH/ADO difference left in the
-T2K CC0π figures (it shifts the Δ region of dσ/dW). Last updated 2026-06.
+After all three, π⁺¹²C transparency matches ACHILLES at 305/335 to <0.6% (pulls +1.7σ / −0.0σ reaction;
+abs |pull|≤0.4σ). The ONLY remaining item is a **+1.5% (+3.9σ) reaction overshoot at 245 MeV** — the
+escape fix adds a ~uniform +1.5–1.8%, which over-corrects the lowest bin (pre-fix deficit there was only
+−0.3%). Split (logbook #14): on identical configs the escape-fixed cascade is +0.8% (+1.4σ) at 245, and
+~+0.7% more comes from ADoNIS's own-config ensemble vs ACHILLES's. Both small/OPEN (see §4). Last
+updated 2026-06.
 
 The observable throughout: π⁺+¹²C transparency, ACHILLES `CrossSection` mode — beam uniform in
 p∈[80,500] MeV over a disk R=10 fm; σ = πR²·P(reaction|p), πR²=3141.6 mb. ADoNIS:
@@ -76,40 +79,44 @@ per-nucleon, and the nonlinearity does not commute with the p/n average.
 
 ---
 
-## 3. Current transparency match (tightened oracle)
+## 3. Current transparency match (tightened oracle, AFTER the escape fix `1b938a2`)
 
-Combined ACHILLES oracle ~6.5M attempts (±~1.8 mb reaction / ±~1.5 mb abs), 1M-event ADoNIS,
-charge-resolved + isospin-partition + all-36k-config build. ADO/ACH:
+Combined ACHILLES oracle ~6.5M attempts (±~1.8 mb reaction / ±~1.0 mb abs), 1M-event ADoNIS, all three
+fixes + all-36k configs. ADO/ACH (pull):
 
-| p (MeV) | REACTION | ABSORPTION |
+| p (MeV) | REACTION (pull) | ABSORPTION (pull) |
 |---|---|---|
-| 245 | 575.4 / 577.0 = **0.997** (0.7σ) | 169.2 / 170.1 = 0.994 |
-| 305 | 597.8 / 606.5 = **0.986** (~4σ) | 166.1 / 166.1 = 1.000 |
-| 335 | 518.9 / 525.6 = **0.987** (~3σ) | 144.1 / 143.6 = 1.003 |
+| 245 | 585.4±1.2 / 577.0±1.8 = **1.015 (+3.9σ)** | 169.6 / 170.1 = 0.997 (−0.4σ) |
+| 305 | 610.3±1.2 / 606.5±1.8 = **1.006 (+1.7σ)** | 165.8 / 166.1 = 0.998 (−0.2σ) |
+| 335 | 525.6±1.2 / 525.6±1.7 = **1.000 (−0.0σ)** | 143.4 / 143.6 = 0.998 (−0.2σ) |
 
-Absorption fully matched (<0.6%). Reaction matched at 245; a real ~1.3% residual at 305/335 → §4.
+Absorption fully matched (|pull|≤0.4σ). Reaction 335 perfect, 305 +1.7σ, **245 overshoots +3.9σ (+1.5%)**
+→ §4. (Pre-escape-fix this table was 0.997/0.986/0.987 — the −1.3% at 305/335 was the escape; the fix
+over-corrects only 245.)
 
 ---
 
-## 4. OPEN: ~1–1.3% reaction residual at 305/335 MeV
+## 4. OPEN: +1.5% reaction overshoot at 245 MeV (residual, post-escape-fix)
 
-**It is entirely in scatter-survived; absorption is matched.** Clean fixed-energy comparison, BOTH
-codes with Pauli ON, charge-resolved σ (ACHILLES `achilles:scatrec` CASCSEQ at KickMomentum [pe−3,pe+3];
-ADoNIS `propagate_discrete`):
+The two big residuals and the 305/335 −1.3% are fixed (§1–3). What remains is a **+3.9σ (+1.5%) reaction
+overshoot at 245 MeV** introduced by the escape fix. The escape fix is itself correct (it matches
+ACHILLES's `external_test` plane escape and was proven exactly at 305 by the replay, logbook #12). The
+245 overshoot decomposes (logbook #13–14) into two small pieces:
+- **+0.8% (+1.4σ) in the cascade itself**: the escape-fixed cascade on IDENTICAL ACHILLES configs gives
+  1.008 at 245 (vs 1.0005 at 305). So the plane escape slightly over-adds at low energy — likely the
+  ADoNIS radius (≈6.05 fm, minDensity 4e-6) vs ACHILLES (≈6.55 fm) interacting with the plane cut, or a
+  low-energy post-scatter-escape detail. Not yet pinned.
+- **~+0.7% from the config ensemble**: ADoNIS's own sampled nuclei react slightly more than ACHILLES's
+  dumped nuclei at 245 (own-config transparency +1.5% vs identical-config replay +0.8%).
 
-| | reacted | abs | scatter-surv (=reac−abs) | mean nscat/pion |
-|---|---|---|---|---|
-| **305** ACH | 0.1942 ±0.0007 | 0.0527 | 0.1416 | 0.2120 |
-| **305** ADO | 0.1892 (−2.6%) | 0.0532 (**matched**) | 0.1360 (−4.0%) | *(measuring)* |
-| **335** ACH | 0.1669 ±0.0010 | 0.0460 | 0.1209 | 0.1942 |
-| **335** ADO | 0.1645 (−1.4%) | 0.0464 (**matched**) | 0.1181 (−2.3%) | *(measuring)* |
+Both are sub-percent and only at the lowest bin; absorption is matched everywhere. Next: test the radius
+value (set ADoNIS escape radius = ACHILLES's 6.55) and re-replay at 245.
 
-So with σ_scat, σ_abs and the abs/scatter branching all matched, ADoNIS produces fewer
-**scattered-and-survived** pions at high energy. **Root cause (found via the event-by-event replay, see
-Logbook #8/#10): ADoNIS Pauli-blocks ~2% more scatters than ACHILLES at high pion energy.** On identical
-nuclei the no-Pauli first-pass MATCHES (1.009) but the with-Pauli reaction is −1.6% — so it is neither a
-σ/geometry nor a multiplicity effect; it is the Pauli scatter-blocking step. (The earlier
-"multiplicity matched / it's in the accumulation" framing was wrong.)
+### (historical) how the 305/335 −1.3% was hunted — see Logbook below
+The fixed-energy table that drove the hunt (BOTH codes Pauli ON, charge-resolved σ): at 305 ADoNIS
+reacted 0.1892 vs ACHILLES 0.1942 (−2.6%) with absorption matched — i.e. the deficit sat in
+scatter-survived. The chain σ_scat→σ_abs→sampling→Pauli→**escape** is the Logbook. (An earlier draft
+mis-attributed this to Pauli over-blocking; logbook #11–12 corrected it to the escape geometry.)
 
 **Ruled OUT for this residual (all measured / matched):**
 - **σ_scat(W)** — charge-resolved σ matches ACHILLES `MBSCAT` dump to **<0.5% in every W bin** for both
@@ -164,17 +171,16 @@ Fix (`cascade_discrete.py` step escape): beam pion (`nsc==0`) → plane `pos_z�
 (`nsc>0`, internal) → sphere. (This was wrongly "ruled out as negligible" early on — it is THE residual.)
 Validated on identical configs (#12) and on the high-stat transparency (§3 will be updated).
 
-13. **post-fix transparency** (1M ADoNIS own configs, escape fix) vs tightened oracle:
-    REACTION 245 **+1.5%**, 305 **+0.6%**, 335 **0.0%**; abs all matched. So the fix closes 305/335 but
-    245 now OVERSHOOTS. But the **replay on identical configs matches at BOTH** (245 1.007/0.6σ,
-    305 1.0005) — so the escape fix itself is correct; the +1.5% at 245 is the **own-config vs
-    ACHILLES-dumped-config ensemble difference** (~0.7%), on top of the fix being within stats on
-    identical configs. Candidate was config ROTATION (plane escape breaks z-symmetry) — but TESTED and
-    REJECTED: with the escape fix, rotate=True (1.016/1.013/1.009) vs rotate=False (1.012/1.009/1.006)
-    is ~null/slightly worse (N=300k noise). So the residual ~0.7% own-vs-dumped-config difference is NOT
-    rotation; cause unidentified (sub-1%, near the oracle/stat floor). NET: escape fix closes 305/335
-    (the main residual, −1.4%→matched) but 245 reads +1.5% high; on identical configs ADoNIS matches
-    ACHILLES to <0.7% at both.
+13. **post-fix transparency** (1M ADoNIS own configs, escape fix) vs tightened oracle, REACTION pulls:
+    245 **+3.9σ (1.015)**, 305 **+1.7σ (1.006)**, 335 **−0.0σ (1.000)**; abs all matched (|pull|≤0.4σ).
+    The fix closes 305/335 but 245 overshoots.
+14. **245 replay** (escape-fixed `propagate_discrete` Pauli-ON on 120000 IDENTICAL ACHILLES dumped
+    configs, 6 keys): ADoNIS 0.1843 vs ACHILLES 0.1827 = **1.008 (+0.8%, +1.4σ)** — cf. 305 replay
+    1.0005. So on identical nuclei the escape-fixed cascade is +0.8% at 245 (vs exact at 305): the plane
+    escape slightly over-adds at low energy. The remaining +0.7% (own-config transparency +1.5% −
+    identical-config replay +0.8%) is an own-vs-ACHILLES-config ensemble difference. Config ROTATION
+    tested + REJECTED as its cause (rotate on/off ~null at N=300k). Both pieces sub-1%; OPEN.
+    NEXT: set ADoNIS escape radius = ACHILLES Radius() (≈6.55 vs 6.05 fm) and re-replay at 245.
 
 ---
 
