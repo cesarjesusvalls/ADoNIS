@@ -164,6 +164,18 @@ Fix (`cascade_discrete.py` step escape): beam pion (`nsc==0`) → plane `pos_z�
 (`nsc>0`, internal) → sphere. (This was wrongly "ruled out as negligible" early on — it is THE residual.)
 Validated on identical configs (#12) and on the high-stat transparency (§3 will be updated).
 
+13. **post-fix transparency** (1M ADoNIS own configs, escape fix) vs tightened oracle:
+    REACTION 245 **+1.5%**, 305 **+0.6%**, 335 **0.0%**; abs all matched. So the fix closes 305/335 but
+    245 now OVERSHOOTS. But the **replay on identical configs matches at BOTH** (245 1.007/0.6σ,
+    305 1.0005) — so the escape fix itself is correct; the +1.5% at 245 is the **own-config vs
+    ACHILLES-dumped-config ensemble difference** (~0.7%), on top of the fix being within stats on
+    identical configs. Candidate was config ROTATION (plane escape breaks z-symmetry) — but TESTED and
+    REJECTED: with the escape fix, rotate=True (1.016/1.013/1.009) vs rotate=False (1.012/1.009/1.006)
+    is ~null/slightly worse (N=300k noise). So the residual ~0.7% own-vs-dumped-config difference is NOT
+    rotation; cause unidentified (sub-1%, near the oracle/stat floor). NET: escape fix closes 305/335
+    (the main residual, −1.4%→matched) but 245 reads +1.5% high; on identical configs ADoNIS matches
+    ACHILLES to <0.7% at both.
+
 ---
 
 ## 5. Instrumentation & reproduction
