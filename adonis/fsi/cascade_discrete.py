@@ -83,6 +83,9 @@ class DiscreteCascadeConfig:
     seed: int = 0
     cylinder: bool = False   # ACHILLES Probability: Cylinder (hard b^2<sigma/pi) vs Gaussian
                              # exp(-pi b^2/sigma).  T2K run-card uses Cylinder; Fig-3 oracle Gaussian.
+    prob: str = ""           # interaction-probability model: "gaussian"/"cylinder"/"pion".  Empty ->
+                             # back-compat: cylinder bool picks Cylinder vs Gaussian.  "pion" =
+                             # ACHILLES Probability: Pion, exp(-sqrt(2 pi/sigma) b) (Cascade.cc:47-52).
     fast_xsec: bool = True   # evaluate Oset/DCC cross sections only for the K nearest in-slab nucleons
                              # (scatter back into the (n,A) grid); bit-exact, ~4x cheaper per step.
     pauli: bool = True       # Pauli-block the outgoing nucleon(s) of scatter/absorption (ACHILLES
@@ -196,10 +199,16 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         sa = sa * jnp.where(like_charge, 5.0 / 6.0, 1.0)
         sig = sa + ss                                                # mb
 
-        if cfg.cylinder:
+        _mode = cfg.prob if cfg.prob else ("cylinder" if cfg.cylinder else "gaussian")
+        _sfm = jnp.clip(sig * MB_TO_FM2, 1e-12, None)                 # sigma in fm^2
+        if _mode == "cylinder":
             prob = jnp.where(cand & (perp2 < jnp.clip(sig * MB_TO_FM2, 0.0, None) / jnp.pi), 1.0, 0.0)
+        elif _mode == "pion":
+            # ACHILLES Probability: Pion -- exp(-sqrt(2 pi/sigma) b), b=sqrt(perp2) (Cascade.cc:47-52).
+            # Integrates over the impact-parameter plane to sigma, like Gaussian/Cylinder.
+            prob = jnp.where(cand, jnp.exp(-jnp.sqrt(2.0 * jnp.pi * perp2 / _sfm)), 0.0)
         else:
-            prob = jnp.where(cand, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
+            prob = jnp.where(cand, jnp.exp(-jnp.pi * perp2 / _sfm), 0.0)
         sk, ku, kc, kf, ka, kab = jax.random.split(sk, 6)
         passes = cand & (jax.random.uniform(ku, (n, A)) < prob)
         # interacting nucleon: "step" = smallest impact parameter within the slab; "interaction" =
