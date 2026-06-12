@@ -217,3 +217,23 @@ Open next steps:
   full kicked-particle recursion (still kind-1: walks at nominal, records per branch). This
   is the remaining item between the current +7% and the <=1% goal for CC1pi; CC0pi is
   already at ~1% because absorption events have little nucleon-side activity in-window.
+
+## #10 — shared-state event cascade: DESIGN (implementation in progress)
+
+adonis/fsi/cascade_event.py: ONE nucleus per event, all hadrons co-evolve.
+- Fixed particle slots (n, K_PART=8): slot0 = pion (RES), slot1 = primary nucleon; free slots
+  take products (pi-scatter recoils, NN recoils, NN->NDelta decay nucleons + created pions).
+- Per step (0.04 fm): per-slot slab search against the SHARED background (n, A=12) with the
+  SHARED consumed mask; per-slot sigma by species (pion: oset abs + MB elastic + conversion;
+  nucleon: NN elastic + NN->NDelta); branch picks as in the existing kernels; products spawn
+  into free slots (incl. created pions, which can later be ABSORBED -> fixes the
+  too-strong made-pion veto); Pauli per product; formation zones per ACHILLES.
+- Escape: in-event particles are INTERNAL (ACHILLES status) -> sphere escape |pos|>radius &
+  outward for ALL particles (the external z-plane rule is cascade-mode-only).
+- Both particles start at the TRUE struck-nucleon vertex (consumed), not resampled positions.
+- early_exit while_loop (no active particle can interact); max_steps a safety bound.
+- v1 nominal-only (no kind-1 records); records per-branch can be added once forward physics
+  gates (same compressed-slot pattern, now per particle slot).
+- Gates: (1) pion-only and nucleon-only limits reproduce the existing single-particle
+  cascades statistically; (2) mono-2GeV carbon signal fraction 0.167 -> ~0.148 (ACH);
+  (3) T2K CC1pi carbon +7% -> ~1%.
