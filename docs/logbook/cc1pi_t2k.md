@@ -327,3 +327,22 @@ Single-harness raw-count bisect (identical cuts, NO SCALE, carbon RES-C both sid
   RES-C CC1pi cross section sit ~7-10% below ACHILLES, and if so where (RES total sigma at
   the T2K flux, vs the +-1% fixed-energy validations)?  This is the next physics target;
   the normalization plumbing is now clean and first-principles on both sides.
+
+## #15 — pN-tail discrepancy is CASCADE COMPOSITION (primary ruled out by the sign flip)
+
+- The pN high-momentum tail FLIPPED sign across cascade engines, on the IDENTICAL primary
+  (same res_xsec + spectral function):
+    pN 240-600 ACH/ADO:  factorized #1 = 0.90 (ADO 11% HIGH)  ->  event cascade = 1.30 (ADO 23% LOW)
+    dpTT wide bin:        factorized #1 = 0.81 (ADO HIGH)      ->  event cascade = 1.54 (ADO LOW)
+    carbon integral:      factorized +3.6%/+7.3% (HIGH)        ->  event cascade -5.6% (LOW)
+- A tail that flips sign when ONLY the cascade changes CANNOT be primary (Fermi/SRC/spectral)
+  -> the no-FSI primary pN test is unnecessary (would be misdirected). RULED OUT.
+- Diagnosis: the two compositions BRACKET ACHILLES on the high-pN leading proton:
+    * factorized (leading N + 2 knockout generations) OVER-populates the high-pN tail;
+    * shared-state event cascade (all nucleons co-evolve, shared consumed set, full re-cascade)
+      OVER-depletes it.
+  So the headline +3.5% cut-bisect fraction hides a real SHAPE problem: the event cascade
+  removes too much high-momentum leading-proton strength; pN (and dpTT wings) are where it shows.
+- NEXT (running): factorized vs event leading-proton |p| + pN spectra on IDENTICAL primary
+  events, to localize which event-cascade mechanism over-depletes high-pN (leading-proton
+  consumption / "highest-momentum surviving proton" competition / re-cascade depth).
