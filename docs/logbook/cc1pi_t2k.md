@@ -475,3 +475,29 @@ would push ADoNIS's tail EVEN HIGHER -> WORSEN the ACH/ADO discrepancy. Therefor
 CAVEAT: rests on ADoNIS-spline == ACHILLES amplitude (documented bit-match). DECISIVE next check:
 ADoNIS-spline dsigma/dW DIRECTLY vs ACHILLES (predict spline sits ABOVE ACHILLES at high W; if so
 the excess is non-amplitude and the 3-body phase-space/sampling at high W is the next target).
+
+## #21 — RESOLUTION: the CC1pi chain ALWAYS used spline; #20's worry is moot, tail is non-amplitude
+
+User flagged (correctly): a byte-identical result across an interp change is a bug. Hunt found it
+-- scripts/cc1pi_fig_tki.py:29 PINS `dcc.BATCH_INTERP = "spline"` at import (9 production scripts do
+the same: cc0pi_disaggregated, free_proton_highstat, h_cc0pi, cc0pi_tune_adonis, make_single_nucleon_fig,
+resdump_angular_audit, amps2_resdump_audit, cc1pi_disaggregated, cc1pi_fig_tki). So the ENTIRE CC1pi
+diagnostic history (cc1pi_ratios #17/#19, the cut-ladder, the 4-way) ran on SPLINE. The bilinear
+"default" in dcc_current was only ever for ad-hoc fast loops; every faithful analysis overrides it.
+=> editing the dcc_current DEFAULT bilinear->spline was a NO-OP for CC1pi -> byte-identical (#19==#17
+   == the spline rerun), exactly as the import-time pin predicts. No cache bug; my mental model was wrong.
+Reconcile: fresh res_C(120k,0) bilinear=1.3225e-6 vs spline=1.2573e-6; cc1pi_ratios RES-C 4-seed mean
+1.2554e-6 == SPLINE (not bilinear). Confirms the chain is spline.
+
+CONSEQUENCES:
+- The high-W/pi_p tail excess (W chi2 45.7, pi_p 22.9) and the +3.5% norm are the FAITHFUL spline
+  result. Interpolation is NOT the cause. (bilinear would make the selected sample HIGHER, 1.3225 vs
+  1.2573 -> worse, not better.)
+- #20's "spline would worsen the discrepancy" is MOOT/CORRECTED: there was never a bilinear CC1pi
+  baseline to worsen; CC1pi is already spline. The interp_dsigdW (spline>bilinear at high W) and the
+  in-situ primary (spline raises ADoNIS toward ACHILLES) tests stand as amplitude-interp facts, but
+  they do not bear on the CC1pi tail because CC1pi never used bilinear.
+- NET: amplitude interpolation is settled (faithful spline, always on for the real analyses). The
+  W/pi_p tail + norm are driven by the NON-amplitude machinery -> the 3-body phase-space SAMPLING
+  (isotropic vs ACHILLES t-channel ThreeBodyMapper, #18A) is the remaining target.
+- Reverted dcc_current default to bilinear (original state; production scripts pin spline explicitly).
