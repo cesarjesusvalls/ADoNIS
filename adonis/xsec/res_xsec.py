@@ -96,6 +96,95 @@ def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
     return dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
 
 
+# ===== ACHILLES ThreeBodyMapper: t-channel pion split + isotropic mu/N split ================== #
+# Bit-faithful port of scripts/achilles_mirror_gen (validated vs ACHILLES RESDUMP), generalized to
+# arbitrary k_nu / p_struck.  ADoNIS's default _sample_3body uses an ISOTROPIC pion split (same
+# integral, higher variance); ACHILLES uses this t-channel map (FinalStateMapper.cc TChannelMomenta).
+_TBM_ALPHA, _TBM_CTMAX, _TBM_CTMIN, _TBM_AMCT = 0.9, 1.0, -1.0, 1.0
+SAMPLER_3BODY = "isotropic"          # "isotropic" (default) | "tchannel" (ACHILLES-faithful)
+
+
+def _m2(p):
+    return p[:, 0] ** 2 - np.sum(p[:, 1:] ** 2, axis=1)
+
+
+def _boost_to_rest(ph, q):
+    """ThreeBodyMapper::Boost lflag=1: lab vector ph -> rest frame of q."""
+    rsq = np.sqrt(np.clip(_m2(q), 1e-12, None))
+    dot = np.sum(q[:, 1:] * ph[:, 1:], axis=1)
+    p0 = (q[:, 0] * ph[:, 0] - dot) / rsq
+    c1 = (p0 + ph[:, 0]) / (rsq + q[:, 0])
+    return np.concatenate([p0[:, None], ph[:, 1:] - c1[:, None] * q[:, 1:]], axis=1)
+
+
+def _tj1(cn, amcxm, amcxp, ran):
+    ce = 1.0 - cn
+    return (ran * amcxm ** ce + (1.0 - ran) * amcxp ** ce) ** (1.0 / ce)
+
+
+def _hj1(cn, amcxm, amcxp):
+    ce = 1.0 - cn
+    return (amcxp ** ce - amcxm ** ce) / ce
+
+
+def _basis_from(nhat):
+    """Orthonormal basis (e1,e2,n) with 3rd axis n = nhat (N,3)."""
+    n = nhat / np.linalg.norm(nhat, axis=1, keepdims=True)
+    ref = np.tile([1.0, 0.0, 0.0], (len(n), 1)); alt = np.tile([0.0, 1.0, 0.0], (len(n), 1))
+    use_alt = np.abs(np.sum(n * ref, axis=1)) > 0.9
+    ref = np.where(use_alt[:, None], alt, ref)
+    e1 = ref - np.sum(ref * n, axis=1)[:, None] * n
+    e1 = e1 / np.linalg.norm(e1, axis=1, keepdims=True)
+    return e1, np.cross(n, e1), n
+
+
+def _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u):
+    """ACHILLES ThreeBodyMapper proposal: TChannelMomenta (pion split, t-channel along nu) +
+    Isotropic2Momenta (mu/N split).  Same signature/return as _sample_3body; only the pion-split
+    proposal+weight differ (the mu/N split stays isotropic, identical to _sample_3body)."""
+    s2, s3, s4 = M_MU ** 2, m_Nf ** 2, m_pi ** 2
+    P = k_nu + p_struck
+    s = _m2(P); sqrts = np.sqrt(np.clip(s, 1e-9, None))
+    s23max = (sqrts - m_pi) ** 2; s23min = max((M_MU + m_Nf) ** 2, 1e-8)
+    s23 = s23min + (s23max - s23min) * u[:, 0]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
+    # --- TChannelMomenta: pion (mass^2 s4) split off; p1out = (muN) mass^2 s23 ---
+    s1in = _m2(k_nu); s2in = _m2(p_struck)
+    p1inhE = (s + s1in - s2in) / (2 * sqrts); p1inmass = sqrts * _sqlam(s, s1in, s2in) / 2
+    p1outhE = (s + s23 - s4) / (2 * sqrts); p1outmass = sqrts * _sqlam(s, s23, s4) / 2
+    a = (0.0 - s1in - s23 + 2 * p1outhE * p1inhE) / (2 * np.clip(p1inmass * p1outmass, 1e-30, None))
+    a = np.where(a <= 1.0 + 1e-6, 1.0 + 1e-6, a)
+    a = np.where(a < _TBM_AMCT, _TBM_AMCT, a)
+    a = np.where(np.abs(a - _TBM_CTMAX) < 1e-14, _TBM_CTMAX, a)
+    aminct = _tj1(_TBM_ALPHA, a - _TBM_CTMIN, a - _TBM_CTMAX, u[:, 1]); ct = a - aminct
+    st = np.sqrt(np.clip(1 - ct ** 2, 0, None)); phi = _TWO_PI * u[:, 2]
+    nu_cm = _boost_to_rest(k_nu, P)
+    e1, e2, nhat = _basis_from(nu_cm[:, 1:])
+    dirv = (st * np.cos(phi))[:, None] * e1 + (st * np.sin(phi))[:, None] * e2 + ct[:, None] * nhat
+    p1out_cm = np.concatenate([p1outhE[:, None], p1outmass[:, None] * dirv], axis=1)
+    p_muN = _boost_to_lab(p1out_cm, P); p_pi = P - p_muN
+    tcw = 2.0 * sqrts / (-(a - ct) ** _TBM_ALPHA * _hj1(_TBM_ALPHA, a - _TBM_CTMIN, a - _TBM_CTMAX)
+                         * np.clip(p1outmass, 1e-30, None) * np.pi)
+    # --- Isotropic2Momenta: muN -> mu + N (IDENTICAL to _sample_3body split B) ---
+    Emu = (s23 + s2 - s3) / (2 * rs23); pB = rs23 * _sqlam(s23, s2, s3) / 2
+    ctB = 2 * u[:, 3] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 4]
+    dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
+    mu_cm = np.concatenate([Emu[:, None], pB[:, None] * dB], axis=1)
+    N_cm = np.concatenate([np.sqrt(s3 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
+    k_mu = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
+    I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, s2, s3), 1e-12, None)
+    gw = (2 * np.pi) ** 5 * tcw * I2W_B / (s23max - s23min)
+    J_3body = np.where(np.isfinite(gw) & (gw > 0), 1.0 / np.clip(gw, 1e-300, None), 0.0)
+    valid3 = ((s23max > s23min) & (_sqlam(s, s23, s4) > 0) & (_sqlam(s23, s2, s3) > 0)
+              & (p1outmass > 0) & np.isfinite(gw) & (gw > 0))
+    return dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
+
+
+def _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u):
+    if SAMPLER_3BODY == "tchannel":
+        return _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u)
+    return _sample_3body(k_nu, p_struck, m_pi, m_Nf, u)
+
+
 def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
     """One RES channel for the 12C importance estimator: spectrum beam + importance struck nucleon
     + the shared 3-body core (_sample_3body)."""
@@ -111,7 +200,7 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
     J_had = np.ones(n)                                          # |p|^2 S J_had absorbed -> N_NUC
-    tb = _sample_3body(k_nu, p_struck, m_pi, m_Nf, u[:, 5:10])  # same random dims as before
+    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u[:, 5:10])  # isotropic | tchannel
     # ACHILLES QESpectralMapper removal-energy ceiling (HadronicMapper.cc:50-53), Smin = 3-body thr.
     det_e = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
     emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
