@@ -116,18 +116,28 @@ def res_C(n, seed):
            & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
     dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)
     pim = np.linalg.norm(ppi_f[sel][:, 1:], axis=1)
+    qv = (knu - kmu)[sel]; totv = qv + pstr[sel]                 # vertex hadronic 4-mom
+    Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
+    Q2v = (np.sum(qv[:, 1:] ** 2, axis=1) - qv[:, 0] ** 2) / 1e6  # GeV^2
     return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel],
                 nsc=np.asarray(pion.last_nsc)[sel],           # pion scatter count (diagnostics)
                 pi_p=pim, pi_cth=ppi_f[sel][:, 3] / np.clip(pim, 1e-9, None),
-                lp_p=np.linalg.norm(lead[sel][:, 1:], axis=1))
+                lp_p=np.linalg.norm(lead[sel][:, 1:], axis=1), W=Wv, Q2=Q2v)
 
 
 def res_H(n, seed):
     knu, kmu, pN, pPi, w = generate_H(n, seed=seed)
-    kmu, pN, pPi, w = (np.asarray(x) for x in (kmu, pN, pPi, w))
+    knu, kmu, pN, pPi, w = (np.asarray(x) for x in (knu, kmu, pN, pPi, w))
     sel = (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pPi, PI_LO, PI_HI) & _acc(pN, P_LO, P_HI)
     dptt, pN_o, dat, dpt = observables(kmu[sel], pPi[sel], pN[sel], np.ones(sel.sum(), bool), seed)
-    return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel], nsc=np.zeros(int(sel.sum()), np.int32))
+    pim = np.linalg.norm(pPi[sel][:, 1:], axis=1)
+    pstr = np.tile([938.27, 0, 0, 0.0], (int(sel.sum()), 1))     # free proton at rest
+    qv = (knu - kmu)[sel]; totv = qv + pstr
+    Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
+    Q2v = (np.sum(qv[:, 1:] ** 2, axis=1) - qv[:, 0] ** 2) / 1e6
+    return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel], nsc=np.zeros(int(sel.sum()), np.int32),
+                pi_p=pim, pi_cth=pPi[sel][:, 3] / np.clip(pim, 1e-9, None),
+                lp_p=np.linalg.norm(pN[sel][:, 1:], axis=1), W=Wv, Q2=Q2v)
 
 
 def load_data(name):
