@@ -725,3 +725,28 @@ cc1pi_ratios with the angular fix (2200), tchannel, spline:
    remaining CANDIDATE by elimination -- NOT demonstrated. A direct test (decompose tail events by
    proton origin: RES nucleon vs knockout; and/or compare W-resolved cascade survival/knockout to
    ACHILLES) is needed before claiming the composition is the cause.
+
+## #29 — knockout ablation EXONERATES the composition; tail is the pion FSI fate on p->p pi+
+
+Ablation (cc1pi_knockout_ablation.py, KNOCKOUT_MODE full/no_secondary/res_only, 80k x4, same seeds):
+          | full      | no_secondary | res_only
+  sigma   | 1.8381e-6 | 1.8378e-6    | 1.8276e-6  (-0.6%)
+  W chi2  | 16.82     | 16.81        | 15.77
+  pi_p chi2 | 9.73    | 9.73         | 9.00
+  W>1390 ACH/ADO  | 0.605 | 0.605    | 0.614
+  pi_p>600 ACH/ADO| 0.762 | 0.762    | 0.770
+  lp_p chi2 | 0.75    | 0.75         | 0.72
+
+=> Removing ALL knockouts (res_only) barely moves anything; the high-W/pi_p tail PERSISTS. The
+   secondary knockout is exactly null (full==no_secondary). DIRECT EVIDENCE: the knockout / cascade-
+   COMPOSITION path is negligible -> the composition hypothesis (#28 candidate) is EXONERATED, not by
+   inference but by ablation.
++ lp_p (leading-proton momentum) AGREES with ACHILLES (chi2 ~0.7) [user's observation] -> proton side
+   faithful.  The signal is ~all p->p pi+ with the RES proton.
+=> The high-W/pi_p tail is the PION's FSI fate on p->p pi+ events: ADoNIS RETAINS too many high-momentum
+   pions vs ACHILLES (ADO high at high W/pi_p; ACH/ADO 0.61/0.77). Sign = ADoNIS UNDER-removes high-
+   momentum pions (abs/scatter-out/charge-exchange too weak at high pion momentum), even though the
+   TOTAL pi+-12C transparency matched ~1-5% (validated at lower momentum; high-momentum slice not).
+NEXT (direct test): momentum-resolved pion survival/transmission ADoNIS-cascade vs ACHILLES (FSI vs
+   no-FSI hepmcs) to localize which pion momenta diverge; then audit oset abs (Delta-falloff) + MB
+   scatter magnitude/angle + charge-exchange at high pion momentum.
