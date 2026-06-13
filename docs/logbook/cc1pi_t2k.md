@@ -305,3 +305,25 @@ Single-harness raw-count bisect (identical cuts, NO SCALE, carbon RES-C both sid
 - NEXT: (1) re-derive the figure SCALE so the absolute integral matches the +3.5% count
   (decouple normalization from cascade physics in cc1pi_fig_tki.py); (2) the residual ~1.4%
   piwin step -> DCC angular distribution at the relevant W (PHASE_I follow-up).
+
+## #14 — SCALE_ACH removed; the -6.9% is NOT a normalization artifact (hypothesis falsified)
+
+- All hardcoded `SCALE_ACH = 6.266697e-02*1e-3/8.905269e+05` magic numbers removed from the
+  codebase (7 figure scripts + the two extractors). New adonis/data/oracle/normalization.py:
+  hepmc_norm() reads GenCrossSection from the header + sums event weights in one lightweight
+  pass; weight_to_nb = GenXS[nb]/sum_w_all. Extractors store it in the npz; figures read via
+  weight_to_nb_of(). Existing npz migrated in place. grep clean: zero hardcoded constants.
+- DECISIVE NUMBER: file-derived FSI factor 7.037066e-11 == the old hardcoded value EXACTLY
+  (GenXS 6.266697e-2 pb, sum_w 8.905269e5, N=2e6). The no-FSI run is 7.285582e-10 (its own
+  GenXS 6.2578e-2 / sum_w 8.589e4). cc0pi figure ACH integral unchanged (1.588e-5).
+- THEREFORE the #13 reasoning that "the figure -6.9% is a SCALE/normalization artifact" is
+  FALSIFIED. The ACHILLES normalization was correct all along. The CC1pi absolute -6.9%
+  carbon (event cascade) is a REAL absolute-cross-section difference, consistent with the
+  cut-bisect interpretation only if ADoNIS's absolute RES-C->CC1pi sigma is ~7% below
+  ACHILLES's selected sigma -- i.e. a genuine physics item, not plotting.
+- RECONCILING #13 (+3.5% fraction) WITH -6.9% (absolute): sigma_abs_ADO/ACH =
+  (frac_ADO/frac_ACH) x (sigtot_ADO/sigtot_ACH); +3.5% fraction x -6.9% absolute =>
+  sigtot_RES-C_ADO/ACH ~ 0.90.  The OPEN question is now purely: does ADoNIS's absolute
+  RES-C CC1pi cross section sit ~7-10% below ACHILLES, and if so where (RES total sigma at
+  the T2K flux, vs the +-1% fixed-energy validations)?  This is the next physics target;
+  the normalization plumbing is now clean and first-principles on both sides.
