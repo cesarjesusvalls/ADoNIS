@@ -501,3 +501,37 @@ CONSEQUENCES:
   W/pi_p tail + norm are driven by the NON-amplitude machinery -> the 3-body phase-space SAMPLING
   (isotropic vs ACHILLES t-channel ThreeBodyMapper, #18A) is the remaining target.
 - Reverted dcc_current default to bilinear (original state; production scripts pin spline explicitly).
+
+## #22 — t-channel ThreeBodyMapper IMPLICATES the isotropic sampler: tail shape fixed, norm worsens
+
+Ported ACHILLES ThreeBodyMapper (TChannelMomenta pion split + isotropic mu/N split) into
+res_xsec as _sample_3body_tchannel behind SAMPLER_3BODY flag (bit-faithful port of the validated
+scripts/achilles_mirror_gen). Gates: (1) split-A bit-identical to the mirror (max|dp_pi|=0,
+dJ=1.6e-11); (2) total-sigma closure isotropic 1.6706e-5 vs tchannel 1.6364e-5 = 0.64sigma (OK).
+
+cc1pi_ratios A/B (spline amps2, same seeds, isotropic vs tchannel):
+  variable   chi2 iso  chi2 tchan   ACH/ADO iso  tchan
+  pn           2.27      1.82         0.966       0.904
+  dptt         1.10      1.66         0.966       0.904
+  dalphat      0.68      1.33         0.966       0.905
+  W           45.71     13.82         0.948       0.887
+  Q2           1.01      1.76         0.959       0.899
+  pi_p        22.88      5.63         0.966       0.905
+  lp_p         0.83      1.11         0.966       0.905
+  selected sigma: iso 1.810e-6 -> tchan 1.933e-6 (+6.8%)
+
+=> t-channel CUTS W chi2 45.7->13.8 (-70%) and pi_p chi2 22.9->5.6 (-75%): the high-W/pi_p tail
+   SHAPE distortion was the ISOTROPIC 3-BODY SAMPLER (audit #18A CONFIRMED). The faithful t-channel
+   fixes most of it. (Contrast the mono free-proton finding that exonerated the sampler -- mono
+   dsigma/dQ2 at fixed E never probed the flux-folded high-W selection.)
+OPEN (do not declare fixed):
+  - NORM WORSENS: selected sigma +6.8%, ACH/ADO 0.966->0.904 (ADO ~+3.5%->+10.6%). Uniform 0.904-0.905
+    across pn/dptt/daT/pi_p/lp_p = a flat ~10% norm offset; the shape gain sits on top of it.
+  - TENSION: total-sigma closure says unbiased (0.64sigma) yet SELECTED sigma shifts +6.8%. A clean
+    unbiased proposal swap should not move the selected integral that much -> either the isotropic
+    WEIGHT (I2W_A) has a shape-localized bias (likely; t-channel is bit-faithful to ACHILLES and
+    matches the shape far better) or a subtlety remains. Benign div-by-zero in tcw (events masked);
+    confirm dropped fraction isn't biasing.
+  - NEXT: resolve the closure-vs-selection tension (is isotropic I2W_A biased in (W,angle)?), confirm
+    tcw invalid fraction, then the now-dominant ~10% norm. Keep SAMPLER_3BODY default=isotropic until
+    resolved; the tchannel result stands as the diagnostic.
