@@ -62,7 +62,11 @@ def _load_density(name="c12_density.txt"):
         p = Path(__file__).resolve().parents[2] / "data" / "nuclear" / name
         d = np.loadtxt(p, comments="#")
         r, rho = d[:, 0], d[:, 1]          # col1 = rho_proton = rho_neutron (ACHILLES config)
-        radius = float(r[rho > 1e-4 * rho[0]].max())   # physical boundary (~1% density), ~4.5 fm
+        # ACHILLES Nucleus.cc:49-51: radius = FIRST grid point where rho_proton < 1e-6 fm^-3
+        # (ABSOLUTE minDensity), NOT a relative-threshold last-point-above (the old custom rule
+        # gave 6.05 fm vs ACHILLES ~6.7 fm -> nucleus too small -> pions under-cascade).
+        _below = r[rho < 1.0e-6]
+        radius = float(_below.min()) if _below.size else float(r.max())
         _DENS[name] = (r, rho, radius)
     r, rho, radius = _DENS[name]
     return jnp.asarray(r), jnp.asarray(rho), radius
