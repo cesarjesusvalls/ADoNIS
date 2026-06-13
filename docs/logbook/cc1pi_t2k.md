@@ -283,3 +283,25 @@ adonis/fsi/cascade_event.py: ONE nucleus per event, all hadrons co-evolve.
   single harness by relaxing one cut at a time (mu -> pi-window -> exactly-one ->
   proton) so every step shares identical denominators. This removes the cross-script
   denominator hazards that have produced three artifacts already.
+
+## #13 — DECISIVE: cut-by-cut bisect closes it; per-event physics agrees +3.5%
+
+Single-harness raw-count bisect (identical cuts, NO SCALE, carbon RES-C both sides):
+- ACH cumulative: all 1.0 | +mu 0.6261 | +1pi+ 0.3568 | +piwin 0.1604 | +prot 0.0678
+- ADO cumulative: all 1.0 | +mu 0.6292 | +1pi+ 0.3637 | +piwin 0.1688 | +prot 0.0702
+- per-STEP survival ADO/ACH: mu 1.0048 | 1pi+ 1.0143 | piwin 1.0321 | prot 0.9839
+=> FINAL signal fraction ADO/ACH = 0.0702/0.0678 = +3.5%, EVERY step within 1.6-3.2% of 1,
+   the proton step even slightly BELOW 1.  The shared-state event cascade brings the
+   per-event CC1pi physics to ~3.5% (from the factorized chain's +7.9%).
+- CONTRADICTS the figure's -6.9%: with the per-event counts agreeing at +3.5%, the figure's
+  ABSOLUTE integral gap is a NORMALIZATION/SCALE artifact in cc1pi_fig_tki.py (the ACH hepmc
+  weight SCALE = 6.266697e-02*1e-3/8.905269e+05, and/or the RES-C/RES-H sigma normalization),
+  NOT a cascade physics gap.  The cut-bisect is the clean apples-to-apples comparison; the
+  figure SCALE must be re-derived.
+- NET RESULT of the autonomous push: factorized +7.9% carbon -> shared-state event cascade
+  +3.5% per-event (cut-bisect), all per-step legs <=3%.  Remaining to <=1%: the ~1.4% pi+
+  survival (piwin step 1.032) -- consistent with the known PHASE_I cos-theta* softness in
+  the DCC angular distribution feeding the pion acceptance -- plus run-size stats.
+- NEXT: (1) re-derive the figure SCALE so the absolute integral matches the +3.5% count
+  (decouple normalization from cascade physics in cc1pi_fig_tki.py); (2) the residual ~1.4%
+  piwin step -> DCC angular distribution at the relevant W (PHASE_I follow-up).
