@@ -387,3 +387,40 @@ Per-variable ACH/ADO chi2/ndf:
   region.  Plausibly PRIMARY RES production at high W (cf. res_amps2_frame_fix.md W>1600 tail),
   NOT FSI -- but the earlier "primary high-W" claim was once an artifact (#5), so verify cleanly
   (primary vs FSI; consistent weighting; cached arrays) before asserting.  AWAITING DIRECTION.
+
+## #18 — faithfulness audit (sampling / masses-isospin / termination) + fix loop start
+
+Driven by the high-pi_p/high-W tail excess (#17). User heuristic: bugs live in custom
+decisions, not the amplitude. Read-and-verify (no tuning):
+
+A) SAMPLING (res_xsec._sample_3body): ADoNIS samples the (muN)+pi split ISOTROPIC (uniform
+   cosθ) where ACHILLES ThreeBodyMapper uses a t-CHANNEL map (FinalStateMapper.cc:100); s23
+   grouping + range + muN->muN isotropic all match. DOCUMENTED as a deliberate variance-only
+   reparam ("same integral as ACHILLES's t-channel sampler, higher variance"); sigma_RES
+   validated ~1% confirms unbiased integral.  BUT higher variance bites hardest in the
+   UNDERSAMPLED forward/high-W tail -> a real candidate for tail noise/distortion (not benign).
+
+B) MASSES/ISOSPIN: channel-correct and validated. Struck-N energy uses mqe avg (faithful);
+   kinematic pion mass = mpi0 all channels (faithful); amplitude = avg m_N + 138.04 fpio +
+   per-channel itiz/tpiz. Backed by the per-event amps2 RESDUMP audit (1e-4, all channels) and
+   cascade charge-resolution. ONE stale item: dcc_current.exclusive_H hardcoded m_pi=mpi0
+   (scalar, test-only path) bypassing conventions.amp_m_pi() -> FIXED (commit 2afdb49,
+   centralized; test green; production batch path was already correct).
+
+C) TERMINATION (cascade_discrete vs ACHILLES Cascade.cc / Nucleus.cc):
+   - plane escape (external_test beam pion, Z>=radius): FAITHFUL.
+   - ESCAPE RADIUS: ADoNIS used a CUSTOM rule (1e-4*central relative, last-point-above) = 6.05 fm;
+     ACHILLES (Nucleus.cc:49-51) uses 1e-6 ABSOLUTE, first-point-below = 6.55 fm. ADoNIS nucleus
+     ~0.5 fm too small -> pions under-cascade -> over-survive (RIGHT SIGN for +3.4% + high-pi_p).
+     >>> FIX 1/N applied (commit 2b4107a): radius rule -> ACHILLES. Re-running cc1pi_ratios.
+     CAVEAT: also feeds the pi+-12C transparency (validated at 6.05) -> must re-check separately.
+   - sphere escape: ADoNIS adds '& outward'; ACHILLES escapes any |pos|>radius regardless of
+     direction (wrong sign; queued fix).
+   - CAPTURE: ACHILLES captures nucleons with E-mN-10MeV<0 (potential=10); ADoNIS none. Below
+     the 450 MeV proton window -> likely negligible for CC1pi (queued).
+
+FIX LOOP (user-directed: one at a time, re-run cc1pi_ratios.png each, ~15 min, show figure):
+  1. escape radius 6.05->6.55  [RUNNING]
+  2. outward sphere-escape qualifier
+  3. nucleon capture
+  then revisit isotropic-sampling tail variance (raise N or port t-channel map).
