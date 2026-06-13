@@ -82,7 +82,7 @@ for c, (key, bins, _xs, xlab, dscale, dval, derr) in enumerate(VARS):
     d_y = dval * dscale; d_e = derr * dscale                     # T2K data -> nb/[ADoNIS unit], per-12C
     ax, axr = axes[0, c], axes[1, c]
     ax.fill_between(bins, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
-                    step="post", color="0.5", alpha=0.25, lw=0)
+                    step="post", color="0.45", alpha=0.35, lw=0, label="ACHILLES stat. unc.")
     ax.step(bins, np.append(da, da[-1]), where="post", color="0.35", lw=1.4, label="ACHILLES")
     ax.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=4, capsize=2, lw=1.0,
                 label="ADoNIS (CH, fixed)", zorder=4)               # markers at bin centers

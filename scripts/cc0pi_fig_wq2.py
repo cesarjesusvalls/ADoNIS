@@ -32,10 +32,11 @@ for c, (key, bins, xlab, sym) in enumerate(VARS):
     da, ea = hist(ach[key], ach_w, bins); dd, ed = hist(ado[key], ado["w"], bins)
     da, ea, dd, ed = da / bw, ea / bw, dd / bw, ed / bw          # dsigma/dx [nb/unit]
     ax, axr = axes[0, c], axes[1, c]
-    ax.step(bins, np.append(da, da[-1]), where="post", color="0.35", lw=1.5, label="ACHILLES")
-    ax.errorbar(ctr, da, yerr=ea, fmt="none", ecolor="0.35", alpha=0.5)
-    ax.step(bins, np.append(dd, dd[-1]), where="post", color="C0", lw=1.5, label="ADoNIS (CH, fixed)")
-    ax.errorbar(ctr, dd, yerr=ed, fmt="none", ecolor="C0", alpha=0.5)
+    ax.fill_between(bins, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
+                    step="post", color="0.45", alpha=0.35, lw=0, label="ACHILLES stat. unc.")
+    ax.step(bins, np.append(da, da[-1]), where="post", color="0.35", lw=1.4, label="ACHILLES")
+    ax.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=4, capsize=2, lw=1.0,
+                label="ADoNIS (CH, fixed)", zorder=4)               # markers at bin centers
     ax.set_ylabel(r"d$\sigma$/d" + sym + " [nb/unit]"); ax.set_ylim(bottom=0); ax.legend()
     ax.set_title(f"CC0$\\pi$-Np   {xlab}")
     with np.errstate(divide="ignore", invalid="ignore"):
