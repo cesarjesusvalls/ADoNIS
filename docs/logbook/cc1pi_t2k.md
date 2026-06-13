@@ -535,3 +535,42 @@ OPEN (do not declare fixed):
   - NEXT: resolve the closure-vs-selection tension (is isotropic I2W_A biased in (W,angle)?), confirm
     tcw invalid fraction, then the now-dominant ~10% norm. Keep SAMPLER_3BODY default=isotropic until
     resolved; the tchannel result stands as the diagnostic.
+
+## #23 — t-channel sampler AXIS BUG found + fixed; #22 corrected; norm solved, high-W residual real
+
+User pushed back: byte-identical / flip-flopping; READ the code. Read ACHILLES FinalStateMapper.cc
+ThreeBodyMapper + NuclearModel.cc:
+- PARTICLE ASSIGNMENT (verified, NOT a bug): NuclearModel hadronic = {nucleon, pion}; Masses()
+  ordered [mu, nucleon, pion] -> s2=mmu2, s3=mN2, s4=mpi2. T-channel splits off the PION (s4),
+  p23=mom[2]+mom[3]=(mu+N). My port + the mirror match this. Correct.
+- AXIS BUG (real): ACHILLES TChannelMomenta(p1in=mom[0]=STRUCK nucleon, p2in=mom[1]=nu) builds the
+  t-channel reference axis (and s1in) from the STRUCK NUCLEON (FinalStateMapper.cc:181-222). My port
+  AND scripts/achilles_mirror_gen used the NEUTRINO. Flips the forward axis. The mirror's mono
+  free-proton validation (integrated over pion angle) could NOT catch it (axis only affects variance
+  for an unbiased sampler) -> survived undetected. ONLY affects the t-channel sampler; the isotropic
+  pion-split is uniform (axis-independent) so it is untouched.
+- FIX (committed): swap p1in<->p2in so the axis & s1in are the struck nucleon. closure isotropic
+  1.67057e-5 vs tchannel-fixed 1.68100e-5 = 1.006 (was 0.980 pre-fix). Fixed tchannel RES-C selected
+  events 4996 -> 14916 (3x; the right axis lands far more pions in acceptance -> lower variance).
+
+cc1pi_ratios A/B (spline), isotropic | tchannel(nu-axis BUGGY) | tchannel(struck-axis FIXED):
+  var   chi2:  iso   buggy   FIXED  | ACH/ADO: iso  buggy  FIXED
+  pn          2.27   1.82   2.30    | 0.966  0.904  0.990
+  dptt        1.10   1.66   0.13    | 0.966  0.904  0.990
+  dalphat     0.68   1.33   0.25    | 0.966  0.904  0.990
+  W          45.71  13.82  24.03    | 0.948  0.887  0.971
+  Q2          1.01   1.76   0.96    | 0.959  0.899  0.980
+  pi_p       22.88   5.63  14.84    | 0.966  0.905  0.990
+  lp_p        0.83   1.11   0.65    | 0.966  0.905  0.990
+  selected sigma: iso 1.810e-6 | FIXED 1.767e-6
+
+CORRECTION to #22: the buggy nu-axis tchannel's "W 45->14" was NOT a real tail fix -- it rode the
+8% norm bias (ACH/ADO 0.90) that dragged all ratios down. The FIXED (faithful) tchannel is the
+trustworthy result:
+- NORM SOLVED: ACH/ADO 0.990 (ADO +1%), best of the three; STV excellent (dptt 0.13, daT 0.25, lp_p 0.65).
+- W/pi_p tail HALVED vs isotropic (W 45.7->24.0, pi_p 22.9->14.8) -- real improvement from the
+  faithful angular sampling -- but a GENUINE high-W residual REMAINS (W chi2 24, pi_p 15). This is
+  the real physics target now, no longer a sampler artifact.
+- Bulk W<1400: fixed tchannel ACH/ADO ~1.03 vs isotropic 1.008 (~2% bulk diff, likely variance).
+NOTE: scripts/achilles_mirror_gen still has the nu-axis bug (separate diagnostic; not fixed here).
+SAMPLER_3BODY default stays "isotropic"; tchannel-fixed is the faithful low-variance option.

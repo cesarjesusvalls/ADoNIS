@@ -148,7 +148,9 @@ def _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u):
     s23max = (sqrts - m_pi) ** 2; s23min = max((M_MU + m_Nf) ** 2, 1e-8)
     s23 = s23min + (s23max - s23min) * u[:, 0]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
     # --- TChannelMomenta: pion (mass^2 s4) split off; p1out = (muN) mass^2 s23 ---
-    s1in = _m2(k_nu); s2in = _m2(p_struck)
+    # ACHILLES TChannelMomenta(p1in=mom[0]=STRUCK nucleon, p2in=mom[1]=nu): the t-channel reference
+    # axis AND s1in are the STRUCK NUCLEON, not the neutrino (FinalStateMapper.cc:181-222).
+    s1in = _m2(p_struck); s2in = _m2(k_nu)
     p1inhE = (s + s1in - s2in) / (2 * sqrts); p1inmass = sqrts * _sqlam(s, s1in, s2in) / 2
     p1outhE = (s + s23 - s4) / (2 * sqrts); p1outmass = sqrts * _sqlam(s, s23, s4) / 2
     a = (0.0 - s1in - s23 + 2 * p1outhE * p1inhE) / (2 * np.clip(p1inmass * p1outmass, 1e-30, None))
@@ -157,8 +159,8 @@ def _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u):
     a = np.where(np.abs(a - _TBM_CTMAX) < 1e-14, _TBM_CTMAX, a)
     aminct = _tj1(_TBM_ALPHA, a - _TBM_CTMIN, a - _TBM_CTMAX, u[:, 1]); ct = a - aminct
     st = np.sqrt(np.clip(1 - ct ** 2, 0, None)); phi = _TWO_PI * u[:, 2]
-    nu_cm = _boost_to_rest(k_nu, P)
-    e1, e2, nhat = _basis_from(nu_cm[:, 1:])
+    ref_cm = _boost_to_rest(p_struck, P)              # axis = struck nucleon (mom[0]), per ACHILLES
+    e1, e2, nhat = _basis_from(ref_cm[:, 1:])
     dirv = (st * np.cos(phi))[:, None] * e1 + (st * np.sin(phi))[:, None] * e2 + ct[:, None] * nhat
     p1out_cm = np.concatenate([p1outhE[:, None], p1outmass[:, None] * dirv], axis=1)
     p_muN = _boost_to_lab(p1out_cm, P); p_pi = P - p_muN
