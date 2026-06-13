@@ -31,7 +31,6 @@ from adonis.xsec import res_xsec
 from adonis.core.event import EventRecord
 from adonis.fsi.cascade_discrete import (DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig,
                                          sample_nucleons, propagate_nucleon_discrete)
-from adonis.fsi.cascade_event import evolve_event
 from scripts.h_cc0pi import generate_H
 
 NRES = int(sys.argv[1]) if len(sys.argv) > 1 else 200000
@@ -80,30 +79,45 @@ def res_C(n, seed):
     knu, kmu, pstr = (np.asarray(e[k]) for k in ("k_nu", "k_mu", "p_struck"))
     ppi, pN, w = np.asarray(e["p_pi"]), np.asarray(e["p_N"]), np.asarray(e["w"])
     m = len(w)
-    out = evolve_event(jnp.asarray(ppi), jnp.asarray(pN), jnp.asarray(e["ppid"], jnp.int32),
-                       jnp.asarray(e["ipid"], jnp.int32), jnp.asarray(e["Npid"], jnp.int32),
-                       _CFG(), jax.random.PRNGKey(seed + 11))
-    spec = np.asarray(out["spec"]); chg_ = np.asarray(out["chg"]); pf = np.asarray(out["p"])
-    is_pi = spec == 1
-    n_pi = is_pi.sum(axis=1)
-    pip_mask = is_pi & (chg_ == 1)
-    one_pip = (n_pi == 1) & (pip_mask.sum(axis=1) == 1)
-    pim_all = np.linalg.norm(pf[..., 1:], axis=-1)
-    cth_all = pf[..., 3] / np.clip(pim_all, 1e-9, None)
-    pip_win = pip_mask & (pim_all > PI_LO) & (pim_all < PI_HI) & (cth_all > COS70)
-    prot_win = (spec == 2) & (chg_ == 1) & (pim_all > P_LO) & (pim_all < P_HI) & (cth_all > COS70)
-    # the SELECTED pion and leading in-window proton four-momenta for the observables
-    pi_idx = np.argmax(pip_win, axis=1)
-    ppi_f = pf[np.arange(m), pi_idx]
-    prot_p = np.where(prot_win, pim_all, 0.0)
-    lp_idx = np.argmax(prot_p, axis=1)
-    lead = pf[np.arange(m), lp_idx]
-    sel = (one_pip & pip_win.any(axis=1) & prot_win.any(axis=1) & (w > 0)
-           & _acc(kmu, MU_LO, MU_HI))
+    ev = EventRecord(k=jnp.asarray(knu), kp=jnp.asarray(kmu), p_struck=jnp.asarray(pstr),
+                     p_pi=jnp.asarray(ppi), p_N=jnp.asarray(pN), w=jnp.asarray(w),
+                     channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.asarray(e["ppid"], jnp.int32),
+                     pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.asarray(e["ipid"], jnp.int32),
+                     W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
+    pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
+    ko, ko_pos, ko_fz = pion.last_scat_ko                        # leading pi-scatter recoil proton
+    nf = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf.apply(None, ev, key=jax.random.PRNGKey(seed + 13))
+    ppi_f = np.asarray(ev.p_pi); pid_pi = np.asarray(ev.pid_pi)
+    # re-cascade the scatter knockout through the nucleon transport (ACHILLES UpdateKicked);
+    # its own (proton) knockout is a further candidate.
+    has_ko = np.linalg.norm(np.asarray(ko)[:, 1:], axis=1) > 1.0
+    cfg = _CFG(seed=3)
+    kn = jax.random.PRNGKey(seed + 17)
+    npos2, nmom2, nisp2 = sample_nucleons(jax.random.fold_in(kn, 1), m, cfg)
+    ko_in = jnp.where(jnp.asarray(has_ko)[:, None], jnp.asarray(ko), ev.p_N)   # dummy where none
+    ko_f, _, ko_ko, _, _, _, _, ko_made_pi = propagate_nucleon_discrete(
+        jnp.asarray(ko_pos), ko_in, jnp.ones(m, bool), npos2, nmom2, nisp2, cfg,
+        jax.random.fold_in(kn, 2), fz0=jnp.asarray(ko_fz))
+    ko_f = np.where(has_ko[:, None], np.asarray(ko_f), 0.0)
+    ko_ko = np.where(has_ko[:, None], np.asarray(ko_ko), 0.0)
+    # leading proton = highest-momentum IN-WINDOW candidate among
+    # {RES nucleon (if proton), re-cascaded scatter knockout, its secondary knockout}
+    lead0 = np.where((np.asarray(ev.pid_N) == 2212)[:, None], np.asarray(ev.p_N), 0.0)
+    cands = np.stack([lead0, ko_f, ko_ko], axis=1)               # (m, 3, 4)
+    inwin = np.stack([_acc(cands[:, i], P_LO, P_HI) for i in range(3)], axis=1)
+    mom = np.linalg.norm(cands[:, :, 1:], axis=2) * inwin
+    lead = cands[np.arange(m), np.argmax(mom, axis=1)]
+    has_p = inwin.any(axis=1)
+    # CC1pi+ signal: the pion SURVIVED as a pi+ (absorbed -> pid 0; charge-exchange -> 111/-211),
+    # at least one proton candidate in the window, and the NUCLEON cascade did not create a
+    # pion (NN->NDelta->NNpi -> extra meson fails the exactly-one-pi+ requirement).
+    no_extra_pi = ~(np.asarray(nf.last_made_pion) | (has_ko & np.asarray(ko_made_pi)))
+    sel = ((pid_pi == 211) & has_p & no_extra_pi & (w > 0)
+           & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
     dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)
     pim = np.linalg.norm(ppi_f[sel][:, 1:], axis=1)
     return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel],
-                nsc=np.zeros(int(sel.sum()), np.int32),
+                nsc=np.asarray(pion.last_nsc)[sel],           # pion scatter count (diagnostics)
                 pi_p=pim, pi_cth=ppi_f[sel][:, 3] / np.clip(pim, 1e-9, None),
                 lp_p=np.linalg.norm(lead[sel][:, 1:], axis=1))
 

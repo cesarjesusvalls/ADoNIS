@@ -346,3 +346,23 @@ Single-harness raw-count bisect (identical cuts, NO SCALE, carbon RES-C both sid
 - NEXT (running): factorized vs event leading-proton |p| + pN spectra on IDENTICAL primary
   events, to localize which event-cascade mechanism over-depletes high-pN (leading-proton
   consumption / "highest-momentum surviving proton" competition / re-cascade depth).
+
+## #16 — REVERT: event cascade removed; differentiable factorized chain restored
+
+User decision: the shared-state event cascade is NOT faithful to ACHILLES (cross-section
+ports are faithful, but the TRANSPORT was a from-scratch discrete-Glauber reimplementation,
+not a port of Cascade.cc; multiple declared approximations + slot-cap truncation). Validating
+a second, non-differentiable cascade is pointless when differentiability is required anyway.
+- DELETED adonis/fsi/cascade_event.py and scripts/cc1pi_cut_bisect.py (the latter was also
+  FLAWED: it counted ACHILLES events UNWEIGHTED while summing ADoNIS cross-section weights;
+  ACHILLES is 99-percentile-unweighted with a ~1% high-weight tail sitting preferentially at
+  high pN, so the "+3.5% per-event agreement" was apples-to-oranges and is RETRACTED).
+- cc1pi_fig_tki.py res_C restored to the differentiable factorized chain (DiscreteCascadeFSI
+  pion + DiscreteNucleonFSI nucleon + knockout re-cascade), verbatim from ae4ee6d^, keeping
+  the weight_to_nb_of (no hardcoded SCALE) cleanup. cc1pi_disaggregated.py inherits it via F.res_C.
+- The cascade_discrete.py fidelity additions (knockout emission, piN conversion, NN->NDelta
+  inelastic) are KEPT -- they are part of the factorized chain and were independently gated.
+- STANDING (correctly-weighted, factorized): CC1pi carbon ~+7% (ADO high), per logbook #8.
+- NEXT: disaggregated ACH/ADO ratio checks for cc1pi vs the usual variables (pN, dpTT, daT,
+  W, Q2, pi_p) with the factorized chain, to establish where we ACTUALLY stand -- consistent
+  weighting on both sides.
