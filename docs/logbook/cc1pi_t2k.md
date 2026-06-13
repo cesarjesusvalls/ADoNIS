@@ -664,3 +664,29 @@ CAVEAT: the no-FSI test only probes p->p pi+; it does NOT directly test the n->n
 PROCESS: prior failures (event cascade, cut-bisect, nu-axis t-channel, this pid_N=2212) all came from
    bolted-on non-central code run before reading. Discipline restored: central code only, validate
    before run.
+
+## #27 — no-FSI inclusive-pi+ test: n->npi+ primary CLEAN; CH high-W tail is the CASCADE (H2)
+
+Goal: distinguish whether the CH-FSI signal high-W tail (W chi2~24) is (H1) n->n pi+ PRIMARY
+over-production or (H2) the cascade.  n->n pi+ has no primary proton -> invisible to the proton-
+requiring signal; so loosen the selection to inclusive pi+ (signal acceptance MINUS proton).
+ADoNIS: res_xsec.generate primary (t-channel, spline), pi+ & mu/pi acceptance, no proton.
+ACHILLES: t2k_res_w_achilles_nofsi.npz (no-FSI broad RES), same.
+
+METHODOLOGY ERROR (caught via the user's "why great->horrible" + a consistency check): first pass
+compared ACHILLES CH (res_w oracle = carbon+hydrogen, no is_h tag) to ADoNIS CARBON-only
+(res_xsec.generate is 12C) -> the free-hydrogen pi+ inflated ACHILLES by ~25% (sigma ACH/ADO 1.247,
+W chi2 16).  weight_to_nb identical (7.286e-10) both files; the res_w/central signal cross-check gave
+1.244 == the hydrogen fraction.  FIX: select carbon on res_w via pstr>1 (hydrogen = free proton at
+rest, pstr~=0; carbon has Fermi).  Re-histogram from cache (no recompute):
+  carbon-only:  sigma ACH/ADO 1.031   W chi2/ndf 1.14   pi_p chi2/ndf 1.42   (was 1.247 / 16 / 15)
+
+=> The carbon NO-FSI primary inclusive pi+ (incl. n->n pi+) AGREES with ACHILLES, NO high-W tail.
+   Combined with the clean p->p pi+ no-FSI signal (#26): the n->n pi+ PRIMARY production is faithful
+   (no over-production, no deficit). H1 FALSIFIED.
+   => The CH-with-FSI signal high-W tail (W chi2 ~24) is the CASCADE (H2): FSI knockout-proton
+   acceptance and/or pion-cascade reshaping (W-correlated), NOT primary production.
+NEXT (the real target): the FSI mechanism that introduces the W-correlated tail in the signal --
+   the n->n pi+ knockout-proton path and/or pion FSI on the high-W pions.  (cascade_discrete.)
+LESSON (again): res_xsec.generate is CARBON-only; any ACHILLES CH reference must have hydrogen
+   removed (is_h / pstr) before comparing.  Same apples-to-oranges class as before.

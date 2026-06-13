@@ -57,7 +57,10 @@ def main():
     ado = get_ado()
     a = np.load("data/oracle/t2k_res_w_achilles_nofsi.npz")
     w2nb = hepmc_norm(NOFSI_HEPMC)["weight_to_nb"]
-    m = ((np.asarray(a["pi_pid"]) == 211) & (np.asarray(a["mu_p"]) > MU_LO) & (np.asarray(a["mu_p"]) < MU_HI)
+    # CARBON only (pstr>1): ADoNIS res_xsec.generate is 12C; the res_w oracle is CH -> hydrogen
+    # (free proton at rest, pstr~=0) must be removed for an apples-to-apples comparison.
+    m = ((np.asarray(a["pi_pid"]) == 211) & (np.asarray(a["pstr"]) > 1.0)
+         & (np.asarray(a["mu_p"]) > MU_LO) & (np.asarray(a["mu_p"]) < MU_HI)
          & (np.asarray(a["mu_cth"]) > COS70) & (np.asarray(a["pi_p"]) > PI_LO) & (np.asarray(a["pi_p"]) < PI_HI)
          & (np.asarray(a["pi_cth"]) > COS70))
     aW, aP, aw = np.asarray(a["W"])[m], np.asarray(a["pi_p"])[m], np.asarray(a["w"])[m] * w2nb
