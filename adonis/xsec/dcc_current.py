@@ -112,7 +112,7 @@ def exclusive_H(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, mode=1, tcrz=1.0, tpiz
 
     vec, isv, axial = _AMP.amplitudes_spline(jnp.array([wcm]), jnp.array([Q2]), DCCKnobs())
     zmtx = np.asarray(build_zmtx(vec[0], isv[0], axial[0], wcm, Q2, _PW_2J, _PW_2L, _PW_2I,
-                                 mode=mode, itiz=itiz, m_N=mN, m_pi=C.mpi0))   # (8, npw)
+                                 mode=mode, itiz=itiz, m_N=mN, m_pi=_conv.amp_m_pi()))   # (8, npw); centralized convention
     tiz = itiz / 2.0; tpinz = tcrz + tiz
     tmax = tm_f + 0.5 + _EPS_TPIN
 
