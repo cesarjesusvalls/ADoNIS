@@ -237,3 +237,30 @@ adonis/fsi/cascade_event.py: ONE nucleus per event, all hadrons co-evolve.
 - Gates: (1) pion-only and nucleon-only limits reproduce the existing single-particle
   cascades statistically; (2) mono-2GeV carbon signal fraction 0.167 -> ~0.148 (ACH);
   (3) T2K CC1pi carbon +7% -> ~1%.
+
+## #11 — event cascade CONVERGENCE state (fz fix; anchor set established)
+
+- fz-ordering bug fixed (4c940bb..): formation zones now from PRE-update momenta (the
+  degenerate fz(p_new,p_new) froze nucleons after first scatter).
+- v2 absorption (Pauli rejection + products + partner consumption): correct physics,
+  ~zero net at T2K (abs products >> kF at the Delta).
+- ANCHOR SET at T2K carbon (cascade on), ACH unselected per-leg (425k RES events with
+  >=1 pion; denominators conditioned on a SURVIVING pion) vs ADO event kernel (fz-fixed):
+    P(pi+ exactly-one & window | surv):  ACH 0.3267   ADO 0.3359  (+2.8%)
+    P(in-window proton | surv):          ACH 0.5286   ADO 0.5315  (+0.5%)
+    P(prot | pi-window):                 ACH 0.4507   ADO 0.4516  (+0.2%)
+    JOINT (with mu) | surv:              ACH 0.0876   ADO 0.0863  (-1.5%)
+    P(abs | RES-C in-event):             ACH 0.2168   ADO 0.2239  (+3.3% rel)
+  Pion fates vs factorized kernel: identical (survival .5645/.5689).
+- mono-2GeV gates: v1 0.1474, v2(escape) 0.1472 vs ACH 0.1478 (fz fix re-gate pending).
+- FULL-STATS T2K figure (60k x 4, fz-fixed): RES-C 1.0992e-6 vs ACH-C 1.1808e-6 = -6.9%;
+  total ADO/ACH = 1.650/1.747 = -5.6%. Trajectory: factorized +7.9% -> event v1 -6.3% ->
+  fz-fixed -6.9%. Decomposition of the -6.9%: ~1% absorption rate, ~1.5% joint
+  conditional, ~1-2% sigma_tot bookkeeping, remainder within the 1-2% per-measurement
+  stats of these run sizes.
+- NEXT: converge below 2% with HIGHER-stats anchors (300k+ per measurement), starting
+  from P(abs) (+3.3% rel: the oset/partition path in the event kernel vs the factorized --
+  note the factorized had the SAME 0.223, both ~3% above ACH in-event 0.2168, despite the
+  beam-oracle match: revisit the in-event absorption environment: struck-vertex density /
+  consumed-vertex handling), then the +2.8% pi-window leg (DCC scatter-angle frame check
+  vs _two_body_cm_scatter).
