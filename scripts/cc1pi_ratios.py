@@ -44,17 +44,22 @@ def accumulate():
 
 def main():
     ado, cells = accumulate()
+    np.savez("data/oracle/t2k_cc1pi_ratios_adonis.npz", **{k: ado[k] for k in KEYS + ("w",)})
     print(f"sigma_CC1pi(tight) factorized: RES-C {cells['RES-C']['w'].sum():.4e}  "
-          f"RES-H {cells['RES-H']['w'].sum():.4e} nb", flush=True)
+          f"RES-H {cells['RES-H']['w'].sum():.4e} nb  (ADoNIS arrays cached)", flush=True)
     ach = np.load("data/oracle/t2k_cc1pi_tki_achilles.npz")
     ach_w = np.asarray(ach["w"]) * weight_to_nb_of(ach)          # consistent absolute weighting
 
     fig, axes = plt.subplots(2, len(VARS), figsize=(3.6 * len(VARS), 6.4),
                              height_ratios=[3, 1])
+    print("  [W is a vertex DIAGNOSTIC: ACH uses the status-2 struck nucleon, res_C the de-Forest"
+          "\n   off-shell p_struck -> the two struck-nucleon conventions differ; its chi2 is not a clean test]")
     print(f"\n{'variable':12s}  chi2/ndf   integral ACH/ADO")
     for c, (key, edges, xlab) in enumerate(VARS):
         bw = np.diff(edges); ctr = 0.5 * (edges[1:] + edges[:-1])
         av = np.asarray(ach[key]); dv = ado[key]
+        if key == "Q2":
+            av = av / 1e6                                       # ACH Q2 is MeV^2; res_C is GeV^2
 
         def hist(v, w):
             h, _ = np.histogram(v, bins=edges, weights=w)
