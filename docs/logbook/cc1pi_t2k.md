@@ -690,3 +690,35 @@ NEXT (the real target): the FSI mechanism that introduces the W-correlated tail 
    the n->n pi+ knockout-proton path and/or pion FSI on the high-W pions.  (cascade_discrete.)
 LESSON (again): res_xsec.generate is CARBON-only; any ACHILLES CH reference must have hydrogen
    removed (is_h / pstr) before comparing.  Same apples-to-oranges class as before.
+
+## #28 — full cascade-range audit: angular truncation fixed (modest); tail is the composition
+
+User: "fully audit again for this kind of approximation/simplification." Done (Explore enumeration +
+per-item verification vs ACHILLES source):
+- VERIFIED FAITHFUL: HadronicMapper pmax=800/emax=400 (HadronicMapper.cc:39,53 exact); MB sigma->0
+  beyond grid (MesonBaryonAmplitudes.cc:222,225 does the same); production side (no-FSI clean).
+- BUG FOUND+FIXED: MB pion-scatter ANGULAR table truncated at W=1700 (cascade_mb._build_angular Wg);
+  ACHILLES samples to the ANL grid max 2200. Fixed 1700->2200 (5 MeV, == ANL grid).
+- CLEARED: NN->NDelta s_hi=4.0 is sqrts=4 GeV (not s=4 GeV^2) -> table covers to 4 GeV >> cascade
+  reach ~2.1 GeV; right=0.0 never triggered. Not a truncation. Secondary-knockout neglect: WRONG SIGN
+  (truncating recursion -> fewer knockout protons -> ADO low, not high).
+- "tuned to match transparency" RETRACTED: knobs sabs/sscat are nominal (1.0) for the ACHILLES
+  comparison; they are the fit-to-DATA params (cc0pi tune). Transparency agreement was first-principles
+  physics corrections, "no tuned constants" (cascade_transport_residual.md).
+
+cc1pi_ratios with the angular fix (2200), tchannel, spline:
+  var    chi2 (fix)  (prior)   ACH/ADO
+  pn       2.39       2.30      0.982
+  dptt     0.15       0.13      0.982
+  dalphat  0.71       0.25      0.983
+  W       23.19      24.03      0.964
+  Q2       0.78       0.96      0.973
+  pi_p    12.95      14.84      0.983
+  lp_p     1.33       0.65      0.983
+  RES-C 1.2107e-6  RES-H 5.690e-7;  integral ACH/ADO 0.982
+
+=> MODEST: W 24.0->23.2 (~3%), pi_p 14.8->13.0 (~13%); tail NOT closed (predicted: angular divergence
+   only at W_j>~1950, rare). The truncation was a real faithfulness bug but NOT the dominant tail cause.
+   The remaining high-W/pi_p tail is the cascade COMPOSITION (factorized independent cascades + leading-
+   proton-only + bounded recursion -- docs/cascade_declared_approximations.md items 1-3), the
+   differentiability-tensioned part, NOT a single table truncation.
