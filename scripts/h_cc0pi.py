@@ -14,7 +14,7 @@ import jax.numpy as jnp
 import adonis.xsec.dcc_current as dcc
 dcc.BATCH_INTERP = "spline"
 from adonis.xsec.flux import T2KFlux, M_MU, M_P
-from adonis.xsec.res_xsec import _sample_3body, _pi_kin_mass, M_PIP, SPIN_AVG
+from adonis.xsec.res_xsec import _sample_3body, _sample_3body_dispatch, _pi_kin_mass, M_PIP, SPIN_AVG
 from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON
 from adonis.core.event import EventRecord
@@ -36,7 +36,7 @@ def generate_H(n, seed=0):
     J_beam = (dE * flux.f(E_GeV)) / flux.flux_integral
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
     p_struck = np.tile([M_P, 0, 0, 0], (n, 1)).astype(float)    # FREE proton at rest
-    tb = _sample_3body(k_nu, p_struck, m_pi, m_Nf, u[:, 1:6])
+    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u[:, 1:6])   # honors SAMPLER_3BODY
     k_mu, p_N, p_pi, J3, valid = tb["k_mu"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
     a2 = np.zeros(n); ch = 1000
     idx = np.where(valid & (J3 > 0))[0]

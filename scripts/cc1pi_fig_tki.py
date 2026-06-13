@@ -200,21 +200,26 @@ def load_data(name):
 
 
 def main():
-    acc = {}
-    for cell, fn, n in (("RES-C", res_C, NRES), ("RES-H", res_H, NH)):
-        parts = []
-        for sd in range(NSEED):
-            d = fn(n, sd)
-            parts.append(d)
-            print(f"  {cell} seed {sd+1}/{NSEED}: +{len(d['w'])}", flush=True)
-        acc[cell] = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
-        acc[cell]["w"] = acc[cell]["w"] / NSEED
-    ado = {k: np.concatenate([acc[c][k] for c in acc]) for k in ("dptt", "pn", "dalphat", "w")}
-    np.savez("data/oracle/t2k_cc1pi_tki_adonis_blueprint.npz", **ado,
-             **{f"resc_{k}": acc["RES-C"][k] for k in acc["RES-C"]},
-             **{f"resh_{k}": acc["RES-H"][k] for k in acc["RES-H"]})
-    print(f"  sigma_CC1pi(tight): RES-C {acc['RES-C']['w'].sum():.4e}  RES-H {acc['RES-H']['w'].sum():.4e} nb",
-          flush=True)
+    bp = "data/oracle/t2k_cc1pi_tki_adonis_blueprint.npz"
+    if os.path.exists(bp) and "--recompute" not in sys.argv:
+        d = np.load(bp); ado = {k: np.asarray(d[k]) for k in ("dptt", "pn", "dalphat", "w")}
+        print("loaded cached ADoNIS blueprint (use --recompute to regenerate)", flush=True)
+    else:
+        acc = {}
+        for cell, fn, n in (("RES-C", res_C, NRES), ("RES-H", res_H, NH)):
+            parts = []
+            for sd in range(NSEED):
+                d = fn(n, sd)
+                parts.append(d)
+                print(f"  {cell} seed {sd+1}/{NSEED}: +{len(d['w'])}", flush=True)
+            acc[cell] = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
+            acc[cell]["w"] = acc[cell]["w"] / NSEED
+        ado = {k: np.concatenate([acc[c][k] for c in acc]) for k in ("dptt", "pn", "dalphat", "w")}
+        np.savez(bp, **ado,
+                 **{f"resc_{k}": acc["RES-C"][k] for k in acc["RES-C"]},
+                 **{f"resh_{k}": acc["RES-H"][k] for k in acc["RES-H"]})
+        print(f"  sigma_CC1pi(tight): RES-C {acc['RES-C']['w'].sum():.4e}  RES-H {acc['RES-H']['w'].sum():.4e} nb",
+              flush=True)
 
     ach = np.load("data/oracle/t2k_cc1pi_tki_achilles.npz")
     ach_w = np.asarray(ach["w"]) * weight_to_nb_of(ach)   # GenCrossSection/sum_w from the npz header
@@ -238,10 +243,11 @@ def main():
         da, ea = hist(ach_v, ach_w)
         dd, ed = hist(ado[key], ado["w"])
         ax, axr = axes[0, c], axes[1, c]
-        ax.step(edges, np.append(da, da[-1]), where="post", color="0.35", lw=1.5, label="ACHILLES")
-        ax.errorbar(ctr, da, yerr=ea, fmt="none", ecolor="0.35", alpha=0.5)
-        ax.step(edges, np.append(dd, dd[-1]), where="post", color="C0", lw=1.5, label="ADoNIS (CH)")
-        ax.errorbar(ctr, dd, yerr=ed, fmt="none", ecolor="C0", alpha=0.5)
+        ax.fill_between(edges, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
+                        step="post", color="0.5", alpha=0.25, lw=0)
+        ax.step(edges, np.append(da, da[-1]), where="post", color="0.35", lw=1.4, label="ACHILLES")
+        ax.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=4, capsize=2, lw=1.0,
+                    label="ADoNIS (CH)", zorder=4)                 # markers at bin centers
         ax.errorbar(ctr, d_y, yerr=d_e, fmt="o", color="k", ms=5, capsize=3, lw=1.4,
                     label="T2K data", zorder=5)
         ax.set_ylabel(r"d$\sigma$/dx [nb/unit per CH]"); ax.set_ylim(bottom=0); ax.legend(fontsize=8)

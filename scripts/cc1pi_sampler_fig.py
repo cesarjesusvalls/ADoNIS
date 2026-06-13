@@ -61,20 +61,25 @@ def main():
         da, ea = H(av, aw); di, ei = H(np.asarray(iso[key]), np.asarray(iso["w"]))
         dt, et = H(np.asarray(tc[key]), np.asarray(tc["w"]))
         ax, axr = axes[0, c], axes[1, c]
-        ax.step(edges, np.append(da, da[-1]), where="post", color="0.35", lw=1.5, label="ACHILLES")
-        ax.step(edges, np.append(di, di[-1]), where="post", color="C1", lw=1.3, label="ADO isotropic")
-        ax.step(edges, np.append(dt, dt[-1]), where="post", color="C0", lw=1.3, label="ADO t-channel")
+        ax.fill_between(edges, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
+                        step="post", color="0.5", alpha=0.25, lw=0)
+        ax.step(edges, np.append(da, da[-1]), where="post", color="0.35", lw=1.4, label="ACHILLES")
+        ax.errorbar(ctr, di, yerr=ei, fmt="o", color="C1", ms=3, capsize=2, lw=0.9, label="ADO isotropic")
+        ax.errorbar(ctr, dt, yerr=et, fmt="s", color="C0", ms=3, capsize=2, lw=0.9, label="ADO t-channel")
         ax.set_title(xlab, fontsize=9); ax.set_ylim(bottom=0)
         if c == 0:
             ax.legend(fontsize=7); ax.set_ylabel(r"d$\sigma$/dx [nb/unit]")
 
-        def chi2(d, e):
-            m = (da > 0) & (d > 0); return float(np.sum((da[m] - d[m]) ** 2 / (ea[m] ** 2 + e[m] ** 2))) / max(int(m.sum()), 1)
-        c2i, c2t = chi2(di, ei), chi2(dt, et)
+        def ratio(d, e):
+            with np.errstate(divide="ignore", invalid="ignore"):
+                r = da / d; re = r * np.sqrt((e / d) ** 2 + (ea / da) ** 2)
+            m = (da > 0) & (d > 0) & np.isfinite(re)
+            c2 = float(np.sum((da[m] - d[m]) ** 2 / (ea[m] ** 2 + e[m] ** 2))) / max(int(m.sum()), 1)
+            return r, re, m, c2
+        ri, rei, mi, c2i = ratio(di, ei); rt, ret, mt, c2t = ratio(dt, et)
         axr.axhspan(0.9, 1.1, color="green", alpha=0.12); axr.axhline(1.0, ls="--", color="green", lw=0.7)
-        mi = (da > 0) & (di > 0); mt = (da > 0) & (dt > 0)
-        axr.plot(ctr[mi], (da / di)[mi], "o-", color="C1", ms=2.5, lw=0.8)
-        axr.plot(ctr[mt], (da / dt)[mt], "s-", color="C0", ms=2.5, lw=0.8)
+        axr.errorbar(ctr[mi], ri[mi], yerr=rei[mi], fmt="o", color="C1", ms=3, capsize=2, lw=0.9)
+        axr.errorbar(ctr[mt], rt[mt], yerr=ret[mt], fmt="s", color="C0", ms=3, capsize=2, lw=0.9)
         axr.set_ylim(0.5, 1.6); axr.set_xlabel(xlab, fontsize=8)
         if c == 0:
             axr.set_ylabel("ACH/ADO")
