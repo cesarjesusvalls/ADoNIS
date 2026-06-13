@@ -366,3 +366,24 @@ a second, non-differentiable cascade is pointless when differentiability is requ
 - NEXT: disaggregated ACH/ADO ratio checks for cc1pi vs the usual variables (pN, dpTT, daT,
   W, Q2, pi_p) with the factorized chain, to establish where we ACTUALLY stand -- consistent
   weighting on both sides.
+
+## #17 — disaggregated ratios, factorized differentiable chain (consistent weighting)
+
+scripts/cc1pi_ratios.py (RES-C 120k x4 + RES-H 40k x4; ACH weighted by w x weight_to_nb;
+fig paper_figures/cc1pi_ratios.png; ADoNIS arrays cached -> t2k_cc1pi_ratios_adonis.npz).
+Per-variable ACH/ADO chi2/ndf:
+  pn 2.27 | dptt 1.10 | dalphat 0.68 | Q2 1.01 | lp_p 0.83   -> ALL clean
+  W 45.7  | pi_p 22.9                                        -> real high-tail excess
+- Integral ADO/ACH = 0.966 (the known ~+3.4% normalization excess), consistent across vars.
+- pn improved 11.4 (event cascade) -> 2.27 (factorized): the event cascade was the pN problem;
+  reverting it (commit a5a3997) resolved most of it. lp_p 0.83 -> leading proton fine.
+- Q2 chi2 was 0.0 only due to MY unit bug (ACH stores MeV^2, res_C GeV^2); fixed -> 1.01 (good).
+- W (45.7) and pi_p (22.9): BOTH drop to ratio ~0.6 in the high tail (W>1400 MeV, pi_p>600 MeV),
+  flat ~1 below.  CORRECTION to my earlier note: pi_p has an IDENTICAL definition both sides, so
+  this is NOT a vertex-definition artifact -- it is a REAL shape excess: ADoNIS over-produces the
+  high-pion-momentum / high-W tail by ~40-65%.  W mirrors it (high W <-> high pi_p).
+- It barely touches the STV observables (pn/dptt/daT good) because those average over pi_p and
+  are Delta-bulk dominated; but it is a genuine pion-spectrum discrepancy in the 2nd-resonance
+  region.  Plausibly PRIMARY RES production at high W (cf. res_amps2_frame_fix.md W>1600 tail),
+  NOT FSI -- but the earlier "primary high-W" claim was once an artifact (#5), so verify cleanly
+  (primary vs FSI; consistent weighting; cached arrays) before asserting.  AWAITING DIRECTION.
