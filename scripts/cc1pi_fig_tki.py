@@ -79,7 +79,7 @@ def observables(kmu, ppi, lead, is_h, seed=0):
     return dptt, pN, dat, dpt
 
 
-def res_C(n, seed):
+def res_C(n, seed, return_raw=False):
     e = res_xsec.generate(n, seed=seed, return_events=True)["events"]
     knu, kmu, pstr = (np.asarray(e[k]) for k in ("k_nu", "k_mu", "p_struck"))
     ppi, pN, w = np.asarray(e["p_pi"]), np.asarray(e["p_N"]), np.asarray(e["w"])
@@ -87,7 +87,7 @@ def res_C(n, seed):
     ev = EventRecord(k=jnp.asarray(knu), kp=jnp.asarray(kmu), p_struck=jnp.asarray(pstr),
                      p_pi=jnp.asarray(ppi), p_N=jnp.asarray(pN), w=jnp.asarray(w),
                      channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.asarray(e["ppid"], jnp.int32),
-                     pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.asarray(e["ipid"], jnp.int32),
+                     pid_N=jnp.asarray(e["Npid"], jnp.int32), pid_Ni=jnp.asarray(e["ipid"], jnp.int32),
                      W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
     pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
     ko, ko_pos, ko_fz = pion.last_scat_ko                        # leading pi-scatter recoil proton
@@ -106,8 +106,10 @@ def res_C(n, seed):
     ko_f = np.where(has_ko[:, None], np.asarray(ko_f), 0.0)
     ko_ko = np.where(has_ko[:, None], np.asarray(ko_ko), 0.0)
     # leading proton = highest-momentum IN-WINDOW candidate among
-    # {RES nucleon (if proton), re-cascaded scatter knockout, its secondary knockout}
-    lead0 = np.where((np.asarray(ev.pid_N) == 2212)[:, None], np.asarray(ev.p_N), 0.0)
+    # {nucleon-cascade leading PROTON (primary-if-proton OR its NN knockout proton -- the only n->n pi+
+    #  signal-proton path, species threaded from the cascade), re-cascaded pion-scatter knockout, its
+    #  secondary knockout}
+    lead0 = np.asarray(nf.last_lead_prot)
     if KNOCKOUT_MODE == "res_only":
         cands = lead0[:, None, :]                                # RES nucleon only (ablation)
     elif KNOCKOUT_MODE == "no_secondary":
@@ -119,6 +121,21 @@ def res_C(n, seed):
     lead = cands[np.arange(m), np.argmax(mom, axis=1)]
     has_p = inwin.any(axis=1)
     no_extra_pi = ~(np.asarray(nf.last_made_pion) | (has_ko & np.asarray(ko_made_pi)))
+    if return_raw:
+        # PRE-selection per-event bank (ALL m events): the ADoNIS analog of the ACHILLES
+        # res_w_FSI extraction, so the signal cut ladder can be applied identically off-line.
+        mu_m = np.linalg.norm(kmu[:, 1:], axis=1)
+        pi_m = np.linalg.norm(ppi_f[:, 1:], axis=1)
+        lp_m = np.linalg.norm(lead[:, 1:], axis=1)
+        qv = knu - kmu; totv = qv + pstr
+        Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
+        Q2v = (np.sum(qv[:, 1:] ** 2, axis=1) - qv[:, 0] ** 2) / 1e6
+        return dict(
+            mu_p=mu_m, mu_cth=kmu[:, 3] / np.clip(mu_m, 1e-9, None),
+            pi_p=pi_m, pi_cth=ppi_f[:, 3] / np.clip(pi_m, 1e-9, None), pid_pi=pid_pi,
+            lp_p=lp_m, lp_cth=lead[:, 3] / np.clip(lp_m, 1e-9, None),
+            has_p=has_p, no_extra_pi=no_extra_pi, W=Wv, Q2=Q2v, w=w,
+            ppid0=np.asarray(e["ppid"]))                    # primary RES pion charge (channel tag)
     sel = ((pid_pi == 211) & has_p & no_extra_pi & (w > 0)
            & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
     dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)

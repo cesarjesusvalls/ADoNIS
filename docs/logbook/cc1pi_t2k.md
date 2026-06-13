@@ -750,3 +750,88 @@ Ablation (cc1pi_knockout_ablation.py, KNOCKOUT_MODE full/no_secondary/res_only, 
 NEXT (direct test): momentum-resolved pion survival/transmission ADoNIS-cascade vs ACHILLES (FSI vs
    no-FSI hepmcs) to localize which pion momenta diverge; then audit oset abs (Delta-falloff) + MB
    scatter magnitude/angle + charge-exchange at high pion momentum.
+
+## #30 — pion survival FALSIFIES #29; substitution-bisect (a la res_amps2_frame_fix) localizes to the PROTON LEG
+
+- #29's "ADoNIS under-removes high-momentum pions" is FALSIFIED by direct measurement
+  (scripts/cc1pi_pion_survival.py, banked pion fate): pi+ survival in window FSI/noFSI ADO/ACH = 0.90-1.03
+  across momentum; above-window down-scatter into the window only 3.8%. The pion FSI is FAITHFUL.
+- CONTRADICTION (every piece faithful, aggregate breaks) = the same signature as the dsigma/dQ2 sag
+  (docs/res_amps2_frame_fix.md). User direction: substitution-bisect until the exact breaking part is found.
+- W is NOT the difference in the recipe: both extractors compute W = |q + pstr| IDENTICALLY
+  (extract_t2k_cc1pi_tki.py:86, cc1pi_fig_tki.py:127); only the pstr 4-vector convention could differ.
+  And pi_p (identical def) ALSO shows the tail -> not a pure W-definition artifact.
+- CUT-LADDER on the ACHILLES res_w_FSI bank (free re-binning; carbon, mu+lead-pi+ accepted):
+    n_pi==1 cut: removes 0.5-5%/bin (mild). multi-pion n_pi>=2 frac 0.7%(lowW)->13.6%(W~1900).
+    PROTON cut (prot_ok): removes 52-76%, STRONGLY pi_p-dependent -- survival 0.48(pi_p~525)->0.24(~1125).
+- ACHILLES P(in-window proton | pi_p) on the signal base: 0.42,0.46,0.49,0.41,0.30,0.25,0.27 (rises then
+  DROPS at high pi_p -- fast pion => soft proton below the 450 window). P(prot|W): ~0.45->0.24 across W=1400.
+  => the tail is INTRODUCED by the proton-leg acceptance, the one conditional never cross-checked
+  (survival / no-FSI tests all looked at the PION). HYPOTHESIS: ADoNIS's P(prot|high pi_p) > ACHILLES
+  -> keeps more high-pi_p signal -> the tail. Reconciles survival-faithful with signal-ADO-high.
+- HARNESS: refactored cc1pi_fig_tki.res_C with return_raw=True (pre-selection per-event bank; figure
+  path unchanged, gate bit-identical ratio 1.000000). scripts/gen_cc1pi_raw.py banks the central chain ->
+  t2k_cc1pi_raw_adonis.npz. scripts/cc1pi_protonleg_bisect.py applies the IDENTICAL cut ladder + the
+  P(prot|pi_p),P(prot|W) conditional to both banks. RUNNING; result pending.
+
+## #31 — ROOT CAUSE (substitution-bisect closes): recoil pid hardcoded -> n->n pi+ NEUTRON counted as the signal proton
+
+The bisect localized the tail to the PROTON cut (not the pion): dsigma/dpi_p and dsigma/dW ACH/ADO are
+FLAT (~1.0) with NO proton cut and only develop the tail when the in-window-proton requirement is added
+(cut ladder, both banks). P(in-window proton | pi_p) ADO/ACH rose to 1.9; |W to 2.2. => the signal
+definition is NOT equivalent on the proton leg.
+CODE ROOT CAUSE (read, not inferred): cc1pi_fig_tki.res_C set `pid_N=jnp.full(2212)` for ALL events,
+discarding res_xsec's correct e["Npid"] (2112 for n->n pi+). DiscreteNucleonFSI reads isp0=(pid_N==2212)
+(cascade_discrete.py:751) and never updates pid_N (returns at :775), so lead0=where(pid_N==2212,p_N,0)
+(:110) counts the n->n pi+ RECOIL NEUTRON as the signal proton. ACHILLES requires a real proton
+(extract_t2k_cc1pi_tki.py:61, pid==2212). n->n pi+ dominates high-W/high-pi_p -> ADoNIS admits those via
+the neutron -> the entire tail. (#25 bug class; memory "RES still needs pid_Ni threaded".) This is why
+pion survival was faithful and base/W/pi_p were flat -- the break was purely the proton-leg pid.
+FIX: pid_N=jnp.asarray(e["Npid"]) (line 90). Gate: Npid channel-correct (n->n pi+ ->2112, p->p pi+ ->2212).
+Re-banking + re-bisect to confirm the tail collapses; THEN refine n->n pi+ knockout-proton handling
+(nucleon-cascade internal proton knockouts currently masked by pid_N==2212; small per #29 ablation) and
+re-render the figure. CONFIRMATION PENDING.
+
+## #32 — fix CONFIRMS the bug + reveals the over-correction (n->n pi+ knockout-proton path now missing)
+
+Re-banked res_C with pid_N=e["Npid"] (150k x4) and re-ran the bisect:
+- P(in-window proton | pi_p) ADO/ACH: buggy 1.17/1.61/1.88/1.63 (525/825/975/1125) -> FIXED 0.87/0.81/0.82/0.70.
+  The neutron over-count is GONE (was ~1.9x too high -> now ~0.7-0.9x too LOW).
+- signal integral: buggy ADO 1.223e-6 (+3.5% vs ACH 1.185e-6) -> FIXED ADO 9.698e-7 (-18%). cut-ladder sig
+  ACH/ADO 1.0->0.54 (high) -> 1.16->1.46 (low). The fix OVER-corrects.
+- DIAGNOSIS of the over-correction: p->p pi+ proton (RES proton) now correct. n->n pi+ (neutron recoil) can
+  enter the signal ONLY via an FSI knockout proton (np->np), as in ACHILLES -- but res_C drops it: the
+  nucleon-cascade internal proton knockout is folded into ev.p_N then MASKED by lead0=where(pid_N==2212,..)
+  (pid_N stays 2112). The legit knockout proton is discarded -> the -18%. ACHILLES n->n-pi+-via-knockout
+  ~ 1.185e-6 - 9.698e-7 ~ 2.1e-7 (~18% of signal) -> a real, non-negligible path.
+- CONSISTENCY: #29 ablation "knockouts negligible (res_only~full)" was itself a BUG ARTIFACT -- the primary
+  neutron already supplied the "proton", so adding/removing knockouts did nothing. Once the neutron is
+  excluded, the knockout path is the ONLY n->n pi+ entry and is NOT negligible.
+- PROPER FIX (source of truth, not a patch): DiscreteNucleonFSI must return the SPECIES of its leading output
+  nucleon (proton if the leading candidate is a knocked-out proton even when the primary was a neutron);
+  res_C selects the proton candidate from that, not by masking the input pid_N. Then re-render the figure.
+  IMPLEMENTATION NEXT.
+
+## #33 — proper fix landed: SHAPE TAIL CLOSED; exposes a flat ~12% norm deficit (cascade composition)
+
+Implemented (source-of-truth, not a patch): DiscreteNucleonFSI now exposes self.last_lead_prot = the
+leading PROTON among {primary-if-isp0, NN knockout ko_f, ko_ko} (knockouts are protons by construction,
+best_ko bg_proton). res_C: lead0 = nf.last_lead_prot (was where(pid_N==2212, ev.p_N, 0)). pid_N=e["Npid"].
+Gate: res_C(return_raw) selected == res_C normal, ratio 1.000000.
+cc1pi_ratios (120k x4 RES-C + 40k x4 RES-H), chi2/ndf | integral ACH/ADO  [buggy #28 in brackets]:
+  W      3.00  [23.19]   pi_p 3.38 [12.95]   -> the high-W/pi_p SHAPE TAIL IS CLOSED
+  pn    10.59  [2.39]    dptt 3.21 [0.15]    dalphat 3.54 [0.71]   Q2 3.37 [0.78]   lp_p 5.32 [1.33]
+  integral ACH/ADO = 1.116 UNIFORM across all 7 vars (RES-C 9.974e-7, RES-H 5.690e-7).
+=> The mysterious high-W/pi_p tail (chased #17-#30) was the recoil-pid bug; fixing it CLOSES the shape.
+   The pn/dptt/daT/lp_p chi2 rose only because they are now dominated by a FLAT ~12% normalization deficit
+   (ratio panels flat at 1.116), NOT a shape problem. The old #28 "+1.8%" (0.982) was a CANCELLATION:
+   fake neutron-as-proton over-count (+) masking this deficit (-). Fixing the bug exposes the real deficit.
+DEFICIT ORIGIN: n->n pi+ enters the signal ONLY via an FSI knockout proton; ADoNIS's factorized leading-only
+   nucleon cascade under-produces in-window knockout protons vs ACHILLES's full shared cascade (lead_prot
+   recovered only ~3% of the ~18% the pid fix removed). This is the declared cascade-composition
+   approximation (docs/cascade_declared_approximations.md #1-3) -- the differentiability-vs-faithfulness
+   tension -- now isolated as a clean NORMALIZATION issue (flat 12%), no longer a shape distortion.
+   #29 "knockouts negligible" was itself a bug artifact (the primary neutron already supplied the proton).
+NEXT: the n->n pi+ knockout-proton yield (factorized leading-only vs ACHILLES shared/recursive) is the
+   remaining ~12%; quantify how much is leading-only truncation vs factorized backgrounds before deciding
+   a faithful + differentiable treatment.

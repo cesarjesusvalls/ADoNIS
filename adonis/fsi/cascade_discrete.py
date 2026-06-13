@@ -768,6 +768,15 @@ class DiscreteNucleonFSI:
         cands = jnp.stack([p_N, ko_f, ko_ko], axis=1)                   # (n,3,4)
         mom = jnp.linalg.norm(cands[:, :, 1:], axis=2)                  # (n,3)
         lead = cands[jnp.arange(n), jnp.argmax(mom, axis=1)]
+        # leading PROTON among the candidates (species threaded, not re-asserted downstream): the primary
+        # nucleon is a proton iff isp0 (= input pid_N); the NN knockouts are protons by construction
+        # (best_ko tracks only proton recoils, _propagate_nucleon_discrete bg_proton).  This is the only
+        # way an n->n pi+ (neutron recoil) acquires a signal proton, exactly as in ACHILLES.
+        prot_mask = jnp.stack([isp0, jnp.ones(n, bool), jnp.ones(n, bool)], axis=1)   # (n,3)
+        prot_mom = mom * prot_mask
+        has_prot = jnp.any(prot_mask & (mom > 0.0), axis=1)
+        lead_prot = cands[jnp.arange(n), jnp.argmax(prot_mom, axis=1)]
+        self.last_lead_prot = jnp.where(has_prot[:, None], lead_prot, jnp.zeros((n, 4)))
         self.last_w_scat = w_sc1 * jnp.where(has_ko, w_sc2, 1.0)        # kind-1 sigma_scatter reweight (1 at nominal)
         self.last_srec = (srec1, srec2, has_ko)   # compressed walk records for nucleon_scat_reweight
         self.last_made_pion = made_pi1 | (has_ko & made_pi2)   # NN->NDelta->NNpi created a pion
