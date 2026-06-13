@@ -45,6 +45,11 @@ COS70 = np.cos(np.deg2rad(70.0))
 M_A12, M_A11 = 11174.862, 10252.547                  # 12C, 11B [MeV]
 NB_PER_CM2 = 1e33
 A_CH = 13.0                                          # data is per NUCLEON of CH (12 C + 1 H)
+# ABLATION knob (default "full" = production, unchanged): which proton candidates feed the signal.
+#   "full"        = {RES nucleon, leading pion-scatter knockout, its secondary knockout} (faithful set)
+#   "no_secondary"= drop the secondary knockout (tests the bounded-recursion approximation)
+#   "res_only"    = RES nucleon only, no pion-scatter knockouts (removes the n->n pi+-via-knockout path)
+KNOCKOUT_MODE = "full"
 
 
 def _acc(p4, lo, hi):
@@ -103,8 +108,13 @@ def res_C(n, seed):
     # leading proton = highest-momentum IN-WINDOW candidate among
     # {RES nucleon (if proton), re-cascaded scatter knockout, its secondary knockout}
     lead0 = np.where((np.asarray(ev.pid_N) == 2212)[:, None], np.asarray(ev.p_N), 0.0)
-    cands = np.stack([lead0, ko_f, ko_ko], axis=1)               # (m, 3, 4)
-    inwin = np.stack([_acc(cands[:, i], P_LO, P_HI) for i in range(3)], axis=1)
+    if KNOCKOUT_MODE == "res_only":
+        cands = lead0[:, None, :]                                # RES nucleon only (ablation)
+    elif KNOCKOUT_MODE == "no_secondary":
+        cands = np.stack([lead0, ko_f], axis=1)                  # drop the secondary knockout (ablation)
+    else:
+        cands = np.stack([lead0, ko_f, ko_ko], axis=1)           # (m, 3, 4) faithful set
+    inwin = np.stack([_acc(cands[:, i], P_LO, P_HI) for i in range(cands.shape[1])], axis=1)
     mom = np.linalg.norm(cands[:, :, 1:], axis=2) * inwin
     lead = cands[np.arange(m), np.argmax(mom, axis=1)]
     has_p = inwin.any(axis=1)
