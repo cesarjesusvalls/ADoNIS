@@ -292,14 +292,15 @@ def _evolve(p0, spec0, chg0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, 
         # pion: absorbed/converted -> slot dies (abs final state ignored for the pion slot;
         # the absorption products are NOT tracked in v1 -- the CC0pi chains keep using the
         # factorized kernel; this kernel targets the pion-SURVIVAL signals)
+        p_old = p                                                # pre-update momenta for formation zones
         spec = jnp.where(pi_abs | pi_conv, 0, spec).astype(jnp.int32)
         absorbed_pi = absorbed_pi | jnp.any(pi_abs & (jnp.arange(K) == 0)[None, :], axis=1)
         p = jnp.where(pi_scat[..., None], pi_out, p)
         chg = jnp.where(pi_scat, (1 - out_ch).astype(jnp.int32), chg).astype(jnp.int32)
         p = jnp.where(n_el[..., None], nA, p)
         p = jnp.where(n_inel[..., None], nI, p)
-        fz = jnp.where(n_el, _formation_zone(p.reshape(n * K, 4), nA.reshape(n * K, 4)).reshape(n, K), fz)
-        fz = jnp.where(n_inel, _formation_zone(p.reshape(n * K, 4), nI.reshape(n * K, 4)).reshape(n, K), fz)
+        fz = jnp.where(n_el, _formation_zone(p_old.reshape(n * K, 4), nA.reshape(n * K, 4)).reshape(n, K), fz)
+        fz = jnp.where(n_inel, _formation_zone(p_old.reshape(n * K, 4), nI.reshape(n * K, 4)).reshape(n, K), fz)
         # consume struck background nucleons (+ the absorption partner)
         hit_onehot = jax.nn.one_hot(j, A, dtype=bool) & interact[..., None]
         part_onehot = jax.nn.one_hot(pj, A, dtype=bool) & pi_abs[..., None]
@@ -337,20 +338,20 @@ def _evolve(p0, spec0, chg0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, 
         p, spec, chg, fz, pos = spawn(p, spec, chg, fz, pos,
                                       rec_pi, jnp.full((n, K), 2, jnp.int32),
                                       jnp.clip(q_rec_pi, 0, 1),
-                                      _formation_zone(p.reshape(n * K, 4), rec_pi.reshape(n * K, 4)).reshape(n, K),
+                                      _formation_zone(p_old.reshape(n * K, 4), rec_pi.reshape(n * K, 4)).reshape(n, K),
                                       pos_j, pi_scat)
         # NN elastic recoil
         p, spec, chg, fz, pos = spawn(p, spec, chg, fz, pos,
                                       nB, jnp.full((n, K), 2, jnp.int32),
                                       nisp[gi[0], gi[1]].astype(jnp.int32),
-                                      _formation_zone(p.reshape(n * K, 4), nB.reshape(n * K, 4)).reshape(n, K),
+                                      _formation_zone(p_old.reshape(n * K, 4), nB.reshape(n * K, 4)).reshape(n, K),
                                       pos_j, n_el)
         # NN inelastic: Delta-decay nucleon + created pion (charges: approximate bookkeeping --
         # decay nucleon inherits the struck isospin, pion charge balances; declared)
         p, spec, chg, fz, pos = spawn(p, spec, chg, fz, pos,
                                       nD, jnp.full((n, K), 2, jnp.int32),
                                       nisp[gi[0], gi[1]].astype(jnp.int32),
-                                      _formation_zone(p.reshape(n * K, 4), nD.reshape(n * K, 4)).reshape(n, K),
+                                      _formation_zone(p_old.reshape(n * K, 4), nD.reshape(n * K, 4)).reshape(n, K),
                                       pos_j, n_inel)
         p, spec, chg, fz, pos = spawn(p, spec, chg, fz, pos,
                                       piD, jnp.full((n, K), 1, jnp.int32),
