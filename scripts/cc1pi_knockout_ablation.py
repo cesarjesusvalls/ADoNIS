@@ -11,6 +11,7 @@ Usage: python scripts/cc1pi_knockout_ablation.py [NRES=80000] [NSEED=4]
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
+import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 import scripts.cc1pi_fig_tki as F
 from adonis.data.oracle.normalization import weight_to_nb_of
 
@@ -57,16 +58,48 @@ def table(ado, ach, aw):
 def main():
     ach = np.load("data/oracle/t2k_cc1pi_tki_achilles.npz")
     aw = np.asarray(ach["w"]) * weight_to_nb_of(ach)
-    res = {}
+    res = {}; ados = {}
     for mode in ("full", "no_secondary", "res_only"):
         F.KNOCKOUT_MODE = mode
         print(f"\n===== KNOCKOUT_MODE = {mode} =====", flush=True)
-        ado = accumulate()
+        ado = accumulate(); ados[mode] = {k: np.asarray(ado[k]) for k in ("W", "pi_p", "w")}
         res[mode] = (table(ado, ach, aw), float(ado["w"].sum()))
         print(f"  selected sigma = {res[mode][1]:.4e} nb", flush=True)
         for key, _ in VARS:
             c2, ir, irh = res[mode][0][key]
             print(f"    {key:9s} chi2/ndf={c2:7.2f}  ACH/ADO={ir:.3f}", flush=True)
+    np.savez("data/oracle/t2k_cc1pi_ablation.npz",
+             **{f"{m}_{k}": ados[m][k] for m in ados for k in ("W", "pi_p", "w")})
+    # --- dsigma/dW and dsigma/dpi_p, ACHILLES vs the 3 ablation modes ---
+    COL = {"full": "C0", "no_secondary": "C2", "res_only": "C3"}
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7), height_ratios=[3, 1.2])
+    for c, (key, edges, xlab) in enumerate([("W", np.linspace(1080, 1700, 13), "vertex W [MeV]"),
+                                            ("pi_p", np.linspace(150, 1200, 13), r"$p_\pi$ [MeV/c]")]):
+        bw = np.diff(edges); ctr = 0.5 * (edges[1:] + edges[:-1])
+        av = np.asarray(ach[key]) / (1e6 if key == "Q2" else 1.0)
+        da, _ = np.histogram(av, edges, weights=aw); ea2, _ = np.histogram(av, edges, weights=aw ** 2)
+        da, ea = da / bw, np.sqrt(ea2) / bw
+        ax, axr = axes[0, c], axes[1, c]
+        ax.fill_between(edges, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
+                        step="post", color="0.45", alpha=0.35, lw=0, label="ACHILLES stat. unc.")
+        ax.step(edges, np.append(da, da[-1]), where="post", color="0.35", lw=1.4, label="ACHILLES")
+        axr.axhspan(0.9, 1.1, color="green", alpha=0.12); axr.axhline(1.0, ls="--", color="green", lw=0.7)
+        for mode in ados:
+            dd, _ = np.histogram(ados[mode][key], edges, weights=ados[mode]["w"])
+            e2, _ = np.histogram(ados[mode][key], edges, weights=ados[mode]["w"] ** 2)
+            dd, ed = dd / bw, np.sqrt(e2) / bw
+            ax.errorbar(ctr, dd, yerr=ed, fmt="os^"[list(ados).index(mode)], color=COL[mode], ms=3,
+                        capsize=2, lw=0.9, label=f"ADO {mode}")
+            m = (da > 0) & (dd > 0)
+            axr.errorbar(ctr[m] + (list(ados).index(mode) - 1) * 8, (da / dd)[m],
+                         yerr=((da / dd) * np.sqrt((ed / dd) ** 2 + (ea / da) ** 2))[m],
+                         fmt="os^"[list(ados).index(mode)], color=COL[mode], ms=3, capsize=2, lw=0.8)
+        ax.set_title(f"CC1$\\pi^+$Np  d$\\sigma$/d{key}", fontsize=10); ax.set_ylim(bottom=0)
+        ax.set_ylabel(r"d$\sigma$/dx [nb/unit]"); ax.legend(fontsize=7)
+        axr.set_ylim(0.5, 1.6); axr.set_xlabel(xlab); axr.set_ylabel("ACH/ADO")
+    fig.suptitle("Knockout ablation: ACHILLES vs ADoNIS {full, no_secondary, res_only}  (the 3 overlap)", fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    out = "paper_figures/cc1pi_ablation_W.png"; fig.savefig(out, dpi=120); print("wrote", out, flush=True)
     print(f"\n{'':9s} | " + " | ".join(f"{m:>13}" for m in res))
     print(f"{'sigma':9s} | " + " | ".join(f"{res[m][1]:13.4e}" for m in res))
     for key, _ in VARS:
