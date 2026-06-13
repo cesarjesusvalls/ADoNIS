@@ -20,6 +20,7 @@ import os, sys
 from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
+from adonis.data.oracle.normalization import weight_to_nb_of
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
@@ -43,7 +44,6 @@ PI_LO, PI_HI = 150.0, 1200.0
 P_LO, P_HI = 450.0, 1200.0
 COS70 = np.cos(np.deg2rad(70.0))
 M_A12, M_A11 = 11174.862, 10252.547                  # 12C, 11B [MeV]
-SCALE_ACH = 6.266697e-02 * 1e-3 / 8.905269e+05       # ACHILLES hepmc weight -> nb (run_T2K_virt)
 NB_PER_CM2 = 1e33
 A_CH = 13.0                                          # data is per NUCLEON of CH (12 C + 1 H)
 
@@ -145,7 +145,7 @@ def main():
           flush=True)
 
     ach = np.load("data/oracle/t2k_cc1pi_tki_achilles.npz")
-    ach_w = np.asarray(ach["w"]) * SCALE_ACH
+    ach_w = np.asarray(ach["w"]) * weight_to_nb_of(ach)   # GenCrossSection/sum_w from the npz header
 
     ado["dalphat_deg"] = np.degrees(ado["dalphat"])          # daT release bins are in DEGREES
     VARS = [("pn", "pN", r"$p_N$ [MeV/c]", 1.0),

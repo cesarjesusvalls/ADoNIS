@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
+from adonis.data.oracle.normalization import weight_to_nb_of
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 ORA = Path("data/oracle")
@@ -13,7 +14,7 @@ adoC = np.load(ORA / "t2k_cc0pi_tki_adonis_xsec.npz")        # 12C  (30 seeds)
 adoH = np.load(ORA / "t2k_cc0pi_tki_adonis_H.npz")          # free-proton H (1 sample)
 # ABSOLUTE nb weights (first principles, no fit).  ADoNIS = CH = 12C + H (1 carbon + 1 hydrogen):
 #   12C per-event nb / 30 seeds  (+)  H per-event nb.   ACHILLES: NuHepMC W x GenXS(pb->nb)/sum_w_all.
-ACH_SCALE = 6.266697e-02 * 1e-3 / 8.905269e+05      # GenXS[pb]->nb / sum_w_all  (T2K_CH_virt run)
+ACH_SCALE = weight_to_nb_of(ach)      # GenCrossSection/sum_w from the npz header (no hardcoded scale)
 KEYS = ("dpt", "dalphat", "Q2")
 ado_w = np.concatenate([np.asarray(adoC["w"]) / 30.0, np.asarray(adoH["w"])])
 ado_vals = {k: np.concatenate([np.asarray(adoC[k]), np.asarray(adoH[k])]) for k in KEYS}

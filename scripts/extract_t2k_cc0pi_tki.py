@@ -9,6 +9,7 @@ Usage:  python scripts/extract_t2k_cc0pi_tki.py <hepmc> [out.npz]
 import sys
 from pathlib import Path
 import numpy as np
+from adonis.data.oracle.normalization import hepmc_norm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from adonis.data.oracle.parse_hepmc import parse_events
@@ -80,7 +81,9 @@ if __name__ == "__main__":
     path = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else "data/oracle/t2k_cc0pi_tki_achilles.npz"
     dpt, dat, q2, wvar, w, proc = observables(path)
-    np.savez(out, dpt=dpt, dalphat=dat, Q2=q2, W=wvar, w=w, proc=proc)
+    _nrm = hepmc_norm(path)   # GenCrossSection + sum_w from the hepmc header (no hardcoded scale)
+    np.savez(out, dpt=dpt, dalphat=dat, Q2=q2, W=wvar, w=w, proc=proc,
+             gen_xs_pb=_nrm["gen_xs_pb"], sum_w_all=_nrm["sum_w_all"], weight_to_nb=_nrm["weight_to_nb"])
     qe = proc == 200; res = proc >= 400
     print(f"CC0pi-Np signal events: {len(w)}   sum_w={w.sum():.4e} nb")
     print(f"  by process: QE(200) {int(qe.sum())} ev sum_w={w[qe].sum():.4e}   "

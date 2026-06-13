@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
+from adonis.data.oracle.normalization import weight_to_nb_of
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 # optional tuned overlay: --theta SABS SSCAT MA  (reweights the stored walk/M_A records --
@@ -22,7 +23,7 @@ ORA = Path("data/oracle")
 dis = np.load(ORA / "cc0pi_disaggregated.npz")
 ach = np.load(ORA / "t2k_cc0pi_tki_achilles.npz")
 dat = np.load(ORA / "t2k_cc0pi_stv_data.npz")
-SCALE = 6.266697e-02 * 1e-3 / 8.905269e+05
+SCALE = weight_to_nb_of(ach)
 NB_PER_CM2, A_NUCLEON = 1e33, 12.0                              # per-nucleon data -> per-12C nb
 CELLS = ["QE-C", "RES-C", "RES-H"]
 ado = {k: np.concatenate([dis[f"{c}_True_{k}"] for c in CELLS]) for k in ("dalphat", "dpt", "w")}

@@ -7,13 +7,14 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
+from adonis.data.oracle.normalization import weight_to_nb_of
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 ORA = Path("data/oracle")
 cyl = np.load(ORA / "cc0pi_disaggregated.npz")
 gau = np.load(ORA / "cc0pi_disaggregated_gaussian.npz")
 ach = np.load(ORA / "t2k_cc0pi_tki_achilles.npz")
-SCALE = 6.266697e-02 * 1e-3 / 8.905269e+05
+SCALE = weight_to_nb_of(ach)
 CELLS = ["QE-C", "RES-C", "RES-H"]
 
 

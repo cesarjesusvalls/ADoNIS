@@ -5,12 +5,13 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
+from adonis.data.oracle.normalization import weight_to_nb_of
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 ORA = Path("data/oracle")
 dis = np.load(ORA / "cc0pi_disaggregated.npz")
 ach = np.load(ORA / "t2k_cc0pi_tki_achilles.npz")
-SCALE = 6.266697e-02 * 1e-3 / 8.905269e+05                      # GenXS[pb->nb] / sum_w_all
+SCALE = weight_to_nb_of(ach)      # GenCrossSection/sum_w from the npz header
 CELLS = ["QE-C", "RES-C", "RES-H"]                              # ADoNIS CH CC0pi (FSI); RES-H = 0
 ado = {k: np.concatenate([dis[f"{c}_True_{k}"] for c in CELLS]) for k in ("W", "Q2", "w")}
 ach_w = np.asarray(ach["w"]) * SCALE

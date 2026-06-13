@@ -10,14 +10,15 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
+from adonis.data.oracle.normalization import weight_to_nb_of
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 ORA = Path("data/oracle")
 dis = np.load(ORA / "cc0pi_disaggregated.npz")
 ACH_FSI = np.load(ORA / "t2k_cc0pi_tki_achilles.npz")          # 2M FSI   (has proc)
 ACH_NOF = np.load(ORA / "t2k_cc0pi_tki_achilles_nofsi.npz")    # 200k no-FSI
-SCALE_FSI = 6.266697e-02 * 1e-3 / 8.905269e+05
-SCALE_NOF = 6.25784081e-02 * 1e-3 / 8.589350e+04
+SCALE_FSI = weight_to_nb_of(ACH_FSI)
+SCALE_NOF = weight_to_nb_of(ACH_NOF)
 KEYS = ("W", "Q2", "dalphat", "dpt")
 
 

@@ -13,6 +13,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from adonis.data.oracle.parse_hepmc import parse_events
+from adonis.data.oracle.normalization import hepmc_norm
 
 MU = 13; PIP = 211; PROT = 2212
 MESONS = {111, 211, -211, 221, 130, 310, 311, 321, -321, -311}
@@ -120,8 +121,10 @@ if __name__ == "__main__":
     # NOTE: the status-code is_h tag fails on this hepmc (0 tagged of an 18k H component);
     # the saved is_h uses the EXACT kinematic tag instead: free-proton events have dptt == 0
     # (no Fermi motion; only 0.24% of carbon events fall within |dptt|<0.5).
+    _nrm = hepmc_norm(path)   # GenCrossSection + sum_w from the hepmc header (no hardcoded scale)
     np.savez(out, dptt=dptt, pn=pn, dalphat=dat, dpt=dpt, w=w, is_h=(np.abs(dptt) < 0.5),
-             pi_p=pi_p, pi_cth=pi_cth, lp_p=lp_p, W=Wv, Q2=Q2v, Enu=Enu)
+             pi_p=pi_p, pi_cth=pi_cth, lp_p=lp_p, W=Wv, Q2=Q2v, Enu=Enu,
+             gen_xs_pb=_nrm["gen_xs_pb"], sum_w_all=_nrm["sum_w_all"], weight_to_nb=_nrm["weight_to_nb"])
     print(f"CC1pi+ signal events: {len(w)}   sum_w={w.sum():.4e} nb")
     print(f"  rms(dpTT)={np.sqrt(np.average(dptt**2, weights=w)):.1f}  <p_N>={np.average(pn, weights=w):.1f}  "
           f"<dpT>={np.average(dpt, weights=w):.1f}  <daT>={np.degrees(np.average(dat, weights=w)):.1f}deg")
