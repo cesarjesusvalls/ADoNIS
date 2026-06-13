@@ -264,3 +264,22 @@ adonis/fsi/cascade_event.py: ONE nucleus per event, all hadrons co-evolve.
   beam-oracle match: revisit the in-event absorption environment: struck-vertex density /
   consumed-vertex handling), then the +2.8% pi-window leg (DCC scatter-angle frame check
   vs _two_body_cm_scatter).
+
+## #12 — high-stats anchors: absorption NOT the cause; decomposition does not yet close
+
+- DCC scatter frame: event-kernel _dcc_scatter == validated _two_body_cm_scatter exactly
+  (cos_cm reproduced to print precision on identical inputs) -- frame exonerated.
+- Absorption, apples-to-apples "NO PION IN FINAL STATE" (counts NN-inel created pions
+  correctly; the earlier 0.2239 was the slot flag): ACH 0.21640 (N=530794, +-0.06%) vs
+  ADO event-kernel 0.20990 (400k weighted) -- ADO UNDER-absorbs by 3% relative, i.e.
+  MORE pion events -> would push the integral UP. The -6.9% carbon integral therefore
+  cannot be explained by the absorption rate; combined with the matched conditionals
+  (#11), the decomposition does NOT close -- one of the leg comparisons still hides a
+  selection/denominator subtlety, or the per-leg stats are undersold.
+- NEXT HARNESS (definitive, ~2h compute): ONE paired 300k x 4 measurement of the FULL
+  signal fraction P(sel | RES-C): ADO = event-kernel chain exactly as the figure;
+  ACH = signal-count / RES-C-count from T2K_CH_virt.hepmc using proc ids (both
+  unambiguous event counts, no SCALE, no per-leg denominators); then bisect WITHIN that
+  single harness by relaxing one cut at a time (mu -> pi-window -> exactly-one ->
+  proton) so every step shares identical denominators. This removes the cross-script
+  denominator hazards that have produced three artifacts already.
