@@ -448,3 +448,30 @@ Per-variable ACH/ADO chi2/ndf (vs #17 in parens):
   (2nd-resonance-region RES production), consistent with #4's no-FSI primary W-tail (2-3x
   over-population). NEXT: verify cleanly (primary no-FSI vs FSI, consistent weighting,
   cached arrays) before tuning, since the "primary high-W" claim was once an artifact (#5).
+
+## #20 — bilinear-vs-spline interp: confirmed W-local, but WRONG SIGN to be the tail driver
+
+Context: the high-W/pi_p tail (#17) is a well-sampled BIAS (#tail_neff: N_eff healthy, weights
+flat -> NOT variance), localized to W>1390, and IS the +3.5% norm. User recalled (and
+docs/res_amps2_frame_fix.md:86 records) a high-W dsigma/dW deformation tied to bilinear-vs-spline
+(ADoNIS default BATCH_INTERP="bilinear"; ACHILLES uses the dcc spline; ADoNIS "spline" path
+documented to bit-match interpolate_amp).
+
+DIRECT test (scripts/interp_dsigdW.py): same sampled RES events, amps2 recomputed under BOTH
+interps (only the interp changes), dsigma/dW ratio spline/bilinear vs hadronic W (200k/channel):
+  W<1450 (Delta): 0.998-1.015 (flat, <=1.5%)
+  W 1485-1665: 1.06-1.10
+  W 1665-1935: 1.10 -> 1.24 (rising)
+  integrated spline/bilinear = 1.0091 (per-channel s/b: n-npi+ 1.021, n-ppi0 1.012, p-ppi+ 1.006)
+=> bilinear-vs-spline IS large and W-local in the 2nd-res region (the earlier 2-3% table-sum
+   proxy under-counted; per-event partial-wave contraction amplifies to 6-24%).
+
+CRITICAL SIGN: spline (=ACHILLES-faithful) gives MORE high-W sigma than bilinear. ADoNIS runs
+bilinear and is ALREADY ABOVE ACHILLES in the tail (#17 ACH/ADO 0.44-0.62). So bilinear->spline
+would push ADoNIS's tail EVEN HIGHER -> WORSEN the ACH/ADO discrepancy. Therefore:
+  - bilinear is a genuine faithfulness error at high W (fix for correctness), but
+  - it is NOT the cause of the high-W excess; it was partially MASKING a larger one.
+  - the excess driver is NON-AMPLITUDE (phase space / isotropic 3-body sampler #18A / flux).
+CAVEAT: rests on ADoNIS-spline == ACHILLES amplitude (documented bit-match). DECISIVE next check:
+ADoNIS-spline dsigma/dW DIRECTLY vs ACHILLES (predict spline sits ABOVE ACHILLES at high W; if so
+the excess is non-amplitude and the 3-body phase-space/sampling at high W is the next target).

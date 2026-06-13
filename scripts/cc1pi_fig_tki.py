@@ -74,60 +74,108 @@ def observables(kmu, ppi, lead, is_h, seed=0):
     return dptt, pN, dat, dpt
 
 
-def res_C(n, seed):
+def res_C(n, seed, fsi=True, return_all=False):
     e = res_xsec.generate(n, seed=seed, return_events=True)["events"]
     knu, kmu, pstr = (np.asarray(e[k]) for k in ("k_nu", "k_mu", "p_struck"))
     ppi, pN, w = np.asarray(e["p_pi"]), np.asarray(e["p_N"]), np.asarray(e["w"])
     m = len(w)
-    ev = EventRecord(k=jnp.asarray(knu), kp=jnp.asarray(kmu), p_struck=jnp.asarray(pstr),
-                     p_pi=jnp.asarray(ppi), p_N=jnp.asarray(pN), w=jnp.asarray(w),
-                     channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.asarray(e["ppid"], jnp.int32),
-                     pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.asarray(e["ipid"], jnp.int32),
-                     W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
-    pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
-    ko, ko_pos, ko_fz = pion.last_scat_ko                        # leading pi-scatter recoil proton
-    nf = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf.apply(None, ev, key=jax.random.PRNGKey(seed + 13))
-    ppi_f = np.asarray(ev.p_pi); pid_pi = np.asarray(ev.pid_pi)
-    # re-cascade the scatter knockout through the nucleon transport (ACHILLES UpdateKicked);
-    # its own (proton) knockout is a further candidate.
-    has_ko = np.linalg.norm(np.asarray(ko)[:, 1:], axis=1) > 1.0
-    cfg = _CFG(seed=3)
-    kn = jax.random.PRNGKey(seed + 17)
-    npos2, nmom2, nisp2 = sample_nucleons(jax.random.fold_in(kn, 1), m, cfg)
-    ko_in = jnp.where(jnp.asarray(has_ko)[:, None], jnp.asarray(ko), ev.p_N)   # dummy where none
-    ko_f, _, ko_ko, _, _, _, _, ko_made_pi = propagate_nucleon_discrete(
-        jnp.asarray(ko_pos), ko_in, jnp.ones(m, bool), npos2, nmom2, nisp2, cfg,
-        jax.random.fold_in(kn, 2), fz0=jnp.asarray(ko_fz))
-    ko_f = np.where(has_ko[:, None], np.asarray(ko_f), 0.0)
-    ko_ko = np.where(has_ko[:, None], np.asarray(ko_ko), 0.0)
-    # leading proton = highest-momentum IN-WINDOW candidate among
-    # {RES nucleon (if proton), re-cascaded scatter knockout, its secondary knockout}
-    lead0 = np.where((np.asarray(ev.pid_N) == 2212)[:, None], np.asarray(ev.p_N), 0.0)
-    cands = np.stack([lead0, ko_f, ko_ko], axis=1)               # (m, 3, 4)
-    inwin = np.stack([_acc(cands[:, i], P_LO, P_HI) for i in range(3)], axis=1)
-    mom = np.linalg.norm(cands[:, :, 1:], axis=2) * inwin
-    lead = cands[np.arange(m), np.argmax(mom, axis=1)]
+    if fsi:
+        ev = EventRecord(k=jnp.asarray(knu), kp=jnp.asarray(kmu), p_struck=jnp.asarray(pstr),
+                         p_pi=jnp.asarray(ppi), p_N=jnp.asarray(pN), w=jnp.asarray(w),
+                         channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.asarray(e["ppid"], jnp.int32),
+                         pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.asarray(e["ipid"], jnp.int32),
+                         W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
+        pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
+        ko, ko_pos, ko_fz = pion.last_scat_ko                    # leading pi-scatter recoil proton
+        nf = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf.apply(None, ev, key=jax.random.PRNGKey(seed + 13))
+        ppi_f = np.asarray(ev.p_pi); pid_pi = np.asarray(ev.pid_pi); pid_N = np.asarray(ev.pid_N)
+        # re-cascade the scatter knockout through the nucleon transport (ACHILLES UpdateKicked);
+        # its own (proton) knockout is a further candidate.
+        has_ko = np.linalg.norm(np.asarray(ko)[:, 1:], axis=1) > 1.0
+        cfg = _CFG(seed=3)
+        kn = jax.random.PRNGKey(seed + 17)
+        npos2, nmom2, nisp2 = sample_nucleons(jax.random.fold_in(kn, 1), m, cfg)
+        ko_in = jnp.where(jnp.asarray(has_ko)[:, None], jnp.asarray(ko), ev.p_N)   # dummy where none
+        ko_f, _, ko_ko, _, _, _, _, ko_made_pi = propagate_nucleon_discrete(
+            jnp.asarray(ko_pos), ko_in, jnp.ones(m, bool), npos2, nmom2, nisp2, cfg,
+            jax.random.fold_in(kn, 2), fz0=jnp.asarray(ko_fz))
+        ko_f = np.where(has_ko[:, None], np.asarray(ko_f), 0.0)
+        ko_ko = np.where(has_ko[:, None], np.asarray(ko_ko), 0.0)
+        lead0 = np.where((pid_N == 2212)[:, None], np.asarray(ev.p_N), 0.0)
+        cands = np.stack([lead0, ko_f, ko_ko], axis=1)           # (m, 3, 4)
+        no_extra_pi = ~(np.asarray(nf.last_made_pion) | (has_ko & np.asarray(ko_made_pi)))
+        nsc = np.asarray(pion.last_nsc)
+    else:
+        # no-FSI: primary final state, only the RES nucleon (proton candidate) survives, no knockouts.
+        ppi_f = ppi; pid_pi = np.asarray(e["ppid"], jnp.int32); pid_N = np.full((m,), 2212, np.int32)
+        lead0 = np.where((pid_N == 2212)[:, None], pN, 0.0)
+        cands = lead0[:, None, :]                                # (m, 1, 4)
+        no_extra_pi = np.ones(m, bool); nsc = np.zeros(m, np.int32)
+    # leading proton: highest-momentum candidate IN-WINDOW (lead_acc) and OVERALL (lead_all)
+    nc = cands.shape[1]
+    inwin = np.stack([_acc(cands[:, i], P_LO, P_HI) for i in range(nc)], axis=1)
+    momw = np.linalg.norm(cands[:, :, 1:], axis=2)
+    lead_acc = cands[np.arange(m), np.argmax(momw * inwin, axis=1)]
+    lead_all = cands[np.arange(m), np.argmax(momw, axis=1)]
     has_p = inwin.any(axis=1)
-    # CC1pi+ signal: the pion SURVIVED as a pi+ (absorbed -> pid 0; charge-exchange -> 111/-211),
-    # at least one proton candidate in the window, and the NUCLEON cascade did not create a
-    # pion (NN->NDelta->NNpi -> extra meson fails the exactly-one-pi+ requirement).
-    no_extra_pi = ~(np.asarray(nf.last_made_pion) | (has_ko & np.asarray(ko_made_pi)))
-    sel = ((pid_pi == 211) & has_p & no_extra_pi & (w > 0)
-           & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
-    dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)
-    pim = np.linalg.norm(ppi_f[sel][:, 1:], axis=1)
-    qv = (knu - kmu)[sel]; totv = qv + pstr[sel]                 # vertex hadronic 4-mom
+    qv = knu - kmu; totv = qv + pstr
     Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
     Q2v = (np.sum(qv[:, 1:] ** 2, axis=1) - qv[:, 0] ** 2) / 1e6  # GeV^2
+    if return_all:
+        topo = (pid_pi == 211) & (momw.max(axis=1) > 1.0) & no_extra_pi & (w > 0)
+        return _superset_C(topo, knu, kmu, ppi_f, lead_all, lead_acc, has_p, w, Wv, Q2v, seed)
+    sel = ((pid_pi == 211) & has_p & no_extra_pi & (w > 0)
+           & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
+    dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead_acc[sel], np.zeros(sel.sum(), bool), seed)
+    pim = np.linalg.norm(ppi_f[sel][:, 1:], axis=1)
     return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel],
-                nsc=np.asarray(pion.last_nsc)[sel],           # pion scatter count (diagnostics)
+                nsc=nsc[sel],                                 # pion scatter count (diagnostics)
                 pi_p=pim, pi_cth=ppi_f[sel][:, 3] / np.clip(pim, 1e-9, None),
-                lp_p=np.linalg.norm(lead[sel][:, 1:], axis=1), W=Wv, Q2=Q2v)
+                lp_p=np.linalg.norm(lead_acc[sel][:, 1:], axis=1), W=Wv[sel], Q2=Q2v[sel])
 
 
-def res_H(n, seed):
-    knu, kmu, pN, pPi, w = generate_H(n, seed=seed)
+def _superset_C(topo, knu, kmu, ppi_f, lead_all, lead_acc, has_p, w, Wv, Q2v, seed):
+    """All CC1pi+-topology carbon events with the SUPERSET for the 2x2 diagnostic masks
+    (mirrors extract_t2k_cc1pi_4way: STV both with leading-overall and leading-accepted proton)."""
+    s = topo
+    mu, pi, la, lc = kmu[s], ppi_f[s], lead_all[s], lead_acc[s]
+    ish = np.zeros(int(s.sum()), bool)
+    da = observables(mu, pi, la, ish, seed)                      # (dptt,pn,dat,dpt) leading-overall
+    dc = observables(mu, pi, lc, ish, seed + 1)                  # leading-accepted (nan-safe: lc=0 -> garbage, masked by has_acc)
+    mup = np.linalg.norm(mu[:, 1:], axis=1); pip = np.linalg.norm(pi[:, 1:], axis=1)
+    lap = np.linalg.norm(la[:, 1:], axis=1)
+    return dict(
+        w=w[s], is_h=ish, mu_p=mup, mu_cth=mu[:, 3] / np.clip(mup, 1e-9, None),
+        pi_p=pip, pi_cth=pi[:, 3] / np.clip(pip, 1e-9, None), W=Wv[s], Q2=Q2v[s],
+        dptt_all=da[0], pn_all=da[1], dat_all=da[2], dpt_all=da[3],
+        lp_p_all=lap, lp_cth_all=la[:, 3] / np.clip(lap, 1e-9, None),
+        has_acc=has_p[s], dptt_acc=dc[0], pn_acc=dc[1], dat_acc=dc[2], dpt_acc=dc[3],
+        lp_p_acc=np.linalg.norm(lc[:, 1:], axis=1),
+        mu_acc=_acc(mu, MU_LO, MU_HI), pi_acc=_acc(pi, PI_LO, PI_HI))
+
+
+def res_H(n, seed, fsi=True, return_all=False):
+    knu, kmu, pN, pPi, w = generate_H(n, seed=seed)             # free proton: no nuclear FSI -> fsi unused
     knu, kmu, pN, pPi, w = (np.asarray(x) for x in (knu, kmu, pN, pPi, w))
+    if return_all:
+        s = (w > 0)                                            # generate_H yields pi+ + proton only
+
+        mu, pi, p = kmu[s], pPi[s], pN[s]
+        ish = np.ones(int(s.sum()), bool)
+        da = observables(mu, pi, p, ish, seed)
+        mup = np.linalg.norm(mu[:, 1:], axis=1); pip = np.linalg.norm(pi[:, 1:], axis=1)
+        pp = np.linalg.norm(p[:, 1:], axis=1)
+        pstr = np.tile([938.27, 0, 0, 0.0], (int(s.sum()), 1)); qv = (knu - kmu)[s]; totv = qv + pstr
+        Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
+        Q2v = (np.sum(qv[:, 1:] ** 2, axis=1) - qv[:, 0] ** 2) / 1e6
+        has_acc = _acc(p, P_LO, P_HI)
+        return dict(
+            w=w[s], is_h=ish, mu_p=mup, mu_cth=mu[:, 3] / np.clip(mup, 1e-9, None),
+            pi_p=pip, pi_cth=pi[:, 3] / np.clip(pip, 1e-9, None), W=Wv, Q2=Q2v,
+            dptt_all=da[0], pn_all=da[1], dat_all=da[2], dpt_all=da[3],
+            lp_p_all=pp, lp_cth_all=p[:, 3] / np.clip(pp, 1e-9, None),
+            has_acc=has_acc, dptt_acc=da[0], pn_acc=da[1], dat_acc=da[2], dpt_acc=da[3],
+            lp_p_acc=pp, mu_acc=_acc(mu, MU_LO, MU_HI), pi_acc=_acc(pi, PI_LO, PI_HI))
     sel = (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pPi, PI_LO, PI_HI) & _acc(pN, P_LO, P_HI)
     dptt, pN_o, dat, dpt = observables(kmu[sel], pPi[sel], pN[sel], np.ones(sel.sum(), bool), seed)
     pim = np.linalg.norm(pPi[sel][:, 1:], axis=1)
