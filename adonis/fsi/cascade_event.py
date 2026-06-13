@@ -98,14 +98,19 @@ def _evolve(p0, spec0, chg0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, 
     keys = jax.random.split(key, cfg.max_steps)
 
     def body(state):
-        i, p, spec, chg, pos, fz, consumed, absorbed_pi = state
+        i, p, spec, chg, pos, fz, consumed, absorbed_pi, inted = state
         sk = keys[i]
         alive = spec > 0
         mom = jnp.linalg.norm(p[..., 1:], axis=-1)
         dhat = p[..., 1:] / jnp.clip(mom[..., None], 1e-9, None)
-        # sphere escape (in-event particles are internal)
+        # escape: pions before their FIRST interaction follow the ACHILLES external_test
+        # z>=radius PLANE rule (validated in the factorized chain vs the in-event absorption
+        # fractions); everything else escapes on the sphere (outward).
         outward = jnp.sum(pos * dhat, axis=-1) > 0
-        esc = (jnp.linalg.norm(pos, axis=-1) > radius) & outward & alive
+        ext_pi = (spec == 1) & ~inted
+        esc_plane = ext_pi & (pos[..., 2] >= radius)
+        esc_sphere = ~ext_pi & (jnp.linalg.norm(pos, axis=-1) > radius) & outward
+        esc = (esc_plane | esc_sphere) & alive
         spec = jnp.where(esc, -spec, spec).astype(jnp.int32)        # negative = escaped (final)
         alive = spec > 0
         # formation zone (nucleons)
@@ -191,9 +196,43 @@ def _evolve(p0, spec0, chg0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, 
         sig_n_j = sig_nuc[arn[:, None], jnp.arange(K)[None, :], j]
         # ---- branch picks ----
         u_br = jax.random.uniform(jax.random.fold_in(sk, 2), (n, K))
-        pi_abs = is_pi & has_hit & (u_br < sa_j / jnp.clip(sig_pi_j, 1e-12, None))
-        pi_conv = is_pi & has_hit & ~pi_abs & (u_br < (sa_j + si_pi_j) / jnp.clip(sig_pi_j, 1e-12, None))
-        pi_scat = is_pi & has_hit & ~pi_abs & ~pi_conv
+        pi_abs_pick = is_pi & has_hit & (u_br < sa_j / jnp.clip(sig_pi_j, 1e-12, None))
+        # ---- ABSORPTION final state (ACHILLES PionAbsorption::GenerateMomentum): pion +
+        # struck + CLOSEST charge-allowed partner -> 2 nucleons, isotropic in the 3-body CM;
+        # Pauli on BOTH products REJECTS the absorption (pion continues) -- this rejection is
+        # the low-T_pi physics the v1 kernel missed.
+        qpi = chg                                                # pion charge (+1/0/-1)
+        struck_p = nisp[gi[0], gi[1]].astype(jnp.int32)          # (n,K)
+        forced_n = (qpi + struck_p) > 1
+        forced_p = (qpi + struck_p) < 0
+        d2p = jnp.sum((npos[:, None, :, :] - npos[gi[0], gi[1]][:, :, None, :]) ** 2, axis=-1)  # (n,K,A)
+        bad = ((jnp.arange(A)[None, None, :] == j[..., None]) | consumed[:, None, :]
+               | (forced_n[..., None] & nisp[:, None, :]) | (forced_p[..., None] & ~nisp[:, None, :]))
+        d2p = jnp.where(bad, jnp.inf, d2p)
+        pj = jnp.argmin(d2p, axis=-1)                            # partner index (n,K)
+        no_partner = ~jnp.isfinite(jnp.min(d2p, axis=-1))        # no charge-allowed partner -> no abs
+        pN_part = nmom[arn[:, None], pj]
+        P3 = p + pN_j + pN_part
+        s3 = jnp.clip(P3[..., 0] ** 2 - jnp.sum(P3[..., 1:] ** 2, axis=-1), (2 * M_N) ** 2, None)
+        Estar = jnp.sqrt(s3) / 2.0
+        pstar = jnp.sqrt(jnp.clip(Estar ** 2 - M_N ** 2, 0.0, None))
+        cth_ab = 2 * jax.random.uniform(jax.random.fold_in(sk, 13), (n, K)) - 1
+        phi_ab = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(sk, 14), (n, K))
+        sth_ab = jnp.sqrt(jnp.clip(1 - cth_ab ** 2, 0, None))
+        d_ab = jnp.stack([sth_ab * jnp.cos(phi_ab), sth_ab * jnp.sin(phi_ab), cth_ab], axis=-1)
+        beta3 = P3[..., 1:] / P3[..., 0:1]
+        pa3 = jnp.concatenate([Estar[..., None], pstar[..., None] * d_ab], axis=-1)
+        pb3 = jnp.concatenate([Estar[..., None], -pstar[..., None] * d_ab], axis=-1)
+        pa3 = _boost4(pa3.reshape(n * K, 4), beta3.reshape(n * K, 3)).reshape(n, K, 4)
+        pb3 = _boost4(pb3.reshape(n * K, 4), beta3.reshape(n * K, 3)).reshape(n, K, 4)
+        kf_pi_pos = _kf_local(_rho_species(jnp.linalg.norm(pos, axis=-1), rgrid, rho))   # (n,K)
+        abs_blocked = ((jnp.linalg.norm(pa3[..., 1:], axis=-1) < kf_pi_pos)
+                       | (jnp.linalg.norm(pb3[..., 1:], axis=-1) < kf_j))
+        if not cfg.pauli:
+            abs_blocked = abs_blocked & False
+        pi_abs = pi_abs_pick & ~abs_blocked & ~no_partner
+        pi_conv = is_pi & has_hit & ~pi_abs_pick & (u_br < (sa_j + si_pi_j) / jnp.clip(sig_pi_j, 1e-12, None))
+        pi_scat = is_pi & has_hit & ~pi_abs_pick & ~pi_conv
         n_inel = is_nuc & has_hit & (u_br < sin_n_j / jnp.clip(sig_n_j, 1e-12, None))
         n_el = is_nuc & has_hit & ~n_inel
         # ---- PION SCATTER (charge-resolved out channel + DCC angle) ----
@@ -261,9 +300,10 @@ def _evolve(p0, spec0, chg0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, 
         p = jnp.where(n_inel[..., None], nI, p)
         fz = jnp.where(n_el, _formation_zone(p.reshape(n * K, 4), nA.reshape(n * K, 4)).reshape(n, K), fz)
         fz = jnp.where(n_inel, _formation_zone(p.reshape(n * K, 4), nI.reshape(n * K, 4)).reshape(n, K), fz)
-        # consume struck background nucleons
+        # consume struck background nucleons (+ the absorption partner)
         hit_onehot = jax.nn.one_hot(j, A, dtype=bool) & interact[..., None]
-        consumed = consumed | jnp.any(hit_onehot, axis=1)
+        part_onehot = jax.nn.one_hot(pj, A, dtype=bool) & pi_abs[..., None]
+        consumed = consumed | jnp.any(hit_onehot, axis=1) | jnp.any(part_onehot, axis=1)
         # ---- spawn products into free slots (priority: lower slot index) ----
         def spawn(p, spec, chg, fz, pos, new_p, new_spec, new_chg, new_fz, new_pos, want):
             free = spec == 0
@@ -282,6 +322,17 @@ def _evolve(p0, spec0, chg0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, 
                 free = free.at[arn, free_idx].set(jnp.where(do_, False, free[arn, free_idx]))
             return p, spec, chg, fz, pos
         pos_j = npos[gi[0], gi[1]]
+        # absorption products: charges from conservation (nprot_out = qpi + struck + partner);
+        # assign: pa3 proton if nprot_out >= 1, pb3 proton if nprot_out == 2
+        npr_out = qpi + struck_p + nisp[arn[:, None], pj].astype(jnp.int32)
+        p, spec, chg, fz, pos = spawn(p, spec, chg, fz, pos,
+                                      pa3, jnp.full((n, K), 2, jnp.int32),
+                                      (npr_out >= 1).astype(jnp.int32),
+                                      jnp.zeros((n, K)), pos_j, pi_abs)
+        p, spec, chg, fz, pos = spawn(p, spec, chg, fz, pos,
+                                      pb3, jnp.full((n, K), 2, jnp.int32),
+                                      (npr_out >= 2).astype(jnp.int32),
+                                      jnp.zeros((n, K)), pos_j, pi_abs)
         # pi-scatter recoil nucleon
         p, spec, chg, fz, pos = spawn(p, spec, chg, fz, pos,
                                       rec_pi, jnp.full((n, K), 2, jnp.int32),
@@ -305,15 +356,16 @@ def _evolve(p0, spec0, chg0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, 
                                       piD, jnp.full((n, K), 1, jnp.int32),
                                       jnp.zeros((n, K), jnp.int32),
                                       jnp.zeros((n, K)), pos_j, n_inel)
+        inted = inted | interact
         # ---- advance ----
         alive = spec > 0
         mom2 = jnp.linalg.norm(p[..., 1:], axis=-1)
         dhat2 = p[..., 1:] / jnp.clip(mom2[..., None], 1e-9, None)
         pos = pos + cfg.step * dhat2 * alive[..., None]
-        return (i + 1, p, spec, chg, pos, fz, consumed, absorbed_pi)
+        return (i + 1, p, spec, chg, pos, fz, consumed, absorbed_pi, inted)
 
     def cond(state):
-        i, p, spec, chg, pos, fz, consumed, _ = state
+        i, p, spec, chg, pos, fz, consumed, _, inted = state
         alive = spec > 0
         mom = jnp.linalg.norm(p[..., 1:], axis=-1)
         dhat = p[..., 1:] / jnp.clip(mom[..., None], 1e-9, None)
@@ -322,8 +374,9 @@ def _evolve(p0, spec0, chg0, npos, nmom, nisp, cfg: DiscreteCascadeConfig, key, 
         return (i < cfg.max_steps) & jnp.any(alive & ~inert)
 
     fz0 = jnp.zeros((n, K))
-    state0 = (jnp.int32(0), p0, spec0, chg0, pos_init, fz0, consumed0, jnp.zeros(n, bool))
-    _, p, spec, chg, pos, fz, consumed, absorbed_pi = jax.lax.while_loop(cond, body, state0)
+    state0 = (jnp.int32(0), p0, spec0, chg0, pos_init, fz0, consumed0, jnp.zeros(n, bool),
+              jnp.zeros((n, K_PART), bool))
+    _, p, spec, chg, pos, fz, consumed, absorbed_pi, _ = jax.lax.while_loop(cond, body, state0)
     return p, jnp.abs(spec), chg, absorbed_pi
 
 
