@@ -574,3 +574,28 @@ trustworthy result:
 - Bulk W<1400: fixed tchannel ACH/ADO ~1.03 vs isotropic 1.008 (~2% bulk diff, likely variance).
 NOTE: scripts/achilles_mirror_gen still has the nu-axis bug (separate diagnostic; not fixed here).
 SAMPLER_3BODY default stays "isotropic"; tchannel-fixed is the faithful low-variance option.
+
+## #24 — H-only sampler test: t-channel VALIDATED on free proton; high-W tail is CARBON-specific (nuclear)
+
+Fixed generate_H to honor SAMPLER_3BODY (was hardwired _sample_3body -> iso/tchan H were identical).
+cc1pi_sampler_fig_H.py (res_H iso vs tchannel-fixed vs ACHILLES is_h==True from t2k_cc1pi_4way_ach_fsi.npz):
+  var       chi2 iso  chi2 tchan  ACH/ADO iso  tchan
+  dalphat     1.11      0.85        1.042       1.007
+  W           1.79      1.40        1.041       1.005
+  Q2          1.23      1.07        1.042       1.006
+  pi_p        1.27      0.69        1.042       1.007
+  lp_p        0.86      0.96        1.042       1.007
+  (pn,dptt trivial: free proton -> pn~0, dptt~0)
+  sigma_H: iso 5.414e-7  tchan 5.606e-7  ACHILLES 5.643e-7
+
+=> On the CLEAN free-proton case (on-shell struck N, no cascade, no spectral fn):
+   (1) the FIXED t-channel sampler matches ACHILLES to <1% (norm 1.007, all chi2<=1.4) -> the axis fix
+       (#23) is CORRECT, validated on H. Isotropic is ~4% low (1.042) even on H -> a real iso deficit.
+   (2) NO high-W tail on H (W chi2 1.40, pi_p 0.69). Contrast carbon CH (#23): tchannel W chi2 ~24,
+       pi_p ~15. THEREFORE the carbon high-W/pi_p residual is CARBON-SPECIFIC = a NUCLEAR effect
+       (spectral function / Fermi motion / off-shell de-Forest struck nucleon), NOT the primary
+       amplitude or 3-body phase space (those are shared with H and come out clean).
+NEXT: the high-W residual target is the nuclear sector (spectral fn / de-Forest / off-shell kinematics
+at high W on carbon), not the amplitude/sampler. Plotting: bin-center markers + ACHILLES stat band
+added to cc0pi blueprint (dat/dpt + dW/dQ2), cc1pi sampler figs, cc1pi_fig_tki; ACH band ~0.4% on C
+(512k ev, sliver) but visible on H (~18k ev).
