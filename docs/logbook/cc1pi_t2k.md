@@ -719,6 +719,9 @@ cc1pi_ratios with the angular fix (2200), tchannel, spline:
 
 => MODEST: W 24.0->23.2 (~3%), pi_p 14.8->13.0 (~13%); tail NOT closed (predicted: angular divergence
    only at W_j>~1950, rare). The truncation was a real faithfulness bug but NOT the dominant tail cause.
-   The remaining high-W/pi_p tail is the cascade COMPOSITION (factorized independent cascades + leading-
-   proton-only + bounded recursion -- docs/cascade_declared_approximations.md items 1-3), the
-   differentiability-tensioned part, NOT a single table truncation.
+   The remaining high-W/pi_p tail is FSI-COUPLED (present only with the cascade) and is NOT explained
+   by interpolation, sampler, primary production, or the angular truncation (all checked). The cascade
+   COMPOSITION approximations (docs/cascade_declared_approximations.md items 1-3) are the leading
+   remaining CANDIDATE by elimination -- NOT demonstrated. A direct test (decompose tail events by
+   proton origin: RES nucleon vs knockout; and/or compare W-resolved cascade survival/knockout to
+   ACHILLES) is needed before claiming the composition is the cause.
