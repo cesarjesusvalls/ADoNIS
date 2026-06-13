@@ -101,7 +101,7 @@ def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
 # arbitrary k_nu / p_struck.  ADoNIS's default _sample_3body uses an ISOTROPIC pion split (same
 # integral, higher variance); ACHILLES uses this t-channel map (FinalStateMapper.cc TChannelMomenta).
 _TBM_ALPHA, _TBM_CTMAX, _TBM_CTMIN, _TBM_AMCT = 0.9, 1.0, -1.0, 1.0
-SAMPLER_3BODY = "isotropic"          # "isotropic" (default) | "tchannel" (ACHILLES-faithful)
+SAMPLER_3BODY = "tchannel"           # "tchannel" (ACHILLES-faithful, default) | "isotropic" (legacy)
 
 
 def _m2(p):
