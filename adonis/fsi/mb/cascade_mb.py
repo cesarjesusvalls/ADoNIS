@@ -138,8 +138,9 @@ def _build_angular():
     if _ANG:
         return _ANG
     from adonis.fsi.mb.anl_xsec import dsigma_dOmega
-    Wg = np.linspace(1085.0, 2000.0, 142)            # W grid [MeV] -> DCC validity (was truncated at
-    #                                                  1700; ACHILLES samples the angle up to 2000)
+    Wg = np.linspace(1085.0, 2200.0, 224)            # W grid [MeV], 5 MeV step == the ANL piN grid
+    #   (1080-2200) that ACHILLES MesonBaryonAmplitudes loads.  Was truncated at 1700 -> high-momentum
+    #   pion scatters were clamped to a too-isotropic angle; ACHILLES samples to w_vec max (2200).
     cg_grid = np.linspace(-1.0, 1.0, 181)            # cos(theta_cm) grid
     ug = np.linspace(0.0, 1.0, 64)                   # uniform grid for the inverse CDF
     inv = np.zeros((_NCHAN, Wg.size, ug.size))
