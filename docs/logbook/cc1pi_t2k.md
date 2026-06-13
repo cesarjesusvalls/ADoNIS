@@ -599,3 +599,35 @@ NEXT: the high-W residual target is the nuclear sector (spectral fn / de-Forest 
 at high W on carbon), not the amplitude/sampler. Plotting: bin-center markers + ACHILLES stat band
 added to cc0pi blueprint (dat/dpt + dW/dQ2), cc1pi sampler figs, cc1pi_fig_tki; ACH band ~0.4% on C
 (512k ev, sliver) but visible on H (~18k ev).
+
+## #25 — CARBON NO-FSI test: high-W tail is NUCLEAR PRIMARY, not FSI
+
+User: the carbon residual could be nuclear OR FSI -> run carbon RES with NO cascade. Done
+(scripts/cc1pi_C_nofsi_fig.py: ADoNIS res_C(fsi=False), t-channel, spline, vs ACHILLES no-FSI
+carbon = is_h==False from t2k_cc1pi_4way_ach_nofsi.npz, signal selection).
+  var       chi2(C no-FSI)   ACH/ADO
+  pn            7.39          0.866
+  dptt          6.23          0.866
+  dalphat       6.28          0.866
+  W            40.61          0.868
+  Q2            3.94          0.867
+  pi_p         22.70          0.866
+  lp_p          3.17          0.866
+  sigma_C: ADoNIS 2.723e-6  ACHILLES-no-FSI 2.358e-6  (ACH/ADO 0.866 -> ADoNIS ~15% HIGH)
+
+Comparison of the W/pi_p tail across configs (t-channel sampler, spline):
+  H (no-FSI, free proton):  W 1.40,  pi_p 0.69   (clean)
+  C+H with FSI (CH):        W 24.0,  pi_p 14.8
+  C no-FSI:                 W 40.61, pi_p 22.70   (WORST)
+
+=> The high-W/pi_p tail is PRESENT in carbon WITHOUT any cascade -> it is the NUCLEAR PRIMARY
+   (spectral function / Fermi motion / de-Forest off-shell struck-nucleon kinematics in the
+   flux-folded high-Enu regime), NOT FSI. FSI if anything REDUCES it (no-FSI W 40.6 -> FSI 24).
+   Hydrogen (no spectral/Fermi/de-Forest, on-shell) is clean -> confirms it's the nuclear sector.
+CAVEAT: vertex-W carries a known struck-nucleon convention mismatch (ADoNIS de-Forest off-shell vs
+   ACHILLES status-2 struck) so W chi2 is not a clean test on its own -- BUT pi_p (identical
+   definition both sides) is ALSO high (22.7), confirming a REAL high-pion-momentum excess + the
+   ~15% primary normalization excess. Robust.
+DECISION: t-channel is now the DEFAULT sampler (isotropic dropped, per user). NEXT TARGET: the carbon
+   nuclear primary at high W -- de-Forest off-shell prescription / spectral function tail / Fermi
+   momentum at high Enu (prime suspect: de-Forest, flagged in #17). This is the genuine residual.
