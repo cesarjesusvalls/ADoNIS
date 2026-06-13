@@ -631,3 +631,36 @@ CAVEAT: vertex-W carries a known struck-nucleon convention mismatch (ADoNIS de-F
 DECISION: t-channel is now the DEFAULT sampler (isotropic dropped, per user). NEXT TARGET: the carbon
    nuclear primary at high W -- de-Forest off-shell prescription / spectral function tail / Fermi
    momentum at high Enu (prime suspect: de-Forest, flagged in #17). This is the genuine residual.
+
+## #26 — CORRECTION of #25: carbon no-FSI primary is CLEAN; #25 tail was the pid_N=2212 bug
+
+#25 was run with the bolted-on res_C(fsi=False) branch that hardcoded pid_N=2212 -> it counted the
+n->n pi+ NEUTRON as a proton, admitting n->npi+ events (whose high-energy pions made a FAKE high-W
+tail) and inflating ADoNIS ~15%. PRUNED that branch; restored res_C to the validated single FSI path.
+
+Re-ran with CENTRAL code only (scripts/cc1pi_nofsi_test.py: res_xsec.generate primary + central
+observables; selection = pi+ & REAL proton Npid==2212 == p->p pi+, mirroring ACHILLES no-FSI which
+also only admits p->ppi+). vs central ACHILLES no-FSI carbon (t2k_cc1pi_tki_achilles_nofsi.npz, is_h==False):
+  var      chi2(correct)   ACH/ADO       (buggy #25 chi2)
+  pn          1.25          1.047          7.39
+  dptt        1.24          1.047          6.23
+  dalphat     2.83          1.047          6.28
+  W           1.69          1.047         40.61
+  Q2          1.99          1.047          3.94
+  pi_p        0.81          1.047         22.70
+  lp_p        1.54          1.047          3.17
+  sigma ACH/ADO = 1.047 (ADoNIS ~4.5% low)   [buggy was 0.866, ADO 15% high]
+
+=> The carbon NO-FSI primary (p->p pi+) AGREES with ACHILLES: NO high-W/pi_p tail (W 1.7, pi_p 0.8),
+   modest ~4.5% norm. #25's "nuclear primary tail" is RETRACTED -- it was the pid_N=2212 artifact.
+CONSEQUENCE: the CH-with-FSI tail (W chi2 ~24) is NOT in the p->p pi+ primary. The no-FSI signal
+   contains ONLY p->p pi+ (n->n pi+ has no primary proton -> excluded, as in ACHILLES). The dominant
+   n->n pi+ channel enters the CC1pi+Np signal ONLY via an FSI knockout proton; those carry the
+   high-W/high-pi_p pions. So the tail is FSI-COUPLED.
+CAVEAT: the no-FSI test only probes p->p pi+; it does NOT directly test the n->n pi+ PRIMARY high-W
+   production (invisible without a proton). Root of the tail still to distinguish: (a) cascade knockout
+   modeling vs (b) n->n pi+ primary production. NEXT clean test: n->n pi+ PRIMARY pi+ spectrum (no
+   proton requirement) ADoNIS vs ACHILLES no-FSI.
+PROCESS: prior failures (event cascade, cut-bisect, nu-axis t-channel, this pid_N=2212) all came from
+   bolted-on non-central code run before reading. Discipline restored: central code only, validate
+   before run.
