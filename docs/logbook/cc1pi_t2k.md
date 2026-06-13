@@ -424,3 +424,27 @@ FIX LOOP (user-directed: one at a time, re-run cc1pi_ratios.png each, ~15 min, s
   2. outward sphere-escape qualifier
   3. nucleon capture
   then revisit isotropic-sampling tail variance (raise N or port t-channel map).
+
+## #19 — fix 1 (escape radius 6.05->6.55 fm): NULL effect on every diagnostic
+
+Re-ran cc1pi_ratios.py (120k x4 RES-C + 40k x4 RES-H) with the ACHILLES radius rule live
+(_load_density returns 6.55 fm; cascade_discrete imports it -> in the active factorized path).
+Per-variable ACH/ADO chi2/ndf (vs #17 in parens):
+  pn 2.27 (2.27) | dptt 1.10 (1.10) | dalphat 0.68 (0.68) | Q2 1.01 (1.01) | lp_p 0.83 (0.83)
+  W 45.71 (45.7) | pi_p 22.88 (22.9)   integral ADO/ACH 0.966 (0.966)
+=> BYTE-IDENTICAL. The radius fix is a genuine faithfulness correction but a NULL physics
+   effect. Reason (measured): the 6.05->6.55 fm shell is near-vacuum -- rho/central goes
+   6.52e-6 -> 9.28e-7 fm^-3 (1.5e-4 -> 2.2e-5 of central). A pion traversing that outer
+   shell encounters negligible material; whether it "escapes" at 6.05 or 6.55 fm does not
+   change its fate (decided in the dense core). My #18 prediction ("right sign for +3.4% +
+   high-pi_p") was WRONG -- the effect is ~0, not the hypothesized reduction.
+- COROLLARY: fix 2 ('& outward' sphere qualifier) and fix 3 (capture, below the 450 MeV
+  window) act in the same near-vacuum/out-of-window region -> expected similarly negligible.
+  The FSI-termination audit items are faithfulness corrections, NOT the driver of the +3.4%
+  norm or the high-W/pi_p tail.
+- STANDING UNCHANGED: STV clean (pn/dptt/daT/Q2/lp_p all <=2.3); the real residual is the
+  high-W (chi2 45.7) + high-pi_p (22.9) tail, ratio ~0.6 above W>1400 / pi_p>600, plus the
+  +3.4% integral. A NULL result for an FSI change is positive evidence the tail is PRIMARY
+  (2nd-resonance-region RES production), consistent with #4's no-FSI primary W-tail (2-3x
+  over-population). NEXT: verify cleanly (primary no-FSI vs FSI, consistent weighting,
+  cached arrays) before tuning, since the "primary high-W" claim was once an artifact (#5).
