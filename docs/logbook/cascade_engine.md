@@ -210,3 +210,23 @@ CAVEATS (honest): 4 seeds / 2614 events -> large bin errors; pn 3.2, dptt 2.7 sl
    a small residual -- the missing inelastic-pion veto + leading-only secondaries). Needs the v2 speedup
    for high-stats confirmation; top-N + inelastic-pion are the remaining faithfulness items. Engine is
    ~20-40x slower than the chain (v2 compaction pending).
+
+## HIGH-STATS CONFIRMATION (v2, 8 seeds, padded -> 1 compile) + the N_eff finding
+
+8 seeds (pre-generated, padded to max=13861 -> single compile, 0 dropped), 5324 signal events.
+ENGINE chi2/ndf | ACH/ADO:  pn 1.01/0.972  dptt 1.30/0.973  daT 1.27/0.973  W 2.53/0.943
+  Q2 2.13/0.963  pi_p 1.03/0.973  lp_p 0.48/0.973.  integral ACH/ADO 0.973.
+=> CONFIRMED: the faithful engine reproduces ACHILLES's full CC1pi signal; all chi2 <= 2.5; integral
+   0.973 +-6% consistent with 1.0. The low-stats pn 3.2/dptt 2.7 were STATS (now 1.0/1.3). v2 has no bug
+   (the 0.88/1.0/1.5 integral scatter was N_eff noise; converges to 0.973).
+N_eff FINDING (important, generator-level): ADoNIS res_xsec SIGNAL weights are spiky -- N_eff/N ~ 0.04-0.07
+   (engine 1-seed 664->N_eff 27; factorized cc1pi_ratios 12833->N_eff 932; ACHILLES tki 54790->N_eff 50104,
+   i.e. ACHILLES is ~UNWEIGHTED, N_eff/N 0.91). So ADoNIS needs ~13x more events than ACHILLES for the same
+   precision. The Gaussian weighted-error chi2 (ed=sqrt(Sum w^2)) propagates N_eff correctly (ed/dd=1/sqrt(N_eff,bin))
+   but DEGRADES at low N_eff/bin (~1): Sum w^2 underestimates the variance for sparse bins + the bin sum is
+   non-Gaussian -> chi2 inflated (the NRES=3000 smoke chi2=27 was this, not a bug). Fix = high stats /
+   unweighting / better importance proposal for the signal corner.
+v2 differentiability CONFIRMED both knobs: sabs rel 1.2e-7, sscat rel 4.6e-7.
+PADDING: pre-generate all seeds, N_PAD=max count, pad short seeds w=0 (excluded by w>0 cut), no truncation,
+   single compile (no per-seed re-JIT). (one big seed instead is memory-blocked: 17GB RAM, ~6.5GB/13.8k ev.)
+v2a SPEED: 141s vs v1 239s (~1.7x); the bigger v2b worklist/compaction still pending.
