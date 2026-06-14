@@ -84,4 +84,24 @@ per-lane in XLA, but compaction shrinks empties). Decide v1-vs-v2 after measurin
 
 ## Status
 
-- (this entry) Plan written; git clean at 273b0de (rich-bank/sigdef system committed). Next: P0 scoping.
+- Plan written; git clean at 273b0de (rich-bank/sigdef system committed).
+- **P0 DONE** (200k ACHILLES T2K_CH_virt events, cascade-hadron multiplicity):
+    status29 (intermediates): mean 1.41  max 22  p99 10  p99.9 12
+    final-state hadrons:      mean 1.99  max 12  p99 7   p99.9 8
+    TOTAL cascade hadrons:    mean 3.40  max 33  p99 17  p99.9 21   (final pions p99.9=2, nucleons p99.9=8)
+  => budget mean ~3.4, p99.9 ~21 over a shallow tree. CHOSEN: P=10 particles/generation, MAX_GEN=6
+     (60-slot budget; covers p99.9 even if bunched). Overflow COUNTED+logged in the engine to verify/refine.
+     v1 waste is large (mean 3.4 vs 60 slots) -> confirms the v2 compacted-stack optimization will matter.
+  Next: P1 unified species-tagged single-particle kernel (gate: single-particle limit == existing kernels).
+- **P1a DONE** (adonis/fsi/cascade_full.py): the fixed-shape BFS MECHANISM (problem #2) built + validated,
+  with a PLUGGABLE single-particle kernel (physics dropped in next). ParticleBatch dict (species, charge,
+  p4, pos, fz, alive, w, fate); compact() packs live particles to a fixed-width buffer + COUNTS overflow
+  (never silent); run_cascade() does BFS over MAX_GEN generations. Tests (toy kernels): nspawn=0 ->
+  gen0-only 8 terminals; nspawn=1 -> width-stable 48; nspawn=2 -> [8,16,32,40,40] doubling then capped at
+  P*events with overflow=104 counted; jit OK with a pure-JAX kernel. The mechanism (variable particle
+  count in fixed shapes, spawning, compaction, overflow) is the part the reverted event-cascade lacked.
+  Next P1b: the unified species-tagged PHYSICS kernel (pion: oset abs / MB scatter+charge-exchange /
+  conversion; nucleon: NN elastic / NN->NDelta->NNpi), emitting ALL secondaries, reusing the primitives
+  from cascade_discrete (_xsec, _two_body_cm_scatter, abs/inelastic splits, formation zones). GATE:
+  single-particle limit (one initial particle, secondaries discarded) == _propagate_discrete /
+  _propagate_nucleon_discrete, bit-exact.
