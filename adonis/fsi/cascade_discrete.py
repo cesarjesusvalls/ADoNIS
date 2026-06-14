@@ -663,13 +663,18 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         # the highest-momentum one (ACHILLES adds it to the final state, the analysis may pick it)
         recoil = (p_N + pN_j) - p_out
         bg_proton = nisp[ar, j]
-        ko_better = do & bg_proton & (jnp.linalg.norm(recoil[:, 1:], axis=1) > jnp.linalg.norm(best_ko[:, 1:], axis=1))
-        best_ko = jnp.where(ko_better[:, None], recoil, best_ko)
-        best_ko_pos = jnp.where(ko_better[:, None], npos[ar, j], best_ko_pos)   # knockout production vertex
-        # ACHILLES gives BOTH outgoing nucleons a formation zone, w/ p1 = the incoming (p_N):
         fz_new = _formation_zone(p_N, p_out)                          # leading: E_in*hbarc/|mN^2-p_in.p_out|
         fz_ko = _formation_zone(p_N, recoil)                          # recoil/knockout's formation zone
-        best_ko_fz = jnp.where(ko_better, fz_ko, best_ko_fz)
+        # TOP-K proton knockouts (K=1 -> old single best_ko bit-exactly; max slot = leading knockout):
+        ko_is_p = do & bg_proton
+        cand_mom = jnp.linalg.norm(recoil[:, 1:], axis=1)
+        slot_mom = jnp.linalg.norm(best_ko[:, :, 1:], axis=2)         # (n,K)
+        minslot = jnp.argmin(slot_mom, axis=1)
+        do_ins = ko_is_p & (cand_mom > slot_mom[ar, minslot])
+        sel = jax.nn.one_hot(minslot, _N_RECOIL, dtype=bool) & do_ins[:, None]
+        best_ko = jnp.where(sel[:, :, None], recoil[:, None, :], best_ko)
+        best_ko_pos = jnp.where(sel[:, :, None], npos[ar, j][:, None, :], best_ko_pos)
+        best_ko_fz = jnp.where(sel, fz_ko[:, None], best_ko_fz)
         p_N = jnp.where(do[:, None], p_out, jnp.where(is_inel[:, None], lead_in, p_N))
         nsc = nsc + do.astype(jnp.int32)
         consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & (do | is_inel)[:, None])
@@ -682,7 +687,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
-            consumed0, jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), fz0, jnp.zeros(n, bool))
+            consumed0, jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), fz0, jnp.zeros(n, bool))
     if cfg.early_exit:
         # EARLY-EXIT walk (bit-exact): nucleons escape on the sphere (alive -> False), so the
         # loop ends when every nucleon has escaped -- measured ~step 150-180 vs the 260/325 cap.
@@ -726,7 +731,12 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         ns = jnp.sum(m.astype(jnp.int32), axis=0)
     srec = (hh_c.T, a_c.T, ns)                                     # (n,K)x2 + (n,)
     w_scat = nucleon_scat_reweight(srec, sscat)
-    return p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi
+    # leading knockout = max-momentum top-K slot (bit-exact to the old single best_ko for the callers);
+    # (best_ko, best_ko_pos, best_ko_fz) full top-K appended for the engine.
+    _arn = jnp.arange(best_ko.shape[0])
+    _lead = jnp.argmax(jnp.linalg.norm(best_ko[:, :, 1:], axis=2), axis=1)
+    return (p_N, nsc, best_ko[_arn, _lead], best_ko_pos[_arn, _lead], best_ko_fz[_arn, _lead],
+            w_scat, srec, made_pi, (best_ko, best_ko_pos, best_ko_fz))
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
@@ -765,8 +775,9 @@ class DiscreteNucleonFSI:
         pos0 = npos[jnp.arange(n), vtx]
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)                  # struck nucleon removed from background
         isp0 = (event.pid_N == 2212)
-        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1 = propagate_nucleon_discrete(
+        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1, best_ko_all = propagate_nucleon_discrete(
             pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sscat=sscat)
+        self.last_ko_all = best_ko_all            # all top-K knockout protons (n,K,4),(n,K,3),(n,K) -- engine
         # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
         # Re-propagate the leading knockout through the same background; its final state can be the
         # leading proton.  (One secondary generation -- the dominant multi-nucleon contribution.)
@@ -775,7 +786,7 @@ class DiscreteNucleonFSI:
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
-        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2 = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
                                                                         nisp, self.cfg, kp2, fz0=best_ko_fz,
                                                                         consumed0=consumed0, sscat=sscat)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))

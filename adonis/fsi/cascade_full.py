@@ -59,7 +59,7 @@ def nucleon_segment(p4, pos, isp, fz, consumed, npos, nmom, nisp, cfg, key, ssca
     flags an NN->NDelta->NNpi pion (v1: flag only; the pion 4-vec spawn needs a kernel extension)."""
     out = _propagate_nucleon_discrete(pos, p4, isp, npos, nmom, nisp, cfg, key, fz, consumed,
                                       jnp.asarray(sscat, float))
-    p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi = out
+    p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi, ko_all = out
     n = p4.shape[0]
     term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=isp.astype(jnp.int32),
                 pid=jnp.where(isp, 2212, 2112), p4=p_N, fate=jnp.full((n,), FATE_ESCAPE, jnp.int32),
