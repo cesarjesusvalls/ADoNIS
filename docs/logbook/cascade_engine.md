@@ -379,3 +379,42 @@ consumption time-ordering validation; M_A/fit records; transparency + 6% pion ch
   momentum (cascade-transport) + edge stats.  delta_alphaT flat (model-insensitive) confirms kinematics OK.
 - Net: BOTH faithful engine figures now ABSOLUTE vs ACHILLES -- CC1pi ACH/ADO 1.047 (2.0 sigma),
   CC0pi 0.968.  Engine validated as the shared cascade for both channels.
+
+## CORRECTION (CC0pi signal is FINAL-STATE defined; earlier "2p2h cancellation" was WRONG)
+- CC0pi-Np is a FINAL-STATE signal: mu + >=1 proton in window + 0 pions.  Process-agnostic: ANY
+  interaction giving that final state counts, INCLUDING RES events where the pion is absorbed in FSI.
+- The OLD ADoNIS (gen_t2k_cc0pi_xsec.py) was built that way: bank t2k_cc0pi_tki_adonis_xsec.npz =
+  CCQE (qe_xsec) + RES-with-pion-absorbed (res_xsec + pion FSI), combined.  So "old ADoNIS 1.604e-5"
+  was NEVER QE-only -- I mislabeled it, and the "2p2h coincidental cancellation" story was WRONG.
+- My first engine CC0pi figure used channel="qe" (QE ONLY) and compared to ACHILLES proc==200 -> it
+  was MISSING the entire RES-pion-absorbed contribution and used the wrong (QE-only) reference.
+- CORRECT engine CC0pi = QE bank (0 pion + proton) + RES bank (CC1pi run; pion absorbed -> 0 pion +
+  proton) + free-H, vs ACHILLES FULL CC0pi (all proc).  Result:
+    QE 1.4778e-5 + RES-absorbed 1.1659e-6 (7.2%) + H 2.810e-7 = 1.6225e-5 nb
+    ACHILLES full CC0pi 1.5878e-5  ->  ACH/ADO 0.979 (engine ~2% high; old was 1.011).  NO regression.
+    chi2/ndf: dpt 1.30, dalphat 1.41 (both excellent, as good as old) ; Q2 7.10.
+- Q2: flat <1 GeV^2, then a high-Q2 tail DEFICIT (>1.0 -> ratio ~0.6) = the whole chi2.  NOT 2p2h and
+  NOT the QE generator (the OLD figure -- same qe_xsec primary, also no 2p2h -- was flat in Q2).  So it
+  is a BFS-engine vs DiscreteNucleonFSI / proton-selection difference at high proton momentum (high Q2 ->
+  energetic leading proton near the 1000 MeV ceiling).  Same theme as CC1pi pn tail.  N_eff 270-410/bin
+  (stat 5-6%), points systematically below 1.0 -> looks real, OPEN -- to investigate by reading code.
+
+## SYMMETRIC FIX -- both channels are FINAL-STATE signals; each was missing the cross-contribution
+- The CC0pi correction generalizes: a final-state signal receives ALL primaries that yield it (via FSI).
+  - CC0pi (mu + proton + 0pi)  = QE(0pi) + RES(pion ABSORBED).   [done above]
+  - CC1pi (mu + 1pi+ + proton) = RES(1pi+ survives) + QE(cascade-CREATED pi+).  The engine CC1pi was
+    RES-only -> missing the QE->created-pi+ term.  The ACHILLES reference is a FULL-CC run (CC0pi bank
+    from the SAME T2K_CH hepmc has proc 200/401/402), so it contains those events -> must be added.
+- CC1pi WITH QE-created-pi+ (3.4% of RES): ACH/ADO 1.047 -> 1.012.  chi2/ndf ALL collapse:
+  pn 4.85->0.32, dptt 1.18, dalphat 0.29, W 1.44, Q2 1.25, pi_p 1.09, lp_p 0.59.  The "pn high-tail
+  deficit" was largely this missing contribution.  cc1pi_engine_plot.qe_created_signal().
+- CC0pi SELECTION-CONSISTENCY fix: the T2K NUISANCE def (extract_t2k_cc0pi_tki.py:52) requires the
+  GLOBAL highest-momentum proton to itself be in window; my ADoNIS used leading-IN-window (more
+  permissive) -> the earlier QE-only-vs-TKI Q2 "high-tail deficit" (chi2 7.1) was a SELECTION mismatch,
+  NOT cascade.  cc0pi_engine_combined.py applies the IDENTICAL T2K selection to BOTH the engine and the
+  ACHILLES RICH bank (carbon-only, all observables from 4-vecs): ACH/ADO 1.011, chi2 dpt 5.0, dalphat
+  0.98, Q2 1.23, W 4.70, p_mu 0.86, cos_mu 1.68, lp_p 2.42.  Q2 deficit GONE.
+- NET: both faithful-engine figures ABSOLUTE, apples-to-apples, ~1%: CC1pi ACH/ADO 1.012, CC0pi 1.011.
+  Lessons (logged so I stop repeating): (1) define signals by FINAL STATE, include every primary that
+  reaches it; (2) NEVER compare across two different selections -- apply ONE identical selection to ADoNIS
+  and ACHILLES; (3) don't narrate a mechanism (the "2p2h cancellation" was wrong) -- decompose with code.

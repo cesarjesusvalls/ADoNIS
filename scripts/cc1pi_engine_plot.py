@@ -28,6 +28,33 @@ def _acc(p4, lo, hi):
     return (m > lo) & (m < hi) & (p4[:, 3] / np.clip(m, 1e-9, None) > COS70)
 
 
+def qe_created_signal(bank="data/oracle/t2k_cc0pi_engine_rich.npz"):
+    """CC1pi contribution from the QE bank: a QE event whose CASCADE created a surviving pi+ (NN
+    inelastic).  Symmetric to the RES-pion-absorbed term in CC0pi -- a full-CC ACHILLES run (the
+    reference) contains these, so the RES-only engine must add them for an apples-to-apples CC1pi."""
+    b = dict(np.load(bank))
+    n = len(b["w"]); ar = np.arange(n)
+    kmu, cr_p4 = b["mu"], b["cr_p4"]
+    cp = b["cr_pid"]                                      # primary pion is absent for QE (pid_pi==0)
+    cr_pip = (cp == 211)
+    n_pip = cr_pip.astype(int)
+    n_other = np.isin(cp, [111, -211, -1]).astype(int)
+    pi_f = cr_p4
+    signal_meson = (n_pip == 1) & (n_other == 0)
+    prot = b["prot"]
+    pm = np.linalg.norm(prot[:, :, 1:], axis=2); cth = prot[:, :, 3] / np.clip(pm, 1e-9, None)
+    inwin = (pm > P_LO) & (pm < P_HI) & (cth > COS70)
+    mm = np.where(inwin, pm, -1.0); j = np.argmax(mm, axis=1); bm = mm[ar, j]
+    best = prot[ar, j]; has_p = bm > 0
+    sel = signal_meson & has_p & (b["w"] > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pi_f, PI_LO, PI_HI)
+    dptt, pn, dat, _ = F.observables(kmu[sel], pi_f[sel], best[sel], np.zeros(int(sel.sum()), bool), 0)
+    qv = (b["nu"] - kmu)[sel]; totv = qv + b["struck"][sel]
+    Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
+    Q2v = (np.sum(qv[:, 1:] ** 2, axis=1) - qv[:, 0] ** 2) / 1e6
+    pim = np.linalg.norm(pi_f[sel][:, 1:], axis=1); lpm = np.linalg.norm(best[sel][:, 1:], axis=1)
+    return dict(pn=pn, dptt=dptt, dalphat=dat, W=Wv, Q2=Q2v, pi_p=pim, lp_p=lpm, w=b["w"][sel])
+
+
 def engine_signal(bank):
     b = dict(np.load(bank))
     n = len(b["w"]); ar = np.arange(n)
@@ -63,10 +90,13 @@ VARS = [("pn", np.array([0, 120, 240, 600, 1500.]), r"$p_N$"),
 
 
 def main():
-    A = engine_signal(BANK)
+    A_res = engine_signal(BANK)
+    A_qe = qe_created_signal()                                      # QE -> cascade-created pi+ (CC1pi too)
+    A = {k: np.concatenate([A_res[k], A_qe[k]]) for k in A_res}
     ach = dict(np.load("data/oracle/t2k_cc1pi_rich_ach_FSI.npz"))
     H = S.ach_select(ach, dict(S.DEFAULT)); H["w"] = H["w"] * float(ach["weight_to_nb"])
-    print(f"bank {BANK}  signal {len(A['w'])} ev")
+    print(f"bank {BANK}  signal {len(A['w'])} ev  (RES {len(A_res['w'])} + QE-created-pi {len(A_qe['w'])}, "
+          f"sigma RES {A_res['w'].sum():.3e} + QE {A_qe['w'].sum():.3e})")
     print(f"selected sigma: ENGINE {A['w'].sum():.4e}  ACH {H['w'].sum():.4e}  "
           f"ACH/ADO {H['w'].sum()/max(A['w'].sum(),1e-30):.3f}")
     print(f"{'var':8s} chi2/ndf  ACH/ADO")
