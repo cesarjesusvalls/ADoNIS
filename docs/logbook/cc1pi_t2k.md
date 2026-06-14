@@ -835,3 +835,15 @@ DEFICIT ORIGIN: n->n pi+ enters the signal ONLY via an FSI knockout proton; ADoN
 NEXT: the n->n pi+ knockout-proton yield (factorized leading-only vs ACHILLES shared/recursive) is the
    remaining ~12%; quantify how much is leading-only truncation vs factorized backgrounds before deciding
    a faithful + differentiable treatment.
+
+## chi2 VALIDITY re-evaluation (weight-variance / N_eff) -- 2026-06-14
+Concern: spiky importance weights -> low EFFECTIVE entries per bin (Kish N_eff=(Sw)^2/Sw^2) -> Gaussian
+error sqrt(Sw^2) and per-bin chi2 unreliable.  scripts/chi2_validity.py: per bin N_eff + BOOTSTRAP of the
+ADoNIS bin content (B=600) -> empirical SD/skew vs analytic, + chi2 with analytic vs bootstrap errors vs
+reliable-bins-only.  Result at FULL stats (CC1pi 50-seed, CC0pi 29-seed):
+- min N_eff/bin = 46 (CC0pi dpt), ALL bins >= 46 > 25 -> 0 bins flagged.
+- bootstrap SD / analytic sqrt(Sw^2) = 0.96-1.01 every observable; max per-bin skew <= 0.6 -> Gaussian VALID.
+- chi2(analytic) ~ chi2(bootstrap): CC1pi all <=1.5; CC0pi dpt 5.04->5.06, W 4.70->4.86, others ~1.
+=> the quoted chi2 are trustworthy at current stats (the earlier "N_eff~27 unreliable" was the 8-seed run).
+=> CC0pi dpt-tail (chi2 5.0) and vertex-W region (4.7) are REAL small shape features (survive bootstrap),
+   not weight-variance artifacts -- the next things to investigate.  Reusable: scripts/chi2_validity.py.
