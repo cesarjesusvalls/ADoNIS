@@ -62,10 +62,12 @@ def nucleon_segment(p4, pos, isp, fz, consumed, npos, nmom, nisp, cfg, key, ssca
     out = _propagate_nucleon_discrete(pos, p4, isp, npos, nmom, nisp, cfg, key, fz, consumed,
                                       jnp.asarray(sscat, float))
     p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi, ko_all, pi_made = out
+    bpi, bpich, bpipos, bpifz = pi_made                                   # leading NN-created pion
     n = p4.shape[0]
     term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=isp.astype(jnp.int32),
                 pid=jnp.where(isp, 2212, 2112), p4=p_N, fate=jnp.full((n,), FATE_ESCAPE, jnp.int32),
-                w=w_scat, nsc=nsc, made_pi=made_pi)
+                w=w_scat, nsc=nsc, made_pi=made_pi,
+                pi4=bpi, pich=bpich, pipos=bpipos, pifz=bpifz)           # created-pion (4-vec, charge idx, vertex, fz)
     has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
     sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
                p4=best_ko, pos=best_ko_pos, fz=best_ko_fz, alive=has_ko, w=w_scat)
@@ -203,16 +205,19 @@ def _nucleon_kernel(npos, nmom, nisp, consumed0, cfg, sscat=1.0):
             alive = buf["alive"][:, i]
             tn, _, snK = nucleon_segment(buf["p4"][:, i], buf["pos"][:, i], buf["charge"][:, i].astype(bool),
                                          buf["fz"][:, i], consumed0, npos, nmom, nisp, cfg, pk[i], sscat)
+            pi_alive = alive & (jnp.linalg.norm(tn["pi4"][:, 1:], axis=1) > 1.0)   # this slot made a pion
             term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=buf["charge"][:, i], pid=tn["pid"],
                         p4=tn["p4"], fate=jnp.where(alive, FATE_ESCAPE, FATE_NONE),
-                        w=buf["w"][:, i] * tn["w"], alive=alive)
+                        w=buf["w"][:, i] * tn["w"], alive=alive,
+                        pi4=tn["pi4"], pich=tn["pich"], pipos=tn["pipos"], pifz=tn["pifz"], pi_alive=pi_alive)
             K = snK["p4"].shape[1]
             secK = dict(p4=snK["p4"], pos=snK["pos"], fz=snK["fz"],
                         alive=snK["alive"] & alive[:, None],
                         w=snK["w"][:, None] * buf["w"][:, i][:, None] * jnp.ones((n, K)))
             return term, secK
         res = [slot(i) for i in range(P)]
-        tcat = {k: jnp.stack([r[0][k] for r in res], axis=1) for k in ("species", "charge", "pid", "p4", "fate", "w", "alive")}
+        tcat = {k: jnp.stack([r[0][k] for r in res], axis=1) for k in
+                ("species", "charge", "pid", "p4", "fate", "w", "alive", "pi4", "pich", "pipos", "pifz", "pi_alive")}
         K = res[0][1]["p4"].shape[1]
 
         def sfield(k):                                                 # (n,P,K,...) -> (n, P*K, ...)
@@ -231,7 +236,7 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
     inelastic-pion emission is added).  Returns (pion_term, nucleon_terminals_per_gen, overflow)."""
     su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
-    kpi, knuc = jax.random.split(su["kp"])
+    kpi, knuc, kpi2 = jax.random.split(su["kp"], 3)
     pt, _, precK = pion_segment(p_pi, su["pos0"], su["ch0"], su["consumed0"], su["npos"], su["nmom"],
                                 su["nisp"], cfg, kpi, sabs, sscat)
     pterm = dict(species=jnp.full((n,), PION, jnp.int32), pid=pt["pid"], p4=pt["p4"],
@@ -248,7 +253,21 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
     g0["w"] = jnp.concatenate([jnp.ones((n, 1)), precK["w"][:, None] * jnp.ones((n, K))], 1)
     kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], su["consumed0"], cfg, sscat)
     nterms, ofl = run_cascade(g0, kernel, knuc, P=P, max_gen=max_gen)
-    return pterm, nterms, ofl
+    # CREATED-PION RE-ENTRY: gather the leading NN-created pion per event across the nucleon BFS, then
+    # cascade it as a pion (it can survive as a pi+ and BE the signal pion when the primary died).
+    ar = jnp.arange(n)
+    bpi = jnp.zeros((n, 4)); bm = jnp.zeros(n); bch = jnp.ones((n,), jnp.int32)
+    bpos = su["pos0"]; bfz = jnp.zeros(n)
+    for g in nterms:
+        pm = jnp.linalg.norm(g["pi4"][:, :, 1:], axis=2) * g["pi_alive"]
+        j = jnp.argmax(pm, axis=1); gm = pm[ar, j]; upd = gm > bm
+        bpi = jnp.where(upd[:, None], g["pi4"][ar, j], bpi); bm = jnp.where(upd, gm, bm)
+        bch = jnp.where(upd, g["pich"][ar, j], bch)
+        bpos = jnp.where(upd[:, None], g["pipos"][ar, j], bpos); bfz = jnp.where(upd, g["pifz"][ar, j], bfz)
+    has_created = bm > 0.0
+    cpt, _, _ = pion_segment(bpi, bpos, bch, su["consumed0"], su["npos"], su["nmom"], su["nisp"], cfg, kpi2, sabs, sscat)
+    created = dict(pid=jnp.where(has_created, cpt["pid"], 0), p4=cpt["p4"], w=cpt["w"], alive=has_created)
+    return pterm, nterms, ofl, created
 
 
 def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=10, max_gen=6, sabs=1.0, sscat=1.0):
