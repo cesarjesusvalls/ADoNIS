@@ -259,3 +259,43 @@ the created-pion-rescue (primary pi+ dies, a nucleon-FSI pi+ becomes the signal 
 3. no-other-meson veto becomes exact: signal = exactly one surviving pi+ (currently approximate).
 This is a fresh-context sub-task (new charge physics + engine restructure).  top-N is the cheap win;
 this is the structural one.
+
+## Inelastic-pion sub-task (a): ACHILLES charge physics READ (NucleonNucleon.cc + data/decays.yml)
+
+NN pair -> Delta states by total charge (AllowedResonanceStates), split by isofactor (Delta++/- =1,
+Delta+/0 =1/3):
+  pp(q=2): Delta++ n (3/4) | Delta+ p (1/4)
+  pn(q=1): Delta+ n (1/2)  | Delta0 p (1/2)
+  nn(q=0): Delta0 n (1/4)  | Delta- p (3/4)
+Delta -> N pi branching (decays.yml; gamma channels 0.55% dropped+renormalized):
+  Delta++ -> pi+ p (1) ; Delta+ -> pi+ n (1/3), pi0 p (2/3) ; Delta0 -> pi0 n (2/3), pi- p (1/3) ;
+  Delta- -> pi- n (1).
+=> created-pion pi+ fraction by pair: pp 5/6, pn 1/6, nn 0.  (kinematics already done in
+_propagate_nucleon_discrete inelastic branch with isospin-avg masses; only the CHARGE/pid is new.)
+PLAN: (i) kernel -- sample Delta state (u107) + decay (u108) via NEW fold_in keys (existing inelastic
+streams + made_pi stay bit-exact), track the leading made-pion (4-vec + charge + pos + fz), RETURN it
+appended; gate made_pi + existing outputs unchanged.  (ii) engine -- spawn the made pion into a PION
+buffer that re-enters the BFS (pion segment) -- breaks v2a pion-once.  (iii) no-other-meson veto exact.
+
+## INELASTIC-PION DONE -- full-fidelity engine reproduces ACHILLES (~2%)
+
+- (i) kernel: _propagate_nucleon_discrete samples the Delta charge state + Delta->Npi decay (fold_in
+  107/108) and tracks the LEADING created pion (4-vec, charge idx, vertex, fz), returned appended.
+  Carry surgery (15-element carry) GATED: res_C all observables 0.0 diff, count/sigma identical -> the
+  production chain is BIT-EXACT (the new keys don't perturb the elastic/inelastic streams or made_pi).
+- (ii) engine (cascade_carbon_v2): gather the leading NN-created pion per event across the nucleon BFS,
+  re-cascade it via pion_segment; returns `created` (surviving pid/p4).  Smoke (9120 ev): 8.6% make a
+  pion, 163 RESCUE (primary died + created pi+ survives).
+- (iii) figure: combine {primary, created} pions with the EXACT one-pi+/no-other-meson veto (conv -1
+  counts as other meson) -- apples-to-apples with ach_select.
+- FULL RESULT (8 seeds, top-N + inelastic-pion + rescue + exact veto, N_eff 283): integral ACH/ADO 0.983;
+  chi2/ndf pn 1.29 dptt 1.45 daT 1.25 W 2.55 Q2 2.40 pi_p 1.28 lp_p 0.57.  All <=2.55; integral 0.983
+  +-6% consistent with 1.0 (top-K-only was 0.973).  => the fully-faithful, differentiable engine
+  reproduces ACHILLES's CC1pi signal to ~2%.
+- TIMING: 26.0 min/8 seeds (vs ~23 top-K-only; created-pion pass ~+13%).  CPU ~3.3/8 cores during run
+  (XLA not saturating; headroom -> parallel seeds or v2b).  RAM ~2.2 GB/run.
+- Residual leads (small, stats-limited): W 2.55, Q2 2.40 slightly elevated -- a possible mild Q2 shape
+  diff (ADoNIS high low-Q2, low high-Q2) worth a high-stats look (needs v2b speedup / unweighting for N_eff).
+DONE for this phase: top-N + inelastic-pion + rescue + exact veto, production bit-exact, differentiable.
+Remaining (optimization/validation, not new physics): v2b worklist speedup; unweighting (N_eff/N~0.05);
+consumption time-ordering validation; M_A/fit records; transparency + 6% pion check + CC0pi + wire into prod.
