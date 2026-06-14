@@ -568,7 +568,8 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     ar = jnp.arange(n)
 
     def body(carry, sk):
-        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi) = carry
+        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi,
+         best_pi, best_pi_pos, best_pi_fz, best_pi_ch) = carry
         outward = jnp.sum(pos * dhat, axis=1) > 0
         alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
         # formation zone: timeStep = step/beta (ACHILLES AdaptiveStep); interact only when fz<=0
@@ -658,6 +659,25 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         lead_in = jnp.where((jnp.linalg.norm(pN1[:, 1:], axis=1)
                              >= jnp.linalg.norm(pN2[:, 1:], axis=1))[:, None], pN1, pN2)
         made_pi = made_pi | is_inel
+        # CREATED-PION CHARGE (ACHILLES AllowedResonanceStates -> Delta -> N pi, data/decays.yml).
+        # NEW fold_in keys (107/108) -> the elastic + existing-inelastic streams and made_pi stay bit-exact.
+        q_pair = isp0.astype(jnp.int32) + nisp[ar, j].astype(jnp.int32)        # 0=nn 1=pn 2=pp
+        u107 = jax.random.uniform(jax.random.fold_in(sk, 107), (n,))
+        u108 = jax.random.uniform(jax.random.fold_in(sk, 108), (n,))
+        dch = jnp.where(q_pair == 2, jnp.where(u107 < 0.75, 2, 1),             # pp: ++ 3/4 | + 1/4
+                jnp.where(q_pair == 1, jnp.where(u107 < 0.5, 1, 0),            # pn: + 1/2 | 0 1/2
+                                       jnp.where(u107 < 0.25, 0, -1)))         # nn: 0 1/4 | - 3/4
+        pi_q = jnp.where(dch == 2, 1,                                          # ++ -> pi+
+                jnp.where(dch == 1, jnp.where(u108 < 1.0/3.0, 1, 0),           # + -> pi+ 1/3 | pi0 2/3
+                jnp.where(dch == 0, jnp.where(u108 < 2.0/3.0, 0, -1), -1)))    # 0 -> pi0 2/3 | pi- 1/3 ; - -> pi-
+        pi_chidx = (1 - pi_q).astype(jnp.int32)                               # +1->0(pi+),0->1(pi0),-1->2(pi-)
+        # track the LEADING created pion (4-vec _pPiX + charge + vertex + formation zone)
+        pi_better = is_inel & (jnp.linalg.norm(_pPiX[:, 1:], axis=1) > jnp.linalg.norm(best_pi[:, 1:], axis=1))
+        fz_pi = _formation_zone(p_N, _pPiX)
+        best_pi = jnp.where(pi_better[:, None], _pPiX, best_pi)
+        best_pi_pos = jnp.where(pi_better[:, None], npos[ar, j], best_pi_pos)
+        best_pi_fz = jnp.where(pi_better, fz_pi, best_pi_fz)
+        best_pi_ch = jnp.where(pi_better, pi_chidx, best_pi_ch)
         do = has_hit & ~chose_inel & ~blocked
         # knocked-out nucleon = the struck background nucleon's recoil; if it is a PROTON track
         # the highest-momentum one (ACHILLES adds it to the final state, the analysis may pick it)
@@ -683,11 +703,13 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         d3 = p_N[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
         pos = pos + cfg.step * dhat * alive[:, None]
         rec = jax.lax.stop_gradient((has_hit, perp2_c, sig_c))
-        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi), rec
+        return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi,
+                best_pi, best_pi_pos, best_pi_fz, best_pi_ch), rec
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
-            consumed0, jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), fz0, jnp.zeros(n, bool))
+            consumed0, jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), fz0, jnp.zeros(n, bool),
+            jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, jnp.int32))
     if cfg.early_exit:
         # EARLY-EXIT walk (bit-exact): nucleons escape on the sphere (alive -> False), so the
         # loop ends when every nucleon has escaped -- measured ~step 150-180 vs the 260/325 cap.
@@ -712,11 +734,12 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
             return i + 1, carry2, (hh_c, a_c, ns + m.astype(jnp.int32))
 
         _, carry, bufs = jax.lax.while_loop(wcond, wbody, (jnp.int32(0), init, bufs0))
-        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi) = carry
+        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi,
+         best_pi, best_pi_pos, best_pi_fz, best_pi_ch) = carry
         hh_c, a_c, ns = bufs
     else:
         (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz,
-         made_pi), recs = jax.lax.scan(body, init, keys)
+         made_pi, best_pi, best_pi_pos, best_pi_fz, best_pi_ch), recs = jax.lax.scan(body, init, keys)
         # kind-1 sigma_scatter reweight (closest-in-slab Bernoulli approximation), OUTSIDE the scan.
         # Compress to the <=_K_SLAB_REC steps with an in-slab candidate (perp2_c dummy = 1e6 marks
         # "no slab"; its br is exactly 1) -- theta-independent walk records for nucleon_scat_reweight.
@@ -736,7 +759,8 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     _arn = jnp.arange(best_ko.shape[0])
     _lead = jnp.argmax(jnp.linalg.norm(best_ko[:, :, 1:], axis=2), axis=1)
     return (p_N, nsc, best_ko[_arn, _lead], best_ko_pos[_arn, _lead], best_ko_fz[_arn, _lead],
-            w_scat, srec, made_pi, (best_ko, best_ko_pos, best_ko_fz))
+            w_scat, srec, made_pi, (best_ko, best_ko_pos, best_ko_fz),
+            (best_pi, best_pi_ch, best_pi_pos, best_pi_fz))   # leading CREATED pion (4-vec, charge idx, vertex, fz)
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
@@ -775,7 +799,7 @@ class DiscreteNucleonFSI:
         pos0 = npos[jnp.arange(n), vtx]
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)                  # struck nucleon removed from background
         isp0 = (event.pid_N == 2212)
-        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1, best_ko_all = propagate_nucleon_discrete(
+        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1, best_ko_all, _ = propagate_nucleon_discrete(
             pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sscat=sscat)
         self.last_ko_all = best_ko_all            # all top-K knockout protons (n,K,4),(n,K,3),(n,K) -- engine
         # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
@@ -786,7 +810,7 @@ class DiscreteNucleonFSI:
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
-        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
                                                                         nisp, self.cfg, kp2, fz0=best_ko_fz,
                                                                         consumed0=consumed0, sscat=sscat)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))
