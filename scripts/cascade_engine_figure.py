@@ -23,6 +23,20 @@ NSEED = int(sys.argv[2]) if len(sys.argv) > 2 else 4
 COS70 = np.cos(np.deg2rad(70.0)); P, MG = 10, 6
 CFG = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=260, seed=1, nn_inelastic=True)
 MU_LO, MU_HI, PI_LO, PI_HI, P_LO, P_HI = 250., 7000., 150., 1200., 450., 1200.
+# Fixed batch shape across seeds -> compiles ONCE (no per-seed re-JIT).  We generate ALL seeds first,
+# set N_PAD = the MAX accepted-event count across them, and pad shorter seeds with w=0 dummies (excluded
+# by the w>0 cut).  No event is ever dropped (no truncation) and there is no per-seed re-JIT.
+_KEYS = ("k_nu", "k_mu", "p_struck", "p_pi", "p_N", "w", "ppid", "ipid", "Npid")
+
+
+def _pad_to(a, N_PAD):
+    m = len(a["w"])
+    if m == N_PAD:
+        return a
+    pad = N_PAD - m
+    out = {k: np.concatenate([v, np.broadcast_to(v[:1], (pad,) + v.shape[1:])], axis=0) for k, v in a.items()}
+    out["w"] = out["w"].copy(); out["w"][m:] = 0.0
+    return out
 
 
 def _acc(p4, lo, hi):
@@ -32,11 +46,19 @@ def _acc(p4, lo, hi):
 
 def engine_signal():
     cells = []
+    # generate ALL seeds first, then pad every seed to the MAX count -> one compile, no truncation
+    raw = []
     for sd in range(NSEED):
         e = res_xsec.generate(NRES, seed=sd, return_events=True)["events"]
-        knu, kmu, pstr = (np.asarray(e[k]) for k in ("k_nu", "k_mu", "p_struck"))
-        ppi = jnp.asarray(e["p_pi"]); pN = jnp.asarray(e["p_N"]); w = np.asarray(e["w"])
-        ppid = jnp.asarray(e["ppid"], jnp.int32); ipid = jnp.asarray(e["ipid"], jnp.int32); Npid = jnp.asarray(e["Npid"], jnp.int32)
+        raw.append({k: np.asarray(e[k]) for k in _KEYS})
+        print(f"  gen seed {sd}: {len(raw[-1]['w'])} events", flush=True)
+    N_PAD = max(len(a["w"]) for a in raw)
+    print(f"  N_PAD = max over seeds = {N_PAD} (single compile, no dropped events)", flush=True)
+    for sd in range(NSEED):
+        a = _pad_to(raw[sd], N_PAD)
+        knu, kmu, pstr = a["k_nu"], a["k_mu"], a["p_struck"]
+        ppi = jnp.asarray(a["p_pi"]); pN = jnp.asarray(a["p_N"]); w = a["w"]
+        ppid = jnp.asarray(a["ppid"], jnp.int32); ipid = jnp.asarray(a["ipid"], jnp.int32); Npid = jnp.asarray(a["Npid"], jnp.int32)
         pterm, nterms, ofl = CF.cascade_carbon_v2(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11), P=12, max_gen=MG)
         n = len(w); ar = np.arange(n)
         # pion terminal (surviving pi+)
