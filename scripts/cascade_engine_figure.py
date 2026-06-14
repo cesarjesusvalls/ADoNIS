@@ -59,10 +59,18 @@ def engine_signal():
         knu, kmu, pstr = a["k_nu"], a["k_mu"], a["p_struck"]
         ppi = jnp.asarray(a["p_pi"]); pN = jnp.asarray(a["p_N"]); w = a["w"]
         ppid = jnp.asarray(a["ppid"], jnp.int32); ipid = jnp.asarray(a["ipid"], jnp.int32); Npid = jnp.asarray(a["Npid"], jnp.int32)
-        pterm, nterms, ofl = CF.cascade_carbon_v2(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11), P=12, max_gen=MG)
+        pterm, nterms, ofl, created = CF.cascade_carbon_v2(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11), P=12, max_gen=MG)
         n = len(w); ar = np.arange(n)
-        # pion terminal (surviving pi+)
-        pi_f = np.asarray(pterm["p4"]); pid_pi = np.asarray(pterm["pid"])
+        # signal pion: combine the primary pion with the NN-created pion (created-pion-rescue).
+        # exactly-one-pi+ AND no-other-meson over {primary, created}; conv (-1 = eta/K) counts as other meson.
+        pp = np.asarray(pterm["pid"]); pp4 = np.asarray(pterm["p4"])
+        cp = np.asarray(created["pid"]); cp4 = np.asarray(created["p4"]); ca = np.asarray(created["alive"])
+        prim_pip = (pp == 211); cr_pip = (cp == 211) & ca
+        n_pip = prim_pip.astype(int) + cr_pip.astype(int)
+        n_other = np.isin(pp, [111, -211, -1]).astype(int) + (np.isin(cp, [111, -211, -1]) & ca).astype(int)
+        pi_f = np.where(prim_pip[:, None], pp4, cp4)                      # the surviving pi+ (primary or created)
+        pid_pi = np.where(n_pip == 1, 211, 0)                            # pass the pi+ identity only if exactly one
+        signal_meson = (n_pip == 1) & (n_other == 0)
         # leading in-window proton across ALL nucleon generations
         best = np.zeros((n, 4)); bm = np.zeros(n)
         for g in nterms:
@@ -72,7 +80,7 @@ def engine_signal():
             mm = np.where(mask, pm, -1.0); j = np.argmax(mm, axis=1); gm = mm[ar, j]
             upd = gm > bm; best = np.where(upd[:, None], p4[ar, j], best); bm = np.where(upd, gm, bm)
         has_p = bm > 0
-        sel = (pid_pi == 211) & has_p & (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pi_f, PI_LO, PI_HI)
+        sel = signal_meson & has_p & (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pi_f, PI_LO, PI_HI)
         dptt, pn, dat, dpt = F.observables(kmu[sel], pi_f[sel], best[sel], np.zeros(int(sel.sum()), bool), sd)
         qv = (knu - kmu)[sel]; totv = qv + pstr[sel]
         Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
