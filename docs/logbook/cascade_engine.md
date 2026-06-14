@@ -328,3 +328,20 @@ consumption time-ordering validation; M_A/fit records; transparency + 6% pion ch
   stat-masked at 8 seeds).  NOT yet at the 1% goal.  To investigate (read code first): top-6 proton
   truncation bias (does the in-window leader ever fall past rank 6?), created-pion/veto bookkeeping,
   cascade survival vs ACHILLES.
+
+## CC1pi residual DECOMPOSED (high-stat evidence)
+- Significance: ACH/ADO = 1.0466 +- 0.0231 -> 2.0 sigma.  Engine signal N=31194 but N_eff=2182 (7.0%,
+  spiky res_xsec weights) -> 2.14% stat err; ACHILLES N_eff 88.7% -> 0.55%.  Engine stats limit precision.
+- Localize (pre/post-FSI on matched banks):
+    PRE-FSI (generation): ACH/ADO 1.0277   (res_xsec gens ~2.8% fewer signal events, T2K fiducial)
+    cascade survival post/pre: ACH 0.5023 vs ENGINE 0.4932 (engine over-removes ~1.8%)
+    1.0277 x (0.5023/0.4932) = 1.0466  == measured.  => 4.7% = ~2.8% generation + ~1.8% cascade.
+  Factorized chain for contrast: post-FSI ACH/ADO 1.163, survival 0.444 (16% low).  => the ENGINE
+  (top-N + inelastic-pion + created-pion-rescue) is the fix: survival 0.493 ~ ACH 0.502.
+- pn high-tail (600-1500): ratio ~1.2, i.e. ~1.15 even after dividing out the flat 4.7% -> a real
+  high-pn SHAPE deficit (engine under-produces high transverse-momentum recoils, a cascade-transport
+  feature).  Per-bin N_eff 367-990 (stat 3-5%) so partly stat-inflated, but visually consistent.
+- NEXT (for the 1% goal): (a) chase the 2.8% pre-FSI res_xsec signal-region deficit -- CHEAP, no cascade,
+  high-stat pre-FSI-only run; relates to historical sigma_RES residual but here it's the T2K-fiducial
+  SHAPE.  (b) raise engine N_eff (more seeds / unweighting, N_eff/N~0.07) to turn the 2 sigma into a clear
+  measurement.  (c) the pn high-tail ties to the parked cascade transport residual.
