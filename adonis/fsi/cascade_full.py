@@ -49,7 +49,9 @@ def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, ss
     has_rec = jnp.linalg.norm(best_rec[:, 1:], axis=1) > 1.0
     sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
                p4=best_rec, pos=best_rec_pos, fz=best_rec_fz, alive=has_rec, w=w_fsi)
-    return term, sec
+    rp4, rpos, rfz = scat_ko_all                                          # (n,K,4),(n,K,3),(n,K) all proton recoils
+    secK = dict(p4=rp4, pos=rpos, fz=rfz, alive=jnp.linalg.norm(rp4[:, :, 1:], axis=2) > 1.0, w=w_fsi)
+    return term, sec, secK
 
 
 def nucleon_segment(p4, pos, isp, fz, consumed, npos, nmom, nisp, cfg, key, sscat=1.0):
@@ -67,7 +69,9 @@ def nucleon_segment(p4, pos, isp, fz, consumed, npos, nmom, nisp, cfg, key, ssca
     has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
     sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
                p4=best_ko, pos=best_ko_pos, fz=best_ko_fz, alive=has_ko, w=w_scat)
-    return term, sec
+    kp4, kpos, kfz = ko_all                                               # (n,K,4),(n,K,3),(n,K) all knockout protons
+    secK = dict(p4=kp4, pos=kpos, fz=kfz, alive=jnp.linalg.norm(kp4[:, :, 1:], axis=2) > 1.0, w=w_scat)
+    return term, sec, secK
 
 
 def setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key):
@@ -135,8 +139,8 @@ def make_kernel(npos, nmom, nisp, consumed0, cfg, sabs=1.0, sscat=1.0):
         def slot(i):
             p4 = buf["p4"][:, i]; pos = buf["pos"][:, i]; chg = buf["charge"][:, i]
             fz = buf["fz"][:, i]; alive = buf["alive"][:, i]; sp = buf["species"][:, i]
-            tp, sp_ = pion_segment(p4, pos, chg, consumed0, npos, nmom, nisp, cfg, pk[i], sabs, sscat)
-            tn, sn = nucleon_segment(p4, pos, chg.astype(bool), fz, consumed0, npos, nmom, nisp, cfg, pk[i], sscat)
+            tp, sp_, _ = pion_segment(p4, pos, chg, consumed0, npos, nmom, nisp, cfg, pk[i], sabs, sscat)
+            tn, sn, _ = nucleon_segment(p4, pos, chg.astype(bool), fz, consumed0, npos, nmom, nisp, cfg, pk[i], sscat)
             is_pi = (sp == PION)
             # terminal (record): select by species; dead slots -> FATE_NONE, not alive
             seg_w = jnp.where(is_pi, tp["w"], tn["w"])               # kind-1 segment reweight (1 at nominal)
@@ -190,26 +194,33 @@ def run_cascade(init, kernel, key, P=10, max_gen=6):
 
 def _nucleon_kernel(npos, nmom, nisp, consumed0, cfg, sscat=1.0):
     """v2 nucleon-only generation kernel: run nucleon_segment on every slot (NO 2x-run-both, NO pion).
-    Returns (term, spawn) like make_kernel but species is always NUCLEON."""
+    Each slot emits its TOP-K knockout protons -> spawn buffer (n, P*K).  Returns (term, spawn)."""
     def kernel(buf, key):
         n, P = buf["alive"].shape
         pk = jax.random.split(key, P)
 
         def slot(i):
             alive = buf["alive"][:, i]
-            tn, sn = nucleon_segment(buf["p4"][:, i], buf["pos"][:, i], buf["charge"][:, i].astype(bool),
-                                     buf["fz"][:, i], consumed0, npos, nmom, nisp, cfg, pk[i], sscat)
+            tn, _, snK = nucleon_segment(buf["p4"][:, i], buf["pos"][:, i], buf["charge"][:, i].astype(bool),
+                                         buf["fz"][:, i], consumed0, npos, nmom, nisp, cfg, pk[i], sscat)
             term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=buf["charge"][:, i], pid=tn["pid"],
                         p4=tn["p4"], fate=jnp.where(alive, FATE_ESCAPE, FATE_NONE),
                         w=buf["w"][:, i] * tn["w"], alive=alive)
-            sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),
-                       pid=jnp.full((n,), 2212, jnp.int32), p4=sn["p4"], pos=sn["pos"], fz=sn["fz"],
-                       fate=jnp.zeros((n,), jnp.int32), w=sn["w"] * buf["w"][:, i], alive=alive & sn["alive"])
-            return term, sec
-        terms = [slot(i) for i in range(P)]
-        stk = lambda k, lst: jnp.stack([d[k] for d in lst], axis=1)
-        tcat = {k: stk(k, [t[0] for t in terms]) for k in ("species", "charge", "pid", "p4", "fate", "w", "alive")}
-        scat = {k: stk(k, [t[1] for t in terms]) for k in ("species", "charge", "p4", "pos", "fz", "fate", "w", "alive")}
+            K = snK["p4"].shape[1]
+            secK = dict(p4=snK["p4"], pos=snK["pos"], fz=snK["fz"],
+                        alive=snK["alive"] & alive[:, None],
+                        w=snK["w"][:, None] * buf["w"][:, i][:, None] * jnp.ones((n, K)))
+            return term, secK
+        res = [slot(i) for i in range(P)]
+        tcat = {k: jnp.stack([r[0][k] for r in res], axis=1) for k in ("species", "charge", "pid", "p4", "fate", "w", "alive")}
+        K = res[0][1]["p4"].shape[1]
+
+        def sfield(k):                                                 # (n,P,K,...) -> (n, P*K, ...)
+            arr = jnp.stack([r[1][k] for r in res], axis=1)
+            return arr.reshape((n, P * K) + arr.shape[3:])
+        scat = dict(species=jnp.full((n, P * K), NUCLEON, jnp.int32), charge=jnp.ones((n, P * K), jnp.int32),
+                    pid=jnp.full((n, P * K), 2212, jnp.int32), fate=jnp.zeros((n, P * K), jnp.int32),
+                    p4=sfield("p4"), pos=sfield("pos"), fz=sfield("fz"), w=sfield("w"), alive=sfield("alive"))
         return tcat, scat
     return kernel
 
@@ -221,19 +232,20 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
     su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
     kpi, knuc = jax.random.split(su["kp"])
-    pterm, prec = pion_segment(p_pi, su["pos0"], su["ch0"], su["consumed0"], su["npos"], su["nmom"],
-                               su["nisp"], cfg, kpi, sabs, sscat)
-    pterm = dict(species=jnp.full((n,), PION, jnp.int32), pid=pterm["pid"], p4=pterm["p4"],
-                 charge=pterm["charge"], w=pterm["w"], alive=jnp.ones((n,), bool))
-    # gen-0 nucleons: the RES recoil nucleon + the pion's leading knockout proton
-    g0 = empty_batch(n, 2)
-    g0["alive"] = jnp.stack([jnp.ones((n,), bool), prec["alive"]], 1)
-    g0["species"] = jnp.full((n, 2), NUCLEON, jnp.int32)
-    g0["charge"] = jnp.stack([(Npid == 2212).astype(jnp.int32), jnp.ones((n,), jnp.int32)], 1)
-    g0["p4"] = jnp.stack([p_N, prec["p4"]], 1)
-    g0["pos"] = jnp.stack([su["pos0"], prec["pos"]], 1)
-    g0["fz"] = jnp.stack([jnp.zeros((n,)), prec["fz"]], 1)
-    g0["w"] = jnp.stack([pterm["w"] * 0 + 1.0, prec["w"]], 1)            # nucleon-side weight (pion w on pterm)
+    pt, _, precK = pion_segment(p_pi, su["pos0"], su["ch0"], su["consumed0"], su["npos"], su["nmom"],
+                                su["nisp"], cfg, kpi, sabs, sscat)
+    pterm = dict(species=jnp.full((n,), PION, jnp.int32), pid=pt["pid"], p4=pt["p4"],
+                 charge=pt["charge"], w=pt["w"], alive=jnp.ones((n,), bool))
+    # gen-0 nucleons: the RES recoil nucleon (slot 0) + ALL top-K pion knockout protons (slots 1..K)
+    K = precK["p4"].shape[1]
+    g0 = empty_batch(n, 1 + K)
+    g0["alive"] = jnp.concatenate([jnp.ones((n, 1), bool), precK["alive"]], 1)
+    g0["species"] = jnp.full((n, 1 + K), NUCLEON, jnp.int32)
+    g0["charge"] = jnp.concatenate([(Npid == 2212).astype(jnp.int32)[:, None], jnp.ones((n, K), jnp.int32)], 1)
+    g0["p4"] = jnp.concatenate([p_N[:, None, :], precK["p4"]], 1)
+    g0["pos"] = jnp.concatenate([su["pos0"][:, None, :], precK["pos"]], 1)
+    g0["fz"] = jnp.concatenate([jnp.zeros((n, 1)), precK["fz"]], 1)
+    g0["w"] = jnp.concatenate([jnp.ones((n, 1)), precK["w"][:, None] * jnp.ones((n, K))], 1)
     kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], su["consumed0"], cfg, sscat)
     nterms, ofl = run_cascade(g0, kernel, knuc, P=P, max_gen=max_gen)
     return pterm, nterms, ofl
