@@ -230,3 +230,32 @@ v2 differentiability CONFIRMED both knobs: sabs rel 1.2e-7, sscat rel 4.6e-7.
 PADDING: pre-generate all seeds, N_PAD=max count, pad short seeds w=0 (excluded by w>0 cut), no truncation,
    single compile (no per-seed re-JIT). (one big seed instead is memory-blocked: 17GB RAM, ~6.5GB/13.8k ev.)
 v2a SPEED: 141s vs v1 239s (~1.7x); the bigger v2b worklist/compaction still pending.
+
+## TOP-N secondaries DONE (kernels + engine), production bit-exact
+
+- Kernels: _propagate_discrete (pion recoils) and _propagate_nucleon_discrete (nucleon knockouts) now
+  track the TOP-K proton recoils (_N_RECOIL=4) in the carry via min-slot insertion (was leading-only).
+  The max-momentum slot = the old single best_rec/best_ko bit-exactly, so the production return (which
+  uses only the leading) is UNCHANGED. GATES: prodgate DiscreteCascadeFSI pid/p_pi/w diff 0.0 (leading
+  recoil 2e-13 float-reorder); full res_C chain count/sigma identical, observables <=1e-12. scat_ko_all /
+  ko_all (n,K,...) appended for the engine; all callers (DiscreteCascadeFSI/DiscreteNucleonFSI/res_C)
+  unpack the new return.
+- Engine: pion top-K recoils -> gen0 nucleon buffer; nucleon kernel emits P*K knockouts/gen (compacted).
+  MEASURED (1 seed, 13769 ev): protons tracked 14662 -> 15477 (+5.6%); surviving pi+ unchanged (8036);
+  159s vs 141s (~13%, NOT Kx -- compaction bounds it); overflow 0 at P=12 (P=24 IDENTICAL -> fully
+  captured, no drops). So top-K is cheap and complete.
+- TODO verify: re-run the AD==FD differentiability with top-K on (same w_fsi/w_scat mechanism -> expected
+  to hold) and the 8-seed engine figure with top-K (does +5.6% protons move the 0.973 integral?).
+
+## REMAINING fidelity: inelastic-pion emission (created-pion-rescue) -- the bigger structural item
+
+NN->NDelta->NNpi currently DISCARDS the created pion (_pPiX) and only sets made_pi (veto flag).  To model
+the created-pion-rescue (primary pi+ dies, a nucleon-FSI pi+ becomes the signal pion):
+1. extend _propagate_nucleon_discrete to RETURN the created pion 4-vec + CHARGE.  Charge needs the
+   NN->NDelta->Npi isospin/Clebsch-Gordan (Delta charge -> pi charge) -- NEW physics (current code uses
+   isospin-avg mass 138.04, no charge).  Read ACHILLES NucleonNucleon/Delta-decay charge handling.
+2. engine: the created pion RE-ENTERS the cascade as a pion -> breaks v2a's "pion-once" -> need a pion
+   stream back in the BFS (pion buffer alongside the nucleon buffer).
+3. no-other-meson veto becomes exact: signal = exactly one surviving pi+ (currently approximate).
+This is a fresh-context sub-task (new charge physics + engine restructure).  top-N is the cheap win;
+this is the structural one.
