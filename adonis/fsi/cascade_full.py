@@ -40,7 +40,7 @@ def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, ss
     out = _propagate_discrete(pos, p4, ch, npos, nmom, nisp, cfg, key, consumed,
                               jnp.asarray(sabs, float), jnp.asarray(sscat, float))
     (p_pi, ch_out, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
-     (best_rec, best_rec_pos, best_rec_fz)) = out
+     (best_rec, best_rec_pos, best_rec_fz), scat_ko_all) = out
     fate = jnp.where(absorbed, FATE_ABSORB, jnp.where(conv, FATE_CONVERT, FATE_ESCAPE))
     pid = jnp.where(absorbed, 0, jnp.where(conv, -1, _CH_PID[ch_out]))     # 0 abs, -1 conv, else pi pid
     n = p4.shape[0]

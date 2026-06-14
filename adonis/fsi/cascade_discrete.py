@@ -79,6 +79,10 @@ _K_BR = 16                   # compressed-record slots for the pion branch rewei
                              # measured; nh in the records lets callers verify no overflow).
 _K_SLAB_REC = 48             # compressed-record slots for the nucleon sigma_scatter reweight (steps with
                              # an in-slab candidate; ns in the records verifies no overflow).
+_N_RECOIL = 4                # top-K proton recoils tracked per particle (was 1, leading-only).  The
+                             # LEADING (max-momentum) slot reproduces the old single best_rec bit-exactly
+                             # -> production (which uses only the leading) is unaffected; the full top-K is
+                             # exposed for the faithful multi-particle cascade engine (cascade_full).
 
 
 def pion_branch_reweight(brec, sabs, sscat):
@@ -373,13 +377,19 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         # secondary knockouts are neglected -- declared approximation).
         p_rec = (p_pi + pN_j) - p_out
         q_rec = struck_p + out_ch - ch                                # +1 = proton recoil
-        rec_better = (is_scat & (q_rec == 1)
-                      & (jnp.linalg.norm(p_rec[:, 1:], axis=1)
-                         > jnp.linalg.norm(best_rec[:, 1:], axis=1)))
         fz_rec = _formation_zone(p_pi, p_rec)
-        best_rec = jnp.where(rec_better[:, None], p_rec, best_rec)
-        best_rec_pos = jnp.where(rec_better[:, None], npos[ar, j], best_rec_pos)
-        best_rec_fz = jnp.where(rec_better, fz_rec, best_rec_fz)
+        # TOP-K proton recoils: insert p_rec into the K-slot buffer if it beats the slot of smallest
+        # momentum (K=1 -> identical to the old running-max single best_rec; the max slot is always the
+        # leading recoil bit-exactly).  Tracks the K highest-momentum proton recoils per pion.
+        rec_is_p = is_scat & (q_rec == 1)
+        cand_mom = jnp.linalg.norm(p_rec[:, 1:], axis=1)              # (n,)
+        slot_mom = jnp.linalg.norm(best_rec[:, :, 1:], axis=2)        # (n,K)
+        minslot = jnp.argmin(slot_mom, axis=1)                        # (n,) smallest-momentum slot
+        do_ins = rec_is_p & (cand_mom > slot_mom[ar, minslot])
+        sel = jax.nn.one_hot(minslot, _N_RECOIL, dtype=bool) & do_ins[:, None]   # (n,K)
+        best_rec = jnp.where(sel[:, :, None], p_rec[:, None, :], best_rec)
+        best_rec_pos = jnp.where(sel[:, :, None], npos[ar, j][:, None, :], best_rec_pos)
+        best_rec_fz = jnp.where(sel, fz_rec[:, None], best_rec_fz)
         p_pi = jnp.where(is_scat[:, None], p_out, p_pi)
         ch = jnp.where(is_scat, out_ch, ch)
         nsc = nsc + is_scat.astype(jnp.int32)
@@ -408,7 +418,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     dhat0 = p_pi0[:, 1:] / jnp.clip(jnp.linalg.norm(p_pi0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
             jnp.zeros(n, jnp.int32), consumed0, jnp.zeros((n, 4)),
-            jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, bool))
+            jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), jnp.zeros(n, bool))
     if cfg.early_exit:
         # EARLY-EXIT walk (bit-exact): while_loop over the SAME per-step keys, stopping once no
         # particle can interact again.  A pion outside the nuclear radius moving OUTWARD is INERT:
@@ -465,8 +475,13 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     brec = (bc_c.T, sa_c.T, ss_c.T, si_c.T, nh)                    # (n,K)x4 + (n,)
     w_fsi = pion_branch_reweight(brec, sabs, sscat)
     nseg = nh                                       # per-event interaction-ATTEMPT count (segments); for MAX_SEG sizing
+    # leading proton recoil = the max-momentum top-K slot -- BIT-EXACT to the old single best_rec, so the
+    # production scat_ko (which uses only the leading) is unchanged; scat_ko_all exposes all top-K recoils.
+    _arn = jnp.arange(best_rec.shape[0])
+    _lead = jnp.argmax(jnp.linalg.norm(best_rec[:, :, 1:], axis=2), axis=1)
+    scat_ko_lead = (best_rec[_arn, _lead], best_rec_pos[_arn, _lead], best_rec_fz[_arn, _lead])
     return (p_pi, ch, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
-            (best_rec, best_rec_pos, best_rec_fz))
+            scat_ko_lead, (best_rec, best_rec_pos, best_rec_fz))
 
 
 def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0=None,
@@ -513,8 +528,9 @@ class DiscreteCascadeFSI:
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)
         # pion pid -> channel index (211->0, 111->1, -211->2, default->1), trace-safe
         ch0 = jnp.where(event.pid_pi == 211, 0, jnp.where(event.pid_pi == -211, 2, 1)).astype(jnp.int32)
-        (p_pi, ch, absorbed, conv, nsc, abs_lead, w_fsi, nseg, n_trunc, brec, scat_ko) = propagate_discrete(
+        (p_pi, ch, absorbed, conv, nsc, abs_lead, w_fsi, nseg, n_trunc, brec, scat_ko, scat_ko_all) = propagate_discrete(
             pos0, event.p_pi, ch0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sabs=sabs, sscat=sscat)
+        self.last_scat_ko_all = scat_ko_all       # all top-K proton recoils (n,K,4),(n,K,3),(n,K) -- engine
         self.last_abs_proton = abs_lead          # leading absorption proton (piNN->NN), for CC0pi
         self.last_absorbed = absorbed
         self.last_w_fsi = w_fsi                   # kind-1 branching reweight (1 at nominal scales)
