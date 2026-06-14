@@ -317,3 +317,14 @@ consumption time-ordering validation; M_A/fit records; transparency + 6% pion ch
   observables via cc1pi_fig_tki.observables, overlays vs ACHILLES rich bank + ratio/chi2.  Dry-run on the
   2-seed partial: shape flat (ACH/ADO ~const across all 7 vars) -> selection logic correct; absolute norm
   off by ~NSEED/n_seeds (partial, pre-fix in-flight bank) as expected.  Full bank decides the absolute.
+
+## HIGH-STAT CC1pi result (50-seed bank, 692,979 ev -> 31,194 signal) -- EVIDENCE
+- cc1pi_engine_plot.py on the FULL bank:  selected sigma ENGINE 1.1319e-6 / ACH 1.1846e-6 nb.
+  ACH/ADO = 1.047  (engine ~4.7% LOW; near-FLAT across observables, ratio points cluster 1.05-1.10).
+- chi2/ndf:  pn 4.85  dptt 2.82  dalphat 1.19  W 1.44  Q2 1.95  pi_p 1.74  lp_p 1.43.
+- pn is the worst: high-pn tail (600-1500 bin) ratio ~1.2 -> engine under-produces high inferred
+  nucleon momentum.  The 8-seed 0.983 was within noise (N_eff~283, +-6%); 1.047 is the reliable value.
+- => at high stats a ~5% near-flat normalization deficit + a pn high-tail shape deficit emerge (were
+  stat-masked at 8 seeds).  NOT yet at the 1% goal.  To investigate (read code first): top-6 proton
+  truncation bias (does the in-window leader ever fall past rank 6?), created-pion/veto bookkeeping,
+  cascade survival vs ACHILLES.
