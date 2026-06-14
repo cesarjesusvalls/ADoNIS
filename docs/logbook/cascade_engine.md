@@ -177,3 +177,6 @@ CHOSEN v1 = (b): smallest faithful step from the current code, reuses validated 
   raw flops, not the wasted-slot overhead.
 - CONCLUSION: v2 (compacted live-set stack + species-partition, no 2x-run-both, no per-gen padding) is
   ESSENTIAL, not optional -- it's the ~10-35x lever that makes the engine practical, on CPU.
+- SCALING CONFIRMED linear in P x MAX_GEN: P=10 mg=6 (60 slot-gens) warm 238.7/238.8s; P=6 mg=4
+  (24 slot-gens) warm 95.1/95.7s; 239/95 = 2.5 = 60/24 exactly. Cost ~ P*MAX_GEN*2species*n_events.
+  v2 target: compact to ~mean 3.4 live + species-partition -> ~5-10x -> ~58 ev/s to ~300-600 ev/s.
