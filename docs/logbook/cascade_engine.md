@@ -345,3 +345,13 @@ consumption time-ordering validation; M_A/fit records; transparency + 6% pion ch
   high-stat pre-FSI-only run; relates to historical sigma_RES residual but here it's the T2K-fiducial
   SHAPE.  (b) raise engine N_eff (more seeds / unweighting, N_eff/N~0.07) to turn the 2 sigma into a clear
   measurement.  (c) the pn high-tail ties to the parked cascade transport residual.
+
+## CORRECTION to the decomposition framing (significance)
+- The pre-FSI "2.8% generation deficit" is only 1.0 sigma: PRE-FSI ACH/ADO 1.0277 +- 0.0270 (factorized
+  pre-FSI bank N_eff 1831/13068; ACH 6923/7320).  NOT significant -- consistent with zero.
+- So the post-FSI 4.7% (2.0 sigma) is dominated by STATISTICS, not a confirmed physics bug.  The
+  decomposition (2.8% gen + 1.8% cascade) holds as central values but each piece is ~1 sigma.
+- REAL bottleneck = engine N_eff (spiky res_xsec weights, N_eff/N ~ 7%).  Correct next step is to RAISE
+  N_eff (unweighting, or more seeds) to turn the 2 sigma into a clear yes/no -- BEFORE chasing the
+  2.8%/1.8% sub-pieces (each currently ~1 sigma).  The pn high-tail shape deficit is the most likely-real
+  feature (visually consistent across bins) and ties to the parked cascade transport residual.
