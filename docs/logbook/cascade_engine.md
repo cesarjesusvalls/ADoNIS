@@ -162,3 +162,18 @@ CHOSEN v1 = (b): smallest faithful step from the current code, reuses validated 
   STANDING: faithful multi-particle cascade engine runs end-to-end, bit-exact single-particle gates,
   differentiable (autodiff==FD 1e-7). Foundation complete. Remaining = faithful-secondary extensions
   (top-N + inelastic pion) then P2/P4 validation vs the banks.
+
+## Timing + device (first engine run, 30k->13769 carbon RES events)
+
+- res_xsec.generate: 32.3s (the PRIMARY sampling -- a real cost, separate from the cascade).
+- engine P=10 mg=6: FIRST (compile+run) 251.3s ; WARM 238.7s -> RUNTIME-bound (compile only ~13s).
+  => ~58 ev/s, ~20-40x slower than the factorized chain.  The cost is algorithmic: the v1 kernel runs
+     BOTH segment fns on ALL P slots and pads each generation; P0 said mean 3.4 particles vs 10x6=60
+     slot-gens -> ~2x(60/3.4) ~ 35x wasted work on empty/masked slots.
+- DEVICE: CPU (jax.devices()=[CpuDevice], backend cpu); float64 (jax_enable_x64=True, physics needs it).
+  Apple Silicon GPU is NOT viable: the only path is jax-metal (experimental), which has poor/no float64
+  (Metal is float32-centric) -> would break the bit-exact physics, plus gaps in while_loop/scan/scatter/
+  top_k that the cascade uses.  And it's runtime-not-compile bound, so even a working GPU helps only the
+  raw flops, not the wasted-slot overhead.
+- CONCLUSION: v2 (compacted live-set stack + species-partition, no 2x-run-both, no per-gen padding) is
+  ESSENTIAL, not optional -- it's the ~10-35x lever that makes the engine practical, on CPU.
