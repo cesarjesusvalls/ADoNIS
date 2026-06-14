@@ -123,7 +123,7 @@ def compact(b, P_out):
     return out, n_overflow
 
 
-def make_kernel(npos, nmom, nisp, consumed0, cfg):
+def make_kernel(npos, nmom, nisp, consumed0, cfg, sabs=1.0, sscat=1.0):
     """Build the per-generation kernel: species-dispatched propagation of a (n,P) buffer through the
     SHARED nucleus (npos,nmom,nisp).  v1: each slot runs BOTH segment fns, selects by species (2x
     waste, simple); the shared consumed mask is the generation's starting state for ALL slots
@@ -135,14 +135,15 @@ def make_kernel(npos, nmom, nisp, consumed0, cfg):
         def slot(i):
             p4 = buf["p4"][:, i]; pos = buf["pos"][:, i]; chg = buf["charge"][:, i]
             fz = buf["fz"][:, i]; alive = buf["alive"][:, i]; sp = buf["species"][:, i]
-            tp, sp_ = pion_segment(p4, pos, chg, consumed0, npos, nmom, nisp, cfg, pk[i])
-            tn, sn = nucleon_segment(p4, pos, chg.astype(bool), fz, consumed0, npos, nmom, nisp, cfg, pk[i])
+            tp, sp_ = pion_segment(p4, pos, chg, consumed0, npos, nmom, nisp, cfg, pk[i], sabs, sscat)
+            tn, sn = nucleon_segment(p4, pos, chg.astype(bool), fz, consumed0, npos, nmom, nisp, cfg, pk[i], sscat)
             is_pi = (sp == PION)
             # terminal (record): select by species; dead slots -> FATE_NONE, not alive
+            seg_w = jnp.where(is_pi, tp["w"], tn["w"])               # kind-1 segment reweight (1 at nominal)
             term = dict(species=sp, pid=jnp.where(is_pi, tp["pid"], tn["pid"]),
                         p4=jnp.where(is_pi[:, None], tp["p4"], tn["p4"]),
                         fate=jnp.where(alive, jnp.where(is_pi, tp["fate"], tn["fate"]), FATE_NONE),
-                        w=buf["w"][:, i], alive=alive)
+                        w=buf["w"][:, i] * seg_w, alive=alive)
             # leading secondary (a proton): select by species; alive only if the parent was alive + it exists
             salive = alive & jnp.where(is_pi, sp_["alive"], sn["alive"])
             sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),
@@ -187,7 +188,7 @@ def run_cascade(init, kernel, key, P=10, max_gen=6):
     return terminals, overflow
 
 
-def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=10, max_gen=6):
+def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=10, max_gen=6, sabs=1.0, sscat=1.0):
     """Full faithful cascade on carbon: gen-0 = the primary pion + primary recoil nucleon at the struck
     vertex; BFS re-cascades all (leading, v1) secondaries through the SHARED nucleus.  Returns
     (terminals_per_gen, overflow)."""
@@ -199,5 +200,5 @@ def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=10, max_gen=6):
     g0["charge"] = jnp.stack([su["ch0"], (Npid == 2212).astype(jnp.int32)], 1)
     g0["p4"] = jnp.stack([p_pi, p_N], 1)
     g0["pos"] = jnp.stack([su["pos0"], su["pos0"]], 1)
-    kernel = make_kernel(su["npos"], su["nmom"], su["nisp"], su["consumed0"], cfg)
+    kernel = make_kernel(su["npos"], su["nmom"], su["nisp"], su["consumed0"], cfg, sabs, sscat)
     return run_cascade(g0, kernel, su["kp"], P=P, max_gen=max_gen)

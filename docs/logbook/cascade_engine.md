@@ -152,3 +152,13 @@ CHOSEN v1 = (b): smallest faithful step from the current code, reuses validated 
   per-particle records + reweight(theta) (gates: nominal identity, reweight==in-walk, autodiff==FD);
   (4) P2 pi+-12C transparency; (5) P4 validate vs the rich banks (over-absorption, 6% pion gap, proton
   yield, created-pion rescue). Also: v2 compute (species-partition instead of 2x-run-both; compacted stack).
+- **DIFFERENTIABILITY PROVEN on the engine** (problem 1, on the real BFS engine): threaded sabs/sscat
+  through cascade_carbon -> make_kernel -> segments. O(sabs) = engine surviving-pi+ xsec; autodiff
+  dO/dsabs = -1.4845e-6 vs central FD -1.4845e-6, rel 1.4e-7. Gradient negative (more abs -> fewer
+  surviving pi+), as expected. The frozen-walk + per-particle kind-1 weight product down the tree IS
+  differentiable, confirmed numerically. BUG FOUND+FIXED by this test: make_kernel set the TERMINAL
+  weight = parent weight only, dropping the segment reweight seg_w -> surviving-pi+ was constant in sabs
+  (FD=0); fixed to w = parent_w * seg_w. (Secondaries already carried it.)
+  STANDING: faithful multi-particle cascade engine runs end-to-end, bit-exact single-particle gates,
+  differentiable (autodiff==FD 1e-7). Foundation complete. Remaining = faithful-secondary extensions
+  (top-N + inelastic pion) then P2/P4 validation vs the banks.
