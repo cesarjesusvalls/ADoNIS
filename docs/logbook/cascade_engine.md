@@ -138,3 +138,17 @@ CHOSEN v1 = (b): smallest faithful step from the current code, reuses validated 
   slot, select by species; shared nucleus + consumed across the P slots -- v1 parallel-consumption
   approx). Then faithful extensions: emit the NN-inelastic pion 4-vec (extend _propagate_nucleon_discrete
   to return _pPiX) and top-N secondaries. Then P2 transparency, P3 records/autodiff, P4 validation.
+- **P1b INTEGRATION DONE** (engine alive end-to-end): make_kernel (species-dispatched mixed buffer: each
+  slot runs both segment fns, selects by species; shared nucleus+consumed; 1 leading secondary/slot) +
+  cascade_carbon (gen-0 = primary pion + recoil nucleon at the struck vertex, BFS via run_cascade).
+  TEST (n~1361 carbon RES events, P=8, max_gen=5): surviving pi+ engine 782 vs production 789 (~0.25sigma;
+  not bit-exact only because each gen/slot gets distinct keys by design -- the bit-exact gate is the
+  standalone pion_segment, passed). Generations decay [2722,512,42,0,0] (gen0=2*1361), protons tracked
+  1468 (vs the current 2-deep chain's few), overflow 0. The faithful multi-particle BFS cascade RUNS with
+  validated physics.
+  NEXT (faithful extensions, each gated): (1) top-N secondaries per segment (not leading-only) -- extend
+  the segment kernels to emit all recoils/products; (2) emit the NN-inelastic pion 4-vec (extend
+  _propagate_nucleon_discrete to return _pPiX) so the created-pion-rescue effect is modeled; (3) P3 kind-1
+  per-particle records + reweight(theta) (gates: nominal identity, reweight==in-walk, autodiff==FD);
+  (4) P2 pi+-12C transparency; (5) P4 validate vs the rich banks (over-absorption, 6% pion gap, proton
+  yield, created-pion rescue). Also: v2 compute (species-partition instead of 2x-run-both; compacted stack).

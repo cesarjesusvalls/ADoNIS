@@ -123,6 +123,48 @@ def compact(b, P_out):
     return out, n_overflow
 
 
+def make_kernel(npos, nmom, nisp, consumed0, cfg):
+    """Build the per-generation kernel: species-dispatched propagation of a (n,P) buffer through the
+    SHARED nucleus (npos,nmom,nisp).  v1: each slot runs BOTH segment fns, selects by species (2x
+    waste, simple); the shared consumed mask is the generation's starting state for ALL slots
+    (parallel-consumption approximation -- flagged in the logbook).  One leading secondary per slot."""
+    def kernel(buf, key):
+        n, P = buf["alive"].shape
+        pk = jax.random.split(key, P)
+
+        def slot(i):
+            p4 = buf["p4"][:, i]; pos = buf["pos"][:, i]; chg = buf["charge"][:, i]
+            fz = buf["fz"][:, i]; alive = buf["alive"][:, i]; sp = buf["species"][:, i]
+            tp, sp_ = pion_segment(p4, pos, chg, consumed0, npos, nmom, nisp, cfg, pk[i])
+            tn, sn = nucleon_segment(p4, pos, chg.astype(bool), fz, consumed0, npos, nmom, nisp, cfg, pk[i])
+            is_pi = (sp == PION)
+            # terminal (record): select by species; dead slots -> FATE_NONE, not alive
+            term = dict(species=sp, pid=jnp.where(is_pi, tp["pid"], tn["pid"]),
+                        p4=jnp.where(is_pi[:, None], tp["p4"], tn["p4"]),
+                        fate=jnp.where(alive, jnp.where(is_pi, tp["fate"], tn["fate"]), FATE_NONE),
+                        w=buf["w"][:, i], alive=alive)
+            # leading secondary (a proton): select by species; alive only if the parent was alive + it exists
+            salive = alive & jnp.where(is_pi, sp_["alive"], sn["alive"])
+            sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),
+                       pid=jnp.full((n,), 2212, jnp.int32),
+                       p4=jnp.where(is_pi[:, None], sp_["p4"], sn["p4"]),
+                       pos=jnp.where(is_pi[:, None], sp_["pos"], sn["pos"]),
+                       fz=jnp.where(is_pi, sp_["fz"], sn["fz"]),
+                       fate=jnp.zeros((n,), jnp.int32),
+                       w=jnp.where(is_pi, sp_["w"], sn["w"]) * buf["w"][:, i], alive=salive)
+            return term, sec
+        terms = [slot(i) for i in range(P)]
+        # stack slots back to (n, P) for terminals; (n, P) secondaries (1 per slot)
+        def stk(key_, lst):
+            return jnp.stack([d[key_] for d in lst], axis=1)
+        tcat = {k: stk(k, [t[0] for t in terms]) for k in ("species", "pid", "p4", "fate", "w", "alive")}
+        scat = {k: stk(k, [t[1] for t in terms]) for k in ("species", "charge", "p4", "pos", "fz", "fate", "w", "alive")}
+        # secondaries carry no charge-as-pion-idx confusion (all protons); add missing 'charge' to term
+        tcat["charge"] = jnp.zeros((n, P), jnp.int32)
+        return tcat, scat
+    return kernel
+
+
 def run_cascade(init, kernel, key, P=10, max_gen=6):
     """BFS over generations with fixed-shape buffers.
 
@@ -143,3 +185,19 @@ def run_cascade(init, kernel, key, P=10, max_gen=6):
         overflow = overflow + ofl
         cur = nxt
     return terminals, overflow
+
+
+def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=10, max_gen=6):
+    """Full faithful cascade on carbon: gen-0 = the primary pion + primary recoil nucleon at the struck
+    vertex; BFS re-cascades all (leading, v1) secondaries through the SHARED nucleus.  Returns
+    (terminals_per_gen, overflow)."""
+    su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
+    n = p_pi.shape[0]
+    g0 = empty_batch(n, 2)
+    g0["alive"] = jnp.ones((n, 2), bool)
+    g0["species"] = jnp.stack([jnp.full((n,), PION, jnp.int32), jnp.full((n,), NUCLEON, jnp.int32)], 1)
+    g0["charge"] = jnp.stack([su["ch0"], (Npid == 2212).astype(jnp.int32)], 1)
+    g0["p4"] = jnp.stack([p_pi, p_N], 1)
+    g0["pos"] = jnp.stack([su["pos0"], su["pos0"]], 1)
+    kernel = make_kernel(su["npos"], su["nmom"], su["nisp"], su["consumed0"], cfg)
+    return run_cascade(g0, kernel, su["kp"], P=P, max_gen=max_gen)
