@@ -93,10 +93,12 @@ def setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key):
 
 
 def empty_batch(n, P):
-    """An all-dead particle buffer of shape (n, P)."""
+    """An all-dead particle buffer of shape (n, P).  origin = gen-0 ancestor (0 = RES/QE nucleon chain,
+    1 = pion-scatter-knockout chain), gen = BFS depth -- PROVENANCE for offline debugging."""
     return dict(species=jnp.zeros((n, P), jnp.int32), charge=jnp.zeros((n, P), jnp.int32),
                 p4=jnp.zeros((n, P, 4)), pos=jnp.zeros((n, P, 3)), fz=jnp.zeros((n, P)),
-                alive=jnp.zeros((n, P), bool), w=jnp.ones((n, P)), fate=jnp.zeros((n, P), jnp.int32))
+                alive=jnp.zeros((n, P), bool), w=jnp.ones((n, P)), fate=jnp.zeros((n, P), jnp.int32),
+                origin=jnp.zeros((n, P), jnp.int32), gen=jnp.zeros((n, P), jnp.int32))
 
 
 def _take(b, idx):
@@ -119,7 +121,7 @@ def compact(b, P_out):
     out = empty_batch(n, P_out)
     ar = jnp.broadcast_to(jnp.arange(n)[:, None], (n, M))
     dst = jnp.where(rank < P_out, rank, P_out)                    # P_out = scratch drop slot (will be sliced off)
-    for k in ("species", "charge", "fate"):
+    for k in ("species", "charge", "fate", "origin", "gen"):
         out[k] = jnp.zeros((n, P_out + 1), b[k].dtype).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
     for k in ("fz", "w"):
         out[k] = jnp.zeros((n, P_out + 1)).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
@@ -208,16 +210,18 @@ def _nucleon_kernel(npos, nmom, nisp, consumed0, cfg, sscat=1.0):
             pi_alive = alive & (jnp.linalg.norm(tn["pi4"][:, 1:], axis=1) > 1.0)   # this slot made a pion
             term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=buf["charge"][:, i], pid=tn["pid"],
                         p4=tn["p4"], fate=jnp.where(alive, FATE_ESCAPE, FATE_NONE),
-                        w=buf["w"][:, i] * tn["w"], alive=alive,
+                        w=buf["w"][:, i] * tn["w"], alive=alive, origin=buf["origin"][:, i], gen=buf["gen"][:, i],
                         pi4=tn["pi4"], pich=tn["pich"], pipos=tn["pipos"], pifz=tn["pifz"], pi_alive=pi_alive)
             K = snK["p4"].shape[1]
             secK = dict(p4=snK["p4"], pos=snK["pos"], fz=snK["fz"],
                         alive=snK["alive"] & alive[:, None],
-                        w=snK["w"][:, None] * buf["w"][:, i][:, None] * jnp.ones((n, K)))
+                        w=snK["w"][:, None] * buf["w"][:, i][:, None] * jnp.ones((n, K)),
+                        origin=buf["origin"][:, i][:, None] * jnp.ones((n, K), jnp.int32),   # inherit gen-0 ancestor
+                        gen=(buf["gen"][:, i][:, None] + 1) * jnp.ones((n, K), jnp.int32))   # BFS depth + 1
             return term, secK
         res = [slot(i) for i in range(P)]
         tcat = {k: jnp.stack([r[0][k] for r in res], axis=1) for k in
-                ("species", "charge", "pid", "p4", "fate", "w", "alive", "pi4", "pich", "pipos", "pifz", "pi_alive")}
+                ("species", "charge", "pid", "p4", "fate", "w", "alive", "origin", "gen", "pi4", "pich", "pipos", "pifz", "pi_alive")}
         K = res[0][1]["p4"].shape[1]
 
         def sfield(k):                                                 # (n,P,K,...) -> (n, P*K, ...)
@@ -225,32 +229,51 @@ def _nucleon_kernel(npos, nmom, nisp, consumed0, cfg, sscat=1.0):
             return arr.reshape((n, P * K) + arr.shape[3:])
         scat = dict(species=jnp.full((n, P * K), NUCLEON, jnp.int32), charge=jnp.ones((n, P * K), jnp.int32),
                     pid=jnp.full((n, P * K), 2212, jnp.int32), fate=jnp.zeros((n, P * K), jnp.int32),
-                    p4=sfield("p4"), pos=sfield("pos"), fz=sfield("fz"), w=sfield("w"), alive=sfield("alive"))
+                    p4=sfield("p4"), pos=sfield("pos"), fz=sfield("fz"), w=sfield("w"), alive=sfield("alive"),
+                    origin=sfield("origin").astype(jnp.int32), gen=sfield("gen").astype(jnp.int32))
         return tcat, scat
     return kernel
 
 
-def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0):
-    """v2: pion handled ONCE (single segment), then a NUCLEON-ONLY BFS over {RES recoil, pion knockout}
-    and their re-cascades.  Valid while no pions are created mid-cascade (current physics; revisit when
-    inelastic-pion emission is added).  Returns (pion_term, nucleon_terminals_per_gen, overflow)."""
+def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0, channel="res"):
+    """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
+    channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
+                   pion knockouts}; pterm = the surviving pion.
+    channel="qe":  NO primary pion -- gen-0 nucleon = the QE proton (p_N); pterm = "no pion" (pid 0).
+    Both share the nucleon BFS (top-K knockouts) + the created-pion (NN->NDelta->Npi) re-entry, so the
+    meson veto (no surviving pion for CC0pi / exactly one pi+ for CC1pi) is handled uniformly.
+    Returns (pterm, nucleon_terminals_per_gen, overflow, created)."""
     su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
     kpi, knuc, kpi2 = jax.random.split(su["kp"], 3)
-    pt, _, precK = pion_segment(p_pi, su["pos0"], su["ch0"], su["consumed0"], su["npos"], su["nmom"],
-                                su["nisp"], cfg, kpi, sabs, sscat)
-    pterm = dict(species=jnp.full((n,), PION, jnp.int32), pid=pt["pid"], p4=pt["p4"],
-                 charge=pt["charge"], w=pt["w"], alive=jnp.ones((n,), bool))
-    # gen-0 nucleons: the RES recoil nucleon (slot 0) + ALL top-K pion knockout protons (slots 1..K)
-    K = precK["p4"].shape[1]
-    g0 = empty_batch(n, 1 + K)
-    g0["alive"] = jnp.concatenate([jnp.ones((n, 1), bool), precK["alive"]], 1)
-    g0["species"] = jnp.full((n, 1 + K), NUCLEON, jnp.int32)
-    g0["charge"] = jnp.concatenate([(Npid == 2212).astype(jnp.int32)[:, None], jnp.ones((n, K), jnp.int32)], 1)
-    g0["p4"] = jnp.concatenate([p_N[:, None, :], precK["p4"]], 1)
-    g0["pos"] = jnp.concatenate([su["pos0"][:, None, :], precK["pos"]], 1)
-    g0["fz"] = jnp.concatenate([jnp.zeros((n, 1)), precK["fz"]], 1)
-    g0["w"] = jnp.concatenate([jnp.ones((n, 1)), precK["w"][:, None] * jnp.ones((n, K))], 1)
+    if channel == "res":
+        pt, _, precK = pion_segment(p_pi, su["pos0"], su["ch0"], su["consumed0"], su["npos"], su["nmom"],
+                                    su["nisp"], cfg, kpi, sabs, sscat)
+        pterm = dict(species=jnp.full((n,), PION, jnp.int32), pid=pt["pid"], p4=pt["p4"],
+                     charge=pt["charge"], w=pt["w"], alive=jnp.ones((n,), bool), nsc=pt["nsc"])
+        # gen-0 nucleons: the RES recoil nucleon (slot 0) + ALL top-K pion knockout protons (slots 1..K)
+        K = precK["p4"].shape[1]
+        g0 = empty_batch(n, 1 + K)
+        g0["alive"] = jnp.concatenate([jnp.ones((n, 1), bool), precK["alive"]], 1)
+        g0["species"] = jnp.full((n, 1 + K), NUCLEON, jnp.int32)
+        g0["charge"] = jnp.concatenate([(Npid == 2212).astype(jnp.int32)[:, None], jnp.ones((n, K), jnp.int32)], 1)
+        g0["p4"] = jnp.concatenate([p_N[:, None, :], precK["p4"]], 1)
+        g0["pos"] = jnp.concatenate([su["pos0"][:, None, :], precK["pos"]], 1)
+        g0["fz"] = jnp.concatenate([jnp.zeros((n, 1)), precK["fz"]], 1)
+        g0["w"] = jnp.concatenate([jnp.ones((n, 1)), precK["w"][:, None] * jnp.ones((n, K))], 1)
+        g0["origin"] = jnp.concatenate([jnp.zeros((n, 1), jnp.int32), jnp.ones((n, K), jnp.int32)], 1)  # 0=RES recoil, 1=pi-knockout
+    else:                                                              # QE (CC0pi): no primary pion
+        pterm = dict(species=jnp.zeros((n,), jnp.int32), pid=jnp.zeros((n,), jnp.int32),
+                     p4=jnp.zeros((n, 4)), charge=jnp.zeros((n,), jnp.int32), w=jnp.ones((n,)),
+                     alive=jnp.ones((n,), bool), nsc=jnp.zeros((n,), jnp.int32))
+        g0 = empty_batch(n, 1)
+        g0["alive"] = jnp.ones((n, 1), bool)
+        g0["species"] = jnp.full((n, 1), NUCLEON, jnp.int32)
+        g0["charge"] = (Npid == 2212).astype(jnp.int32)[:, None]
+        g0["p4"] = p_N[:, None, :]
+        g0["pos"] = su["pos0"][:, None, :]
+        g0["fz"] = jnp.zeros((n, 1))
+        g0["w"] = jnp.ones((n, 1))
     kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], su["consumed0"], cfg, sscat)
     nterms, ofl = run_cascade(g0, kernel, knuc, P=P, max_gen=max_gen)
     # CREATED-PION RE-ENTRY: gather the leading NN-created pion per event across the nucleon BFS, then

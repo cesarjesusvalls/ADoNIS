@@ -31,7 +31,7 @@ M_N = 939.0          # MeV (mean nucleon)
 M_P = 938.272
 
 
-def generate(n=1_000_000, seed=0, with_fsi=True, MA_GeV=1.03):
+def generate(n=1_000_000, seed=0, with_fsi=True, MA_GeV=1.03, return_events=False):
     flux = Spectrum(REL / "T2K" / "T2K_nu.dat")
     nuc = SpectralFunction("pke12p_tot.data")
     key = jax.random.PRNGKey(seed)
@@ -70,6 +70,10 @@ def generate(n=1_000_000, seed=0, with_fsi=True, MA_GeV=1.03):
         channel=jnp.zeros(n, jnp.int32), pid_pi=jnp.zeros(n, jnp.int32),
         pid_N=jnp.full((n,), 2212), pid_Ni=jnp.full((n,), 2112),
         W=jnp.zeros(n), Q2_adj=jnp.asarray(Q2))
+    if return_events:                         # pre-FSI QE events for the faithful cascade engine
+        return dict(k_nu=np.asarray(ev.k), k_mu=np.asarray(ev.kp), p_struck=np.asarray(ev.p_struck),
+                    p_N=np.asarray(ev.p_N), w=np.asarray(ev.w), ipid=np.full(n, 2112, np.int64),
+                    Npid=np.full(n, 2212, np.int64), ppid=np.zeros(n, np.int64), Q2=np.asarray(Q2))
     if with_fsi:
         ev = DiscreteNucleonFSI(DiscreteCascadeConfig(seed=1, step=0.05, max_steps=260)).apply(None, ev, key=knuc)
 
