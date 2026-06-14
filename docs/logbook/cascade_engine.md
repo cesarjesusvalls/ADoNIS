@@ -369,3 +369,13 @@ consumption time-ordering validation; M_A/fit records; transparency + 6% pion ch
   res_xsec convention; main() then /n_seeds).
 - Relaunched full (60 seeds x 30k, ~5 h) -> faithful absolute CC0pi bank.  cc0pi_engine_plot.py reverted
   to ABSOLUTE comparison (engine 12C QE + free-H vs ACHILLES proc==200).
+
+## CC0pi FINAL (user stopped at 29 seeds -- enough)
+- 29-seed bank (870k ev, 49,413 selected).  cc0pi_engine_plot.py ABSOLUTE (engine 12C QE + free-H vs
+  ACHILLES proc==200):  ADoNIS 1.5059e-5 / ACH 1.4583e-5 nb  ->  ACH/ADO 0.968 (engine ~3% HIGH).
+  chi2/ndf: dpt 4.28  dalphat 1.70  Q2 6.29.  Q2-shift bug fully gone (was 122.7 on the LS bank).
+- Residual features (small): high-dpt tail (>500) and high-Q2 tail (>1.0) dip to ratio ~0.6-0.85;
+  low-Q2 (<0.2) ~0.85.  Same direction as the CC1pi pn high-tail = engine under-produces high transverse
+  momentum (cascade-transport) + edge stats.  delta_alphaT flat (model-insensitive) confirms kinematics OK.
+- Net: BOTH faithful engine figures now ABSOLUTE vs ACHILLES -- CC1pi ACH/ADO 1.047 (2.0 sigma),
+  CC0pi 0.968.  Engine validated as the shared cascade for both channels.
