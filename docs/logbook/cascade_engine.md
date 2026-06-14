@@ -105,3 +105,29 @@ per-lane in XLA, but compaction shrinks empties). Decide v1-vs-v2 after measurin
   from cascade_discrete (_xsec, _two_body_cm_scatter, abs/inelastic splits, formation zones). GATE:
   single-particle limit (one initial particle, secondaries discarded) == _propagate_discrete /
   _propagate_nucleon_discrete, bit-exact.
+
+## Design decision (after reading both kernels in full): BFS-by-generation, reuse the segment kernels
+
+Two architectures considered for the engine loop:
+  (a) WORKLIST / interaction-stepped co-evolution: one evolving live-set; every particle advances ONE
+      interaction in lockstep; dead leave, secondaries refill (the user's stack). MOST faithful (shared
+      consumed set updated in TIME), bounds secondaries/step to <=2. But it can't reuse the existing
+      multi-step propagators and needs ~30 outer steps x compaction.
+  (b) BFS-by-generation: each particle propagates its FULL multi-step segment in one kernel call (REUSE
+      _propagate_discrete / _propagate_nucleon_discrete verbatim -> single-particle-limit gate is
+      automatic); the pion's charge oscillation (pi+ ->pi0 ->pi+) stays WITHIN its segment (already
+      faithful); only RECOIL nucleons + inelastic/abs product pions spawn the next generation.
+CHOSEN v1 = (b): smallest faithful step from the current code, reuses validated physics, gate for free.
+  - Secondaries per segment capped at SPAWN (v1: the leading recoil, as today, but now RE-CASCADED across
+    generations -- the new capability vs the current 2-deep chain); extend to top-N next. Overflow counted.
+  - Approximations (flagged, validate in P4): generation-ordered consumed set (not time-ordered);
+    parallel consumption within a generation (P slots consume the shared background independently).
+  - Escalate to (a) only if P4 shows the time-ordering / all-secondaries matter beyond the cap.
+
+- **P1b (pion) DONE**: cascade_full.pion_segment wraps _propagate_discrete -> (terminal pion + fate,
+  leading-recoil proton secondary); setup_carbon replicates DiscreteCascadeFSI's nucleus/struck-vertex
+  setup. GATE (4k events, same key): survived-pi+ p4 max|diff| = 0.0; pid match exact; survival
+  1035==1035; leading-recoil p4 == pion.last_scat_ko (0.0). Bit-exact reproduction of the production
+  chain. NEXT P1b: nucleon_segment (wrap _propagate_nucleon_discrete -> terminal + leading knockout;
+  inelastic pion currently veto-flag only -> extend the kernel to RETURN _pPiX so it spawns faithfully),
+  then species-dispatch both into run_cascade, then top-N secondaries.

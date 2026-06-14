@@ -26,9 +26,46 @@ Fields per particle (all leading dim (n, P)):
 """
 from __future__ import annotations
 import jax, jax.numpy as jnp
+from adonis.fsi.cascade_discrete import (_propagate_discrete, _CH_PID, sample_nucleons,
+                                         DiscreteCascadeConfig)
 
 PION, NUCLEON = 0, 1
 FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
+
+
+def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, sscat=1.0):
+    """Propagate one pion (batch (n,)) through its FULL segment via the validated _propagate_discrete.
+    Returns (term, sec) flat dicts: term = the pion's terminal state + fate; sec = its leading recoil
+    proton (alive only where a proton recoil exists).  Charge oscillation is internal to the segment."""
+    out = _propagate_discrete(pos, p4, ch, npos, nmom, nisp, cfg, key, consumed,
+                              jnp.asarray(sabs, float), jnp.asarray(sscat, float))
+    (p_pi, ch_out, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
+     (best_rec, best_rec_pos, best_rec_fz)) = out
+    fate = jnp.where(absorbed, FATE_ABSORB, jnp.where(conv, FATE_CONVERT, FATE_ESCAPE))
+    pid = jnp.where(absorbed, 0, jnp.where(conv, -1, _CH_PID[ch_out]))     # 0 abs, -1 conv, else pi pid
+    n = p4.shape[0]
+    term = dict(species=jnp.full((n,), PION, jnp.int32), charge=ch_out, pid=pid, p4=p_pi,
+                fate=fate, w=w_fsi, nsc=nsc)
+    has_rec = jnp.linalg.norm(best_rec[:, 1:], axis=1) > 1.0
+    sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
+               p4=best_rec, pos=best_rec_pos, fz=best_rec_fz, alive=has_rec, w=w_fsi)
+    return term, sec
+
+
+def setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key):
+    """Sample the carbon background + struck vertex EXACTLY as DiscreteCascadeFSI.apply, so the engine's
+    primary-pion segment reproduces the production chain bit-for-bit.  Returns the nucleus + pion init."""
+    kn, kv, kp = jax.random.split(key, 3)
+    n = p_pi.shape[0]
+    npos, nmom, nisp = sample_nucleons(kn, n, cfg)
+    A = nisp.shape[1]
+    struck_isp = (pid_Ni == 2212)
+    rsel = jnp.where(nisp == struck_isp[:, None], jax.random.uniform(kv, (n, A)), -1.0)
+    vtx = jnp.argmax(rsel, axis=1)
+    pos0 = npos[jnp.arange(n), vtx]
+    consumed0 = jax.nn.one_hot(vtx, A).astype(bool)
+    ch0 = jnp.where(pid_pi == 211, 0, jnp.where(pid_pi == -211, 2, 1)).astype(jnp.int32)
+    return dict(npos=npos, nmom=nmom, nisp=nisp, pos0=pos0, consumed0=consumed0, ch0=ch0, kp=kp)
 
 
 def empty_batch(n, P):
