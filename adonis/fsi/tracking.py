@@ -106,6 +106,24 @@ def memory_per_event(cfg: TrackerConfig, max_daughters=8):
     return dict(summary_B=summary, steps_B=steps, total_B=summary + steps)
 
 
+# ---------- per-step trajectory diagnostics (from march track_steps) ----------
+def termination_step(traj_pos, radius):
+    """Physical termination = first step at which |pos| exceeds the nuclear radius (the particle has
+    left the nucleus).  traj_pos (n_steps, n, 3) -> per-particle step index (n_steps if it never exits)."""
+    outside = np.linalg.norm(np.asarray(traj_pos), axis=2) > radius        # (n_steps, n)
+    ns = outside.shape[0]
+    return np.where(outside.any(0), outside.argmax(0), ns)
+
+
+def step_summary(traj_pos, radius, max_steps):
+    """Median / 90% / 99% termination step + fraction still inside at the cap -- the 'how long does the
+    march need' diagnostic, computed from a real run's trajectories (no separate sweep)."""
+    ts = termination_step(traj_pos, radius)
+    return dict(median=float(np.median(ts)), p90=float(np.percentile(ts, 90)),
+                p99=float(np.percentile(ts, 99)), max=int(ts.max()),
+                frac_inside_at_cap=float(np.mean(ts >= max_steps)))
+
+
 # ---------- text dump of one event's tree (diagnostic) ----------
 def print_tree(truth, e=0):
     """Pretty-print event e's track tree (track_id [pdg] gen origin -> end_process)."""

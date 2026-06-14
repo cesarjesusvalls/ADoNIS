@@ -100,7 +100,7 @@ def res_C(n, seed, return_raw=False):
     kn = jax.random.PRNGKey(seed + 17)
     npos2, nmom2, nisp2 = sample_nucleons(jax.random.fold_in(kn, 1), m, cfg)
     ko_in = jnp.where(jnp.asarray(has_ko)[:, None], jnp.asarray(ko), ev.p_N)   # dummy where none
-    ko_f, _, ko_ko, _, _, _, _, ko_made_pi, _, _ = propagate_nucleon_discrete(
+    ko_f, _, ko_ko, _, _, _, _, ko_made_pi, _, _, _, _, _ = propagate_nucleon_discrete(
         jnp.asarray(ko_pos), ko_in, jnp.ones(m, bool), npos2, nmom2, nisp2, cfg,
         jax.random.fold_in(kn, 2), fz0=jnp.asarray(ko_fz))
     ko_f = np.where(has_ko[:, None], np.asarray(ko_f), 0.0)

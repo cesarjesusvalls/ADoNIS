@@ -149,6 +149,9 @@ class DiscreteCascadeConfig:
                              # every returned output (same per-step keys; skipped steps are
                              # identity), gated in tests/test_cascade_early_exit.py.  max_steps
                              # then acts as a pure safety bound.  False = the reference lax.scan.
+    track_steps: bool = False  # MC-truth: also stack the per-step (pos, p4, alive) trajectory from the
+                             # scan -> returns traj for viz/diagnostics (adonis/fsi/tracking).  Forces the
+                             # reference scan (not early_exit).  DEFAULT OFF -> production path unchanged.
 
 
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
@@ -421,7 +424,8 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
             jnp.zeros(n, jnp.int32), consumed0, jnp.zeros((n, 4)),
             jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), jnp.zeros(n, bool))
-    if cfg.early_exit:
+    traj = None
+    if cfg.early_exit and not cfg.track_steps:
         # EARLY-EXIT walk (bit-exact): while_loop over the SAME per-step keys, stopping once no
         # particle can interact again.  A pion outside the nuclear radius moving OUTWARD is INERT:
         # it can never re-enter (straight line, rho=0 outside), so its remaining march to the
@@ -457,6 +461,24 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         outward = jnp.sum(pos * dhat, axis=1) > 0
         inert = (jnp.linalg.norm(pos, axis=1) > radius) & outward
         n_trunc = jnp.sum((alive & ~absorbed & ~inert).astype(jnp.int32))
+    elif cfg.track_steps:
+        # MC-truth trajectory: reuse `body` verbatim, additionally stack (pos, p4, alive) per step.
+        def body_t(carry, sk):
+            c2, rec = body(carry, sk)
+            return c2, (rec, (c2[0], c2[1], c2[4]))                   # pos, p_pi, alive AFTER the step
+        (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
+         best_rec, best_rec_pos, best_rec_fz, conv), (recs, tr) = jax.lax.scan(body_t, init, keys)
+        traj = (tr[0], tr[1], tr[2])                                  # (nsteps,n,3),(nsteps,n,4),(nsteps,n)
+        hh, bcj, saj, ssj, sij = recs
+        slot = jnp.cumsum(hh.astype(jnp.int32), axis=0) - 1
+        slot = jnp.where(hh, slot, _K_BR)
+        arn = jnp.broadcast_to(jnp.arange(hh.shape[1])[None, :], slot.shape)
+        bc_c = jnp.zeros((_K_BR, hh.shape[1]), jnp.int32).at[slot, arn].set(bcj, mode="drop")
+        sa_c = jnp.ones((_K_BR, hh.shape[1])).at[slot, arn].set(saj, mode="drop")
+        ss_c = jnp.ones((_K_BR, hh.shape[1])).at[slot, arn].set(ssj, mode="drop")
+        si_c = jnp.zeros((_K_BR, hh.shape[1])).at[slot, arn].set(sij, mode="drop")
+        nh = jnp.sum(hh.astype(jnp.int32), axis=0)
+        n_trunc = jnp.sum((alive & ~absorbed).astype(jnp.int32))
     else:
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
          best_rec, best_rec_pos, best_rec_fz, conv), recs = jax.lax.scan(body, init, keys)
@@ -483,7 +505,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     _lead = jnp.argmax(jnp.linalg.norm(best_rec[:, :, 1:], axis=2), axis=1)
     scat_ko_lead = (best_rec[_arn, _lead], best_rec_pos[_arn, _lead], best_rec_fz[_arn, _lead])
     return (p_pi, ch, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
-            scat_ko_lead, (best_rec, best_rec_pos, best_rec_fz))
+            scat_ko_lead, (best_rec, best_rec_pos, best_rec_fz), traj)   # traj None unless cfg.track_steps
 
 
 def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0=None,
@@ -530,7 +552,7 @@ class DiscreteCascadeFSI:
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)
         # pion pid -> channel index (211->0, 111->1, -211->2, default->1), trace-safe
         ch0 = jnp.where(event.pid_pi == 211, 0, jnp.where(event.pid_pi == -211, 2, 1)).astype(jnp.int32)
-        (p_pi, ch, absorbed, conv, nsc, abs_lead, w_fsi, nseg, n_trunc, brec, scat_ko, scat_ko_all) = propagate_discrete(
+        (p_pi, ch, absorbed, conv, nsc, abs_lead, w_fsi, nseg, n_trunc, brec, scat_ko, scat_ko_all, *_) = propagate_discrete(
             pos0, event.p_pi, ch0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sabs=sabs, sscat=sscat)
         self.last_scat_ko_all = scat_ko_all       # all top-K proton recoils (n,K,4),(n,K,3),(n,K) -- engine
         self.last_abs_proton = abs_lead          # leading absorption proton (piNN->NN), for CC0pi
@@ -712,7 +734,8 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
             consumed0, jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), fz0, jnp.zeros(n, bool),
             jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, jnp.int32))
-    if cfg.early_exit:
+    traj = None
+    if cfg.early_exit and not cfg.track_steps:
         # EARLY-EXIT walk (bit-exact): nucleons escape on the sphere (alive -> False), so the
         # loop ends when every nucleon has escaped -- measured ~step 150-180 vs the 260/325 cap.
         # sigma_scatter records (closest-in-slab a = pi b^2/sigma) compressed on the fly.
@@ -739,6 +762,22 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi,
          best_pi, best_pi_pos, best_pi_fz, best_pi_ch) = carry
         hh_c, a_c, ns = bufs
+    elif cfg.track_steps:
+        def body_t(carry, sk):
+            c2, rec = body(carry, sk)
+            return c2, (rec, (c2[0], c2[1], c2[3]))                   # pos, p_N, alive AFTER the step
+        (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz,
+         made_pi, best_pi, best_pi_pos, best_pi_fz, best_pi_ch), (recs, tr) = jax.lax.scan(body_t, init, keys)
+        traj = (tr[0], tr[1], tr[2])
+        hh, perp2_c, sig_c = recs
+        a_all = jnp.pi * perp2_c / jnp.clip(sig_c * MB_TO_FM2, 1e-12, None)
+        m = perp2_c < 1e5
+        slot = jnp.cumsum(m.astype(jnp.int32), axis=0) - 1
+        slot = jnp.where(m, slot, _K_SLAB_REC)
+        arn = jnp.broadcast_to(jnp.arange(n)[None, :], slot.shape)
+        hh_c = jnp.zeros((_K_SLAB_REC, n), bool).at[slot, arn].set(hh, mode="drop")
+        a_c = jnp.full((_K_SLAB_REC, n), 50.0).at[slot, arn].set(a_all, mode="drop")
+        ns = jnp.sum(m.astype(jnp.int32), axis=0)
     else:
         (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz,
          made_pi, best_pi, best_pi_pos, best_pi_fz, best_pi_ch), recs = jax.lax.scan(body, init, keys)
@@ -760,9 +799,11 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     # (best_ko, best_ko_pos, best_ko_fz) full top-K appended for the engine.
     _arn = jnp.arange(best_ko.shape[0])
     _lead = jnp.argmax(jnp.linalg.norm(best_ko[:, :, 1:], axis=2), axis=1)
+    n_trunc = jnp.sum(alive.astype(jnp.int32))   # nucleons still propagating at the cap (no absorption -> still inside)
     return (p_N, nsc, best_ko[_arn, _lead], best_ko_pos[_arn, _lead], best_ko_fz[_arn, _lead],
             w_scat, srec, made_pi, (best_ko, best_ko_pos, best_ko_fz),
-            (best_pi, best_pi_ch, best_pi_pos, best_pi_fz))   # leading CREATED pion (4-vec, charge idx, vertex, fz)
+            (best_pi, best_pi_ch, best_pi_pos, best_pi_fz),   # leading CREATED pion (4-vec, charge idx, vertex, fz)
+            n_trunc, nsc, traj)                               # diagnostics: #still-propagating @cap, scatter count, traj
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
@@ -801,9 +842,11 @@ class DiscreteNucleonFSI:
         pos0 = npos[jnp.arange(n), vtx]
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)                  # struck nucleon removed from background
         isp0 = (event.pid_N == 2212)
-        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1, best_ko_all, _ = propagate_nucleon_discrete(
+        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1, best_ko_all, _, n_trunc1, nseg1, _ = propagate_nucleon_discrete(
             pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sscat=sscat)
         self.last_ko_all = best_ko_all            # all top-K knockout protons (n,K,4),(n,K,3),(n,K) -- engine
+        self.last_n_trunc = n_trunc1              # nucleons still propagating at MAX_SEG (diagnostic; should be ~0)
+        self.last_nseg = nseg1                    # per-event NN-scatter count (primary nucleon)
         # MULTI-NUCLEON cascade (ACHILLES UpdateKicked): the knocked-out proton itself re-cascades.
         # Re-propagate the leading knockout through the same background; its final state can be the
         # leading proton.  (One secondary generation -- the dominant multi-nucleon contribution.)
@@ -812,7 +855,7 @@ class DiscreteNucleonFSI:
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
-        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2, _, _, _, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
                                                                         nisp, self.cfg, kp2, fz0=best_ko_fz,
                                                                         consumed0=consumed0, sscat=sscat)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))

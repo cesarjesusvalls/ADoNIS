@@ -41,12 +41,12 @@ def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, ss
     out = _propagate_discrete(pos, p4, ch, npos, nmom, nisp, cfg, key, consumed,
                               jnp.asarray(sabs, float), jnp.asarray(sscat, float))
     (p_pi, ch_out, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
-     (best_rec, best_rec_pos, best_rec_fz), scat_ko_all) = out
+     (best_rec, best_rec_pos, best_rec_fz), scat_ko_all, traj) = out
     fate = jnp.where(absorbed, FATE_ABSORB, jnp.where(conv, FATE_CONVERT, FATE_ESCAPE))
     pid = jnp.where(absorbed, 0, jnp.where(conv, -1, _CH_PID[ch_out]))     # 0 abs, -1 conv, else pi pid
     n = p4.shape[0]
     term = dict(species=jnp.full((n,), PION, jnp.int32), charge=ch_out, pid=pid, p4=p_pi,
-                fate=fate, w=w_fsi, nsc=nsc)
+                fate=fate, w=w_fsi, nsc=nsc, traj=traj)               # traj = per-step (pos,p4,alive) or None
     has_rec = jnp.linalg.norm(best_rec[:, 1:], axis=1) > 1.0
     sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
                p4=best_rec, pos=best_rec_pos, fz=best_rec_fz, alive=has_rec, w=w_fsi)
@@ -62,12 +62,12 @@ def nucleon_segment(p4, pos, isp, fz, consumed, npos, nmom, nisp, cfg, key, ssca
     flags an NN->NDelta->NNpi pion (v1: flag only; the pion 4-vec spawn needs a kernel extension)."""
     out = _propagate_nucleon_discrete(pos, p4, isp, npos, nmom, nisp, cfg, key, fz, consumed,
                                       jnp.asarray(sscat, float))
-    p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi, ko_all, pi_made, *_ = out  # *_: n_trunc,nseg diag
+    p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi, ko_all, pi_made, _nt, _ns, traj = out
     bpi, bpich, bpipos, bpifz = pi_made                                   # leading NN-created pion
     n = p4.shape[0]
     term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=isp.astype(jnp.int32),
                 pid=jnp.where(isp, 2212, 2112), p4=p_N, fate=jnp.full((n,), FATE_ESCAPE, jnp.int32),
-                w=w_scat, nsc=nsc, made_pi=made_pi,
+                w=w_scat, nsc=nsc, made_pi=made_pi, traj=traj,           # traj = per-step (pos,p4,alive) or None
                 pi4=bpi, pich=bpich, pipos=bpipos, pifz=bpifz)           # created-pion (4-vec, charge idx, vertex, fz)
     has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
     sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
