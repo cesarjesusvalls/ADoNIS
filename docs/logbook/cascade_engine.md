@@ -355,3 +355,17 @@ consumption time-ordering validation; M_A/fit records; transparency + 6% pion ch
   N_eff (unweighting, or more seeds) to turn the 2 sigma into a clear yes/no -- BEFORE chasing the
   2.8%/1.8% sub-pieces (each currently ~1 sigma).  The pn high-tail shape deficit is the most likely-real
   feature (visually consistent across bins) and ties to the parked cascade transport residual.
+
+## CC0pi: WRONG QE generator caught + fixed (regenerating)
+- First CC0pi engine bank (overnight, 1.8M ev) was built on the APPROXIMATE Llewellyn-Smith shape chain
+  (gen_t2k_cc0pi_adonis: LS + SpectralFunction, MA=1.03) -- NOT the bit-exact ACHILLES QE port.  Two tells
+  in the SHAPE figure vs ACHILLES QE (proc==200): (a) weights uncalibrated (sum 0.26 nb, not absolute);
+  (b) Q2 SHIFTED HIGH (deficit <0.2, excess >0.8) = a primary QE-MODEL diff (form factors), not cascade;
+  dpt too narrow (tail ratio -> 0.6).  delta_alphaT matched (chi2 1.29) -- it's insensitive to the Q2 model.
+- FIX: gen_cc_engine_rich qe path now uses adonis/xsec/qe_xsec.sample_importance (the bit-exact port,
+  importance-sampled).  Smoke (4000 ev, 1 seed): sum(w)=4.250e-5 nb == ACHILLES QE total target 4.256e-5
+  (absolute norm now CORRECT); pid_pi=0, ipid 2112 / Npid 2212, prot_origin {QE-chain}, 100% have a proton.
+  N_eff 3.1% (vs flat sampler 0.1%).  /N normalization: mean(w)=sigma -> sum(w)=sigma per seed (matches
+  res_xsec convention; main() then /n_seeds).
+- Relaunched full (60 seeds x 30k, ~5 h) -> faithful absolute CC0pi bank.  cc0pi_engine_plot.py reverted
+  to ABSOLUTE comparison (engine 12C QE + free-H vs ACHILLES proc==200).

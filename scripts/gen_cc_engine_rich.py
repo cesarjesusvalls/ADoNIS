@@ -27,8 +27,13 @@ def gen_events(seed):
     if CHAN == "res":
         e = res_xsec.generate(NRES, seed=seed, return_events=True)["events"]
         return {k: np.asarray(e[k]) for k in ("k_nu", "k_mu", "p_struck", "p_pi", "p_N", "w", "ppid", "ipid", "Npid")}
-    from scripts.gen_t2k_cc0pi_adonis import generate as qegen
-    return qegen(NRES, seed=seed, return_events=True)         # qe: no p_pi (no primary pion)
+    # QE: the BIT-EXACT ACHILLES QE port (qe_xsec), importance-sampled (N_eff ~3% vs flat 0.1%; sigma
+    # matches ACHILLES QE).  NOT the approximate Llewellyn-Smith shape chain.  p_out = pre-FSI proton.
+    from adonis.xsec import qe_xsec
+    r = qe_xsec.sample_importance(NRES, seed=seed); m = len(r["w"])
+    return dict(k_nu=np.asarray(r["k_nu"]), k_mu=np.asarray(r["k_mu"]), p_struck=np.asarray(r["p_struck"]),
+                p_N=np.asarray(r["p_out"]), w=np.asarray(r["w"]) / NRES,   # /N: mean(w)=sigma -> sum(w)=sigma per seed
+                ipid=np.full(m, 2112, np.int64), Npid=np.full(m, 2212, np.int64), ppid=np.zeros(m, np.int64))
 
 
 def one(seed):
