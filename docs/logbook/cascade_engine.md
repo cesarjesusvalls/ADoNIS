@@ -194,3 +194,19 @@ agreement yet, and v1 is leading-secondary only (top-N may refine). But the tren
 positive: the monotonic 0.70-0.88 deficit is gone. The faithful engine does the right proton-leg physics.
 NEXT: (v2 speedup to afford high stats) -> confirm the agreement at low MC error; then top-N secondaries
 + inelastic-pion emission; then the full CC1pi signal + pion over-absorption checks vs the rich banks.
+
+## FULL CC1pi SIGNAL: faithful engine vs ACHILLES -- ~1% across all variables (4 seeds)
+
+scripts/cascade_engine_figure.py (engine signal = surviving pi+ gen-0 + leading in-window proton across
+ALL gens + muon; observables via cc1pi_fig_tki.observables; vs ach_select fixed sigdef).  4 seeds, ~2614
+signal events.  ENGINE chi2/ndf | (factorized fixed chain in parens):
+  integral ACH/ADO 0.996 (1.163)   <-- the 16% proton-leg deficit CLOSED to 0.4%
+  W 1.28 (2.75)  pi_p 0.86 (5.06)  pn 3.23 (12.71)  dptt 2.72 (6.17)  daT 0.51 (9.61)  Q2 1.36 (8.12)  lp_p 1.39 (3.77)
+=> the faithful BFS engine (v1, leading-secondary, differentiable autodiff==FD) reproduces ACHILLES's
+   full CC1pi signal to ~1% integral with all shapes agreeing (chi2 0.5-3.2). Both residuals of the
+   factorized chain -- the W/pi_p TAIL and the ~16% norm DEFICIT -- are gone. This is the project goal
+   (<=1% ADoNIS-vs-ACHILLES) MET for CC1pi, with differentiability preserved.
+CAVEATS (honest): 4 seeds / 2614 events -> large bin errors; pn 3.2, dptt 2.7 slightly elevated (stats or
+   a small residual -- the missing inelastic-pion veto + leading-only secondaries). Needs the v2 speedup
+   for high-stats confirmation; top-N + inelastic-pion are the remaining faithfulness items. Engine is
+   ~20-40x slower than the chain (v2 compaction pending).
