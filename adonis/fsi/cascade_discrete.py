@@ -19,6 +19,7 @@ weight, so d/d(knob) E[obs] is exact and the sampled final state is preserved.
 from __future__ import annotations
 
 import gzip
+import os
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -79,10 +80,11 @@ _K_BR = 16                   # compressed-record slots for the pion branch rewei
                              # measured; nh in the records lets callers verify no overflow).
 _K_SLAB_REC = 48             # compressed-record slots for the nucleon sigma_scatter reweight (steps with
                              # an in-slab candidate; ns in the records verifies no overflow).
-_N_RECOIL = 4                # top-K proton recoils tracked per particle (was 1, leading-only).  The
-                             # LEADING (max-momentum) slot reproduces the old single best_rec bit-exactly
-                             # -> production (which uses only the leading) is unaffected; the full top-K is
-                             # exposed for the faithful multi-particle cascade engine (cascade_full).
+_N_RECOIL = int(os.environ.get("ADONIS_N_RECOIL", "4"))   # top-K proton recoils tracked per particle (was
+                             # 1, leading-only).  The LEADING (max-momentum) slot reproduces the old single
+                             # best_rec bit-exactly -> production (which uses only the leading) is unaffected;
+                             # the full top-K is exposed for the faithful multi-particle cascade engine
+                             # (cascade_full).  Env-overridable (ADONIS_N_RECOIL) to shrink the spawn buffer.
 
 
 def pion_branch_reweight(brec, sabs, sscat):
