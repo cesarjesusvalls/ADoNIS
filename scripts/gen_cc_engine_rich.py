@@ -56,7 +56,7 @@ def one(seed):
                 cr_p4=np.asarray(created["p4"]), cr_pid=np.where(np.asarray(created["alive"]),
                                                                  np.asarray(created["pid"]), 0).astype(np.int64),
                 prot=P4[g2, idx], prot_origin=ORG[g2, idx].astype(np.int64), prot_gen=GN[g2, idx].astype(np.int64),
-                w=a["w"] / NSEED, ipid=a["ipid"].astype(np.int64), Npid=a["Npid"].astype(np.int64))
+                w=a["w"], ipid=a["ipid"].astype(np.int64), Npid=a["Npid"].astype(np.int64))  # RAW weight; /n_seeds at save
 
 
 def main():
@@ -65,7 +65,8 @@ def main():
     for sd in range(NSEED):
         parts.append(one(sd))
         out = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
-        np.savez(OUT, **out)                                  # checkpoint every seed
+        out["w"] = out["w"] / len(parts)                      # normalize by ACTUAL seeds banked (not planned NSEED)
+        np.savez(OUT, **out)                                  # checkpoint every seed -> every partial is correctly normed
         sig = ((out["pid_pi"] == 211).sum() if CHAN == "res" else 0)
         print(f"  [{CHAN}] seed {sd+1}/{NSEED}  banked {len(out['w'])} ev  ({(time.time()-t0)/60:.1f} min)", flush=True)
     print(f"DONE {CHAN}: {len(out['w'])} events -> {OUT}", flush=True)
