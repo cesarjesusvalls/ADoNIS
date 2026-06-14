@@ -180,3 +180,17 @@ CHOSEN v1 = (b): smallest faithful step from the current code, reuses validated 
 - SCALING CONFIRMED linear in P x MAX_GEN: P=10 mg=6 (60 slot-gens) warm 238.7/238.8s; P=6 mg=4
   (24 slot-gens) warm 95.1/95.7s; 239/95 = 2.5 = 60/24 exactly. Cost ~ P*MAX_GEN*2species*n_events.
   v2 target: compact to ~mean 3.4 live + species-partition -> ~5-10x -> ~58 ev/s to ~300-600 ev/s.
+
+## P4-lite PHYSICS (engine vs ACHILLES proton-leg, the localized deficit) -- FIRST RESULT, POSITIVE
+
+scripts/cascade_engine_protoncheck.py, 25k->2138 carbon signal events (1 seed, P=10 mg=6).
+P(in-window proton | pi_p) ENG/ACH per bin (225..1125): 1.13 1.15 0.83 1.08 0.77 1.13 0.91 (mean ~1.00).
+Compare: BUGGY chain 1.0->1.9 (too high, the tail); FIXED current chain 0.88->0.70 (systematically too
+LOW, the deficit). => the engine's deeper shared-nucleus re-cascade REMOVES the systematic proton-leg
+deficit -- it scatters around 1.0 with no monotonic bias. The recoils re-cascade + repopulate the
+[450,1200] window like ACHILLES's full cascade, vs the factorized leading-only chain's under-production.
+CAVEAT: 1 seed / 2138 events -> +-15-23% bin scatter is partly statistical; cannot claim a tight %
+agreement yet, and v1 is leading-secondary only (top-N may refine). But the trend is unambiguous and
+positive: the monotonic 0.70-0.88 deficit is gone. The faithful engine does the right proton-leg physics.
+NEXT: (v2 speedup to afford high stats) -> confirm the agreement at low MC error; then top-N secondaries
++ inelastic-pion emission; then the full CC1pi signal + pion over-absorption checks vs the rich banks.
