@@ -777,6 +777,12 @@ class DiscreteNucleonFSI:
         has_prot = jnp.any(prot_mask & (mom > 0.0), axis=1)
         lead_prot = cands[jnp.arange(n), jnp.argmax(prot_mom, axis=1)]
         self.last_lead_prot = jnp.where(has_prot[:, None], lead_prot, jnp.zeros((n, 4)))
+        # rich-bank exposures: separate post-cascade candidates so arbitrary signal defs are re-binnable
+        self.last_primary = p_N                    # post-cascade primary nucleon (4-vec)
+        self.last_primary_isp = isp0               # primary nucleon is a proton?
+        ko_cands = jnp.stack([ko_f, ko_ko], axis=1)
+        ko_mom = jnp.linalg.norm(ko_cands[:, :, 1:], axis=2)
+        self.last_nuc_ko = ko_cands[jnp.arange(n), jnp.argmax(ko_mom, axis=1)]   # leading NN knockout proton (0 if none)
         self.last_w_scat = w_sc1 * jnp.where(has_ko, w_sc2, 1.0)        # kind-1 sigma_scatter reweight (1 at nominal)
         self.last_srec = (srec1, srec2, has_ko)   # compressed walk records for nucleon_scat_reweight
         self.last_made_pion = made_pi1 | (has_ko & made_pi2)   # NN->NDelta->NNpi created a pion

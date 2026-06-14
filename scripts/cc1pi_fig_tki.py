@@ -33,7 +33,7 @@ from adonis.fsi.cascade_discrete import (DiscreteCascadeFSI, DiscreteNucleonFSI,
                                          sample_nucleons, propagate_nucleon_discrete)
 from scripts.h_cc0pi import generate_H
 
-NRES = int(sys.argv[1]) if len(sys.argv) > 1 else 200000
+NRES = int(sys.argv[1]) if (len(sys.argv) > 1 and sys.argv[1].isdigit()) else 200000  # robust when imported
 NH, NSEED = 50000, 4
 _CFG = lambda **k: DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=260, **k)  # T2K run-card
 
@@ -122,20 +122,21 @@ def res_C(n, seed, return_raw=False):
     has_p = inwin.any(axis=1)
     no_extra_pi = ~(np.asarray(nf.last_made_pion) | (has_ko & np.asarray(ko_made_pi)))
     if return_raw:
-        # PRE-selection per-event bank (ALL m events): the ADoNIS analog of the ACHILLES
-        # res_w_FSI extraction, so the signal cut ladder can be applied identically off-line.
-        mu_m = np.linalg.norm(kmu[:, 1:], axis=1)
-        pi_m = np.linalg.norm(ppi_f[:, 1:], axis=1)
-        lp_m = np.linalg.norm(lead[:, 1:], axis=1)
-        qv = knu - kmu; totv = qv + pstr
-        Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
-        Q2v = (np.sum(qv[:, 1:] ** 2, axis=1) - qv[:, 0] ** 2) / 1e6
+        # RICH per-event bank (ALL m events): full 4-vectors, PRE- and POST-FSI, and EVERY proton
+        # candidate as a separate 4-vec + species -> any signal definition is pure re-binning (no rerun).
+        # 4-vectors are (E,px,py,pz) [MeV].  Proton candidates (post-FSI): rec_post (primary nucleon
+        # after the cascade; a proton iff rec_post_isp), nuc_ko (leading NN knockout proton), pi_ko1/2
+        # (pion-scatter knockout protons).  Knockouts are protons by construction.
         return dict(
-            mu_p=mu_m, mu_cth=kmu[:, 3] / np.clip(mu_m, 1e-9, None),
-            pi_p=pi_m, pi_cth=ppi_f[:, 3] / np.clip(pi_m, 1e-9, None), pid_pi=pid_pi,
-            lp_p=lp_m, lp_cth=lead[:, 3] / np.clip(lp_m, 1e-9, None),
-            has_p=has_p, no_extra_pi=no_extra_pi, W=Wv, Q2=Q2v, w=w,
-            ppid0=np.asarray(e["ppid"]))                    # primary RES pion charge (channel tag)
+            # --- pre-FSI (primary RES) ---
+            nu=knu, mu=kmu, struck=pstr, ipid=np.asarray(e["ipid"]),
+            pi_pre=ppi, ppid_pre=np.asarray(e["ppid"]),
+            rec_pre=pN, Npid=np.asarray(e["Npid"]),
+            # --- post-FSI ---
+            pi_post=ppi_f, pid_pi_post=pid_pi,
+            rec_post=np.asarray(nf.last_primary), rec_post_isp=np.asarray(nf.last_primary_isp),
+            nuc_ko=np.asarray(nf.last_nuc_ko), pi_ko1=ko_f, pi_ko2=ko_ko,
+            no_extra_pi=no_extra_pi, w=w)
     sel = ((pid_pi == 211) & has_p & no_extra_pi & (w > 0)
            & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
     dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)
