@@ -37,15 +37,13 @@ def engine_signal():
         knu, kmu, pstr = (np.asarray(e[k]) for k in ("k_nu", "k_mu", "p_struck"))
         ppi = jnp.asarray(e["p_pi"]); pN = jnp.asarray(e["p_N"]); w = np.asarray(e["w"])
         ppid = jnp.asarray(e["ppid"], jnp.int32); ipid = jnp.asarray(e["ipid"], jnp.int32); Npid = jnp.asarray(e["Npid"], jnp.int32)
-        terms, ofl = CF.cascade_carbon(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11), P=P, max_gen=MG)
+        pterm, nterms, ofl = CF.cascade_carbon_v2(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11), P=12, max_gen=MG)
         n = len(w); ar = np.arange(n)
-        # gen-0 pion (surviving pi+)
-        g0 = terms[0]; sp0 = np.asarray(g0["species"]); pid0 = np.asarray(g0["pid"]); p40 = np.asarray(g0["p4"])
-        ps = np.argmax(sp0 == CF.PION, axis=1)
-        pi_f = p40[ar, ps]; pid_pi = pid0[ar, ps]
-        # leading in-window proton across ALL generations
+        # pion terminal (surviving pi+)
+        pi_f = np.asarray(pterm["p4"]); pid_pi = np.asarray(pterm["pid"])
+        # leading in-window proton across ALL nucleon generations
         best = np.zeros((n, 4)); bm = np.zeros(n)
-        for g in terms:
+        for g in nterms:
             sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])
             pm = np.linalg.norm(p4[:, :, 1:], axis=2); cth = p4[:, :, 3] / np.clip(pm, 1e-9, None)
             mask = (sp == CF.NUCLEON) & (pid == 2212) & al & (pm > P_LO) & (pm < P_HI) & (cth > COS70)

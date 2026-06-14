@@ -188,6 +188,57 @@ def run_cascade(init, kernel, key, P=10, max_gen=6):
     return terminals, overflow
 
 
+def _nucleon_kernel(npos, nmom, nisp, consumed0, cfg, sscat=1.0):
+    """v2 nucleon-only generation kernel: run nucleon_segment on every slot (NO 2x-run-both, NO pion).
+    Returns (term, spawn) like make_kernel but species is always NUCLEON."""
+    def kernel(buf, key):
+        n, P = buf["alive"].shape
+        pk = jax.random.split(key, P)
+
+        def slot(i):
+            alive = buf["alive"][:, i]
+            tn, sn = nucleon_segment(buf["p4"][:, i], buf["pos"][:, i], buf["charge"][:, i].astype(bool),
+                                     buf["fz"][:, i], consumed0, npos, nmom, nisp, cfg, pk[i], sscat)
+            term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=buf["charge"][:, i], pid=tn["pid"],
+                        p4=tn["p4"], fate=jnp.where(alive, FATE_ESCAPE, FATE_NONE),
+                        w=buf["w"][:, i] * tn["w"], alive=alive)
+            sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),
+                       pid=jnp.full((n,), 2212, jnp.int32), p4=sn["p4"], pos=sn["pos"], fz=sn["fz"],
+                       fate=jnp.zeros((n,), jnp.int32), w=sn["w"] * buf["w"][:, i], alive=alive & sn["alive"])
+            return term, sec
+        terms = [slot(i) for i in range(P)]
+        stk = lambda k, lst: jnp.stack([d[k] for d in lst], axis=1)
+        tcat = {k: stk(k, [t[0] for t in terms]) for k in ("species", "charge", "pid", "p4", "fate", "w", "alive")}
+        scat = {k: stk(k, [t[1] for t in terms]) for k in ("species", "charge", "p4", "pos", "fz", "fate", "w", "alive")}
+        return tcat, scat
+    return kernel
+
+
+def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0):
+    """v2: pion handled ONCE (single segment), then a NUCLEON-ONLY BFS over {RES recoil, pion knockout}
+    and their re-cascades.  Valid while no pions are created mid-cascade (current physics; revisit when
+    inelastic-pion emission is added).  Returns (pion_term, nucleon_terminals_per_gen, overflow)."""
+    su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
+    n = p_pi.shape[0]
+    kpi, knuc = jax.random.split(su["kp"])
+    pterm, prec = pion_segment(p_pi, su["pos0"], su["ch0"], su["consumed0"], su["npos"], su["nmom"],
+                               su["nisp"], cfg, kpi, sabs, sscat)
+    pterm = dict(species=jnp.full((n,), PION, jnp.int32), pid=pterm["pid"], p4=pterm["p4"],
+                 charge=pterm["charge"], w=pterm["w"], alive=jnp.ones((n,), bool))
+    # gen-0 nucleons: the RES recoil nucleon + the pion's leading knockout proton
+    g0 = empty_batch(n, 2)
+    g0["alive"] = jnp.stack([jnp.ones((n,), bool), prec["alive"]], 1)
+    g0["species"] = jnp.full((n, 2), NUCLEON, jnp.int32)
+    g0["charge"] = jnp.stack([(Npid == 2212).astype(jnp.int32), jnp.ones((n,), jnp.int32)], 1)
+    g0["p4"] = jnp.stack([p_N, prec["p4"]], 1)
+    g0["pos"] = jnp.stack([su["pos0"], prec["pos"]], 1)
+    g0["fz"] = jnp.stack([jnp.zeros((n,)), prec["fz"]], 1)
+    g0["w"] = jnp.stack([pterm["w"] * 0 + 1.0, prec["w"]], 1)            # nucleon-side weight (pion w on pterm)
+    kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], su["consumed0"], cfg, sscat)
+    nterms, ofl = run_cascade(g0, kernel, knuc, P=P, max_gen=max_gen)
+    return pterm, nterms, ofl
+
+
 def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=10, max_gen=6, sabs=1.0, sscat=1.0):
     """Full faithful cascade on carbon: gen-0 = the primary pion + primary recoil nucleon at the struck
     vertex; BFS re-cascades all (leading, v1) secondaries through the SHARED nucleus.  Returns
