@@ -28,6 +28,7 @@ from __future__ import annotations
 import jax, jax.numpy as jnp
 from adonis.fsi.cascade_discrete import (_propagate_discrete, _propagate_nucleon_discrete, _CH_PID,
                                          sample_nucleons, DiscreteCascadeConfig)
+from adonis.fsi.tracking import GEN_STRIDE as _GEN_STRIDE
 
 PION, NUCLEON = 0, 1
 FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
@@ -61,7 +62,7 @@ def nucleon_segment(p4, pos, isp, fz, consumed, npos, nmom, nisp, cfg, key, ssca
     flags an NN->NDelta->NNpi pion (v1: flag only; the pion 4-vec spawn needs a kernel extension)."""
     out = _propagate_nucleon_discrete(pos, p4, isp, npos, nmom, nisp, cfg, key, fz, consumed,
                                       jnp.asarray(sscat, float))
-    p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi, ko_all, pi_made = out
+    p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi, ko_all, pi_made, *_ = out  # *_: n_trunc,nseg diag
     bpi, bpich, bpipos, bpifz = pi_made                                   # leading NN-created pion
     n = p4.shape[0]
     term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=isp.astype(jnp.int32),
@@ -98,7 +99,9 @@ def empty_batch(n, P):
     return dict(species=jnp.zeros((n, P), jnp.int32), charge=jnp.zeros((n, P), jnp.int32),
                 p4=jnp.zeros((n, P, 4)), pos=jnp.zeros((n, P, 3)), fz=jnp.zeros((n, P)),
                 alive=jnp.zeros((n, P), bool), w=jnp.ones((n, P)), fate=jnp.zeros((n, P), jnp.int32),
-                origin=jnp.zeros((n, P), jnp.int32), gen=jnp.zeros((n, P), jnp.int32))
+                origin=jnp.zeros((n, P), jnp.int32), gen=jnp.zeros((n, P), jnp.int32),
+                track_id=jnp.zeros((n, P), jnp.int32),                # MC-truth: unique id (tracking.py)
+                parent_id=jnp.full((n, P), -1, jnp.int32))            # MC-truth: spawning track (-1 = primary)
 
 
 def _take(b, idx):
@@ -121,7 +124,7 @@ def compact(b, P_out):
     out = empty_batch(n, P_out)
     ar = jnp.broadcast_to(jnp.arange(n)[:, None], (n, M))
     dst = jnp.where(rank < P_out, rank, P_out)                    # P_out = scratch drop slot (will be sliced off)
-    for k in ("species", "charge", "fate", "origin", "gen"):
+    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id"):
         out[k] = jnp.zeros((n, P_out + 1), b[k].dtype).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
     for k in ("fz", "w"):
         out[k] = jnp.zeros((n, P_out + 1)).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
@@ -190,6 +193,10 @@ def run_cascade(init, kernel, key, P=10, max_gen=6):
     for g in range(max_gen):
         term, spawn = kernel(cur, gkeys[g])
         terminals.append(term)
+        if "track_id" in spawn:                                  # MC-truth: unique id per gen-(g+1) secondary
+            M = spawn["alive"].shape[1]
+            spawn["track_id"] = jnp.broadcast_to(
+                (_GEN_STRIDE * (g + 1) + jnp.arange(M, dtype=jnp.int32))[None, :], (n, M))
         nxt, ofl = compact(spawn, P)                             # pack secondaries into the next generation
         overflow = overflow + ofl
         cur = nxt
@@ -211,17 +218,21 @@ def _nucleon_kernel(npos, nmom, nisp, consumed0, cfg, sscat=1.0):
             term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=buf["charge"][:, i], pid=tn["pid"],
                         p4=tn["p4"], fate=jnp.where(alive, FATE_ESCAPE, FATE_NONE),
                         w=buf["w"][:, i] * tn["w"], alive=alive, origin=buf["origin"][:, i], gen=buf["gen"][:, i],
+                        track_id=buf["track_id"][:, i], parent_id=buf["parent_id"][:, i],   # MC-truth
+                        p4_birth=buf["p4"][:, i], pos=buf["pos"][:, i],                      # birth state
                         pi4=tn["pi4"], pich=tn["pich"], pipos=tn["pipos"], pifz=tn["pifz"], pi_alive=pi_alive)
             K = snK["p4"].shape[1]
             secK = dict(p4=snK["p4"], pos=snK["pos"], fz=snK["fz"],
                         alive=snK["alive"] & alive[:, None],
                         w=snK["w"][:, None] * buf["w"][:, i][:, None] * jnp.ones((n, K)),
                         origin=buf["origin"][:, i][:, None] * jnp.ones((n, K), jnp.int32),   # inherit gen-0 ancestor
-                        gen=(buf["gen"][:, i][:, None] + 1) * jnp.ones((n, K), jnp.int32))   # BFS depth + 1
+                        gen=(buf["gen"][:, i][:, None] + 1) * jnp.ones((n, K), jnp.int32),   # BFS depth + 1
+                        parent_id=buf["track_id"][:, i][:, None] * jnp.ones((n, K), jnp.int32))  # spawning track
             return term, secK
         res = [slot(i) for i in range(P)]
         tcat = {k: jnp.stack([r[0][k] for r in res], axis=1) for k in
-                ("species", "charge", "pid", "p4", "fate", "w", "alive", "origin", "gen", "pi4", "pich", "pipos", "pifz", "pi_alive")}
+                ("species", "charge", "pid", "p4", "fate", "w", "alive", "origin", "gen", "track_id", "parent_id",
+                 "p4_birth", "pos", "pi4", "pich", "pipos", "pifz", "pi_alive")}
         K = res[0][1]["p4"].shape[1]
 
         def sfield(k):                                                 # (n,P,K,...) -> (n, P*K, ...)
@@ -230,7 +241,9 @@ def _nucleon_kernel(npos, nmom, nisp, consumed0, cfg, sscat=1.0):
         scat = dict(species=jnp.full((n, P * K), NUCLEON, jnp.int32), charge=jnp.ones((n, P * K), jnp.int32),
                     pid=jnp.full((n, P * K), 2212, jnp.int32), fate=jnp.zeros((n, P * K), jnp.int32),
                     p4=sfield("p4"), pos=sfield("pos"), fz=sfield("fz"), w=sfield("w"), alive=sfield("alive"),
-                    origin=sfield("origin").astype(jnp.int32), gen=sfield("gen").astype(jnp.int32))
+                    origin=sfield("origin").astype(jnp.int32), gen=sfield("gen").astype(jnp.int32),
+                    parent_id=sfield("parent_id").astype(jnp.int32),
+                    track_id=jnp.zeros((n, P * K), jnp.int32))         # track_id assigned in run_cascade (needs gen)
         return tcat, scat
     return kernel
 
@@ -262,6 +275,7 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
         g0["fz"] = jnp.concatenate([jnp.zeros((n, 1)), precK["fz"]], 1)
         g0["w"] = jnp.concatenate([jnp.ones((n, 1)), precK["w"][:, None] * jnp.ones((n, K))], 1)
         g0["origin"] = jnp.concatenate([jnp.zeros((n, 1), jnp.int32), jnp.ones((n, K), jnp.int32)], 1)  # 0=RES recoil, 1=pi-knockout
+        g0["track_id"] = jnp.broadcast_to(jnp.arange(1 + K, dtype=jnp.int32)[None, :], (n, 1 + K))  # gen-0 ids 0..K
     else:                                                              # QE (CC0pi): no primary pion
         pterm = dict(species=jnp.zeros((n,), jnp.int32), pid=jnp.zeros((n,), jnp.int32),
                      p4=jnp.zeros((n, 4)), charge=jnp.zeros((n,), jnp.int32), w=jnp.ones((n,)),
@@ -274,6 +288,7 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
         g0["pos"] = su["pos0"][:, None, :]
         g0["fz"] = jnp.zeros((n, 1))
         g0["w"] = jnp.ones((n, 1))
+        g0["track_id"] = jnp.zeros((n, 1), jnp.int32)                  # gen-0 track id 0 (QE proton)
     kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], su["consumed0"], cfg, sscat)
     nterms, ofl = run_cascade(g0, kernel, knuc, P=P, max_gen=max_gen)
     # CREATED-PION RE-ENTRY: gather the leading NN-created pion per event across the nucleon BFS, then
