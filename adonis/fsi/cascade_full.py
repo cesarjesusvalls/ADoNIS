@@ -26,8 +26,8 @@ Fields per particle (all leading dim (n, P)):
 """
 from __future__ import annotations
 import jax, jax.numpy as jnp
-from adonis.fsi.cascade_discrete import (_propagate_discrete, _CH_PID, sample_nucleons,
-                                         DiscreteCascadeConfig)
+from adonis.fsi.cascade_discrete import (_propagate_discrete, _propagate_nucleon_discrete, _CH_PID,
+                                         sample_nucleons, DiscreteCascadeConfig)
 
 PION, NUCLEON = 0, 1
 FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
@@ -49,6 +49,24 @@ def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, ss
     has_rec = jnp.linalg.norm(best_rec[:, 1:], axis=1) > 1.0
     sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
                p4=best_rec, pos=best_rec_pos, fz=best_rec_fz, alive=has_rec, w=w_fsi)
+    return term, sec
+
+
+def nucleon_segment(p4, pos, isp, fz, consumed, npos, nmom, nisp, cfg, key, sscat=1.0):
+    """Propagate one nucleon (batch (n,)) through its segment via _propagate_nucleon_discrete.  isp is
+    the proton-mask (bool).  Returns (term, sec): term = the nucleon's terminal state (nucleons always
+    escape -- no absorption); sec = its leading knockout proton (alive only where one exists).  made_pi
+    flags an NN->NDelta->NNpi pion (v1: flag only; the pion 4-vec spawn needs a kernel extension)."""
+    out = _propagate_nucleon_discrete(pos, p4, isp, npos, nmom, nisp, cfg, key, fz, consumed,
+                                      jnp.asarray(sscat, float))
+    p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_scat, srec, made_pi = out
+    n = p4.shape[0]
+    term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=isp.astype(jnp.int32),
+                pid=jnp.where(isp, 2212, 2112), p4=p_N, fate=jnp.full((n,), FATE_ESCAPE, jnp.int32),
+                w=w_scat, nsc=nsc, made_pi=made_pi)
+    has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
+    sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
+               p4=best_ko, pos=best_ko_pos, fz=best_ko_fz, alive=has_ko, w=w_scat)
     return term, sec
 
 

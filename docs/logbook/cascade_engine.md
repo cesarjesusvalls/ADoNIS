@@ -131,3 +131,10 @@ CHOSEN v1 = (b): smallest faithful step from the current code, reuses validated 
   chain. NEXT P1b: nucleon_segment (wrap _propagate_nucleon_discrete -> terminal + leading knockout;
   inelastic pion currently veto-flag only -> extend the kernel to RETURN _pPiX so it spawns faithfully),
   then species-dispatch both into run_cascade, then top-N secondaries.
+- **P1b (nucleon) DONE**: cascade_full.nucleon_segment wraps _propagate_nucleon_discrete -> (terminal
+  nucleon + leading knockout proton; made_pi flag). GATE (4k): term p_N max|diff| 0.0, knockout p4
+  max|diff| 0.0 vs the direct propagator. Both species kernels now bit-exact.
+  NEXT (integration): species-dispatched mixed-buffer kernel in run_cascade (run both segment fns per
+  slot, select by species; shared nucleus + consumed across the P slots -- v1 parallel-consumption
+  approx). Then faithful extensions: emit the NN-inelastic pion 4-vec (extend _propagate_nucleon_discrete
+  to return _pPiX) and top-N secondaries. Then P2 transparency, P3 records/autodiff, P4 validation.
