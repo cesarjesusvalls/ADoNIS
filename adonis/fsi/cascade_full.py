@@ -27,7 +27,7 @@ Fields per particle (all leading dim (n, P)):
 from __future__ import annotations
 import jax, jax.numpy as jnp
 from adonis.fsi.cascade_discrete import (_propagate_discrete, _propagate_nucleon_discrete, _CH_PID,
-                                         sample_nucleons, DiscreteCascadeConfig)
+                                         sample_nucleons, DiscreteCascadeConfig, _formation_zone)
 from adonis.fsi.tracking import GEN_STRIDE as _GEN_STRIDE
 
 PION, NUCLEON = 0, 1
@@ -41,7 +41,7 @@ def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, ss
     out = _propagate_discrete(pos, p4, ch, npos, nmom, nisp, cfg, key, consumed,
                               jnp.asarray(sabs, float), jnp.asarray(sscat, float))
     (p_pi, ch_out, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
-     (best_rec, best_rec_pos, best_rec_fz), scat_ko_all, traj) = out
+     (best_rec, best_rec_pos, best_rec_fz), scat_ko_all, traj, abs_pos, best_abs2) = out
     fate = jnp.where(absorbed, FATE_ABSORB, jnp.where(conv, FATE_CONVERT, FATE_ESCAPE))
     pid = jnp.where(absorbed, 0, jnp.where(conv, -1, _CH_PID[ch_out]))     # 0 abs, -1 conv, else pi pid
     n = p4.shape[0]
@@ -51,7 +51,19 @@ def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, ss
     sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
                p4=best_rec, pos=best_rec_pos, fz=best_rec_fz, alive=has_rec, w=w_fsi)
     rp4, rpos, rfz = scat_ko_all                                          # (n,K,4),(n,K,3),(n,K) all proton recoils
-    secK = dict(p4=rp4, pos=rpos, fz=rfz, alive=jnp.linalg.norm(rp4[:, :, 1:], axis=2) > 1.0, w=w_fsi)
+    # FIX: the pion-ABSORPTION proton (piNN->NN, ACHILLES final state) was dropped -- feed it as an
+    # extra knockout slot so it is counted and re-cascades (the old factorized chain used last_abs_proton).
+    # BOTH pion-absorption protons (piNN->NN) fed as extra knockout slots, each with its ACHILLES
+    # formation zone SetFormationZone(pion, product); they re-cascade and are counted like ACHILLES.
+    a1_alive = jnp.linalg.norm(best_abs[:, 1:], axis=1) > 1.0
+    a2_alive = jnp.linalg.norm(best_abs2[:, 1:], axis=1) > 1.0
+    fz1 = _formation_zone(p_pi, best_abs); fz2 = _formation_zone(p_pi, best_abs2)
+    p4K = jnp.concatenate([rp4, best_abs[:, None, :], best_abs2[:, None, :]], axis=1)
+    posK = jnp.concatenate([rpos, abs_pos[:, None, :], abs_pos[:, None, :]], axis=1)
+    fzK = jnp.concatenate([rfz, fz1[:, None], fz2[:, None]], axis=1)
+    aliveK = jnp.concatenate([jnp.linalg.norm(rp4[:, :, 1:], axis=2) > 1.0,
+                              a1_alive[:, None], a2_alive[:, None]], axis=1)
+    secK = dict(p4=p4K, pos=posK, fz=fzK, alive=aliveK, w=w_fsi)
     return term, sec, secK
 
 

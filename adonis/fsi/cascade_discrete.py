@@ -186,7 +186,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
     def body(carry, sk):
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz, conv) = carry
+         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2) = carry
         if cfg.algo == "step":
             # Escape (ACHILLES Cascade.cc:532-553).  The un-scattered BEAM pion is external_test:
             # it escapes at the z>=radius PLANE (continues while Z<radius), so it traverses the whole
@@ -338,16 +338,19 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             # ACHILLES FinalizeMomentum Pauli-blocks BOTH outgoing nucleons; reject if either
             # falls below the local Fermi momentum (then the pion is NOT absorbed, it continues).
             blocked = (ma < kfA) | (mb < kfB)
-            faster = jnp.where(ma >= mb, pa, pb)
-            one_p = jnp.where(jax.random.uniform(k3) < 0.5, pa, pb)            # which of the two is p
-            lead = jnp.where(npr >= 2, faster, jnp.where(npr == 1, one_p, jnp.zeros(4)))
-            return lead, blocked
-        abs_lead, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out, kf_pi, kf_absB,
-                                                  jax.random.split(kab, n))
+            one_p = jnp.where(jax.random.uniform(k3) < 0.5, pa, pb)            # which of the two is p (when 1)
+            # FIX: piNN->NN has TWO outgoing nucleons; feed BOTH protons (npr==2 -> pa & pb; npr==1 ->
+            # one_p only; npr==0 -> none).  Previously only the leading was kept -> exactly-2p overshoot.
+            protA = jnp.where(npr >= 2, pa, jnp.where(npr == 1, one_p, jnp.zeros(4)))
+            protB = jnp.where(npr >= 2, pb, jnp.zeros(4))
+            return protA, protB, blocked
+        abs_protA, abs_protB, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out, kf_pi, kf_absB,
+                                                             jax.random.split(kab, n))
         if not cfg.pauli:
             abs_blocked = abs_blocked & False
         is_abs = chose_abs & ~abs_blocked                                     # absorption survives Pauli
-        best_abs = jnp.where(is_abs[:, None], abs_lead, best_abs)             # one absorption / pion
+        best_abs = jnp.where(is_abs[:, None], abs_protA, best_abs)            # 1st absorption proton
+        best_abs2 = jnp.where(is_abs[:, None], abs_protB, best_abs2)          # 2nd absorption proton (piNN->NN)
 
         # scatter: out-pion charge ~ sig_io[j], DCC angle, Pauli-block recoil
         sig_io_j = sig_io.reshape(n, A, 3)[ar, j]
@@ -418,12 +421,13 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         ss_j = sig_j - sa_j - si_j                                            # elastic sigma at the hit
         rec = jax.lax.stop_gradient((has_hit, bcode, sa_j, ss_j, si_j))
         return (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-                best_rec, best_rec_pos, best_rec_fz, conv), rec
+                best_rec, best_rec_pos, best_rec_fz, conv, best_abs2), rec
 
     dhat0 = p_pi0[:, 1:] / jnp.clip(jnp.linalg.norm(p_pi0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
             jnp.zeros(n, jnp.int32), consumed0, jnp.zeros((n, 4)),
-            jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), jnp.zeros(n, bool))
+            jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), jnp.zeros(n, bool),
+            jnp.zeros((n, 4)))                                            # best_abs2 (2nd absorption proton)
     traj = None
     if cfg.early_exit and not cfg.track_steps:
         # EARLY-EXIT walk (bit-exact): while_loop over the SAME per-step keys, stopping once no
@@ -455,7 +459,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
         _, carry, bufs = jax.lax.while_loop(wcond, wbody, (jnp.int32(0), init, bufs0))
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz, conv) = carry
+         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2) = carry
         bc_c, sa_c, ss_c, si_c, nh = bufs
         # truly truncated = still able to interact at the cap (inert walkers excluded)
         outward = jnp.sum(pos * dhat, axis=1) > 0
@@ -467,7 +471,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             c2, rec = body(carry, sk)
             return c2, (rec, (c2[0], c2[1], c2[4]))                   # pos, p_pi, alive AFTER the step
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz, conv), (recs, tr) = jax.lax.scan(body_t, init, keys)
+         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2), (recs, tr) = jax.lax.scan(body_t, init, keys)
         traj = (tr[0], tr[1], tr[2])                                  # (nsteps,n,3),(nsteps,n,4),(nsteps,n)
         hh, bcj, saj, ssj, sij = recs
         slot = jnp.cumsum(hh.astype(jnp.int32), axis=0) - 1
@@ -481,7 +485,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         n_trunc = jnp.sum((alive & ~absorbed).astype(jnp.int32))
     else:
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz, conv), recs = jax.lax.scan(body, init, keys)
+         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2), recs = jax.lax.scan(body, init, keys)
         # kind-1 branching reweight, OUTSIDE the scan: the records are detached, so ONLY the
         # (sabs, sscat) knobs carry gradient -- no NaN VJPs from the cascade's final-state
         # sampling can reach it.  Compress to the <=_K_BR hit slots (in step order): the walk is
@@ -505,7 +509,8 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     _lead = jnp.argmax(jnp.linalg.norm(best_rec[:, :, 1:], axis=2), axis=1)
     scat_ko_lead = (best_rec[_arn, _lead], best_rec_pos[_arn, _lead], best_rec_fz[_arn, _lead])
     return (p_pi, ch, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
-            scat_ko_lead, (best_rec, best_rec_pos, best_rec_fz), traj)   # traj None unless cfg.track_steps
+            scat_ko_lead, (best_rec, best_rec_pos, best_rec_fz), traj,   # traj None unless cfg.track_steps
+            pos, best_abs2)                                               # pion terminal pos; 2nd absorption proton
 
 
 def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0=None,
