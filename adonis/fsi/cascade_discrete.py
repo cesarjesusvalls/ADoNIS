@@ -713,15 +713,23 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         recoil = (p_N + pN_j) - p_out
         bg_proton = nisp[ar, j]
         fz_new = _formation_zone(p_N, p_out)                          # leading: E_in*hbarc/|mN^2-p_in.p_out|
-        fz_ko = _formation_zone(p_N, recoil)                          # recoil/knockout's formation zone
+        # FIX: the NN-inelastic (NN->NDelta->NN'pi) SECOND nucleon was dropped (best_ko was elastic-only).
+        # Register the non-leading inelastic nucleon as a knockout IF it is a proton.  Charges from the
+        # channel: q(pN1)=q_pair-dch (NN->N Delta), q(pN2)=dch-pi_q (Delta->N' pi).
+        nl_is1 = jnp.linalg.norm(pN1[:, 1:], axis=1) >= jnp.linalg.norm(pN2[:, 1:], axis=1)  # leading=pN1?
+        inel_nl = jnp.where(nl_is1[:, None], pN2, pN1)                # the NON-leading inelastic nucleon
+        inel_nl_q = jnp.where(nl_is1, dch - pi_q, q_pair - dch)       # its charge (1 = proton)
+        # combined knockout candidate (elastic recoil OR inelastic 2nd nucleon -- mutually exclusive per event)
+        ko_cand = jnp.where(is_inel[:, None], inel_nl, recoil)
+        ko_is_p = (do & bg_proton) | (is_inel & (inel_nl_q == 1))
+        fz_ko = jnp.where(is_inel, _formation_zone(p_N, inel_nl), _formation_zone(p_N, recoil))
         # TOP-K proton knockouts (K=1 -> old single best_ko bit-exactly; max slot = leading knockout):
-        ko_is_p = do & bg_proton
-        cand_mom = jnp.linalg.norm(recoil[:, 1:], axis=1)
+        cand_mom = jnp.linalg.norm(ko_cand[:, 1:], axis=1)
         slot_mom = jnp.linalg.norm(best_ko[:, :, 1:], axis=2)         # (n,K)
         minslot = jnp.argmin(slot_mom, axis=1)
         do_ins = ko_is_p & (cand_mom > slot_mom[ar, minslot])
         sel = jax.nn.one_hot(minslot, _N_RECOIL, dtype=bool) & do_ins[:, None]
-        best_ko = jnp.where(sel[:, :, None], recoil[:, None, :], best_ko)
+        best_ko = jnp.where(sel[:, :, None], ko_cand[:, None, :], best_ko)
         best_ko_pos = jnp.where(sel[:, :, None], npos[ar, j][:, None, :], best_ko_pos)
         best_ko_fz = jnp.where(sel, fz_ko[:, None], best_ko_fz)
         p_N = jnp.where(do[:, None], p_out, jnp.where(is_inel[:, None], lead_in, p_N))
