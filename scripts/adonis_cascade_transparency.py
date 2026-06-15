@@ -21,7 +21,7 @@ LO, HI = 80.0, 500.0
 
 
 def run(n_per_bin=1500, seed=0):
-    rgrid, rho, radius = _load_density()
+    rgrid, rho, _rhoN, radius = _load_density()
     b_max = float(radius)
     edges = np.linspace(LO, HI, NB + 1)
     cen = 0.5 * (edges[:-1] + edges[1:])

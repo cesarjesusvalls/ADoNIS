@@ -25,7 +25,7 @@ _FATE_COL = {211: ("C0", r"$\pi^+$ escape"), 111: ("C2", r"$\pi^0$ (charge-exch)
 
 
 def main():
-    _, _, radius = _load_density(CFG.nucleus)
+    _, _, _, radius = _load_density(CFG.nucleus)
     e = res_xsec.generate(N, seed=0, return_events=True)["events"]; n = len(e["w"])
     su = CF.setup_carbon(jnp.asarray(e["p_pi"]), jnp.asarray(e["ppid"], jnp.int32),
                          jnp.asarray(e["ipid"], jnp.int32), CFG, jax.random.PRNGKey(11))

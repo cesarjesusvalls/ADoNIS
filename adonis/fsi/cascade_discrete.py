@@ -55,11 +55,13 @@ def _load_qmc_configs(nmax=36000, name="QMC_configs.out.gz"):
     # tracer context to later traces (cf. cascade_mb._jax_grids_resolved); asarray per-call is free.
     if name not in _CFG:
         path = Path(__file__).resolve().parents[2].parent / "Achilles" / "data" / "configurations" / name
-        A = 12
-        iso = np.zeros((nmax, A), bool); pos = np.zeros((nmax, A, 3)); wt = np.zeros(nmax)
         with gzip.open(path, "rt") as f:
-            f.readline()
-            for c in range(nmax):
+            # header: [A Nconfigs maxWgt minWgt] (ACHILLES Configuration.cc:30-37).  A is read HERE,
+            # not hardcoded -> QMC (A=12, C) and RMF (A=40, Ar) share this parser unchanged.
+            hdr = f.readline().split()
+            A = int(hdr[0]); ncfg = int(hdr[1]); nread = min(nmax, ncfg)
+            iso = np.zeros((nread, A), bool); pos = np.zeros((nread, A, 3)); wt = np.zeros(nread)
+            for c in range(nread):
                 for i in range(A):
                     t = f.readline().split()
                     iso[c, i] = float(t[0]) > 0
@@ -120,7 +122,9 @@ def nucleon_scat_reweight(srec, sscat):
 
 @dataclass(frozen=True)
 class DiscreteCascadeConfig:
-    nucleus: str = "c12_density.txt"
+    nucleus: str = "c12_density.txt"       # proton density file (data/nuclear/)
+    density_n: str = "c12_density.txt"     # neutron density file (= nucleus for N=Z nuclei, e.g. C)
+    configs: str = "QMC_configs.out.gz"    # nucleon configuration file (QMC/RMF; A read from header)
     step: float = 0.05
     max_steps: int = 260
     seed: int = 0
@@ -157,13 +161,15 @@ class DiscreteCascadeConfig:
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
     """Pick n configurations ~ weight; assign each nucleon an isotropic local-Fermi-gas momentum.
     Returns npos (n,A,3), nmom (n,A,4), nisp (n,A) proton-mask."""
-    pos, iso, w, A = _load_qmc_configs()
-    rgrid, rho, _ = _load_density(cfg.nucleus)
+    pos, iso, w, A = _load_qmc_configs(name=cfg.configs)
+    rgrid, rhoP, rhoN, _ = _load_density(cfg.nucleus, cfg.density_n)
     kc, kd, km = jax.random.split(key, 3)
     idx = jax.random.choice(kc, pos.shape[0], (n,), p=w)
     npos = pos[idx]; nisp = iso[idx]
     r = jnp.linalg.norm(npos, axis=2)
-    kf = _kf_local(_rho_species(r, rgrid, rho))
+    # ACHILLES Local FG: PER-SPECIES k_F -- protons from rho_p, neutrons from rho_n (Nucleus.cc:212-238).
+    # For N=Z (carbon) rho_p == rho_n bitwise -> unchanged.
+    kf = _kf_local(jnp.where(nisp, _rho_species(r, rgrid, rhoP), _rho_species(r, rgrid, rhoN)))
     d = jax.random.normal(kd, (n, A, 3)); d = d / jnp.linalg.norm(d, axis=2, keepdims=True)
     pm = kf * jax.random.uniform(km, (n, A)) ** (1.0 / 3.0)
     p3 = d * pm[:, :, None]; E = jnp.sqrt(M_N ** 2 + pm ** 2)
@@ -178,7 +184,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     BRANCHING is kind-1 reweighted (sampled against the nominal p_abs, theta enters via the
     likelihood ratio in w_fsi); scales=1 -> w_fsi=1 (the nominal forward result), so d/d(scale)
     E[absorbed obs] is exact and differentiable."""
-    rgrid, rho, radius = _load_density(cfg.nucleus)
+    rgrid, rhoP, rhoN, radius = _load_density(cfg.nucleus, cfg.density_n)
     n, A = nisp.shape
     nsteps = cfg.max_steps if cfg.algo == "step" else _MAX_SEG
     keys = jax.random.split(key, nsteps)
@@ -217,7 +223,8 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         pE = p_pi[:, 0]; pmom = jnp.linalg.norm(p_pi[:, 1:], axis=1); m_pi = _CH_MASS[ch]
         vpi = p_pi[:, 1:] / pE[:, None]
         rnuc = jnp.linalg.norm(npos, axis=2)
-        kf_n = _kf_local(_rho_species(rnuc, rgrid, rho))             # (n,A) cheap; used at the hit index j
+        kf_n = _kf_local(jnp.where(nisp, _rho_species(rnuc, rgrid, rhoP),   # (n,A) per-species k_F at the
+                                   _rho_species(rnuc, rgrid, rhoN)))        # hit nucleon (proton/neutron)
 
         def _xsec(nm, npo, nip):
             """Oset abs + DCC scatter cross sections for nucleon states nm (..,4), npo (..,3),
@@ -226,8 +233,10 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             nucleon (ACHILLES GetCchannel(pion,baryon)): sigma(pi+ p) ~ 3x sigma(pi+ n) at the Delta."""
             vN = nm[..., 1:] / nm[..., 0:1]
             vrel = jnp.clip(jnp.linalg.norm(vpi[:, None, :] - vN, axis=-1), 1e-3, None)
-            rho_t = 2.0 * _rho_species(jnp.linalg.norm(npo, axis=-1), rgrid, rho)
-            kf = _kf_local(_rho_species(jnp.linalg.norm(npo, axis=-1), rgrid, rho))
+            rnpo = jnp.linalg.norm(npo, axis=-1)
+            rho_t = _rho_species(rnpo, rgrid, rhoP) + _rho_species(rnpo, rgrid, rhoN)  # TOTAL density
+            kf = _kf_local(jnp.where(nip, _rho_species(rnpo, rgrid, rhoP),   # per-species k_F of the
+                                     _rho_species(rnpo, rgrid, rhoN)))       # candidate nucleon
             Pp = p_pi[:, None, :] + nm
             Wl = jnp.sqrt(jnp.clip(Pp[..., 0] ** 2 - jnp.sum(Pp[..., 1:] ** 2, axis=-1), 1.0, None))
             sal = jnp.clip(ox.abs_cross_section(pE[:, None] + 0 * Wl, m_pi[:, None] + 0 * Wl,
@@ -318,7 +327,10 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         # position (particle1), product B the struck nucleon position (particle2) -- ACHILLES
         # PionAbsorption::GenerateMomentum places paOut@part1.Position, pbOut@part2.Position.
         pos_hit = pos if cfg.algo == "step" else npos[ar, j]    # interaction-mode vertex = hit nucleon
-        kf_pi = _kf_local(_rho_species(jnp.linalg.norm(pos_hit, axis=1), rgrid, rho))   # (n,)
+        # absorption product-A Fermi momentum at the pion vertex.  The outgoing-nucleon species is
+        # channel-dependent (nprot_out); use the proton density (== neutron for N=Z carbon, bit-exact).
+        # NOTE (Ar): this is a per-species approximation for the absorption Pauli block -- validate.
+        kf_pi = _kf_local(_rho_species(jnp.linalg.norm(pos_hit, axis=1), rgrid, rhoP))   # (n,)
         kf_absB = kf_n[ar, j]
 
         def abs_one(p_pi_i, pNj_i, pNp_i, npr, kfA, kfB, k):
@@ -519,7 +531,7 @@ def propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, con
     Returns (p_pi, charge_idx, absorbed, n_scatter, abs_lead_p, w_fsi, nseg, n_trunc).  w_fsi is the
     kind-1 branching reweight for the (sabs, sscat) scales (1 at nominal); nseg is the per-event
     interaction-attempt count; n_trunc is the # of particles still propagating at the MAX_SEG cap."""
-    _load_density(cfg.nucleus); cascade_mb._jax_grids(); cascade_mb._build_angular()
+    _load_density(cfg.nucleus, cfg.density_n); cascade_mb._jax_grids(); cascade_mb._build_angular()
     if consumed0 is None:
         consumed0 = jnp.zeros((nisp.shape[0], nisp.shape[1]), bool)
     return _propagate_discrete(pos0, p_pi0, charge_idx0, npos, nmom, nisp, cfg, key, consumed0,
@@ -591,7 +603,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     formation zone [fm] (ACHILLES: 0 for the primary nucleon).  A nucleon cannot interact while
     fz>0; fz decrements by timeStep=step/beta each step and resets on every scatter to
     E_in*hbarc/|mN^2-p_in.p_out| (ACHILLES SetFormationZone -> suppresses rapid forward re-scatter)."""
-    rgrid, rho, radius = _load_density(cfg.nucleus)
+    rgrid, rhoP, rhoN, radius = _load_density(cfg.nucleus, cfg.density_n)
     n, A = nisp.shape
     keys = jax.random.split(key, cfg.max_steps)
     ar = jnp.arange(n)
@@ -636,7 +648,8 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         has_slab = jnp.any(in_slab, axis=1)
         perp2_c = jnp.where(has_slab, perp2_is[ar, cidx], 1e6); sig_c = sig[ar, cidx]
         pN_j = nmom[ar, j]
-        rnuc = jnp.linalg.norm(npos, axis=2); kf_n = _kf_local(_rho_species(rnuc, rgrid, rho))
+        rnuc = jnp.linalg.norm(npos, axis=2)
+        kf_n = _kf_local(jnp.where(nisp, _rho_species(rnuc, rgrid, rhoP), _rho_species(rnuc, rgrid, rhoN)))
         kf_j = kf_n[ar, j]
 
         def scat_one(p_lead, pN_i, kf_i, k):
@@ -820,7 +833,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
-    _load_density(cfg.nucleus)
+    _load_density(cfg.nucleus, cfg.density_n)
     n, A = nisp.shape
     if fz0 is None:
         fz0 = jnp.zeros(p_N0.shape[0])

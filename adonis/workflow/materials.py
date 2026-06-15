@@ -2,15 +2,26 @@
 
 A generation config names a target by chemical formula (e.g. "C", "CH", "H2O").  This module parses
 the formula into element stoichiometry and resolves each element against a REGISTRY of nuclei for
-which ADoNIS actually has the nuclear inputs to run.
+which ADoNIS actually has the nuclear inputs to run.  Every per-nucleus input is carried here (the
+SINGLE SOURCE OF TRUTH) and threaded into the generators + cascade; nothing is hardcoded downstream.
 
-PHYSICS LIMIT (honest by construction): only carbon-12 and the free proton are runnable today --
-  C : density c12_density.txt + QMC configs (A=12) + spectral pke12{n,p}  -> full cascade
-  H : free proton, struck at rest, handled at the PRIMARY level (no cascade), combined as a
-      separate bank at analysis time
-pke40{n,p} exist for argon but there is NO Ar density / QMC configuration, so the cascade cannot run
-on it.  An unsupported element raises UnsupportedMaterial -- we NEVER silently fall back to carbon.
-Adding a new nucleus = add its NuclearTarget (density, spectral n/p, qmc, A, Z) once its inputs exist.
+Each NuclearTarget carries, mirroring ACHILLES's per-nucleus inputs (Nucleus.cc / Configuration.cc /
+SpectralFunction.cc):
+  density_p / density_n : proton / neutron number-density files (data/nuclear/).  ACHILLES ALWAYS
+      reads SEPARATE p and n densities (Nucleus.cc:36-80); for N=Z nuclei (C) both point to the same
+      file.  Radius = first r where rho_proton < 1e-6 fm^-3 (Nucleus.cc:49-51); local Fermi momentum
+      is PER-SPECIES k_F^s = cbrt(3 pi^2 rho_s) hbarc (Nucleus.cc:212-238).
+  configs : nucleon-configuration file (Achilles/data/configurations/).  QMC (C) and RMF (Ar) share
+      one on-disk format: header [A Nconfigs maxWgt minWgt] then per config A lines of "isospin x y z",
+      a weight line, a blank line (Configuration.cc:19-65).  A is read FROM THE HEADER, not hardcoded.
+  spectral_n / spectral_p : neutron / proton spectral-function files (resolved relative to Achilles/).
+      pke40 (Ar) has the same on-disk format as pke12 (C), only a larger (p,E) grid.
+  free_nucleon : True -> primary-level only (struck nucleon at rest), no cascade, separate bank.
+
+Runnable today: C-12, Ar-40 (full cascade), free-proton H.  O-16 has densities+configs but NO
+spectral function (no pke16) -> QE/RES cannot run, so it is intentionally NOT registered.  An
+unsupported element raises UnsupportedMaterial -- we NEVER silently fall back to carbon.  Adding a
+nucleus = add its NuclearTarget once density_p/n + configs + spectral_n/p all exist.
 """
 from __future__ import annotations
 import re
@@ -26,24 +37,29 @@ class NuclearTarget:
     symbol: str
     A: int
     Z: int
-    density: str | None         # DiscreteCascadeConfig.nucleus token; None = free nucleon (no cascade)
-    spectral_n: str | None      # neutron spectral-function path; None for free proton
+    density_p: str | None       # proton number-density file (data/nuclear/); None = free nucleon
+    density_n: str | None       # neutron number-density file (= density_p for N=Z nuclei, e.g. C)
+    spectral_n: str | None      # neutron spectral-function path (Achilles-relative); None for free p
     spectral_p: str | None      # proton spectral-function path
-    qmc: str | None             # QMC configuration file; None = no cascade
+    configs: str | None         # nucleon configuration file (QMC/RMF); None = no cascade
     free_nucleon: bool          # True -> primary-level only, separate bank, struck nucleon at rest
 
     @property
     def runs_cascade(self) -> bool:
-        return self.density is not None and self.qmc is not None
+        return self.density_p is not None and self.configs is not None
 
 
 # Only nuclei with the FULL set of inputs present in the repo.
 REGISTRY: dict[str, NuclearTarget] = {
-    "C": NuclearTarget("C", 12, 6, "c12_density.txt",
+    "C": NuclearTarget("C", 12, 6, "c12_density.txt", "c12_density.txt",
                        "data/Spectral_Functions/pke12n_tot.data",
                        "data/Spectral_Functions/pke12p_tot.data",
                        "QMC_configs.out.gz", free_nucleon=False),
-    "H": NuclearTarget("H", 1, 1, None, None, None, None, free_nucleon=True),
+    "Ar": NuclearTarget("Ar", 40, 18, "rho_Ar_p.txt", "rho_Ar_n.txt",
+                        "data/Spectral_Functions/pke40n_tot.data",
+                        "data/Spectral_Functions/pke40p_tot.data",
+                        "AR40_configs_RMF_achilles.out.gz", free_nucleon=False),
+    "H": NuclearTarget("H", 1, 1, None, None, None, None, None, free_nucleon=True),
 }
 
 _TOKEN = re.compile(r"([A-Z][a-z]?)(\d*)")

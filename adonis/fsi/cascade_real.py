@@ -55,25 +55,39 @@ _PI_MASS = {211: ox.M_PIP, 111: ox.M_PI0, -211: ox.M_PIP}
 _DENS = {}
 
 
-def _load_density(name="c12_density.txt"):
+def _read_density_file(name):
+    p = Path(__file__).resolve().parents[2] / "data" / "nuclear" / name
+    d = np.loadtxt(p, comments="#")
+    return d[:, 0], d[:, 1]               # r [fm], rho [fm^-3]
+
+
+def _load_density(name="c12_density.txt", name_n=None):
+    """Proton & neutron number densities.  ACHILLES ALWAYS reads SEPARATE p/n densities
+    (Nucleus.cc:36-80); for N=Z nuclei (C) name_n is name -> rho_n == rho_p.  rho_n is interpolated
+    onto the proton radial grid so a single rgrid serves both species.  Radius = FIRST r where
+    rho_proton < 1e-6 fm^-3 (ABSOLUTE minDensity, Nucleus.cc:49-51).  Returns (rgrid, rho_p, rho_n,
+    radius).  For N=Z, rho_p == rho_n bitwise and rho_p+rho_n == 2*rho_p -> carbon is unchanged."""
     # numpy cache + per-call asarray: a jnp array first created inside a jit trace would
     # leak the tracer context to later traces (cf. cascade_mb._jax_grids_resolved).
-    if name not in _DENS:
-        p = Path(__file__).resolve().parents[2] / "data" / "nuclear" / name
-        d = np.loadtxt(p, comments="#")
-        r, rho = d[:, 0], d[:, 1]          # col1 = rho_proton = rho_neutron (ACHILLES config)
-        # ACHILLES Nucleus.cc:49-51: radius = FIRST grid point where rho_proton < 1e-6 fm^-3
-        # (ABSOLUTE minDensity), NOT a relative-threshold last-point-above (the old custom rule
-        # gave 6.05 fm vs ACHILLES ~6.7 fm -> nucleus too small -> pions under-cascade).
-        _below = r[rho < 1.0e-6]
+    name_n = name_n or name
+    key = (name, name_n)
+    if key not in _DENS:
+        r, rho_p = _read_density_file(name)
+        if name_n == name:
+            rho_n = rho_p
+        else:
+            rn, rhon0 = _read_density_file(name_n)
+            rho_n = np.interp(r, rn, rhon0, left=rhon0[0], right=0.0)
+        _below = r[rho_p < 1.0e-6]
         radius = float(_below.min()) if _below.size else float(r.max())
-        _DENS[name] = (r, rho, radius)
-    r, rho, radius = _DENS[name]
-    return jnp.asarray(r), jnp.asarray(rho), radius
+        _DENS[key] = (r, rho_p, rho_n, radius)
+    r, rho_p, rho_n, radius = _DENS[key]
+    return jnp.asarray(r), jnp.asarray(rho_p), jnp.asarray(rho_n), radius
 
 
 def _rho_species(r, rgrid, rho):
-    """Proton (= neutron) number density at radius r [fm], interpolated; 0 beyond the grid."""
+    """Number density of ONE species at radius r [fm], interpolated; 0 beyond the grid.  Caller
+    passes the proton OR neutron density array (rho_p / rho_n) -- they are equal for N=Z nuclei."""
     return jnp.interp(r, rgrid, rho, left=rho[0], right=0.0)
 
 
@@ -84,7 +98,8 @@ def _kf_local(rho_species):
 
 @dataclass(frozen=True)
 class RealCascadeConfig:
-    nucleus: str = "c12_density.txt"
+    nucleus: str = "c12_density.txt"      # proton density file (data/nuclear/)
+    density_n: str = "c12_density.txt"    # neutron density file (= nucleus for N=Z nuclei, e.g. C)
     step: float = 0.08          # fm per transport step (ACHILLES uses 0.04 adaptive; 0.08 ok for pions)
     max_steps: int = 220        # 2*R/step margin
     seed: int = 0
@@ -164,7 +179,7 @@ from functools import partial as _partial
 @_partial(jax.jit, static_argnums=(3,))
 def _propagate_scan(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protfrac):
     """JIT + lax.scan core of the pion transport (the per-step body is traced ONCE)."""
-    rgrid, rho, radius = _load_density(cfg.nucleus)
+    rgrid, rhoP, rhoN, radius = _load_density(cfg.nucleus, cfg.density_n)
     n = pos0.shape[0]
     keys = jax.random.split(key, cfg.max_steps)
 
@@ -177,8 +192,8 @@ def _propagate_scan(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protf
         m_pi = _CH_MASS[ch]
         pmom = jnp.linalg.norm(p_pi[:, 1:], axis=1)
         pE = p_pi[:, 0]
-        rho_p = _rho_species(r, rgrid, rho)
-        rho_tot = 2.0 * rho_p
+        rho_p = _rho_species(r, rgrid, rhoP)
+        rho_tot = rho_p + _rho_species(r, rgrid, rhoN)    # total nucleon density (= 2*rho_p for N=Z)
         kf = _kf_local(rho_p)
 
         kN, step_key = jax.random.split(step_key)
@@ -240,15 +255,15 @@ def propagate(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protfrac=0.
       pos0 (N,3) fm, p_pi0 (N,4) MeV (E,px,py,pz), charge_idx0 (N,) in {0,1,2}.
     Returns (p_pi_final (N,4), charge_idx (N,), absorbed (N,) bool, n_scatter (N,)).
     JIT + lax.scan over the steps (the per-step body is traced once -> fast)."""
-    _load_density(cfg.nucleus)          # warm caches EAGERLY (avoid tracer leak inside jit)
+    _load_density(cfg.nucleus, cfg.density_n)   # warm caches EAGERLY (avoid tracer leak inside jit)
     cascade_mb._jax_grids(); cascade_mb._build_angular()
     return _propagate_scan(pos0, p_pi0, charge_idx0, cfg, key, protfrac)
 
 
-def sample_vertex(key, n, nucleus="c12_density.txt"):
+def sample_vertex(key, n, nucleus="c12_density.txt", density_n=None):
     """Sample n production vertices in the nucleus ~ rho(r) (radial pdf rho(r) r^2), as the
-    pion's cascade starting point."""
-    rgrid, rho, radius = _load_density(nucleus)
+    pion's cascade starting point.  Uses the proton density grid (== total shape for N=Z)."""
+    rgrid, rho, _rho_n, radius = _load_density(nucleus, density_n)
     rg = np.asarray(rgrid); rh = np.asarray(rho)
     rr = np.linspace(0.0, float(radius), 600)
     pdf = np.interp(rr, rg, rh, left=rh[0], right=0.0) * rr ** 2
@@ -284,7 +299,7 @@ class RealCascadeFSI:
         n = event.p_pi.shape[0]
         ch0 = jnp.asarray([_PID_TO_CH.get(int(p), 1) for p in np.asarray(event.pid_pi)],
                           dtype=jnp.int32)
-        pos0 = sample_vertex(kv, n, self.cfg.nucleus)
+        pos0 = sample_vertex(kv, n, self.cfg.nucleus, self.cfg.density_n)
         p_pi, ch, absorbed, nsc = propagate(pos0, event.p_pi, ch0, self.cfg, kp,
                                             protfrac=self.protfrac)
         keep = (~absorbed)[:, None]

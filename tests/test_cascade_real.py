@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(not (_ANL.exists() and _DENS.exists()),
 
 def _batch(n, p_mev, seed=0):
     rng = np.random.default_rng(seed)
-    rgrid, rho, _ = cr._load_density()
+    rgrid, rho, _rhoN, _ = cr._load_density()
     rg, rh = np.asarray(rgrid), np.asarray(rho)
     w = rg ** 2 * rh; w /= w.sum()
     rr = rng.choice(rg, size=n, p=w)

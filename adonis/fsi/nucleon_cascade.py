@@ -76,7 +76,7 @@ from functools import partial as _partial
 
 @_partial(jax.jit, static_argnums=(3,))
 def _propagate_nucleon_scan(pos0, p_N0, is_proton0, cfg: NucleonCascadeConfig, key, protfrac):
-    rgrid, rho, radius = _load_density(cfg.nucleus)
+    rgrid, rho, _rhoN, radius = _load_density(cfg.nucleus, getattr(cfg, "density_n", None))
     n = pos0.shape[0]
     keys = jax.random.split(key, cfg.max_steps)
 

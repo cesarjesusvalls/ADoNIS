@@ -79,7 +79,7 @@ def run_exact_nucleon_cascade(p_lead0, isp0, cfg, seed, K=8):
     knd, kvtx = jax.random.split(jax.random.PRNGKey(seed), 2)
     npos, nmom, nisp = sample_nucleons(knd, n, cfg)
     npos = np.asarray(npos); nmom = np.asarray(nmom); nisp = np.asarray(nisp)
-    rgrid, rho, radius = _load_density(cfg.nucleus); radius = float(radius)
+    rgrid, rho, _rhoN, radius = _load_density(cfg.nucleus, getattr(cfg, "density_n", None)); radius = float(radius)
     A = nisp.shape[1]; ar = np.arange(n)
     rnuc = np.linalg.norm(npos, axis=2)
     kf_n = np.asarray(_kf_local(_rho_species(jnp.asarray(rnuc), rgrid, rho)))   # (n,A)

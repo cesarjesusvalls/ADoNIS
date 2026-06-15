@@ -22,9 +22,19 @@ from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.spectral import SpectralImportanceSampler
 
 _MN = C.mN
-_SF_N = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
+_SF_N = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")   # default = carbon
 _SF_P = SpectralFunction("data/Spectral_Functions/pke12p_tot.data")
 _IMP = SpectralImportanceSampler(_SF_N)          # struck nucleon proposal ~ |p|^2 S_n for ALL channels
+
+# Spectral functions are threaded per-nucleus (generate.py passes the target's pke{n,p}); the carbon
+# globals above are the defaults so any caller without sf args stays bit-identical.  The |p|^2 S_n
+# importance sampler is cached per SpectralFunction object (built once, reused across seeds).
+_IMP_CACHE = {id(_SF_N): _IMP}
+def _imp_for(sf_n):
+    k = id(sf_n)
+    if k not in _IMP_CACHE:
+        _IMP_CACHE[k] = SpectralImportanceSampler(sf_n)
+    return _IMP_CACHE[k]
 from adonis.constants import MASS_PDG_MUON as M_MU
 _TWO_PI = 2 * np.pi
 N_NUC = 6
@@ -187,9 +197,10 @@ def _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u):
     return _sample_3body(k_nu, p_struck, m_pi, m_Nf, u)
 
 
-def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
-    """One RES channel for the 12C importance estimator: spectrum beam + importance struck nucleon
-    + the shared 3-body core (_sample_3body)."""
+def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None):
+    """One RES channel for the importance estimator: spectrum beam + importance struck nucleon
+    (imp = the nucleus's |p|^2 S_n sampler; defaults to carbon _IMP) + the shared 3-body core."""
+    imp = imp or _IMP
     u = rng.random((n, 10))
     Smin = (M_MU + m_Nf + m_pi) ** 2
     # BeamMapper seed is PROCESS-dependent (BeamMapper.cc); validated bit-exact vs RESDUMP psw.
@@ -198,7 +209,7 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf):
     E_GeV = u[:, 4] * dE_beam + minE; Enu = E_GeV * 1000.0
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
     J_beam = (dE_beam * flux.f(E_GeV)) / flux.flux_integral
-    pvec, energy = _IMP.sample(n, rng)                          # importance: |p|^2 S (low variance)
+    pvec, energy = imp.sample(n, rng)                           # importance: |p|^2 S (low variance)
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
     J_had = np.ones(n)                                          # |p|^2 S J_had absorbed -> N_NUC
@@ -278,15 +289,20 @@ def _sample_shared(n, rng, flux, maxE):
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, valid=valid)
 
 
-def generate_faithful(n=20000, seed=0, return_events=False):
+def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None):
     """ACHILLES-faithful: ONE shared (process[0]) point per draw; sum the 3 channels' amps2 with
-    EXPLICIT per-channel initwgt = N*S_channel and per-channel flux, on the shared momenta."""
+    EXPLICIT per-channel initwgt = N*S_channel and per-channel flux, on the shared momenta.
+    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P)."""
+    sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P
+    group = [(2112, -1, 111, sf_n, N_NUC, MASS_PDG_NEUTRON),    # [0] n -> p pi0
+             (2112, -1, 211, sf_n, N_NUC, MASS_PDG_NEUTRON),    # [1] n -> n pi+
+             (2212, +1, 211, sf_p, N_NUC, MASS_PDG_PROTON)]     # [2] p -> p pi+
     rng = np.random.default_rng(seed)
     flux = T2KFlux(); maxE = flux.max_energy
     s = _sample_shared(n, rng, flux, maxE)
     v = s["valid"]; idx = np.where(v & (s["J"] > 0))[0]
     out = {}; w_tot = np.zeros(n)
-    for (ipid, itiz, ppid, sf, ncount, hadmass) in _GROUP_CHANNELS:
+    for (ipid, itiz, ppid, sf, ncount, hadmass) in group:
         a2 = np.zeros(n)
         if len(idx):
             a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
@@ -310,24 +326,25 @@ def generate_faithful(n=20000, seed=0, return_events=False):
 RES_METHOD = "importance"
 
 
-def generate(n=20000, seed=0, return_events=False, method=None):
+def generate(n=20000, seed=0, return_events=False, method=None, sf_n=None, sf_p=None):
     """Dispatch to the faithful (transliteration) or importance RES estimator.  Both estimate the
-    same sigma; faithful mirrors ACHILLES operation-for-operation, importance is lower variance."""
+    same sigma; faithful mirrors ACHILLES operation-for-operation, importance is lower variance.
+    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P)."""
     m = method or RES_METHOD
     if m == "importance":
-        return generate_importance(n, seed=seed, return_events=return_events)
-    return generate_faithful(n, seed=seed, return_events=return_events)
+        return generate_importance(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p)
+    return generate_faithful(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p)
 
 
-def generate_importance(n=20000, seed=0, return_events=False):
+def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None):
+    sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
     rng = np.random.default_rng(seed)
     flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
-    sf = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
     out = {}; sig = 0.0
     ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
         Npid = 2212 if mNf == M_P else 2112
-        s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf)   # mpi0 to match ACHILLES
+        s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp)   # mpi0 like ACHILLES
         v = s["valid"]
         iw = N_NUC                                              # importance: |p|^2 S in the sampling
         a2 = np.zeros(n)
@@ -340,7 +357,7 @@ def generate_importance(n=20000, seed=0, return_events=False):
         # PROTON-initiated channel's integrand carries S_p, not S_n.  Importance-reweight it by
         # S_p/S_n (both normalised; =1 for the neutron channels).  Closes the pke12p/pke12n gap.
         if ipid == 2212:
-            sn = _SF_N.batch(s["mom"], s["energy"]); sp = _SF_P.batch(s["mom"], s["energy"])
+            sn = sf_n.batch(s["mom"], s["energy"]); sp = sf_p.batch(s["mom"], s["energy"])
             reweight = np.where(sn > 0, sp / np.clip(sn, 1e-300, None), 0.0)
         else:
             reweight = 1.0

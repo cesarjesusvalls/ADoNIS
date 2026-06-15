@@ -17,6 +17,7 @@ import jax
 import jax.numpy as jnp
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import res_xsec
+from adonis.xsec.spectral import SpectralFunction
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _N_RECOIL
 import adonis.fsi.cascade_full as CF
 import adonis.fsi.tracking as TK
@@ -25,14 +26,16 @@ from adonis.workflow.materials import resolve_targets
 _CHAN_OUT = {"res": "cc1pi", "qe": "cc0pi"}
 
 
-def gen_events(channel, n, seed):
-    """Primary events for one seed (verbatim gen_cc_engine_rich.gen_events)."""
+def gen_events(channel, n, seed, sf_n=None, sf_p=None):
+    """Primary events for one seed (verbatim gen_cc_engine_rich.gen_events).  sf_n/sf_p = the target's
+    neutron/proton SpectralFunction (None -> carbon default inside the generator).  CC QE struck
+    nucleon is a neutron (n->p) so it uses sf_n; RES uses both."""
     if channel == "res":
-        e = res_xsec.generate(n, seed=seed, return_events=True)["events"]
+        e = res_xsec.generate(n, seed=seed, return_events=True, sf_n=sf_n, sf_p=sf_p)["events"]
         return {k: np.asarray(e[k]) for k in
                 ("k_nu", "k_mu", "p_struck", "p_pi", "p_N", "w", "ppid", "ipid", "Npid")}
     from adonis.xsec import qe_xsec
-    r = qe_xsec.sample_importance(n, seed=seed); m = len(r["w"])
+    r = qe_xsec.sample_importance(n, seed=seed, sf=sf_n); m = len(r["w"])
     return dict(k_nu=np.asarray(r["k_nu"]), k_mu=np.asarray(r["k_mu"]), p_struck=np.asarray(r["p_struck"]),
                 p_N=np.asarray(r["p_out"]), w=np.asarray(r["w"]) / n,
                 ipid=np.full(m, 2112, np.int64), Npid=np.full(m, 2212, np.int64), ppid=np.zeros(m, np.int64))
@@ -56,10 +59,10 @@ def _prefsi_record(channel, a):
                 w=np.asarray(a["w"]), ipid=np.asarray(a["ipid"]).astype(np.int64), Npid=Npid.astype(np.int64))
 
 
-def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True):
+def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n=None, sf_p=None):
     """One seed -> (record dict, truth dict|None, overflow).  Verbatim gen_cc_engine_rich.one (fsi=True);
     fsi=False returns the PRE-FSI primary record (no cascade)."""
-    a = gen_events(channel, n, seed)
+    a = gen_events(channel, n, seed, sf_n=sf_n, sf_p=sf_p)
     if not fsi:
         return _prefsi_record(channel, a), None, 0
     nn = len(a["w"]); ar = np.arange(nn)
@@ -91,22 +94,30 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True):
     return rec, truth, int(ofl)
 
 
-def run_channel(channel, gc):
-    """Generate one channel's bank (+ optional truth sidecar); per-seed checkpoint.  Returns out path."""
+def run_channel(channel, gc, target):
+    """Generate one channel's bank (+ optional truth sidecar); per-seed checkpoint.  Returns out path.
+    target = the resolved NuclearTarget (carbon/argon/...): its density_p/density_n/configs go into the
+    cascade config and its spectral_n/spectral_p into the primary generators (single source of truth)."""
     cas = gc.cascade
     if _N_RECOIL != cas.n_recoil:
         raise RuntimeError(f"_N_RECOIL={_N_RECOIL} != cascade.n_recoil={cas.n_recoil}: set "
                            f"ADONIS_N_RECOIL before importing adonis.workflow.generate (driver does this).")
     cfg_cascade = DiscreteCascadeConfig(cylinder=cas.cylinder, step=cas.step, max_steps=cas.max_steps,
-                                        seed=1, nn_inelastic=cas.nn_inelastic)
+                                        seed=1, nn_inelastic=cas.nn_inelastic,
+                                        nucleus=target.density_p, density_n=target.density_n,
+                                        configs=target.configs)
+    sf_n = SpectralFunction(target.spectral_n); sf_p = SpectralFunction(target.spectral_p)
     out = os.path.join(gc.out_dir, f"t2k_{_CHAN_OUT[channel]}_engine_rich{gc.tag}.npz")
     truth_out = out.replace(".npz", "_truth.npz")
     parts, truths = [], []
+    print(f"[{channel}] target={target.symbol}{target.A} dens=({target.density_p},{target.density_n}) "
+          f"cfg={target.configs}", flush=True)
     print(f"[{channel}] {'PRE-FSI (no cascade)' if not gc.fsi else 'buffers: P=%d max_gen=%d N_RECOIL=%d MPROT=%d' % (cas.P, cas.max_gen, _N_RECOIL, cas.mprot)} "
           f"track={gc.tracking.enabled} -> {out}", flush=True)
     for k in range(gc.n_seeds):
         sd = gc.seed0 + k
-        rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled, gc.fsi)
+        rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled,
+                                       gc.fsi, sf_n=sf_n, sf_p=sf_p)
         parts.append(rec)
         bank = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
         bank["w"] = bank["w"] / len(parts)               # normalize by ACTUAL seeds banked
@@ -126,8 +137,9 @@ def run_generation(gc):
                                   "use scripts/cascade_viz.py for viz (small N).")
     targets = resolve_targets(gc.material)
     cascade_targets = [t for t, _ in targets if t.runs_cascade]
-    if len(cascade_targets) != 1 or cascade_targets[0].symbol != "C":
+    if len(cascade_targets) != 1:
         raise NotImplementedError(
-            f"engine generation supports a single carbon cascade target; material {gc.material!r} "
-            f"resolved to {[t.symbol for t,_ in targets]} (free-H is a separate primary bank, not wired).")
-    return {ch: run_channel(ch, gc) for ch in gc.channels}
+            f"engine generation supports a SINGLE cascade target; material {gc.material!r} resolved to "
+            f"{[t.symbol for t,_ in targets]} (free-H is a separate primary bank, not wired).")
+    target = cascade_targets[0]                       # carbon, argon, ... -- any registered nucleus
+    return {ch: run_channel(ch, gc, target) for ch in gc.channels}
