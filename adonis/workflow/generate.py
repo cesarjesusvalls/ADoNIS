@@ -26,16 +26,18 @@ from adonis.workflow.materials import resolve_targets
 _CHAN_OUT = {"res": "cc1pi", "qe": "cc0pi"}
 
 
-def gen_events(channel, n, seed, sf_n=None, sf_p=None):
+def gen_events(channel, n, seed, sf_n=None, sf_p=None, n_neutron=6, n_proton=6):
     """Primary events for one seed (verbatim gen_cc_engine_rich.gen_events).  sf_n/sf_p = the target's
     neutron/proton SpectralFunction (None -> carbon default inside the generator).  CC QE struck
-    nucleon is a neutron (n->p) so it uses sf_n; RES uses both."""
+    nucleon is a neutron (n->p) so it uses sf_n; RES uses both.  n_neutron/n_proton (target A-Z / Z)
+    scale the initwgt = N*S normalization per species (default 6/6 = carbon)."""
     if channel == "res":
-        e = res_xsec.generate(n, seed=seed, return_events=True, sf_n=sf_n, sf_p=sf_p)["events"]
+        e = res_xsec.generate(n, seed=seed, return_events=True, sf_n=sf_n, sf_p=sf_p,
+                              n_neutron=n_neutron, n_proton=n_proton)["events"]
         return {k: np.asarray(e[k]) for k in
                 ("k_nu", "k_mu", "p_struck", "p_pi", "p_N", "w", "ppid", "ipid", "Npid")}
     from adonis.xsec import qe_xsec
-    r = qe_xsec.sample_importance(n, seed=seed, sf=sf_n); m = len(r["w"])
+    r = qe_xsec.sample_importance(n, seed=seed, sf=sf_n, n_neutron=n_neutron); m = len(r["w"])
     return dict(k_nu=np.asarray(r["k_nu"]), k_mu=np.asarray(r["k_mu"]), p_struck=np.asarray(r["p_struck"]),
                 p_N=np.asarray(r["p_out"]), w=np.asarray(r["w"]) / n,
                 ipid=np.full(m, 2112, np.int64), Npid=np.full(m, 2212, np.int64), ppid=np.zeros(m, np.int64))
@@ -59,10 +61,11 @@ def _prefsi_record(channel, a):
                 w=np.asarray(a["w"]), ipid=np.asarray(a["ipid"]).astype(np.int64), Npid=Npid.astype(np.int64))
 
 
-def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n=None, sf_p=None):
+def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n=None, sf_p=None,
+                 n_neutron=6, n_proton=6):
     """One seed -> (record dict, truth dict|None, overflow).  Verbatim gen_cc_engine_rich.one (fsi=True);
     fsi=False returns the PRE-FSI primary record (no cascade)."""
-    a = gen_events(channel, n, seed, sf_n=sf_n, sf_p=sf_p)
+    a = gen_events(channel, n, seed, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton)
     if not fsi:
         return _prefsi_record(channel, a), None, 0
     nn = len(a["w"]); ar = np.arange(nn)
@@ -107,17 +110,18 @@ def run_channel(channel, gc, target):
                                         nucleus=target.density_p, density_n=target.density_n,
                                         configs=target.configs)
     sf_n = SpectralFunction(target.spectral_n); sf_p = SpectralFunction(target.spectral_p)
+    n_neutron = target.A - target.Z; n_proton = target.Z      # initwgt = N_species * S scaling
     out = os.path.join(gc.out_dir, f"t2k_{_CHAN_OUT[channel]}_engine_rich{gc.tag}.npz")
     truth_out = out.replace(".npz", "_truth.npz")
     parts, truths = [], []
-    print(f"[{channel}] target={target.symbol}{target.A} dens=({target.density_p},{target.density_n}) "
-          f"cfg={target.configs}", flush=True)
+    print(f"[{channel}] target={target.symbol}{target.A} Z={target.Z} N={n_neutron} "
+          f"dens=({target.density_p},{target.density_n}) cfg={target.configs}", flush=True)
     print(f"[{channel}] {'PRE-FSI (no cascade)' if not gc.fsi else 'buffers: P=%d max_gen=%d N_RECOIL=%d MPROT=%d' % (cas.P, cas.max_gen, _N_RECOIL, cas.mprot)} "
           f"track={gc.tracking.enabled} -> {out}", flush=True)
     for k in range(gc.n_seeds):
         sd = gc.seed0 + k
         rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled,
-                                       gc.fsi, sf_n=sf_n, sf_p=sf_p)
+                                       gc.fsi, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton)
         parts.append(rec)
         bank = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
         bank["w"] = bank["w"] / len(parts)               # normalize by ACTUAL seeds banked

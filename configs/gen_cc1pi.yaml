@@ -1,5 +1,7 @@
 # ADoNIS generation: T2K CC1pi RES engine bank on carbon.
 # Run: python -u scripts/adonis_generate.py configs/gen_cc1pi.yaml
+# Cascade preset P=12/g6/nr4/mp6 = OVERNIGHT PRODUCTION (high fidelity). For fast dev/validation use
+# the P=6/g3/nr2/mp4 preset (e.g. gen_p6g3.yaml). The P=12 here is intentional, not a bug.
 name: t2k_cc1pi
 material: C
 n_per_seed: 30000

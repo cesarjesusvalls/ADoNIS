@@ -104,12 +104,13 @@ def generate(n, seed=0, sf=None):
                 p_out=s["p_out"])
 
 
-def sample_importance(n, seed=0, sf=None):
+def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     """Like sample() but draws the struck nucleon from the spectral IMPORTANCE sampler
     (|p|,E ~ |p|^2 S) instead of the flat QESpectralMapper -> the dominant flat-MC weight
     variance (the |p|^2 S peak) cancels in the weight.  event.Weight() loses J_had and initwgt
-    (now in the sampling); they are replaced by the constant N_neutron (4pi Z_p = 1 for the
-    normalised S).  Beam + TwoBody final state sampled as in sample()."""
+    (now in the sampling); they are replaced by the constant N_neutron (the # of target NEUTRONS,
+    A-Z; CC QE is nu n->mu- p).  Default 6 = carbon; pass the target's A-Z for other nuclei.
+    Beam + TwoBody final state sampled as in sample()."""
     from adonis.xsec.spectral import SpectralImportanceSampler, SpectralFunction as _SF
     rng = np.random.default_rng(seed)
     u = rng.random((n, 7))
@@ -147,7 +148,7 @@ def sample_importance(n, seed=0, sf=None):
     d = me_cross_section(jnp.asarray(k_nu), jnp.asarray(k_mu), jnp.asarray(p_struck),
                          jnp.asarray(p_out), spin_avg=0.5, had_mass=MASS_PDG_NEUTRON)
     me = np.asarray(d["me_xsec"])
-    w = np.where(valid, me * N_NEUTRON * J_2body * J_beam, 0.0)
+    w = np.where(valid, me * n_neutron * J_2body * J_beam, 0.0)
     w = np.where(np.isfinite(w), w, 0.0)
     return dict(w=w, k_nu=k_nu, k_mu=k_mu, p_struck=p_struck, p_out=p_out, sigma=w.mean())
 

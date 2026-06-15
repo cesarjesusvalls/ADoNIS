@@ -289,14 +289,16 @@ def _sample_shared(n, rng, flux, maxE):
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, valid=valid)
 
 
-def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None):
+def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None,
+                      n_neutron=N_NUC, n_proton=N_NUC):
     """ACHILLES-faithful: ONE shared (process[0]) point per draw; sum the 3 channels' amps2 with
     EXPLICIT per-channel initwgt = N*S_channel and per-channel flux, on the shared momenta.
-    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P)."""
+    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P);
+    n_neutron/n_proton = target species counts (A-Z / Z) for the N*S scaling."""
     sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P
-    group = [(2112, -1, 111, sf_n, N_NUC, MASS_PDG_NEUTRON),    # [0] n -> p pi0
-             (2112, -1, 211, sf_n, N_NUC, MASS_PDG_NEUTRON),    # [1] n -> n pi+
-             (2212, +1, 211, sf_p, N_NUC, MASS_PDG_PROTON)]     # [2] p -> p pi+
+    group = [(2112, -1, 111, sf_n, n_neutron, MASS_PDG_NEUTRON),  # [0] n -> p pi0
+             (2112, -1, 211, sf_n, n_neutron, MASS_PDG_NEUTRON),  # [1] n -> n pi+
+             (2212, +1, 211, sf_p, n_proton, MASS_PDG_PROTON)]    # [2] p -> p pi+
     rng = np.random.default_rng(seed)
     flux = T2KFlux(); maxE = flux.max_energy
     s = _sample_shared(n, rng, flux, maxE)
@@ -326,17 +328,23 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
 RES_METHOD = "importance"
 
 
-def generate(n=20000, seed=0, return_events=False, method=None, sf_n=None, sf_p=None):
+def generate(n=20000, seed=0, return_events=False, method=None, sf_n=None, sf_p=None,
+             n_neutron=N_NUC, n_proton=N_NUC):
     """Dispatch to the faithful (transliteration) or importance RES estimator.  Both estimate the
     same sigma; faithful mirrors ACHILLES operation-for-operation, importance is lower variance.
-    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P)."""
+    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P).
+    n_neutron/n_proton = # of target neutrons (A-Z) / protons (Z) for the initwgt = N*S scaling
+    (default 6 = carbon; n-initiated channels use n_neutron, the p-initiated channel n_proton)."""
     m = method or RES_METHOD
     if m == "importance":
-        return generate_importance(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p)
-    return generate_faithful(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p)
+        return generate_importance(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p,
+                                   n_neutron=n_neutron, n_proton=n_proton)
+    return generate_faithful(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p,
+                             n_neutron=n_neutron, n_proton=n_proton)
 
 
-def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None):
+def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None,
+                        n_neutron=N_NUC, n_proton=N_NUC):
     sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
     rng = np.random.default_rng(seed)
     flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
@@ -346,7 +354,7 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
         Npid = 2212 if mNf == M_P else 2112
         s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp)   # mpi0 like ACHILLES
         v = s["valid"]
-        iw = N_NUC                                              # importance: |p|^2 S in the sampling
+        iw = n_neutron if ipid == 2112 else n_proton            # target species count (importance: |p|^2 S)
         a2 = np.zeros(n)
         idx = np.where(v & (s["energy"] > 2.5) & (s["energy"] < 400) & (s["J"] > 0))[0]
         if len(idx):
