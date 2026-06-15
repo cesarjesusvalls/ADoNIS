@@ -418,3 +418,30 @@ consumption time-ordering validation; M_A/fit records; transparency + 6% pion ch
   Lessons (logged so I stop repeating): (1) define signals by FINAL STATE, include every primary that
   reaches it; (2) NEVER compare across two different selections -- apply ONE identical selection to ADoNIS
   and ACHILLES; (3) don't narrate a mechanism (the "2p2h cancellation" was wrong) -- decompose with code.
+
+## CASCADE FIXES: dropped secondary protons (found 2026-06-15 via pre-FSI + topology decomposition)
+Method: pre-FSI ADoNIS-vs-ACHILLES is EXACT (CC0pi 0.997, CC1pi 0.989) -> every CC0pi residual is
+FSI-induced.  The ejected-proton-multiplicity decomposition (configs/ana_cc0pi_{0,1,2}p.yaml, the
+SignalDef.n_ejected knob) showed ADoNIS shifted LOW in multiplicity: 0p +8%, 1p +7% high, 2p -6% low,
+inclusive ~+1% (the migration nearly cancels inclusively -> hidden in the headline ratio).  Root cause:
+the engine dropped SECONDARY protons in the two non-elastic channels.
+
+- **Fix A (pion absorption).** `cascade_full.pion_segment` used only the pion SCATTER recoils
+  (best_rec/scat_ko_all) and silently dropped `best_abs` -- the piNN->NN absorption protons (which the
+  old factorized chain DID use).  Fixed: feed BOTH absorption protons (piNN->NN has 2 outgoing nucleons;
+  `_propagate_discrete` now returns best_abs + best_abs2 with the absorption vertex) as knockout slots,
+  each with the ACHILLES formation zone SetFormationZone(pion, product)=_formation_zone(p_pi, p_prod).
+  Feeding ONE proton overshot 2p (1.064->0.879); feeding BOTH lands it (->1.008).
+- **Fix B (NN inelastic).** `_propagate_nucleon_discrete` NN->NDelta->NN'pi kept the leading nucleon +
+  pion but dropped the 2nd nucleon (best_ko was elastic-only).  Fixed: register the non-leading
+  inelastic nucleon as a knockout proton when its channel charge is a proton (q(pN1)=q_pair-dch,
+  q(pN2)=dch-pi_q), with formation zone _formation_zone(p_N, inel_nl).
+- Pre-existing note (not changed): the LEADING inelastic nucleon's fz at the reset line evaluates
+  _formation_zone(lead_in, lead_in) (p_N already reassigned) -> on-shell -> ~inf fz -> free-streams.
+
+Validation (20-seed shrunk fixed banks, ACH/ADO):
+  CC0pi inclusive 1.011->0.999 ; 2p 1.064->1.005 ; 1p 0.931->0.977 ; 0p 0.923->0.957 ; CC1pi 1.012->1.000.
+  CC0pi combined figure: ALL chi2/ndf<=1.4 (was dpt 5.0, vertex-W 4.7).  Both fixes are in the engine
+  (single source: cascade_discrete + cascade_full) -> all generation paths inherit them.
+  TODO: regenerate the production banks at FULL buffers (P=12,max_gen=6,n_recoil=4) -- the shrunk
+  n_recoil=2 best_ko could marginally truncate the now-more-numerous knockouts.
