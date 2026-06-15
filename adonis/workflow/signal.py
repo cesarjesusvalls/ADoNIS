@@ -65,12 +65,21 @@ def _pion(b, sd):
     return (n_pip == 1) & (n_other == 0), pi_f
 
 
+def _n_ejected(prot, thr):
+    """Count final-state protons with |p| > thr (the ejected-proton multiplicity)."""
+    return (np.linalg.norm(prot[:, :, 1:], axis=2) > thr).sum(1)
+
+
 def select_signal(bank, sd, carbon_only=True):
-    """Apply signal topology `sd` to a rich engine bank -> observable dict (keys depend on channel)."""
+    """Apply signal topology `sd` to a rich engine bank -> observable dict (keys depend on channel).
+    sd.n_ejected (if set) requires EXACTLY that many ejected protons; n_ejected=0 (no proton) yields
+    muon-only observables (Q2, p_mu, cos_mu)."""
     b = _load(bank); n = len(b["w"]); mu, nu, struck = b["mu"], b["nu"], b["struck"]
     meson_ok, pi_f = _pion(b, sd)
     best, has_p = _lead_proton(b["prot"], sd)
     sel = meson_ok & (b["w"] > 0) & _muon_mask(mu, sd)
+    if sd.n_ejected is not None:
+        sel = sel & (_n_ejected(b["prot"], sd.eject_thresh) == sd.n_ejected)
     if sd.require_proton:
         sel = sel & has_p
     if pi_f is not None:
@@ -78,13 +87,16 @@ def select_signal(bank, sd, carbon_only=True):
     if carbon_only:
         sel = sel & (np.linalg.norm(struck[:, 1:], axis=1) > 1.0)
     s = sel
-    if pi_f is None:                                          # CC0pi observables (no pion)
-        out = O.cc0pi_obs(mu[s], best[s], struck[s], nu[s])
-    else:                                                     # CC1pi TKI observables
+    proton_obs = sd.require_proton or (sd.n_ejected is not None and sd.n_ejected >= 1)
+    if pi_f is not None:                                      # CC1pi TKI observables
         dptt, pn, dat, _ = O.tki(mu[s], pi_f[s], best[s], np.zeros(int(s.sum()), bool), 0)
         W, Q2 = O.vertex_W_Q2(nu[s], mu[s], struck[s])
         out = dict(pn=pn, dptt=dptt, dalphat=dat, W=W, Q2=Q2,
                    pi_p=O.mom(pi_f[s]), lp_p=O.mom(best[s]))
+    elif proton_obs:                                          # CC0pi observables (leading proton)
+        out = O.cc0pi_obs(mu[s], best[s], struck[s], nu[s])
+    else:                                                     # 0-proton topology: muon-only
+        out = O.muon_obs(mu[s], nu[s])
     out["w"] = b["w"][s]
     return out
 
@@ -108,11 +120,19 @@ def _ach_cc0pi(b, sd, weight_to_nb, carbon_only=True):
     j = np.argmax(pm, axis=1); lead = pr[ar, j]; lpm = pm[ar, j]
     lcth = lead[:, 3] / np.clip(lpm, 1e-9, None)
     in_win = (lpm > sd.p_win[0]) & (lpm < sd.p_win[1]) & (lcth > sd.cth)
-    sel = (b["w"] > 0) & (npi == 0) & in_win & (pmu > sd.mu_win[0]) & (cmu > sd.cos_mu)
+    sel = (b["w"] > 0) & (npi == 0) & (pmu > sd.mu_win[0]) & (cmu > sd.cos_mu)
+    if sd.n_ejected is not None:
+        sel = sel & (_n_ejected(pr, sd.eject_thresh) == sd.n_ejected)
+    if sd.require_proton:
+        sel = sel & in_win
     if carbon_only:
         sel = sel & (np.linalg.norm(struck[:, 1:], axis=1) > 1.0)
     s = sel
-    out = O.cc0pi_obs(mu[s], lead[s], struck[s], nu[s]); out["w"] = b["w"][s] * weight_to_nb
+    if sd.require_proton or (sd.n_ejected is not None and sd.n_ejected >= 1):
+        out = O.cc0pi_obs(mu[s], lead[s], struck[s], nu[s])
+    else:                                                     # 0-proton topology: muon-only
+        out = O.muon_obs(mu[s], nu[s])
+    out["w"] = b["w"][s] * weight_to_nb
     return out
 
 

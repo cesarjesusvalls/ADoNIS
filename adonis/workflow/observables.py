@@ -50,6 +50,14 @@ def tki(kmu, ppi, lead, is_h, seed=0):
     return dptt, pN, dat, dpt
 
 
+def muon_obs(mu, nu):
+    """Muon-only observables (no proton needed) -- for the 0-proton topology: leptonic Q2, p_mu, cos_mu."""
+    q = nu - mu
+    Q2 = (np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2) / 1e6
+    pmu = np.linalg.norm(mu[:, 1:], axis=1)
+    return dict(Q2=Q2, p_mu=pmu, cos_mu=mu[:, 3] / np.clip(pmu, 1e-9, None))
+
+
 def cc0pi_obs(mu, lead, struck, nu):
     """CC0pi observables from muon + leading proton (no pion).  Verbatim cc0pi_engine_combined._obs."""
     lt = mu[:, 1:3]; pt = lead[:, 1:3]; dv = lt + pt

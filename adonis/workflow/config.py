@@ -104,6 +104,8 @@ class SignalDef:
     count_recoil_neutron: bool = False
     target: str = "carbon"                  # "carbon" | "hydrogen" | "CH"
     W_conv: str = "vertex"
+    n_ejected: int | None = None            # require EXACTLY this many ejected protons (|p|>eject_thresh)
+    eject_thresh: float = 250.0             # MeV; final-state proton momentum to count as "ejected"
 
     def __post_init__(self):
         self.mu_win = tuple(_resolve_seq(self.mu_win))
