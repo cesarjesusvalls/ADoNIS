@@ -44,6 +44,51 @@ resolve relative to `Achilles/` (already present there).
   nucleon species is channel-dependent; kept on proton density (carbon-exact). For Ar this is a
   per-species approximation in the absorption Pauli block — flag for validation vs ACHILLES Ar.
 
+## S6 — ACHILLES Ar reference (BLOCKED: local emulation crash)
+- Ran `_oracle_out/run_T2K_Ar_virt.yml` (T2K flux + 40Ar.yml, NEvents 500k) via
+  `docker run --platform linux/amd64 -v _oracle_out:/out <image> /out/...yml` (documented invocation).
+- Result: SIGSEGV during Nucleus setup (right after "parsing nuclear name '40Ar'" / DecayHandler
+  rescaling), before any event generation. exit 255.
+- ISOLATION: the SAME image segfaults at the SAME setup point for CARBON too (run_T2K_virt.yml,
+  NEvents=80) -> NOT Ar-specific.  All Ar inputs verified present in the image (40Ar.yml, rho_Ar_p/n,
+  RMF configs, pke40, flux).  Image unchanged (created 2026-06-05, digest 0c36e0d8...).
+- But local hepmc from 2026-06-06 exist (T2K_CH_virt.hepmc 3.2 GB, ar40_*.hepmc) -> ACHILLES ran
+  locally then.  => host-side Docker/Rosetta emulation regression in the last ~9 days, not the image.
+- seccomp=unconfined + -m 8g + --shm-size=2g did NOT help.
+- Image: ENTRYPOINT ./bin/achilles, WORKDIR /achilles, CMD run.yml (bundled 50k 12C verified config).
+
+### CORRECTION — the "host/Rosetta regression" conclusion was WRONG (premature).
+- The image's BUNDLED run.yml (documented `docker run <image>`: e- @1108 MeV, QESpectral+RES, 12C,
+  no cascade, NEvents=50000) runs CLEANLY end-to-end on this host (RES xsec ~120 nb, QE ~95 nb,
+  "Finished optimization").  => container + emulation are FINE.
+- My earlier carbon "crash" was a BAD TEST: NEvents=80 is far too small for the Vegas optimization.
+- Minimal-Ar test (bundled config, ONLY 12C->40Ar + pke12->pke40): runs CLEANLY -- RES on 40Ar
+  xsec ~400 nb, QESpectral QE on 40Ar ~303 nb, "Finished optimization".  => ACHILLES v0.3.0 DOES
+  neutrino/lepton-on-Ar; the Ar nucleus + RMF configs + split density + pke40 all load fine.
+- So the T2K-Ar SIGSEGV is NOT Ar and NOT the host -- it is a config element in my full T2K card.
+  Suspects (my card vs the working bundled one): QE via FortranModel(QE_Spectral_Func) [bundled uses
+  C++ QESpectral], Cascade.Run=True, nu_mu+T2K-flux beam.  RES FortranModel already works on Ar.
+- Single-variable test running: run_T2K_Ar_virt2.yml = T2K-Ar with ONLY QE FortranModel->QESpectral
+  (nu beam + cascade kept).  <result pending>
+- LESSON: read the container docs / run the verified bundled config FIRST; don't conclude from a
+  hand-tweaked card.  [[dont-declare-conclusions-prematurely]]
+
+### ROOT CAUSE & FIX (the cascade crash was MY invocation, not the host/image/Ar)
+- I was running the PUBLISHED amd64 image `ghcr.io/cesarjesusvalls/achilles:oracle` WITH
+  `--platform linux/amd64` -> Rosetta EMULATION.  The cascade interaction factory setup SIGSEGVs
+  under emulation (no-cascade paths survive, which masked it).
+- The WORKING method = LOCALLY-BUILT NATIVE arm64 images, run WITHOUT `--platform`.  NOT all of them
+  run the full neutrino+cascade generator without crashing:
+  - `achilles:fullcascade` -> CONFIRMED works end-to-end for neutrino + FortranModel QE+RES + cascade
+    (carbon smoke: "Event Run Concluded - Success!", 4000 ev hepmc; 12C QE xsec 4.29e-5 == target).
+  - `achilles:scatrec` / `achilles:cascade*` -> CRASH at setup on the full neutrino+cascade card (both
+    C and Ar); they are for the cascade-only `achilles-cascade` (pion+nucleus) binary.
+- FSI run command (native, the recipe -> now in docs/CONTAINER.md):
+  `docker run --rm -v "$PWD/_oracle_out":/out --entrypoint /achilles/bin/achilles achilles:fullcascade /out/<card>.yml`
+  (NO --platform).  Sporadic SIGSEGV-on-exit (139) possible; partial hepmc stays valid -> batch seeds.
+- Documented: docs/CONTAINER.md (canonical), memory achilles-fsi-native-image.md.
+- The no-FSI Ar reference (amd64 emulated, no cascade) also works; native is preferred.
+
 ## Bit-exact gate
 `scripts/_gate_carbon_bitexact.py` diffs a regenerated 2-seed carbon bank (gen_basecarb.yaml) vs the
 golden snapshot (`*_basegold.npz`). Must be BIT-EXACT after each of S1–S4.

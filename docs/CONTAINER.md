@@ -39,6 +39,32 @@ The working directory inside the image is `/achilles`; a run config's `data/...`
 includes resolve relative to it, so keep the workdir at `/achilles` (the default)
 and write output to a **mounted** directory via an **absolute** path under `/out`.
 
+## ⚠️ Cascade/FSI runs: use the NATIVE arm64 image, NOT the amd64 `:oracle` under `--platform`
+
+The published `:oracle` image is **amd64**. On Apple Silicon, `--platform linux/amd64` runs it under
+**Rosetta emulation**, and the **intra-nuclear cascade (`Cascade: Run: True`) SIGSEGVs at setup** —
+the self-registering interaction-factory maps (NucleonNucleon/PionInteraction) don't survive
+emulation. No-cascade runs (e.g. electron QESpectral) *do* survive emulation, which is misleading.
+This is invocation, **not** an Ar/host/data problem (carbon crashes identically under emulation+cascade).
+
+Run FSI / cascade neutrino generation on the **locally-built native arm64** images instead, with **no
+`--platform`** (native arm64 on the M-series host → no emulation → cascade works):
+
+```bash
+# full neutrino + cascade generator (QE_Spectral_Func + RES_Spectral_Func + Cascade): use :fullcascade
+docker run --rm -v "$PWD/_oracle_out":/out --entrypoint /achilles/bin/achilles \
+  achilles:fullcascade /out/<run_card>.yml          # NO --platform
+
+# pion+nucleus cascade-only transparency: achilles:cascade / :scatrec, entrypoint achilles-cascade
+```
+Verified end-to-end (carbon + Argon, QE+RES+FSI, T2K flux): "Event Run Concluded - Success!", valid
+hepmc.  These native images carry both `achilles` and `achilles-cascade` and the full `data/`
+(incl. Ar: `40Ar.yml`, `rho_Ar_{p,n}.txt`, `AR40_configs_RMF_achilles.out.gz`, `pke40{p,n}_tot.data`).
+Note: a sporadic SIGSEGV-on-exit (exit 139) can still occur even natively, but the hepmc written
+before it stays valid — batch over seeds if it bites.  Other local arm64 images: `achilles:scatrec`
+(instrumented stderr dumps), `achilles:cascade*` (cascade-only).  The amd64 `:oracle` image is fine
+for **no-cascade** runs (electron (e,e'), no-FSI references) even under emulation.
+
 ## Get the data tables locally
 
 The two tables are **not** committed to this repo (one is ~38 MB). ADoNIS resolves
