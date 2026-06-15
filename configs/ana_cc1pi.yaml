@@ -30,3 +30,4 @@ data: {enabled: false}
 out_path: paper_figures/cc1pi_ratios_ENGINE_carbon.png
 title: "CC1$\\pi^+$Np  FAITHFUL ENGINE vs ACHILLES (carbon)"
 ratio_ylim: [0.5, 1.6]
+carbon_only: false        # engine_signal does not carbon-filter (RES bank is already carbon)
