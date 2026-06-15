@@ -38,9 +38,30 @@ def gen_events(channel, n, seed):
                 ipid=np.full(m, 2112, np.int64), Npid=np.full(m, 2212, np.int64), ppid=np.zeros(m, np.int64))
 
 
-def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False):
-    """One seed -> (record dict, truth dict|None, overflow).  Verbatim gen_cc_engine_rich.one."""
+def _prefsi_record(channel, a):
+    """PRE-FSI record (engine schema) built from the primary interaction products -- no cascade.
+    The recoil proton is the single primary nucleon (zeroed where it is a neutron, e.g. n->n pi+, so
+    it is not counted as a proton); the primary pion is the RES pion (none for QE); no created pion."""
+    nn = len(a["w"])
+    Npid = np.asarray(a["Npid"]); is_p = (Npid == 2212)
+    prot = np.where(is_p[:, None], np.asarray(a["p_N"]), 0.0)[:, None, :]          # (nn,1,4)
+    pi4 = np.asarray(a["p_pi"]) if "p_pi" in a else np.zeros((nn, 4))
+    pid_pi = np.asarray(a["ppid"]) if channel == "res" else np.zeros(nn, np.int64)
+    z = np.zeros(nn)
+    return dict(mu=a["k_mu"], nu=a["k_nu"], struck=a["p_struck"], pid_Ni=np.asarray(a["ipid"]).astype(np.int64),
+                pi_post=pi4, pid_pi=pid_pi.astype(np.int64), pi_nsc=z.astype(np.int64),
+                cr_p4=np.zeros((nn, 4)), cr_pid=np.zeros(nn, np.int64),
+                prot=prot, prot_origin=np.where(is_p, 0, -1)[:, None].astype(np.int64),
+                prot_gen=np.zeros((nn, 1), np.int64),
+                w=np.asarray(a["w"]), ipid=np.asarray(a["ipid"]).astype(np.int64), Npid=Npid.astype(np.int64))
+
+
+def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True):
+    """One seed -> (record dict, truth dict|None, overflow).  Verbatim gen_cc_engine_rich.one (fsi=True);
+    fsi=False returns the PRE-FSI primary record (no cascade)."""
     a = gen_events(channel, n, seed)
+    if not fsi:
+        return _prefsi_record(channel, a), None, 0
     nn = len(a["w"]); ar = np.arange(nn)
     p_pi_in = jnp.asarray(a["p_pi"]) if "p_pi" in a else jnp.asarray(a["p_N"])
     pterm, nterms, ofl, created = CF.cascade_carbon_v2(
@@ -81,11 +102,11 @@ def run_channel(channel, gc):
     out = os.path.join(gc.out_dir, f"t2k_{_CHAN_OUT[channel]}_engine_rich{gc.tag}.npz")
     truth_out = out.replace(".npz", "_truth.npz")
     parts, truths = [], []
-    print(f"[{channel}] buffers: P={cas.P} max_gen={cas.max_gen} N_RECOIL={_N_RECOIL} MPROT={cas.mprot} "
+    print(f"[{channel}] {'PRE-FSI (no cascade)' if not gc.fsi else 'buffers: P=%d max_gen=%d N_RECOIL=%d MPROT=%d' % (cas.P, cas.max_gen, _N_RECOIL, cas.mprot)} "
           f"track={gc.tracking.enabled} -> {out}", flush=True)
     for k in range(gc.n_seeds):
         sd = gc.seed0 + k
-        rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled)
+        rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled, gc.fsi)
         parts.append(rec)
         bank = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
         bank["w"] = bank["w"] / len(parts)               # normalize by ACTUAL seeds banked

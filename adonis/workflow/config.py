@@ -71,6 +71,7 @@ class GenConfig:
     out_dir: str = "data/oracle"
     tag: str = ""
     seed0: int = 0
+    fsi: bool = True            # False -> PRE-FSI bank (primary interaction products, no cascade)
 
     def __post_init__(self):
         bad = set(self.channels) - {"res", "qe"}

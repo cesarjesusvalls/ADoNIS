@@ -1,0 +1,12 @@
+# PRE-FSI (no cascade) QE primary bank on carbon -> data/oracle/t2k_cc0pi_engine_rich_nofsi.npz
+# Run: python -u scripts/adonis_generate.py configs/gen_cc0pi_nofsi.yaml
+name: t2k_cc0pi_nofsi
+material: C
+n_per_seed: 30000
+n_seeds: 20
+channels: [qe]
+fsi: false                 # PRE-FSI: store the primary interaction products, skip the cascade
+cascade: {n_recoil: 4}
+tracking: {enabled: false}
+out_dir: data/oracle
+tag: _nofsi
