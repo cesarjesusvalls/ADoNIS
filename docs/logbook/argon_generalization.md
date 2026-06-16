@@ -89,6 +89,16 @@ resolve relative to `Achilles/` (already present there).
 - Documented: docs/CONTAINER.md (canonical), memory achilles-fsi-native-image.md.
 - The no-FSI Ar reference (amd64 emulated, no cascade) also works; native is preferred.
 
+## Normalization bug (found via first Ar figure): nucleon count was hardcoded carbon
+- First Ar CC0pi figure: ACH/ADO = 3.568 UNIFORM across every observable -> pure normalization, not
+  shape.  3.57 ~ N_neutron(Ar)/N_neutron(C) = 22/6 (QE-dominated).
+- Cause: initwgt = N_nucleon * S (ACHILLES QESpectral::InitialStateWeight; S normalized to 1) had
+  N_nucleon HARDCODED = 6 (res_xsec.N_NUC, qe_xsec.N_NEUTRON = carbon).  Non-carbon sigma wrong by
+  N_species/6.  Classic context-property-as-literal.
+- Fix (commit 4e0c98d): thread n_neutron=A-Z (QE + RES n-initiated channels) and n_proton=Z (RES
+  p-initiated channel) from the NuclearTarget through generate.py -> qe/res.generate.  Carbon 6/6
+  BIT-EXACT (gate pass).  Ar regenerated (Z=18 N=22).  No per-bank rescale (fixed at source).
+
 ## Bit-exact gate
 `scripts/_gate_carbon_bitexact.py` diffs a regenerated 2-seed carbon bank (gen_basecarb.yaml) vs the
 golden snapshot (`*_basegold.npz`). Must be BIT-EXACT after each of S1–S4.
