@@ -99,6 +99,25 @@ resolve relative to `Achilles/` (already present there).
   p-initiated channel) from the NuclearTarget through generate.py -> qe/res.generate.  Carbon 6/6
   BIT-EXACT (gate pass).  Ar regenerated (Z=18 N=22).  No per-bank rescale (fixed at source).
 
+## Ar CC0pi proton-multiplicity topology + buffer-convergence (NEGATIVE) result
+20-seed Ar, T2K CC0pi, vs ACHILLES Ar (500k):
+| topology | ACH/ADO | worst chi2/ndf | carbon |
+|---|---|---|---|
+| inclusive | 0.989 | 2.1 | 0.999 |
+| 0p (muon-only) | 1.029 | 1.4 | 0.957 |
+| 1p | 0.934 | 4.2 | 0.977 |
+| 2p | 1.102 | 2.9 | 1.005 |
+ADoNIS over-predicts 1p, under-predicts 0p AND 2p; spread WIDER than carbon.  Inclusive nearly cancels.
+
+BUFFER CONVERGENCE TEST (user: "run more particles, ktop"): regenerated at P=12/g6/n_recoil=4/mprot=6
+(_arhi) vs the P=6/g3/nr2/mp4 dev preset.  Result IDENTICAL to <=0.001: inclusive 0.989, 0p 1.029,
+1p 0.934, 2p 1.103.  => NOT recoil/buffer truncation (ktop irrelevant here); P=6 already converged for
+Ar topology.  The migration is a REAL physics/approximation difference.  Prime suspects: the kf_pi
+absorption-product Fermi-momentum approximation (kept on proton density, flagged above) and/or the
+A=40 cascade behavior (RMF nucleon config, per-species transport).  Needs code-level investigation,
+not comparison-driven guessing.
+Configs: ana_cc0pi_{0,1,2}p_ar.yaml (+ _arhi), gen_ar_hi.yaml.
+
 ## Bit-exact gate
 `scripts/_gate_carbon_bitexact.py` diffs a regenerated 2-seed carbon bank (gen_basecarb.yaml) vs the
 golden snapshot (`*_basegold.npz`). Must be BIT-EXACT after each of S1–S4.

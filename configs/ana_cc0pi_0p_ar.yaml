@@ -1,0 +1,27 @@
+# CC0pi with ZERO ejected protons (mu + 0 pion + no proton >eject_thresh).  Muon-only observables.
+# Run: python -u scripts/adonis_analyze.py configs/ana_cc0pi_0p.yaml
+name: t2k_cc0pi_0p
+inputs:
+  adonis_qe:  [data/oracle/t2k_cc0pi_engine_rich_ar.npz]
+  adonis_res: [data/oracle/t2k_cc1pi_engine_rich_ar.npz]
+  reference:  [data/oracle/t2k_cc1pi_rich_ach_FSI_Ar.npz]
+signal:
+  mu_win: [250.0, inf]
+  cos_mu: -0.6
+  p_win:  [450.0, 1000.0]
+  cth: 0.4
+  pi_win: null
+  proton_lead: global
+  pion_id: none
+  require_proton: false
+  n_ejected: 0
+  eject_thresh: 250.0
+  target: carbon
+observables:
+  - {key: Q2,     label: "$Q^2$ [GeV$^2$]",     linspace: [0, 1.4, 16]}
+  - {key: p_mu,   label: "$p_\\mu$ [MeV]",       linspace: [0, 2000, 16]}
+  - {key: cos_mu, label: "$\\cos\\theta_\\mu$",  linspace: [-0.6, 1.0, 16]}
+out_path: paper_figures/cc0pi_0proton_argon.png
+title: "CC0$\\pi$ 0 ejected protons (|p|>250); muon-only"
+ratio_ylim: [0.4, 1.8]
+carbon_only: true
