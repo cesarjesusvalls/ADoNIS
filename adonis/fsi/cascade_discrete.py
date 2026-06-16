@@ -32,6 +32,12 @@ from adonis.fsi import oset_xsec as ox
 from adonis.fsi.mb import cascade_mb
 from adonis.fsi.cascade_real import (_load_density, _rho_species, _kf_local, _two_body_cm_scatter,
                                      _boost, MB_TO_FM2, _CH_MASS, _CH_PID)
+from adonis.fsi.absorption_modes import kernel_tables as _abs_kernel_tables
+
+# pion-absorption proton-count distribution + partner species, indexed by ch*2+struck_p (ch 0:pi+
+# 1:pi0 2:pi-; struck_p 1=proton).  Faithful ACHILLES isospin partition (Nucl.Phys. A568) -- replaces
+# the old geometric nearest-partner pick that biased proton multiplicity for neutron-rich targets.
+_ABS_W_NP, _ABS_PART_NP = _abs_kernel_tables()      # (6,3) numpy constants
 
 M_N = ox.M_N
 HBARC = ox.HBARC
@@ -293,7 +299,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             prob = jnp.where(cand, jnp.exp(-jnp.sqrt(2.0 * jnp.pi * perp2 / _sfm)), 0.0)
         else:
             prob = jnp.where(cand, jnp.exp(-jnp.pi * perp2 / _sfm), 0.0)
-        sk, ku, kc, kf, ka, kab = jax.random.split(sk, 6)
+        sk, ku, kc, kf, ka, kab, knp = jax.random.split(sk, 7)
         passes = cand & (jax.random.uniform(ku, (n, A)) < prob)
         # interacting nucleon: "step" = smallest impact parameter within the slab; "interaction" =
         # the FIRST one reached along the track (smallest par).  Same physical pick (nearest passer).
@@ -309,31 +315,41 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         chose_abs = has_hit & (u_br < p_abs)                                  # abs | conversion | scatter
         chose_conv = has_hit & ~chose_abs & (u_br < p_abs + p_conv)           # (si=0 -> never fires)
 
-        # ----- pion ABSORPTION final state (ACHILLES PionAbsorption::GenerateMomentum) -----
-        # piNN -> NN: pion + struck nucleon j + closest background nucleon; 2 outgoing nucleons
-        # isotropic in the 3-body CM.  ACHILLES FindClosest picks the partner of the charge REQUIRED
-        # by the channel (charge conservation): pi+ p forces a neutron partner, pi- n forces a proton.
-        qpi = 1 - ch                                                           # 0:pi+ ->+1, 2:pi- ->-1
-        struck_p = nisp[ar, j].astype(jnp.int32)                              # struck nucleon proton(1)/neutron(0)
-        forced_n = (qpi + struck_p) > 1                                        # only a neutron partner conserves charge
-        forced_p = (qpi + struck_p) < 0                                        # only a proton partner conserves charge
-        bad_chg = (forced_n[:, None] & nisp) | (forced_p[:, None] & ~nisp)     # (n,A) charge-forbidden partners
-        d2 = jnp.sum((npos - npos[ar, j][:, None, :]) ** 2, axis=2)             # (n,A)
-        d2 = jnp.where((jnp.arange(A)[None, :] == j[:, None]) | consumed | bad_chg, jnp.inf, d2)
-        pj = jnp.argmin(d2, axis=1)                                            # partner index (closest of allowed charge)
-        pN_p = nmom[ar, pj]
-        nprot_out = qpi + nisp[ar, j].astype(jnp.int32) + nisp[ar, pj].astype(jnp.int32)
-        # local Fermi momenta at the two outgoing-nucleon positions: product A inherits the PION
-        # position (particle1), product B the struck nucleon position (particle2) -- ACHILLES
-        # PionAbsorption::GenerateMomentum places paOut@part1.Position, pbOut@part2.Position.
-        pos_hit = pos if cfg.algo == "step" else npos[ar, j]    # interaction-mode vertex = hit nucleon
-        # absorption product-A Fermi momentum at the pion vertex.  The outgoing-nucleon species is
-        # channel-dependent (nprot_out); use the proton density (== neutron for N=Z carbon, bit-exact).
-        # NOTE (Ar): this is a per-species approximation for the absorption Pauli block -- validate.
-        kf_pi = _kf_local(_rho_species(jnp.linalg.norm(pos_hit, axis=1), rgrid, rhoP))   # (n,)
-        kf_absB = kf_n[ar, j]
+        # ----- pion ABSORPTION final state (ACHILLES DeltaInteraction s-wave, piNN -> NN) -----
+        # The OUTGOING proton count follows the ACHILLES ISOSPIN PARTITION (Nucl.Phys. A568: opposite-
+        # isospin partner 5/6, same 1/6; adonis/fsi/absorption_modes.py), NOT the geometric nearest
+        # partner -- the geometric pick only coincides for N=Z (carbon) and biased proton multiplicity
+        # for neutron-rich targets (Ar).  Find the nearest PROTON and nearest NEUTRON partner, sample
+        # the proton count from the availability-renormalized per-pair distribution, and use the partner
+        # of the species the sampled mode requires.
+        struck_p = nisp[ar, j].astype(jnp.int32)                              # struck nucleon p(1)/n(0)
+        d2 = jnp.sum((npos - npos[ar, j][:, None, :]) ** 2, axis=2)            # (n,A)
+        self_used = (jnp.arange(A)[None, :] == j[:, None]) | consumed
+        d2p = jnp.where(self_used | (~nisp), jnp.inf, d2)                      # nearest PROTON partner
+        d2n = jnp.where(self_used | nisp, jnp.inf, d2)                         # nearest NEUTRON partner
+        pj_p = jnp.argmin(d2p, axis=1); has_p = jnp.isfinite(d2p[ar, pj_p])
+        pj_n = jnp.argmin(d2n, axis=1); has_n = jnp.isfinite(d2n[ar, pj_n])
+        idx2 = ch * 2 + struck_p                                               # 0..5 -> (pion, struck)
+        Wabs = jnp.asarray(_ABS_W_NP)[idx2]                                    # (n,3) [P0,P1,P2] both present
+        PARTabs = jnp.asarray(_ABS_PART_NP)[idx2]                             # (n,3) partner species per k (1=p,0=n,-1=NA)
+        avail = jnp.where(PARTabs == 1, has_p[:, None],
+                          jnp.where(PARTabs == 0, has_n[:, None], False))      # mode realizable locally?
+        Wm = jnp.where(avail, Wabs, 0.0)
+        wtot = jnp.sum(Wm, axis=1, keepdims=True)
+        Wm = Wm / jnp.clip(wtot, 1e-12, None)
+        u_np = jax.random.uniform(knp, (n,))                                   # sample proton count {0,1,2}
+        nprot_out = jnp.clip(jnp.sum((u_np[:, None] > jnp.cumsum(Wm, axis=1)).astype(jnp.int32), axis=1), 0, 2)
+        has_mode = wtot[:, 0] > 0                                              # absorption realizable at all
+        part_is_p = PARTabs[ar, nprot_out] == 1                                # partner species of sampled mode
+        pN_p = jnp.where(part_is_p[:, None], nmom[ar, pj_p], nmom[ar, pj_n])
+        # per-species Pauli kF at the two outgoing-nucleon positions: product A @ pion vertex, product B
+        # @ struck-nucleon vertex; each blocked against its OWN species local Fermi sea (Nucleus.cc:212).
+        pos_hit = pos if cfg.algo == "step" else npos[ar, j]
+        rA = jnp.linalg.norm(pos_hit, axis=1); rB = jnp.linalg.norm(npos[ar, j], axis=1)
+        kfPA = _kf_local(_rho_species(rA, rgrid, rhoP)); kfNA = _kf_local(_rho_species(rA, rgrid, rhoN))
+        kfPB = _kf_local(_rho_species(rB, rgrid, rhoP)); kfNB = _kf_local(_rho_species(rB, rgrid, rhoN))
 
-        def abs_one(p_pi_i, pNj_i, pNp_i, npr, kfA, kfB, k):
+        def abs_one(p_pi_i, pNj_i, pNp_i, npr, kfpa, kfna, kfpb, kfnb, k):
             P = p_pi_i + pNj_i + pNp_i
             s = P[0] ** 2 - jnp.sum(P[1:] ** 2)
             sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
@@ -347,20 +363,22 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             pa = _boost(jnp.concatenate([Estar[None], pstar * dirn]), beta)
             pb = _boost(jnp.concatenate([Estar[None], -pstar * dirn]), beta)
             ma = jnp.linalg.norm(pa[1:]); mb = jnp.linalg.norm(pb[1:])
-            # ACHILLES FinalizeMomentum Pauli-blocks BOTH outgoing nucleons; reject if either
-            # falls below the local Fermi momentum (then the pion is NOT absorbed, it continues).
+            # outgoing species: npr protons among (A,B).  npr==2 -> both p; npr==0 -> both n; npr==1 ->
+            # one p one n (50/50 which slot).  Pauli-block each product against its OWN species kF.
+            a_is_p = jax.random.uniform(k3) < 0.5
+            A_is_p = (npr >= 2) | ((npr == 1) & a_is_p)
+            B_is_p = (npr >= 2) | ((npr == 1) & (~a_is_p))
+            kfA = jnp.where(A_is_p, kfpa, kfna); kfB = jnp.where(B_is_p, kfpb, kfnb)
             blocked = (ma < kfA) | (mb < kfB)
-            one_p = jnp.where(jax.random.uniform(k3) < 0.5, pa, pb)            # which of the two is p (when 1)
-            # FIX: piNN->NN has TWO outgoing nucleons; feed BOTH protons (npr==2 -> pa & pb; npr==1 ->
-            # one_p only; npr==0 -> none).  Previously only the leading was kept -> exactly-2p overshoot.
-            protA = jnp.where(npr >= 2, pa, jnp.where(npr == 1, one_p, jnp.zeros(4)))
-            protB = jnp.where(npr >= 2, pb, jnp.zeros(4))
+            protA = jnp.where(A_is_p, pa, jnp.zeros(4))                        # proton 4-vec or 0 (neutron)
+            protB = jnp.where(B_is_p, pb, jnp.zeros(4))
             return protA, protB, blocked
-        abs_protA, abs_protB, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out, kf_pi, kf_absB,
+        abs_protA, abs_protB, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out,
+                                                             kfPA, kfNA, kfPB, kfNB,
                                                              jax.random.split(kab, n))
         if not cfg.pauli:
             abs_blocked = abs_blocked & False
-        is_abs = chose_abs & ~abs_blocked                                     # absorption survives Pauli
+        is_abs = chose_abs & ~abs_blocked & has_mode                          # absorption survives Pauli + realizable
         best_abs = jnp.where(is_abs[:, None], abs_protA, best_abs)            # 1st absorption proton
         best_abs2 = jnp.where(is_abs[:, None], abs_protB, best_abs2)          # 2nd absorption proton (piNN->NN)
 
@@ -610,7 +628,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
 
     def body(carry, sk):
         (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi,
-         best_pi, best_pi_pos, best_pi_fz, best_pi_ch) = carry
+         best_pi, best_pi_pos, best_pi_fz, best_pi_ch, best_ko_chg) = carry
         outward = jnp.sum(pos * dhat, axis=1) > 0
         alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
         # formation zone: timeStep = step/beta (ACHILLES AdaptiveStep); interact only when fz<=0
@@ -734,17 +752,22 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         inel_nl_q = jnp.where(nl_is1, dch - pi_q, q_pair - dch)       # its charge (1 = proton)
         # combined knockout candidate (elastic recoil OR inelastic 2nd nucleon -- mutually exclusive per event)
         ko_cand = jnp.where(is_inel[:, None], inel_nl, recoil)
-        ko_is_p = (do & bg_proton) | (is_inel & (inel_nl_q == 1))
+        # track ALL knockout nucleons (protons AND neutrons), carrying their species, so neutron recoils
+        # re-cascade like ACHILLES (a knocked-out neutron can make a downstream proton).  Previously only
+        # protons were tracked (ko_is_p), which dropped neutron knockouts -> N!=Z proton-multiplicity bias.
+        ko_active = do | is_inel                                       # any knockout occurred
+        ko_q = jnp.where(is_inel, inel_nl_q, bg_proton.astype(jnp.int32))   # knockout species (1=proton,0=neutron)
         fz_ko = jnp.where(is_inel, _formation_zone(p_N, inel_nl), _formation_zone(p_N, recoil))
-        # TOP-K proton knockouts (K=1 -> old single best_ko bit-exactly; max slot = leading knockout):
+        # TOP-K knockouts (max-momentum slots; species carried in best_ko_chg for the BFS re-cascade):
         cand_mom = jnp.linalg.norm(ko_cand[:, 1:], axis=1)
         slot_mom = jnp.linalg.norm(best_ko[:, :, 1:], axis=2)         # (n,K)
         minslot = jnp.argmin(slot_mom, axis=1)
-        do_ins = ko_is_p & (cand_mom > slot_mom[ar, minslot])
+        do_ins = ko_active & (cand_mom > slot_mom[ar, minslot])
         sel = jax.nn.one_hot(minslot, _N_RECOIL, dtype=bool) & do_ins[:, None]
         best_ko = jnp.where(sel[:, :, None], ko_cand[:, None, :], best_ko)
         best_ko_pos = jnp.where(sel[:, :, None], npos[ar, j][:, None, :], best_ko_pos)
         best_ko_fz = jnp.where(sel, fz_ko[:, None], best_ko_fz)
+        best_ko_chg = jnp.where(sel, ko_q[:, None], best_ko_chg)
         p_N = jnp.where(do[:, None], p_out, jnp.where(is_inel[:, None], lead_in, p_N))
         nsc = nsc + do.astype(jnp.int32)
         consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & (do | is_inel)[:, None])
@@ -754,12 +777,12 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         pos = pos + cfg.step * dhat * alive[:, None]
         rec = jax.lax.stop_gradient((has_hit, perp2_c, sig_c))
         return (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi,
-                best_pi, best_pi_pos, best_pi_fz, best_pi_ch), rec
+                best_pi, best_pi_pos, best_pi_fz, best_pi_ch, best_ko_chg), rec
 
     dhat0 = p_N0[:, 1:] / jnp.clip(jnp.linalg.norm(p_N0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_N0, dhat0, jnp.ones(n, bool), jnp.zeros(n, jnp.int32),
             consumed0, jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), fz0, jnp.zeros(n, bool),
-            jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, jnp.int32))
+            jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, jnp.int32), jnp.zeros((n, _N_RECOIL)))
     traj = None
     if cfg.early_exit and not cfg.track_steps:
         # EARLY-EXIT walk (bit-exact): nucleons escape on the sphere (alive -> False), so the
@@ -786,14 +809,14 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
 
         _, carry, bufs = jax.lax.while_loop(wcond, wbody, (jnp.int32(0), init, bufs0))
         (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi,
-         best_pi, best_pi_pos, best_pi_fz, best_pi_ch) = carry
+         best_pi, best_pi_pos, best_pi_fz, best_pi_ch, best_ko_chg) = carry
         hh_c, a_c, ns = bufs
     elif cfg.track_steps:
         def body_t(carry, sk):
             c2, rec = body(carry, sk)
             return c2, (rec, (c2[0], c2[1], c2[3]))                   # pos, p_N, alive AFTER the step
         (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz,
-         made_pi, best_pi, best_pi_pos, best_pi_fz, best_pi_ch), (recs, tr) = jax.lax.scan(body_t, init, keys)
+         made_pi, best_pi, best_pi_pos, best_pi_fz, best_pi_ch, best_ko_chg), (recs, tr) = jax.lax.scan(body_t, init, keys)
         traj = (tr[0], tr[1], tr[2])
         hh, perp2_c, sig_c = recs
         a_all = jnp.pi * perp2_c / jnp.clip(sig_c * MB_TO_FM2, 1e-12, None)
@@ -806,7 +829,7 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         ns = jnp.sum(m.astype(jnp.int32), axis=0)
     else:
         (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz,
-         made_pi, best_pi, best_pi_pos, best_pi_fz, best_pi_ch), recs = jax.lax.scan(body, init, keys)
+         made_pi, best_pi, best_pi_pos, best_pi_fz, best_pi_ch, best_ko_chg), recs = jax.lax.scan(body, init, keys)
         # kind-1 sigma_scatter reweight (closest-in-slab Bernoulli approximation), OUTSIDE the scan.
         # Compress to the <=_K_SLAB_REC steps with an in-slab candidate (perp2_c dummy = 1e6 marks
         # "no slab"; its br is exactly 1) -- theta-independent walk records for nucleon_scat_reweight.
@@ -827,9 +850,9 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
     _lead = jnp.argmax(jnp.linalg.norm(best_ko[:, :, 1:], axis=2), axis=1)
     n_trunc = jnp.sum(alive.astype(jnp.int32))   # nucleons still propagating at the cap (no absorption -> still inside)
     return (p_N, nsc, best_ko[_arn, _lead], best_ko_pos[_arn, _lead], best_ko_fz[_arn, _lead],
-            w_scat, srec, made_pi, (best_ko, best_ko_pos, best_ko_fz),
+            w_scat, srec, made_pi, (best_ko, best_ko_pos, best_ko_fz, best_ko_chg),
             (best_pi, best_pi_ch, best_pi_pos, best_pi_fz),   # leading CREATED pion (4-vec, charge idx, vertex, fz)
-            n_trunc, nsc, traj)                               # diagnostics: #still-propagating @cap, scatter count, traj
+            n_trunc, nsc, traj, consumed)                     # diagnostics + final consumed mask (BFS depletion)
 
 
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
@@ -868,7 +891,7 @@ class DiscreteNucleonFSI:
         pos0 = npos[jnp.arange(n), vtx]
         consumed0 = jax.nn.one_hot(vtx, A).astype(bool)                  # struck nucleon removed from background
         isp0 = (event.pid_N == 2212)
-        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1, best_ko_all, _, n_trunc1, nseg1, _ = propagate_nucleon_discrete(
+        p_N, nsc, best_ko, best_ko_pos, best_ko_fz, w_sc1, srec1, made_pi1, best_ko_all, _, n_trunc1, nseg1, _, _ = propagate_nucleon_discrete(
             pos0, event.p_N, isp0, npos, nmom, nisp, self.cfg, kp, consumed0=consumed0, sscat=sscat)
         self.last_ko_all = best_ko_all            # all top-K knockout protons (n,K,4),(n,K,3),(n,K) -- engine
         self.last_n_trunc = n_trunc1              # nucleons still propagating at MAX_SEG (diagnostic; should be ~0)
@@ -881,7 +904,7 @@ class DiscreteNucleonFSI:
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
         isp_ko = jnp.ones(n, bool)                                       # knockout proton
-        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2, _, _, _, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
+        ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2, _, _, _, _, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
                                                                         nisp, self.cfg, kp2, fz0=best_ko_fz,
                                                                         consumed0=consumed0, sscat=sscat)
         ko_f = jnp.where(has_ko[:, None], ko_f, jnp.zeros((n, 4)))
