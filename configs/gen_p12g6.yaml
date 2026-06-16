@@ -1,0 +1,13 @@
+# Buffer-convergence study B: P=12 max_gen=6 n_recoil=4 mprot=6 (canonical/suggested buffers).
+# Full stats (30k x 56), FIXED cascade engine. Writes t2k_cc{0,1}pi_engine_rich_p12g6.npz.
+# Run: python -u scripts/adonis_generate.py configs/gen_p12g6.yaml
+name: t2k_p12g6
+material: C
+n_per_seed: 30000
+n_seeds: 56
+channels: [qe, res]
+cascade: {P: 12, max_gen: 6, n_recoil: 4, step: 0.04, max_steps: 260,
+          cylinder: true, nn_inelastic: true, mprot: 6}
+tracking: {enabled: false, steps: false}
+out_dir: data/oracle
+tag: _p12g6
