@@ -222,17 +222,18 @@ def run_cascade(init, kernel, key, consumed0, P=10, max_gen=6):
 def _nucleon_kernel(npos, nmom, nisp, cfg, sscat=1.0):
     """v2 nucleon-only generation kernel: run nucleon_segment on every slot (NO 2x-run-both, NO pion).
     Each slot emits its TOP-K all-species knockouts -> spawn buffer (n, P*K).  Threads the DEPLETING
-    consumed mask: each generation starts from the previous generation's cumulative consumed (the OR of
-    all slots' segments), so a struck nucleon is not re-hit across generations (#2).  Returns
-    (term, spawn, consumed_out)."""
+    consumed mask BOTH within a generation (slot i+1 sees slots 0..i's consumption -- intra-generation,
+    #2b) AND across generations (next gen starts from this gen's cumulative consumed -- #2), so a struck
+    nucleon is never re-hit.  Slots are processed in index order (vs ACHILLES time order; removes the
+    double-consumption overcount regardless of order).  Returns (term, spawn, consumed_out)."""
     def kernel(buf, key, consumed_cur):
         n, P = buf["alive"].shape
         pk = jax.random.split(key, P)
 
-        def slot(i):
+        def slot(i, consumed_in):
             alive = buf["alive"][:, i]
             tn, _, snK = nucleon_segment(buf["p4"][:, i], buf["pos"][:, i], buf["charge"][:, i].astype(bool),
-                                         buf["fz"][:, i], consumed_cur, npos, nmom, nisp, cfg, pk[i], sscat)
+                                         buf["fz"][:, i], consumed_in, npos, nmom, nisp, cfg, pk[i], sscat)
             pi_alive = alive & (jnp.linalg.norm(tn["pi4"][:, 1:], axis=1) > 1.0)   # this slot made a pion
             term = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=buf["charge"][:, i], pid=tn["pid"],
                         p4=tn["p4"], fate=jnp.where(alive, FATE_ESCAPE, FATE_NONE),
@@ -247,11 +248,15 @@ def _nucleon_kernel(npos, nmom, nisp, cfg, sscat=1.0):
                         origin=buf["origin"][:, i][:, None] * jnp.ones((n, K), jnp.int32),   # inherit gen-0 ancestor
                         gen=(buf["gen"][:, i][:, None] + 1) * jnp.ones((n, K), jnp.int32),   # BFS depth + 1
                         parent_id=buf["track_id"][:, i][:, None] * jnp.ones((n, K), jnp.int32))  # spawning track
-            return term, secK, tn["consumed"]                          # slot's depleted background (#2)
-        res = [slot(i) for i in range(P)]
-        consumed_out = consumed_cur                                     # merge all slots' consumption (OR)
-        for r in res:
-            consumed_out = consumed_out | r[2]
+            return term, secK, tn["consumed"]                          # slot's depleted background
+        # sequential slot loop threading consumed (intra-generation depletion, #2b): slot i runs against
+        # the mask already depleted by slots 0..i-1, so two secondaries can't strike the same nucleon.
+        res = []
+        consumed_run = consumed_cur
+        for i in range(P):
+            term_i, secK_i, consumed_run = slot(i, consumed_run)
+            res.append((term_i, secK_i))
+        consumed_out = consumed_run                                     # cumulative after all slots (-> next gen)
         tcat = {k: jnp.stack([r[0][k] for r in res], axis=1) for k in
                 ("species", "charge", "pid", "p4", "fate", "w", "alive", "origin", "gen", "track_id", "parent_id",
                  "p4_birth", "pos", "pi4", "pich", "pipos", "pifz", "pi_alive")}
