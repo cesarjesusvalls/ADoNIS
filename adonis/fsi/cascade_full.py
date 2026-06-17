@@ -50,7 +50,7 @@ def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, ss
     has_rec = jnp.linalg.norm(best_rec[:, 1:], axis=1) > 1.0
     sec = dict(species=jnp.full((n,), NUCLEON, jnp.int32), charge=jnp.ones((n,), jnp.int32),  # proton
                p4=best_rec, pos=best_rec_pos, fz=best_rec_fz, alive=has_rec, w=w_fsi)
-    rp4, rpos, rfz = scat_ko_all                                          # (n,K,4),(n,K,3),(n,K) all proton recoils
+    rp4, rpos, rfz, rchg = scat_ko_all                                    # (n,K,4),(n,K,3),(n,K),(n,K) all-species recoils
     # FIX: the pion-ABSORPTION proton (piNN->NN, ACHILLES final state) was dropped -- feed it as an
     # extra knockout slot so it is counted and re-cascades (the old factorized chain used last_abs_proton).
     # BOTH pion-absorption protons (piNN->NN) fed as extra knockout slots, each with its ACHILLES
@@ -61,9 +61,13 @@ def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, ss
     p4K = jnp.concatenate([rp4, best_abs[:, None, :], best_abs2[:, None, :]], axis=1)
     posK = jnp.concatenate([rpos, abs_pos[:, None, :], abs_pos[:, None, :]], axis=1)
     fzK = jnp.concatenate([rfz, fz1[:, None], fz2[:, None]], axis=1)
+    # charge per knockout slot: scatter recoils carry their species (rchg); the two absorption products
+    # are protons (piNN->NN gives the proton knockouts, charge 1).
+    o1 = jnp.ones((rp4.shape[0], 1), jnp.int32)
+    chgK = jnp.concatenate([rchg.astype(jnp.int32), o1, o1], axis=1)
     aliveK = jnp.concatenate([jnp.linalg.norm(rp4[:, :, 1:], axis=2) > 1.0,
                               a1_alive[:, None], a2_alive[:, None]], axis=1)
-    secK = dict(p4=p4K, pos=posK, fz=fzK, alive=aliveK, w=w_fsi)
+    secK = dict(p4=p4K, pos=posK, fz=fzK, chg=chgK, alive=aliveK, w=w_fsi)
     return term, sec, secK
 
 
@@ -297,7 +301,7 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
         g0 = empty_batch(n, 1 + K)
         g0["alive"] = jnp.concatenate([jnp.ones((n, 1), bool), precK["alive"]], 1)
         g0["species"] = jnp.full((n, 1 + K), NUCLEON, jnp.int32)
-        g0["charge"] = jnp.concatenate([(Npid == 2212).astype(jnp.int32)[:, None], jnp.ones((n, K), jnp.int32)], 1)
+        g0["charge"] = jnp.concatenate([(Npid == 2212).astype(jnp.int32)[:, None], precK["chg"]], 1)  # real recoil species (#2)
         g0["p4"] = jnp.concatenate([p_N[:, None, :], precK["p4"]], 1)
         g0["pos"] = jnp.concatenate([su["pos0"][:, None, :], precK["pos"]], 1)
         g0["fz"] = jnp.concatenate([jnp.zeros((n, 1)), precK["fz"]], 1)

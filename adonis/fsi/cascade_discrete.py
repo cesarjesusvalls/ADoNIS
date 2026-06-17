@@ -40,6 +40,7 @@ from adonis.fsi.absorption_modes import kernel_tables as _abs_kernel_tables
 _ABS_W_NP, _ABS_PART_NP = _abs_kernel_tables()      # (6,3) numpy constants
 
 M_N = ox.M_N
+_M_ETA = 548.0                # eta mass [MeV] (ACHILLES Constants mEta) for the piN->etaN' conversion baryon (#5)
 HBARC = ox.HBARC
 _CFG = {}
 
@@ -198,7 +199,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
     def body(carry, sk):
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2) = carry
+         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2, best_rec_chg) = carry
         if cfg.algo == "step":
             # Escape (ACHILLES Cascade.cc:532-553).  The un-scattered BEAM pion is external_test:
             # it escapes at the z>=radius PLANE (continues while Z<radius), so it traverses the whole
@@ -407,6 +408,25 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         # conversion products (declared; their nucleons are far above kF near the thresholds).
         is_conv = chose_conv
         conv = conv | is_conv
+        # #5: piN -> eta N' conversion baryon.  eta is neutral, so the baryon charge = q_pi + q_struck;
+        # when valid (0=n, 1=p) treat as eta-N' and emit the N' nucleon (2-body eta+N' in the piN CM,
+        # isotropic) so it re-cascades like a recoil.  charge 2/-1 -> a KSigma channel (hyperon baryon,
+        # no nucleon) -> not emitted (ADoNIS has no hyperon transport).  Folded into the recoil insert.
+        q_bary = (1 - ch) + struck_p                                  # (n,) eta neutral -> baryon charge
+        eta_ok = is_conv & ((q_bary == 0) | (q_bary == 1))
+        Pcv = p_pi + pN_j
+        scv = Pcv[:, 0] ** 2 - jnp.sum(Pcv[:, 1:] ** 2, axis=1)
+        rscv = jnp.sqrt(jnp.clip(scv, (M_N + _M_ETA) ** 2, None))
+        EN = (scv + M_N ** 2 - _M_ETA ** 2) / (2.0 * rscv)
+        pst = jnp.sqrt(jnp.clip(EN ** 2 - M_N ** 2, 0.0, None))
+        ccv = 2.0 * jax.random.uniform(jax.random.fold_in(ka, 211), (n,)) - 1.0
+        scv_ = jnp.sqrt(jnp.clip(1 - ccv ** 2, 0.0, None)); phcv = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(ka, 212), (n,))
+        dcv = jnp.stack([scv_ * jnp.cos(phcv), scv_ * jnp.sin(phcv), ccv], axis=1)
+        beta = Pcv[:, 1:] / Pcv[:, [0]]; b2 = jnp.sum(beta ** 2, axis=1); gcv = 1 / jnp.sqrt(jnp.clip(1 - b2, 1e-12, None))
+        Ncm = jnp.concatenate([EN[:, None], pst[:, None] * dcv], axis=1)
+        bpcv = jnp.sum(beta * Ncm[:, 1:], axis=1)
+        p3cv = Ncm[:, 1:] + ((gcv - 1) * bpcv / jnp.clip(b2, 1e-30, None) + gcv * Ncm[:, 0])[:, None] * beta
+        p_bary = jnp.concatenate([(gcv * (Ncm[:, 0] + bpcv))[:, None], p3cv], axis=1)   # N' in the lab
         is_scat = has_hit & ~chose_abs & ~chose_conv & ~blocked    # scatter chosen, recoil not Pauli-blocked
         # pion-scatter RECOIL nucleon (ACHILLES FinalizeMomentum emits it as a propagating
         # particle with fz = SetFormationZone(p_pi_in, p_rec); pid from the charge-resolved
@@ -415,19 +435,23 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         # secondary knockouts are neglected -- declared approximation).
         p_rec = (p_pi + pN_j) - p_out
         q_rec = struck_p + out_ch - ch                                # +1 = proton recoil
-        fz_rec = _formation_zone(p_pi, p_rec)
-        # TOP-K proton recoils: insert p_rec into the K-slot buffer if it beats the slot of smallest
-        # momentum (K=1 -> identical to the old running-max single best_rec; the max slot is always the
-        # leading recoil bit-exactly).  Tracks the K highest-momentum proton recoils per pion.
-        rec_is_p = is_scat & (q_rec == 1)
-        cand_mom = jnp.linalg.norm(p_rec[:, 1:], axis=1)              # (n,)
+        # recoil candidate = pion-scatter recoil (is_scat) OR eta-N' conversion baryon (eta_ok); these
+        # are mutually exclusive per event, so one TOP-K insertion handles both.
+        cand = jnp.where(is_conv[:, None], p_bary, p_rec)
+        q_cand = jnp.where(is_conv, q_bary, q_rec)
+        fz_rec = _formation_zone(p_pi, cand)
+        # TOP-K recoils, ALL species (a neutron recoil re-cascades into downstream protons like ACHILLES;
+        # was proton-only -> #2).  Species carried in best_rec_chg.  K=1 -> max-momentum slot bit-exact.
+        rec_active = is_scat | eta_ok                                 # scatter recoil or conversion baryon (#5)
+        cand_mom = jnp.linalg.norm(cand[:, 1:], axis=1)              # (n,)
         slot_mom = jnp.linalg.norm(best_rec[:, :, 1:], axis=2)        # (n,K)
         minslot = jnp.argmin(slot_mom, axis=1)                        # (n,) smallest-momentum slot
-        do_ins = rec_is_p & (cand_mom > slot_mom[ar, minslot])
+        do_ins = rec_active & (cand_mom > slot_mom[ar, minslot])
         sel = jax.nn.one_hot(minslot, _N_RECOIL, dtype=bool) & do_ins[:, None]   # (n,K)
-        best_rec = jnp.where(sel[:, :, None], p_rec[:, None, :], best_rec)
+        best_rec = jnp.where(sel[:, :, None], cand[:, None, :], best_rec)
         best_rec_pos = jnp.where(sel[:, :, None], npos[ar, j][:, None, :], best_rec_pos)
         best_rec_fz = jnp.where(sel, fz_rec[:, None], best_rec_fz)
+        best_rec_chg = jnp.where(sel, q_cand[:, None], best_rec_chg)  # recoil species (1=proton,0=neutron)
         p_pi = jnp.where(is_scat[:, None], p_out, p_pi)
         ch = jnp.where(is_scat, out_ch, ch)
         nsc = nsc + is_scat.astype(jnp.int32)
@@ -451,13 +475,13 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         ss_j = sig_j - sa_j - si_j                                            # elastic sigma at the hit
         rec = jax.lax.stop_gradient((has_hit, bcode, sa_j, ss_j, si_j))
         return (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-                best_rec, best_rec_pos, best_rec_fz, conv, best_abs2), rec
+                best_rec, best_rec_pos, best_rec_fz, conv, best_abs2, best_rec_chg), rec
 
     dhat0 = p_pi0[:, 1:] / jnp.clip(jnp.linalg.norm(p_pi0[:, 1:], axis=1, keepdims=True), 1e-9, None)
     init = (pos0, p_pi0, ch0, dhat0, jnp.ones(n, bool), jnp.zeros(n, bool),
             jnp.zeros(n, jnp.int32), consumed0, jnp.zeros((n, 4)),
             jnp.zeros((n, _N_RECOIL, 4)), jnp.zeros((n, _N_RECOIL, 3)), jnp.zeros((n, _N_RECOIL)), jnp.zeros(n, bool),
-            jnp.zeros((n, 4)))                                            # best_abs2 (2nd absorption proton)
+            jnp.zeros((n, 4)), jnp.zeros((n, _N_RECOIL)))                 # best_abs2 (2nd abs proton), best_rec_chg
     traj = None
     if cfg.early_exit and not cfg.track_steps:
         # EARLY-EXIT walk (bit-exact): while_loop over the SAME per-step keys, stopping once no
@@ -489,7 +513,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
         _, carry, bufs = jax.lax.while_loop(wcond, wbody, (jnp.int32(0), init, bufs0))
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2) = carry
+         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2, best_rec_chg) = carry
         bc_c, sa_c, ss_c, si_c, nh = bufs
         # truly truncated = still able to interact at the cap (inert walkers excluded)
         outward = jnp.sum(pos * dhat, axis=1) > 0
@@ -501,7 +525,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
             c2, rec = body(carry, sk)
             return c2, (rec, (c2[0], c2[1], c2[4]))                   # pos, p_pi, alive AFTER the step
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2), (recs, tr) = jax.lax.scan(body_t, init, keys)
+         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2, best_rec_chg), (recs, tr) = jax.lax.scan(body_t, init, keys)
         traj = (tr[0], tr[1], tr[2])                                  # (nsteps,n,3),(nsteps,n,4),(nsteps,n)
         hh, bcj, saj, ssj, sij = recs
         slot = jnp.cumsum(hh.astype(jnp.int32), axis=0) - 1
@@ -515,7 +539,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         n_trunc = jnp.sum((alive & ~absorbed).astype(jnp.int32))
     else:
         (pos, p_pi, ch, dhat, alive, absorbed, nsc, consumed, best_abs,
-         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2), recs = jax.lax.scan(body, init, keys)
+         best_rec, best_rec_pos, best_rec_fz, conv, best_abs2, best_rec_chg), recs = jax.lax.scan(body, init, keys)
         # kind-1 branching reweight, OUTSIDE the scan: the records are detached, so ONLY the
         # (sabs, sscat) knobs carry gradient -- no NaN VJPs from the cascade's final-state
         # sampling can reach it.  Compress to the <=_K_BR hit slots (in step order): the walk is
@@ -539,7 +563,7 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
     _lead = jnp.argmax(jnp.linalg.norm(best_rec[:, :, 1:], axis=2), axis=1)
     scat_ko_lead = (best_rec[_arn, _lead], best_rec_pos[_arn, _lead], best_rec_fz[_arn, _lead])
     return (p_pi, ch, absorbed, conv, nsc, best_abs, w_fsi, nseg, n_trunc, brec,
-            scat_ko_lead, (best_rec, best_rec_pos, best_rec_fz), traj,   # traj None unless cfg.track_steps
+            scat_ko_lead, (best_rec, best_rec_pos, best_rec_fz, best_rec_chg), traj,  # all-species recoils (#2)
             pos, best_abs2)                                               # pion terminal pos; 2nd absorption proton
 
 
@@ -630,7 +654,14 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         (pos, p_N, dhat, alive, nsc, consumed, best_ko, best_ko_pos, best_ko_fz, fz, made_pi,
          best_pi, best_pi_pos, best_pi_fz, best_pi_ch, best_ko_chg) = carry
         outward = jnp.sum(pos * dhat, axis=1) > 0
-        alive = alive & ~((jnp.linalg.norm(pos, axis=1) > radius) & outward)
+        escaping = (jnp.linalg.norm(pos, axis=1) > radius) & outward
+        # #8 recapture: a nucleon reaching the boundary with escape KE = E - M_N < 10 MeV is bound
+        # (ACHILLES Cascade.cc:542-552 -> captured) -> set it at rest so it is NOT a free final-state
+        # nucleon.  (|p|<~140 MeV when KE<10, below the 250 MeV analysis cut, so this is below-threshold
+        # bookkeeping -- invisible to the 0p/1p/2p topology, faithful for the soft-nucleon spectrum.)
+        recap = escaping & ((p_N[:, 0] - M_N) < 10.0)
+        p_N = jnp.where(recap[:, None], jnp.array([M_N, 0.0, 0.0, 0.0]), p_N)
+        alive = alive & ~escaping
         # formation zone: timeStep = step/beta (ACHILLES AdaptiveStep); interact only when fz<=0
         beta = jnp.linalg.norm(p_N[:, 1:], axis=1) / jnp.clip(p_N[:, 0], 1e-9, None)
         timeStep = cfg.step / jnp.clip(beta, 1e-6, None)
