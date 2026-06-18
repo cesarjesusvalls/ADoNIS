@@ -63,6 +63,46 @@ def test_loop_drains_and_counts_overflow():
     assert int(ofl) >= 0
 
 
+def test_nucleon_step_matches_bfs_segment():
+    """S2b: iterating _nucleon_step with the same per-step keys as _propagate_nucleon_discrete (scan
+    path) must reproduce the bfs leading nucleon trajectory bit-for-bit (the per-step physics is the
+    same; only the knockout bookkeeping differs).  Proves the pool stepper reuses the validated physics."""
+    from adonis.workflow.materials import resolve_targets
+    from adonis.workflow.generate import gen_events
+    from adonis.fsi.cascade_discrete import (DiscreteCascadeConfig, _propagate_nucleon_discrete,
+                                             _nucleon_step, _load_density)
+    from adonis.fsi.cascade_full import setup_carbon
+    from adonis.xsec.spectral import SpectralFunction
+    import adonis.xsec.flux as flux; flux.BEAM_MODE = "is"
+    tg = resolve_targets("Ar")[0][0]; MS = 60
+    cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
+                                pauli=True, early_exit=False, nucleus=tg.density_p,
+                                density_n=tg.density_n, configs=tg.configs)
+    sf_n = SpectralFunction(tg.spectral_n)
+    a = gen_events("qe", 3000, 0, sf_n=sf_n, n_neutron=tg.A - tg.Z, n_proton=tg.Z)
+    w = np.asarray(a["w"]); s = w > 0; m = int(s.sum())
+    pN = jnp.asarray(a["p_N"][s]); ipid = jnp.asarray(a["ipid"][s])
+    su = setup_carbon(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
+    key = jax.random.PRNGKey(99)
+    ret = _propagate_nucleon_discrete(su["pos0"], pN, jnp.ones(m, bool), su["npos"], su["nmom"],
+                                      su["nisp"], cfg, key, jnp.zeros(m), su["consumed0"], 1.0)
+    pN_bfs, nsc_bfs = np.asarray(ret[0]), np.asarray(ret[1])
+    rgrid, rhoP, rhoN, radius = _load_density(tg.density_p, tg.density_n)
+    keys = jax.random.split(key, MS)
+    p4 = pN; pos = su["pos0"]; d3 = p4[:, 1:]
+    dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
+    fz = jnp.zeros(m); isp = jnp.ones(m, bool); alive = jnp.ones(m, bool)
+    consumed = su["consumed0"]; nsc = jnp.zeros(m, jnp.int32)
+    for i in range(MS):
+        (p4, pos, dhat, fz, alive), esc, recap, do, ko, pin, consumed, srec = _nucleon_step(
+            p4, pos, dhat, fz, isp, alive, su["npos"], su["nmom"], su["nisp"], consumed,
+            rgrid, rhoP, rhoN, radius, cfg, keys[i])
+        nsc = nsc + do
+    assert np.allclose(np.asarray(p4), pN_bfs, atol=1e-6, rtol=0), np.abs(np.asarray(p4) - pN_bfs).max()
+    assert np.array_equal(np.asarray(nsc), nsc_bfs)
+
+
 if __name__ == "__main__":
     test_reconcile_drop_keep_insert(); test_reconcile_overflow(); test_loop_drains_and_counts_overflow()
-    print("pool reconcile + loop OK")
+    test_nucleon_step_matches_bfs_segment()
+    print("pool reconcile + loop + nucleon-step OK")

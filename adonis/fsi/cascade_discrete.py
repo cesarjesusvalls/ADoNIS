@@ -909,6 +909,149 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
             n_trunc, nsc, traj, consumed)                     # diagnostics + final consumed mask (BFS depletion)
 
 
+def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
+                  rgrid, rhoP, rhoN, radius, cfg, key):
+    """ONE step of the NUCLEON cascade for one particle per event (n,) -- the per-step physics of
+    `_propagate_nucleon_discrete.body` (escape/recapture, formation zone, in-slab geometry, elastic
+    scatter + per-species Pauli, NN->NDelta->NN'pi inelastic + channel charges), re-expressed for the
+    POOLED engine: the knockout (recoil | inelastic 2nd nucleon) and the created pion are returned as
+    IMMEDIATE spawns (no best_ko top-K deferral), and the updated `consumed` mask is returned for
+    slot-serialized depletion.  RNG usage matches body exactly (split(key,3) + fold_in(sk,101..108)),
+    so iterating this with the same per-step keys reproduces the bfs leading trajectory bit-for-bit.
+    Returns: (p4', pos', dhat', fz', alive'), terminal, recap, do, (ko4,kopos,kofz,koisp,koal),
+             (pi4,pipos,pifz,pich,pial), consumed', (has_hit, perp2_c, sig_c)."""
+    n, A = nisp.shape; ar = jnp.arange(n)
+    outward = jnp.sum(pos * dhat, axis=1) > 0
+    escaping = (jnp.linalg.norm(pos, axis=1) > radius) & outward
+    recap = escaping & ((p4[:, 0] - M_N) < 10.0)
+    p4 = jnp.where(recap[:, None], jnp.array([M_N, 0.0, 0.0, 0.0]), p4)
+    alive = alive & ~escaping
+    beta = jnp.linalg.norm(p4[:, 1:], axis=1) / jnp.clip(p4[:, 0], 1e-9, None)
+    timeStep = cfg.step / jnp.clip(beta, 1e-6, None)
+    can_int = fz <= 0.0
+    rel = npos - pos[:, None, :]
+    par = jnp.sum(rel * dhat[:, None, :], axis=2)
+    perp2 = jnp.sum(rel ** 2, axis=2) - par ** 2
+    in_slab = (par > 0) & (par <= cfg.step) & (~consumed) & alive[:, None]
+    Pp = p4[:, None, :] + nmom
+    s = Pp[:, :, 0] ** 2 - jnp.sum(Pp[:, :, 1:] ** 2, axis=2)
+    sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
+    same_iso = isp[:, None] == nisp
+    sig_el = jnp.clip(nn_elastic_sigma(sqrts, same_iso), 0.0, None)
+    if cfg.nn_inelastic:
+        pcm = jnp.sqrt(jnp.clip(s / 4.0 - M_N ** 2, 1e-6, None)) / 1000.0
+        sig_in = jnp.clip(nni.sigma_nn_ndelta(sqrts / 1000.0, pcm, same_iso), 0.0, None)
+    else:
+        sig_in = jnp.zeros_like(sig_el)
+    sig = sig_el + sig_in
+    if cfg.cylinder:
+        prob = jnp.where(in_slab & (perp2 < jnp.clip(sig * MB_TO_FM2, 0.0, None) / jnp.pi), 1.0, 0.0)
+    else:
+        prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
+    sk, ku, ks = jax.random.split(key, 3)
+    passes = in_slab & (jax.random.uniform(ku, (n, A)) < prob)
+    big = jnp.where(passes, perp2, jnp.inf)
+    j = jnp.argmin(big, axis=1)
+    has_hit = jnp.isfinite(big[ar, j]) & alive & can_int
+    perp2_is = jnp.where(in_slab, perp2, jnp.inf); cidx = jnp.argmin(perp2_is, axis=1)
+    has_slab = jnp.any(in_slab, axis=1)
+    perp2_c = jnp.where(has_slab, perp2_is[ar, cidx], 1e6); sig_c = sig[ar, cidx]
+    pN_j = nmom[ar, j]
+    rnuc = jnp.linalg.norm(npos, axis=2)
+    kf_n = _kf_local(jnp.where(nisp, _rho_species(rnuc, rgrid, rhoP), _rho_species(rnuc, rgrid, rhoN)))
+    kf_j = kf_n[ar, j]
+    _rnuc_j = rnuc[ar, j]
+    kf_p_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoP))
+    kf_n_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoN))
+    kf_lead = jnp.where(isp, kf_p_j, kf_n_j)
+
+    def scat_one(p_lead, pN_i, kf_out, kf_rec, k):
+        p_o = _two_body_cm_scatter(p_lead, pN_i, M_N, k)
+        p_r = (p_lead + pN_i) - p_o
+        return p_o, (jnp.linalg.norm(p_o[1:]) < kf_out) | (jnp.linalg.norm(p_r[1:]) < kf_rec)
+    p_out, blocked = jax.vmap(scat_one)(p4, pN_j, kf_lead, kf_j, jax.random.split(ks, n))
+    if not cfg.pauli:
+        blocked = blocked & False
+    sig_in_j = sig_in[ar, j]; sig_el_j = sig_el[ar, j]
+    u_br = jax.random.uniform(jax.random.fold_in(sk, 101), (n,))
+    chose_inel = has_hit & (u_br < sig_in_j / jnp.clip(sig_el_j + sig_in_j, 1e-12, None))
+    Pj = p4 + pN_j
+    rs_j = jnp.sqrt(jnp.clip(Pj[:, 0] ** 2 - jnp.sum(Pj[:, 1:] ** 2, axis=1), (2 * M_N) ** 2, None))
+    u_m = jax.random.uniform(jax.random.fold_in(sk, 102), (n,))
+    m_d = jnp.clip(nni.sample_delta_mass(rs_j / 1000.0, u_m) * 1000.0, M_N + 135.0, rs_j - M_N - 1.0)
+    cth1 = 2 * jax.random.uniform(jax.random.fold_in(sk, 103), (n,)) - 1.0
+    phi1 = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(sk, 104), (n,))
+    cth2 = 2 * jax.random.uniform(jax.random.fold_in(sk, 105), (n,)) - 1.0
+    phi2 = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(sk, 106), (n,))
+
+    def _split2(P4, mA, mB, cth_, phi_):
+        ss = jnp.clip(P4[:, 0] ** 2 - jnp.sum(P4[:, 1:] ** 2, axis=1), (mA + mB) ** 2 * 1.0001, None)
+        rss = jnp.sqrt(ss)
+        EA = (ss + mA ** 2 - mB ** 2) / (2 * rss)
+        pf = jnp.sqrt(jnp.clip(EA ** 2 - mA ** 2, 0.0, None))
+        sth_ = jnp.sqrt(jnp.clip(1 - cth_ ** 2, 0, None))
+        d_ = jnp.stack([sth_ * jnp.cos(phi_), sth_ * jnp.sin(phi_), cth_], axis=1)
+        pa = jnp.concatenate([EA[:, None], pf[:, None] * d_], axis=1)
+        pb = jnp.concatenate([(rss - EA)[:, None], -pf[:, None] * d_], axis=1)
+        beta_ = P4[:, 1:] / P4[:, [0]]
+        b2_ = jnp.sum(beta_ ** 2, axis=1); g_ = 1 / jnp.sqrt(jnp.clip(1 - b2_, 1e-12, None))
+        def lab(p4_):
+            bp_ = jnp.sum(beta_ * p4_[:, 1:], axis=1)
+            E = g_ * (p4_[:, 0] + bp_)
+            p3 = p4_[:, 1:] + ((g_ - 1) * bp_ / jnp.clip(b2_, 1e-30, None) + g_ * p4_[:, 0])[:, None] * beta_
+            return jnp.concatenate([E[:, None], p3], axis=1)
+        return lab(pa), lab(pb)
+
+    pN1, pD = _split2(Pj, jnp.full((n,), M_N), m_d, cth1, phi1)
+    pN2, _pPiX = _split2(pD, jnp.full((n,), M_N), jnp.full((n,), 138.04), cth2, phi2)
+    q_pair = isp.astype(jnp.int32) + nisp[ar, j].astype(jnp.int32)
+    u107 = jax.random.uniform(jax.random.fold_in(sk, 107), (n,))
+    u108 = jax.random.uniform(jax.random.fold_in(sk, 108), (n,))
+    dch = jnp.where(q_pair == 2, jnp.where(u107 < 0.75, 2, 1),
+            jnp.where(q_pair == 1, jnp.where(u107 < 0.5, 1, 0),
+                                   jnp.where(u107 < 0.25, 0, -1)))
+    pi_q = jnp.where(dch == 2, 1,
+            jnp.where(dch == 1, jnp.where(u108 < 1.0 / 3.0, 1, 0),
+            jnp.where(dch == 0, jnp.where(u108 < 2.0 / 3.0, 0, -1), -1)))
+    kf_N1 = jnp.where((q_pair - dch) == 1, kf_p_j, kf_n_j)
+    kf_N2 = jnp.where((dch - pi_q) == 1, kf_p_j, kf_n_j)
+    in_blocked = ((jnp.linalg.norm(pN1[:, 1:], axis=1) < kf_N1)
+                  | (jnp.linalg.norm(pN2[:, 1:], axis=1) < kf_N2))
+    if not cfg.pauli:
+        in_blocked = in_blocked & False
+    is_inel = chose_inel & ~in_blocked
+    lead_in = jnp.where((jnp.linalg.norm(pN1[:, 1:], axis=1)
+                         >= jnp.linalg.norm(pN2[:, 1:], axis=1))[:, None], pN1, pN2)
+    pi_chidx = (1 - pi_q).astype(jnp.int32)
+    do = has_hit & ~chose_inel & ~blocked
+    recoil = (p4 + pN_j) - p_out
+    bg_proton = nisp[ar, j]
+    fz_new = _formation_zone(p4, p_out)
+    nl_is1 = jnp.linalg.norm(pN1[:, 1:], axis=1) >= jnp.linalg.norm(pN2[:, 1:], axis=1)
+    inel_nl = jnp.where(nl_is1[:, None], pN2, pN1)
+    inel_nl_q = jnp.where(nl_is1, dch - pi_q, q_pair - dch)
+    ko_cand = jnp.where(is_inel[:, None], inel_nl, recoil)
+    ko_q = jnp.where(is_inel, inel_nl_q, bg_proton.astype(jnp.int32))
+    ko_fz = jnp.where(is_inel, _formation_zone(p4, inel_nl), _formation_zone(p4, recoil))
+    ko_alive = (do | is_inel) & (jnp.linalg.norm(ko_cand[:, 1:], axis=1) > 1.0)
+    ko_pos = npos[ar, j]
+    # created pion spawn (inelastic only)
+    pi_alive = is_inel & (jnp.linalg.norm(_pPiX[:, 1:], axis=1) > 1.0)
+    pi_fz = _formation_zone(p4, _pPiX)
+    pi_pos = npos[ar, j]
+    # leading update + consumed depletion + fz + advance
+    p4 = jnp.where(do[:, None], p_out, jnp.where(is_inel[:, None], lead_in, p4))
+    consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & (do | is_inel)[:, None])
+    fz = jnp.where((fz > 0.0) & alive, fz - timeStep, fz)
+    fz = jnp.where(do, fz_new, jnp.where(is_inel, _formation_zone(p4, lead_in), fz))
+    d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
+    pos = pos + cfg.step * dhat * alive[:, None]
+    return ((p4, pos, dhat, fz, alive), escaping, recap, do.astype(jnp.int32),
+            (ko_cand, ko_pos, ko_fz, ko_q, ko_alive),
+            (_pPiX, pi_pos, pi_fz, pi_chidx, pi_alive), consumed,
+            jax.lax.stop_gradient((has_hit, perp2_c, sig_c)))
+
+
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
     _load_density(cfg.nucleus, cfg.density_n)
     n, A = nisp.shape
