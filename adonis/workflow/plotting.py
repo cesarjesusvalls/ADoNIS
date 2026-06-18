@@ -53,7 +53,8 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     """specs: list of (key, edges, label).  ref_sel/ado_sel: full selection dicts (key->array + 'w').
     Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'})."""
     nv = len(specs)
-    fig, ax = plt.subplots(2, nv, figsize=(panel_w * nv, 6.4), height_ratios=[3, 1],
+    total_w = max(panel_w * nv, 7.5)          # floor so single-panel figs are not narrow/clipped
+    fig, ax = plt.subplots(2, nv, figsize=(total_w, 6.4), height_ratios=[3, 1],
                            squeeze=False, sharex="col")
     results = {}
     for c, (key, edges, label) in enumerate(specs):
@@ -69,6 +70,6 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     sr, sa = float(np.sum(ref_sel["w"])), float(np.sum(ado_sel["w"]))
     sig = {"ref": sr, "ado": sa, "ach_ado": sr / max(sa, 1e-30)}
     if title:
-        fig.suptitle(title + f"  ACH/ADO {sig['ach_ado']:.3f}", fontsize=12)
+        fig.suptitle(title + f"  ACH/ADO {sig['ach_ado']:.3f}", fontsize=12, wrap=True)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     return fig, results, sig

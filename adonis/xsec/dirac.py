@@ -16,7 +16,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.xsec import constants as C
-from adonis.xsec.form_factors import nucleon_ff
+from adonis.xsec.form_factors import nucleon_ff, _TCUT as _FF_TCUT
 
 _I = 1j
 _XMN = C.mN                                  # constants%mqe = 0.5(mp+mn)
@@ -51,8 +51,11 @@ def _spinors(p3, E):
     """define_spinors for one nucleon: returns u (2 spin, 4) and ubar (2 spin, 4), xmn=mN.
     p3 (...,3), E (...,) -- E the actual energy used (mN-on-shell for in, mp-on-shell for out)."""
     sigp = jnp.einsum('aij,...a->...ij', _SIGJ, p3)              # sigma.p (...,2,2)
-    denom = (E + _XMN)[..., None, None]
-    cp = jnp.sqrt(E + _XMN)[..., None]
+    # GRADIENT PROTECTION: E+_XMN < 0 for unphysical (huge off-shell) outgoing nucleons -> sqrt NaN.
+    # Safe sqrt / guarded division keep fwd+bwd finite; physical E>0 (E+_XMN ~ 2 GeV) -> exact no-op.
+    sden = E + _XMN
+    denom = jnp.where(sden != 0.0, sden, 1.0)[..., None, None]
+    cp = jnp.sqrt(jnp.where(sden > 0.0, sden, 1.0))[..., None]
     chi = jnp.asarray(_ID2)                                       # columns = up,down
     # u: upper = chi, lower = sigma.p chi /(E+xmn)
     lower = jnp.einsum('...ij,jk->...ik', sigp / denom, chi)      # (...,2,2col)
@@ -110,4 +113,9 @@ def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scal
         for f1 in range(2):      # final spin
             out.append(jnp.einsum('...i,...mi->...m', ubar_out[..., f1, :], Vu))
     # ACHILLES cur(i+2*(j-1),:) = J_mu(j=final, i=initial); order loop i1(init) outer, f1(final) inner
-    return jnp.stack(out, axis=-2)                               # (...,4combo,4mu)
+    H = jnp.stack(out, axis=-2)                                  # (...,4combo,4mu)
+    # Zero the unphysical (Q2 < -TCUT) events so amps2 -> 0, matching ACHILLES's post-hoc
+    # `if(isnan(amps2)) amps2=0` (XSecBackend.cc:156).  H is already finite (safe sqrts above), so this
+    # mask is gradient-clean; for every physical Q2>=0 the condition is True -> exact no-op.
+    ok = (_FF_TCUT + Q2_FF) > 0.0
+    return jnp.where(ok[..., None, None], H, 0.0)

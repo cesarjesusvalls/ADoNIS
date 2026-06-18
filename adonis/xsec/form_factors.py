@@ -44,8 +44,17 @@ def nucleon_ff(Q2_GeV2):
     Gmn = _MUN * _param(_MN, tau)
     F1p = (Gep + tau * Gmp) / (1 + tau); F1n = (Gen + tau * Gmn) / (1 + tau)
     F2p = (Gmp - Gep) / (1 + tau);        F2n = (Gmn - Gen) / (1 + tau)
-    z = (jnp.sqrt(_TCUT + Q2_GeV2) - np.sqrt(_TCUT - _T0)) / (jnp.sqrt(_TCUT + Q2_GeV2) + np.sqrt(_TCUT - _T0))
+    # GRADIENT PROTECTION: the z-expansion radicand TCUT+Q2 < 0 for unphysical Q2 < -TCUT (timelike q
+    # from off-shell bound-nucleon kinematics that the flux importance sampler now reaches).  sqrt of a
+    # negative NaNs FA (and poisons its gradient).  ACHILLES lets the NaN form and zeroes amps2 post-hoc
+    # (XSecBackend.cc:156 `if(isnan(amps2)) amps2=0`); we instead keep the forward+backward finite by
+    # evaluating the sqrt on a safe argument (the bad events are zeroed at the hadron-current level in
+    # dirac.py).  For every PHYSICAL Q2>=0, TCUT+Q2 >= TCUT > 0 -> these guards are exact no-ops.
+    rad = _TCUT + Q2_GeV2
+    sq = jnp.sqrt(jnp.where(rad > 0.0, rad, 1.0))                 # safe sqrt (no NaN fwd/bwd)
+    z = (sq - np.sqrt(_TCUT - _T0)) / (sq + np.sqrt(_TCUT - _T0))
     FA = _zexpand(_CC, z)
     mpi = C.mpip
-    FAP = 2.0 * C.mN2 / (Q2_GeV2 * 1e6 + mpi ** 2) * FA          # Q2 GeV^2 -> MeV^2
+    fap_den = Q2_GeV2 * 1e6 + mpi ** 2                            # >= mpi^2 for all physical Q2>=0 (no pole)
+    FAP = 2.0 * C.mN2 / jnp.where(jnp.abs(fap_den) > 1.0, fap_den, 1.0) * FA   # guard the pseudoscalar pole
     return dict(F1p=F1p, F1n=F1n, F2p=F2p, F2n=F2n, FA=FA, FAP=FAP)

@@ -42,11 +42,9 @@ def sample(n, seed=0):
     u = rng.random((n, 7))
     flux = T2KFlux()
     # ---- beam ----
-    minE = flux.seed_min_GeV(); maxE = flux.max_energy; dE_beam = maxE - minE
-    E_GeV = u[:, 4] * dE_beam + minE
+    minE = flux.seed_min_GeV()
+    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE)        # 'is' (default) | 'flat'  -- BEAM_MODE toggle
     Enu = E_GeV * 1000.0
-    fE = flux.f(E_GeV)
-    J_beam = (dE_beam * fE) / flux.flux_integral
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
     # ---- struck nucleon (QESpectralMapper) ----
     radical = Enu ** 2 + 2 * Enu * _MN + _MN ** 2 - _SMIN
@@ -115,9 +113,8 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     rng = np.random.default_rng(seed)
     u = rng.random((n, 7))
     flux = T2KFlux()
-    minE = flux.seed_min_GeV(); maxE = flux.max_energy; dE_beam = maxE - minE
-    E_GeV = u[:, 4] * dE_beam + minE; Enu = E_GeV * 1000.0
-    fE = flux.f(E_GeV); J_beam = (dE_beam * fE) / flux.flux_integral
+    minE = flux.seed_min_GeV()
+    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0   # BEAM_MODE toggle
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
     sf = sf or _SF("data/Spectral_Functions/pke12n_tot.data")
     samp = SpectralImportanceSampler(sf)

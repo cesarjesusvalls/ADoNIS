@@ -54,3 +54,51 @@ class T2KFlux:
         Smin = (M_MU + M_P) ** 2
         seed = (Smin - M_P ** 2) / (2 * M_P)       # MeV
         return max(seed / 1000.0, self.min_energy)  # GeV
+
+    def sample_beam(self, u, minE, mode=None):
+        """Map the single beam uniform u[:,4] -> (E_GeV, J_beam), in one of two MODES that estimate
+        the SAME flux-weighted integral (unbiased; equal in expectation):
+
+          'flat' (legacy, ACHILLES BeamMapper transliteration): E ~ Uniform[minE, maxE];
+                 J_beam = dE * f(E) / flux_integral.  Most draws land in the high-E flux tail with
+                 ~0 weight -> tiny effective sample size.
+
+          'is' (importance, DEFAULT): E drawn from the NOMINAL flux shape via the exact inverse-CDF of
+                 the piecewise-constant flux (raw edges/heights) on [minE, maxE]; proposal density
+                 q(E) = h_bin/Z, Z = int_minE^maxE flux.  J_beam = f(E) * Z / (flux_integral * h_bin)
+                 -- numerator is the SAME linear-interp f used by 'flat', so the estimator is identical
+                 in expectation; J_beam ~ constant (f/h_bin ~ 1) -> ~30x larger effective sample size.
+
+        Sampling from the NOMINAL (frozen) flux keeps the kind-1 contract: flux gradients are recovered
+        by an extra smooth per-event factor f_theta(E)/f_nom(E) (not applied here; structure supports it).
+        mode=None resolves to the module-level BEAM_MODE toggle."""
+        mode = mode or BEAM_MODE
+        u = np.atleast_1d(np.asarray(u, float))
+        maxE = self.max_energy
+        if mode == "flat":
+            dE = maxE - minE
+            E = u * dE + minE
+            J = (dE * np.asarray(self.f(E))) / self.flux_integral
+            return E, J
+        if mode != "is":
+            raise ValueError(f"unknown beam mode {mode!r} (expected 'is' or 'flat')")
+        # importance: inverse-CDF of the piecewise-constant raw flux on [minE, maxE]
+        lo = np.maximum(self.edges[:-1], minE)
+        hi = np.minimum(self.edges[1:], maxE)
+        width = np.clip(hi - lo, 0.0, None)            # in-range width per bin
+        mass = width * self.heights0                   # unnormalised prob mass per bin
+        Z = float(mass.sum())                          # int_minE^maxE flux_piecewise_const dE
+        cdf = np.concatenate([[0.0], np.cumsum(mass)]) / Z
+        bi = np.clip(np.searchsorted(cdf, u, side="right") - 1, 0, len(self.heights0) - 1)
+        frac = (u - cdf[bi]) / np.clip(cdf[bi + 1] - cdf[bi], 1e-30, None)
+        E = lo[bi] + frac * width[bi]
+        # J = target_density(E)/proposal_density(E) = [f(E)/flux_integral] / [h_bin/Z]
+        J = np.asarray(self.f(E)) * Z / (self.flux_integral * np.clip(self.heights0[bi], 1e-30, None))
+        return E, J
+
+
+# Beam-sampling mode toggle (mirror of res_xsec.RES_METHOD): 'is' = flux importance sampling (default,
+# ~30x effective stats), 'flat' = legacy uniform-in-energy ACHILLES transliteration.  Set
+# adonis.xsec.flux.BEAM_MODE = 'flat' (or env ADONIS_BEAM_MODE=flat) to restore the legacy sampler.
+import os as _os
+BEAM_MODE = _os.environ.get("ADONIS_BEAM_MODE", "is")

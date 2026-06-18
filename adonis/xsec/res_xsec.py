@@ -205,10 +205,8 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None):
     Smin = (M_MU + m_Nf + m_pi) ** 2
     # BeamMapper seed is PROCESS-dependent (BeamMapper.cc); validated bit-exact vs RESDUMP psw.
     minE = max((Smin - m_Nf ** 2) / (2 * m_Nf) / 1000.0, flux.min_energy)
-    dE_beam = maxE - minE
-    E_GeV = u[:, 4] * dE_beam + minE; Enu = E_GeV * 1000.0
+    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0   # BEAM_MODE toggle
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
-    J_beam = (dE_beam * flux.f(E_GeV)) / flux.flux_integral
     pvec, energy = imp.sample(n, rng)                           # importance: |p|^2 S (low variance)
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
@@ -246,10 +244,8 @@ def _sample_shared(n, rng, flux, maxE):
     u = rng.random((n, 10))
     mpi, mNf, Smin = _M_SHARED_PI, _M_SHARED_NF, _SMIN0
     minE = max((Smin - mNf ** 2) / (2 * mNf) / 1000.0, flux.min_energy)
-    dE_beam = maxE - minE
-    E_GeV = u[:, 4] * dE_beam + minE; Enu = E_GeV * 1000.0
+    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0   # BEAM_MODE toggle
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
-    J_beam = (dE_beam * flux.f(E_GeV)) / flux.flux_integral
     # FLAT struck nucleon (HadronicMapper.cc:30-65), process[0] Smin
     radical = np.clip(Enu ** 2 + 2 * Enu * _MN + _MN ** 2 - Smin, 0, None)
     pmin = np.clip(Enu - np.sqrt(radical), 0, None); pmax = np.clip(Enu + np.sqrt(radical), None, 800.0)
