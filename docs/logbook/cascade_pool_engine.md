@@ -56,8 +56,21 @@ Loop `while jnp.any(alive)` (global `max_steps` cap):
 - S1: config switch + pooled `run_cascade_pool` skeleton (data structures, the loop shell, overflow
   accounting) wired so `engine="pool"` is selectable but a no-op-ish stub.
 - S2: per-step body extraction/vectorization to `(n, M)` with per-particle keys + slot-serialized
-  consumed depletion (nucleon first, then pion).
-- S3: reconcile (drop terminal, insert created, overflow) inside the step loop.
+  consumed depletion (nucleon first, then pion).  **DONE (loop+reconcile), partial.**
+  - S2 delivered the generic loop + in/out reconcile (`run_cascade_pool` / `pool_reconcile` =
+    `compact(concat(survivors, spawned), M)`), stepper-pluggable, unit-tested. bfs bit-exact.
+  - **S2b finding — re-implementation, NOT extraction:** the validated `_propagate_nucleon_discrete`
+    body is built on the BFS knockout model (`best_ko` top-K slots; recoils REGISTERED and deferred to
+    the next generation; the leading continues in place).  The pool's model is opposite — a recoil
+    created at a step is an IMMEDIATE new stack particle (a `spawn`), no `best_ko`.  So the pool stepper
+    must RE-EXPRESS the per-step orchestration in spawn-per-step form, reusing the physics PRIMITIVES
+    (escape/recapture, formation zone, in-slab geometry, elastic scatter + per-species Pauli k_F, the
+    NN->NDelta->NN'pi inelastic branch + channel charges) rather than copy the body.  This is the large
+    focused block; do it incrementally (nucleon step -> validate vs a single-particle bfs segment ->
+    pion step -> mixed dispatch).
+- S3: reconcile (drop terminal, insert created, overflow) inside the step loop.  **DONE in S2** (it IS
+  `pool_reconcile`).  Remaining: per-step TERMINAL/output collection (escaped particles = the final
+  state) into a fixed output buffer (scatter each step).
 - S4: kind-1 record accumulation + reweight closures.
 - S5: validation vs ACHILLES (transparency, fate, multiplicity, topology) + speedup measurement.
 - S6: flip default to "pool" once green; keep "bfs" available.
