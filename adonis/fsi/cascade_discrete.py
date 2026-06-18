@@ -310,6 +310,8 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
 
         sa_j = sa[ar, j]; si_j = si[ar, j]; sig_j = sig[ar, j]
         W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
+        kf_p_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoP))   # per-species k_F at the struck vertex
+        kf_n_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoN))   # (for the charge-exchanged scatter recoil)
         p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)                           # NOMINAL branch probs
         p_conv = si_j / jnp.clip(sig_j, 1e-12, None)
         u_br = jax.random.uniform(kc, (n,))                                   # ONE roll, 3-way split
@@ -393,12 +395,16 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         nuc_idx = jnp.where(nisp[ar, j], 0, 1)
         chan_idx = ch * 6 + nuc_idx * 3 + out_ch
         cos_cm = cascade_mb.jax_sample_cos_cm(W_j, jax.random.uniform(ka, (n,)), chan_idx)
+        # Pauli-block the recoil against ITS OWN species' k_F: charge-exchange (e.g. pi+ n -> pi0 p)
+        # flips the recoil species (q_rec = q_struck + q_pi_in - q_pi_out = struck_p + out_ch - ch), so
+        # using kf_j (struck species) over-blocks a charge-exchanged recoil in N!=Z; bit-exact for N=Z.
+        kf_rec_pi = jnp.where((struck_p + out_ch - ch) == 1, kf_p_j, kf_n_j)
 
         def scat_one(p_pi_i, pN_i, out_i, kf_i, cc, k):
             p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k, cos_cm=cc)
             p_rec = (p_pi_i + pN_i) - p_out
             return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
-        p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_j, cos_cm, jax.random.split(sk, n))
+        p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_rec_pi, cos_cm, jax.random.split(sk, n))
         if not cfg.pauli:
             blocked = blocked & False
 
@@ -700,12 +706,14 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         rnuc = jnp.linalg.norm(npos, axis=2)
         kf_n = _kf_local(jnp.where(nisp, _rho_species(rnuc, rgrid, rhoP), _rho_species(rnuc, rgrid, rhoN)))
         kf_j = kf_n[ar, j]                                           # struck (=recoil) species k_F
-        # ACHILLES PauliBlocking blocks EACH outgoing against ITS OWN species' local k_F
-        # (FermiMomentum(pos, part.ID())).  The leading OUTGOING nucleon keeps the primary's species
-        # (isp0); the recoil keeps the struck species (nisp[j]).  Using kf_j for BOTH over-blocks the
-        # leading in neutron-rich nuclei (k_F,n>k_F,p) -> Ar-specific scatter deficit; bit-exact for N=Z.
-        kf_lead = _kf_local(jnp.where(isp0, _rho_species(rnuc[ar, j], rgrid, rhoP),
-                                            _rho_species(rnuc[ar, j], rgrid, rhoN)))
+        # ACHILLES PauliBlocking blocks EACH outgoing nucleon against ITS OWN species' local k_F
+        # (FermiMomentum(pos, part.ID())) at the interaction vertex.  Compute BOTH species' k_F here and
+        # select per outgoing-nucleon species below -- using one species (kf_j) for all outgoing
+        # over-blocks in neutron-rich nuclei (k_F,n>k_F,p) -> Ar-specific deficit; bit-exact for N=Z.
+        _rnuc_j = rnuc[ar, j]
+        kf_p_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoP))        # proton-species k_F at the vertex
+        kf_n_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoN))        # neutron-species k_F at the vertex
+        kf_lead = jnp.where(isp0, kf_p_j, kf_n_j)                     # elastic leading outgoing = primary species
 
         def scat_one(p_lead, pN_i, kf_out, kf_rec, k):
             p_out = _two_body_cm_scatter(p_lead, pN_i, M_N, k)        # leading out (isotropic CM, as ACHILLES)
@@ -750,16 +758,10 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
 
         pN1, pD = _split2(Pj, jnp.full((n,), M_N), m_d, cth1, phi1)    # N + Delta
         pN2, _pPiX = _split2(pD, jnp.full((n,), M_N), jnp.full((n,), 138.04), cth2, phi2)  # Delta -> N' pi
-        in_blocked = ((jnp.linalg.norm(pN1[:, 1:], axis=1) < kf_j)
-                      | (jnp.linalg.norm(pN2[:, 1:], axis=1) < kf_j))
-        if not cfg.pauli:
-            in_blocked = in_blocked & False
-        is_inel = chose_inel & ~in_blocked
-        lead_in = jnp.where((jnp.linalg.norm(pN1[:, 1:], axis=1)
-                             >= jnp.linalg.norm(pN2[:, 1:], axis=1))[:, None], pN1, pN2)
-        made_pi = made_pi | is_inel
-        # CREATED-PION CHARGE (ACHILLES AllowedResonanceStates -> Delta -> N pi, data/decays.yml).
-        # NEW fold_in keys (107/108) -> the elastic + existing-inelastic streams and made_pi stay bit-exact.
+        # CREATED-PION + outgoing-NUCLEON CHARGES (ACHILLES AllowedResonanceStates -> Delta -> N pi,
+        # data/decays.yml).  Computed BEFORE the Pauli block so each outgoing nucleon is blocked against
+        # ITS OWN species' k_F (q(pN1)=q_pair-dch from NN->N Delta; q(pN2)=dch-pi_q from Delta->N' pi).
+        # fold_in keys (107/108) keep the elastic stream + made_pi bit-exact.
         q_pair = isp0.astype(jnp.int32) + nisp[ar, j].astype(jnp.int32)        # 0=nn 1=pn 2=pp
         u107 = jax.random.uniform(jax.random.fold_in(sk, 107), (n,))
         u108 = jax.random.uniform(jax.random.fold_in(sk, 108), (n,))
@@ -769,6 +771,16 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         pi_q = jnp.where(dch == 2, 1,                                          # ++ -> pi+
                 jnp.where(dch == 1, jnp.where(u108 < 1.0/3.0, 1, 0),           # + -> pi+ 1/3 | pi0 2/3
                 jnp.where(dch == 0, jnp.where(u108 < 2.0/3.0, 0, -1), -1)))    # 0 -> pi0 2/3 | pi- 1/3 ; - -> pi-
+        kf_N1 = jnp.where((q_pair - dch) == 1, kf_p_j, kf_n_j)                 # per-species k_F (1=proton)
+        kf_N2 = jnp.where((dch - pi_q) == 1, kf_p_j, kf_n_j)
+        in_blocked = ((jnp.linalg.norm(pN1[:, 1:], axis=1) < kf_N1)
+                      | (jnp.linalg.norm(pN2[:, 1:], axis=1) < kf_N2))
+        if not cfg.pauli:
+            in_blocked = in_blocked & False
+        is_inel = chose_inel & ~in_blocked
+        lead_in = jnp.where((jnp.linalg.norm(pN1[:, 1:], axis=1)
+                             >= jnp.linalg.norm(pN2[:, 1:], axis=1))[:, None], pN1, pN2)
+        made_pi = made_pi | is_inel
         pi_chidx = (1 - pi_q).astype(jnp.int32)                               # +1->0(pi+),0->1(pi0),-1->2(pi-)
         # track the LEADING created pion (4-vec _pPiX + charge + vertex + formation zone)
         pi_better = is_inel & (jnp.linalg.norm(_pPiX[:, 1:], axis=1) > jnp.linalg.norm(best_pi[:, 1:], axis=1))
