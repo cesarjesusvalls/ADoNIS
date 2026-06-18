@@ -104,6 +104,16 @@ Loop `while jnp.any(alive)` (global `max_steps` cap):
 - S3: reconcile (drop terminal, insert created, overflow) inside the step loop.  **DONE in S2** (it IS
   `pool_reconcile`).  Per-step TERMINAL/output collection **DONE in S2b-2/3** (escaped particles
   scattered into the fixed (n,M_out) output buffer each step).
+- **S2b-integrate (QE) DONE** (this commit): `cascade_carbon_v2(engine="pool", channel="qe")` runs
+  make_pool_stepper + run_cascade_pool and maps the flat (n,M_out) terminal buffer back to the rich
+  schema -- nterms[0] = the NUCLEON terminals (pid from charge), `created` = the leading surviving pion
+  (CC0pi veto pion), `pterm` = QE "none" sentinel.  End-to-end QE CC0pi topology vs BFS (Ar, 7537 ev,
+  P=16, ms683, weighted; `scripts/cascade_pool_topology.py`):
+    <Np> bfs 1.2370 / pool 1.2435 (+0.5%); 0p .0480->.0460, 1p .7168->.7221, 2p+ .2353->.2320 -- ALL
+    within ~1 sigma; pi_surv .0056->.0044 (pool propagates created pions further -> more absorbed).
+  RES pool (primary pion as a gen-0 PION stack slot + pterm/created schema split) is the next step.
+  NOTE: the generate.py driver does not yet thread `engine` through GenConfig -> a bank generation still
+  uses bfs; engine is selectable only at the cascade_carbon_v2 call (S2b-integrate-driver follow-up).
 - S4: kind-1 record accumulation + reweight closures.
 - S5: validation vs ACHILLES (transparency, fate, multiplicity, topology) + speedup measurement.
 - S6: flip default to "pool" once green; keep "bfs" available.

@@ -454,11 +454,33 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
         g0["track_id"] = jnp.zeros((n, 1), jnp.int32)                  # gen-0 track id 0 (QE proton)
     kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], cfg, sscat)
     if getattr(cfg, "engine", "bfs") == "pool":
-        # S2b: build the physics stepper (per-step (n,M) body: nucleon+pion dispatch, per-particle keys,
-        # slot-serialized consumed depletion) and run run_cascade_pool.  The loop+reconcile mechanism
-        # (run_cascade_pool / pool_reconcile) is built & unit-tested; the stepper is the remaining piece.
-        raise NotImplementedError("pool physics stepper is S2b; loop+reconcile done (S2). See "
-                                  "docs/logbook/cascade_pool_engine.md.")
+        # POOLED engine (S2b-integrate): ONE fixed-size stack stepped once/step, in/out reconcile inside
+        # the step (vs the BFS's max_gen full-max_steps passes).  More faithful (true step-order
+        # consumption + ALL created pions propagated from their creation point) -> NOT bit-identical to
+        # the BFS; validated vs ACHILLES (docs/logbook/cascade_pool_engine.md).  QE only for now (the RES
+        # primary-pion-as-stack-slot + pterm/created schema split is deferred).
+        if channel != "qe":
+            raise NotImplementedError("pool engine integration is QE-only so far; RES primary-pion "
+                                      "stack-slot + pterm/created split is the next step (S2b-integrate-res).")
+        stepper = make_pool_stepper(su, cfg)
+        out, sofl, oofl = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P,
+                                           max_steps=cfg.max_steps, M_out=24)
+        ar = jnp.arange(n)
+        sp = out["species"]; chg = out["charge"]; al = out["alive"]
+        nterms = [dict(species=sp, pid=jnp.where((sp == NUCLEON) & (chg == 1), 2212, 2112),
+                       p4=out["p4"], alive=al, origin=out["origin"], gen=out["gen"])]
+        # surviving pion (any charge), leading by momentum -> the CC0pi veto pion (BFS `created` slot;
+        # QE has no primary pion so pterm is the QE "none" sentinel).
+        is_pi = (sp == PION) & al
+        pim = jnp.linalg.norm(out["p4"][:, :, 1:], axis=2) * is_pi
+        jpi = jnp.argmax(pim, axis=1); has_pi = pim[ar, jpi] > 0.0
+        cch = out["charge"][ar, jpi]
+        created = dict(pid=jnp.where(has_pi, _CH_PID[cch], 0), p4=out["p4"][ar, jpi],
+                       w=jnp.ones((n,)), alive=has_pi)
+        pterm = dict(species=jnp.zeros((n,), jnp.int32), pid=jnp.zeros((n,), jnp.int32),
+                     p4=jnp.zeros((n, 4)), charge=jnp.zeros((n,), jnp.int32), w=jnp.ones((n,)),
+                     alive=jnp.ones((n,), bool), nsc=jnp.zeros((n,), jnp.int32))
+        return pterm, nterms, sofl + oofl, created
     nterms, ofl = run_cascade(g0, kernel, knuc, su["consumed0"], P=P, max_gen=max_gen)
     # CREATED-PION RE-ENTRY: gather the leading NN-created pion per event across the nucleon BFS, then
     # cascade it as a pion (it can survive as a pi+ and BE the signal pion when the primary died).
