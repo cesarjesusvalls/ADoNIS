@@ -117,7 +117,25 @@ Loop `while jnp.any(alive)` (global `max_steps` cap):
 - **Speedup (the payoff)** `scripts/cascade_pool_timing.py` (Ar QE, 3775 ev, P=16, ms683,
   nn_inelastic, post-JIT run-only): **bfs 94.53 ms/ev -> pool 33.76 ms/ev = 2.8x faster.**  Confirms
   the dead-slot elimination beats the dual-body 2x-eval cost.
-- S4: kind-1 record accumulation + reweight closures.
-- S5: validation vs ACHILLES (transparency, fate, multiplicity, topology) + speedup measurement
-  (speedup DONE above: 2.8x).
-- S6: flip default to "pool" once green; keep "bfs" available.
+- **S5 vs ACHILLES (QE CC0pi Ar) DONE.**  Generated a 5-seed pool QE Ar bank
+  (`configs/gen_ar_pool_qe.yaml` -> `t2k_cc0pi_engine_rich_arpool.npz`, M=16, ms683) and ran the CC0pi
+  analysis vs the ACHILLES Ar reference (`configs/ana_cc0pi_arpool_nopcut.yaml`, pool QE + BFS
+  RES-absorbed; only the QE engine differs from `ana_cc0pi_ar_nopcut`).
+    sigma ACH/ADO: **BFS 1.020 -> POOL 1.014** (toward 1.000).  chi2/ndf (POOL vs BFS):
+    dpt 1.15/2.15, dalphat 1.86/2.76, Q2 1.54/1.51, W 2.11/2.52, p_mu 1.98/1.71, cos_mu 0.96/1.45,
+    lp_p 2.41/2.85 -> POOL lower on 5/7 (Q2 flat, p_mu up).  Figure cc0pi_ENGINE_argon_POOL_nopcut.png.
+  - **CAVEAT (buffer confound, honest):** the committed BFS `_ar` bank is the DEV config P=6/max_gen=3
+    (gen_ar_ms600), the pool is M=16.  A live event can need up to 16 concurrent particles
+    (overflow-check below), which P=6x3 truncates -> the BFS `_ar` loses high-multiplicity protons.
+    So the 1.020->1.014 gain is the pool's wide single-stack CAPACITY (+ all-created-pion faithfulness),
+    NOT the engine algorithm.  At EQUAL buffers (P=16 both) the engines agree within ~1 sigma
+    (the cascade_pool_topology test).  The pool's value: it makes high-capacity cascades AFFORDABLE
+    (2.8x faster), so production can run M=16 cheaply.
+  - **Overflow is on DEAD (w=0) events only** (`scripts/cascade_pool_overflow_check.py`, 30000 ev, 94%
+    live): <nterm>_live = 1.986 IDENTICAL at M=16 and M=32 (max live 16 both); only dead-event avalanches
+    grow (2.645->3.083, max 21->36).  out_ofl=0 at M_out=24.  So the ~556/30k stack overflow per seed is
+    zero-weight runaway events; the bank's live physics is unbiased and **M=16 is sufficient**.
+- S4: kind-1 record accumulation + reweight closures (differentiability through the pool).
+- S6: flip default to "pool" once RES integrated + S4 done; keep "bfs" available.
+- **RES pool integration** (CC1pi): primary pion as a gen-0 PION stack slot + the pterm/created schema
+  split -- the remaining channel.
