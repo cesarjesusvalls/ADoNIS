@@ -223,21 +223,43 @@ def run_cascade(init, kernel, key, consumed0, P=10, max_gen=6):
     return terminals, overflow
 
 
-def run_cascade_pool(init, su, cfg, key, P=10, max_gen=6, channel="res"):
-    """POOLED engine (WIP, docs/logbook/cascade_pool_engine.md): one fixed-size (n, P) particle stack
-    stepped ONCE per step, with the in/out reconciliation (drop terminal, insert created, count overflow)
-    inside the step body -- the ACHILLES evolving-list, vectorized.  Replaces the BFS's max_gen separate
-    full-max_steps passes (~10-24x dead-slot waste).  Returns (terminals_list_compatible, overflow).
+def pool_reconcile(stack, terminal, spawn, M):
+    """The POOLED engine's per-step in/out (docs/logbook/cascade_pool_engine.md): drop the slots that
+    terminated this step (escape/absorb/convert), KEEP the survivors, INSERT the particles created this
+    step, and re-pack to the fixed width M -- counting any that don't fit as overflow.  This is exactly
+    compact(concat(survivors, spawned), M), so it reuses the validated compaction primitive.
+      stack    : ParticleBatch (n, M)   -- the current stack (post-step state)
+      terminal : (n, M) bool            -- slots that reached a terminal this step
+      spawn    : ParticleBatch (n, K)   -- particles created this step (alive mask = which are real)
+      M        : int                    -- fixed stack width
+    Returns (new_stack (n, M), overflow (scalar))."""
+    stack = {**stack, "alive": stack["alive"] & ~terminal}
+    combined = {k: jnp.concatenate([stack[k], spawn[k]], axis=1) for k in stack}
+    return compact(combined, M)
 
-    Staged build (each a clean commit):
-      S1 (this): config switch + skeleton.
-      S2: per-step body extraction/vectorization to (n,P), per-particle fold_in keys, slot-serialized
-          consumed depletion.
-      S3: reconcile inside the loop.  S4: kind-1 records.  S5: validate vs ACHILLES.  S6: flip default.
-    """
-    raise NotImplementedError(
-        "cfg.engine='pool' is WIP (S1 scaffold only); use engine='bfs'. See "
-        "docs/logbook/cascade_pool_engine.md for the staged plan.")
+
+def run_cascade_pool(init, stepper, key, M, max_steps):
+    """POOLED engine loop (S2, docs/logbook/cascade_pool_engine.md): ONE fixed-size (n, M) particle stack
+    stepped once per step; the in/out reconcile (pool_reconcile) runs INSIDE the step, vs the BFS's
+    per-generation compact across max_gen separate full-max_steps passes (~10-24x dead-slot waste).
+      stepper(stack, key) -> (stack2 (n,M), terminal (n,M) bool, spawn ParticleBatch (n,K)) advances
+        every live slot ONE step and returns the newly-terminal flag + the particles created this step.
+        (S2b plugs in the physics stepper; the loop + reconcile mechanism is built & tested here.)
+    Returns (final_stack, overflow).  Per-step terminal/output collection is S3."""
+    stack, _ = compact(init, M)
+
+    def cond(st):
+        i, stk, _ = st
+        return (i < max_steps) & jnp.any(stk["alive"])
+
+    def body(st):
+        i, stk, ofl = st
+        stk2, terminal, spawn = stepper(stk, jax.random.fold_in(key, i))
+        newstk, o = pool_reconcile(stk2, terminal, spawn, M)
+        return i + jnp.int32(1), newstk, ofl + o.astype(ofl.dtype)   # keep carry dtypes fixed (while_loop)
+
+    _, stack, ofl = jax.lax.while_loop(cond, body, (jnp.int32(0), stack, jnp.int32(0)))
+    return stack, ofl
 
 
 def _nucleon_kernel(npos, nmom, nisp, cfg, sscat=1.0):
@@ -340,9 +362,12 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
         g0["track_id"] = jnp.zeros((n, 1), jnp.int32)                  # gen-0 track id 0 (QE proton)
     kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], cfg, sscat)
     if getattr(cfg, "engine", "bfs") == "pool":
-        nterms, ofl = run_cascade_pool(g0, su, cfg, knuc, P=P, max_gen=max_gen, channel=channel)
-    else:
-        nterms, ofl = run_cascade(g0, kernel, knuc, su["consumed0"], P=P, max_gen=max_gen)
+        # S2b: build the physics stepper (per-step (n,M) body: nucleon+pion dispatch, per-particle keys,
+        # slot-serialized consumed depletion) and run run_cascade_pool.  The loop+reconcile mechanism
+        # (run_cascade_pool / pool_reconcile) is built & unit-tested; the stepper is the remaining piece.
+        raise NotImplementedError("pool physics stepper is S2b; loop+reconcile done (S2). See "
+                                  "docs/logbook/cascade_pool_engine.md.")
+    nterms, ofl = run_cascade(g0, kernel, knuc, su["consumed0"], P=P, max_gen=max_gen)
     # CREATED-PION RE-ENTRY: gather the leading NN-created pion per event across the nucleon BFS, then
     # cascade it as a pion (it can survive as a pi+ and BE the signal pion when the primary died).
     ar = jnp.arange(n)
