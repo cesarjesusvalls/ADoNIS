@@ -1,0 +1,14 @@
+# Argon 20-seed ENHANCED-buffer run: probe whether a larger soft-proton / high-multiplicity buffer
+# recovers ACHILLES's 3p/4p tail and closes the 2p high-Q^2 residual. mprot=10 matches ACHILLES's
+# prot_p4 storage; n_recoil=6 lifts the (uncounted) per-walk knockout cap; P=10/g4 carries them
+# through the BFS. Overwrites _ar banks. Run: python -u scripts/adonis_generate.py configs/gen_arE.yaml
+name: t2k_arE
+material: Ar
+n_per_seed: 30000
+n_seeds: 20
+channels: [qe, res]
+cascade: {P: 10, max_gen: 4, n_recoil: 6, step: 0.04, max_steps: 260,
+          cylinder: true, nn_inelastic: true, mprot: 10}
+tracking: {enabled: false, steps: false}
+out_dir: data/oracle
+tag: _ar

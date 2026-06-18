@@ -699,14 +699,22 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         pN_j = nmom[ar, j]
         rnuc = jnp.linalg.norm(npos, axis=2)
         kf_n = _kf_local(jnp.where(nisp, _rho_species(rnuc, rgrid, rhoP), _rho_species(rnuc, rgrid, rhoN)))
-        kf_j = kf_n[ar, j]
+        kf_j = kf_n[ar, j]                                           # struck (=recoil) species k_F
+        # ACHILLES PauliBlocking blocks EACH outgoing against ITS OWN species' local k_F
+        # (FermiMomentum(pos, part.ID())).  The leading OUTGOING nucleon keeps the primary's species
+        # (isp0); the recoil keeps the struck species (nisp[j]).  Using kf_j for BOTH over-blocks the
+        # leading in neutron-rich nuclei (k_F,n>k_F,p) -> Ar-specific scatter deficit; bit-exact for N=Z.
+        kf_lead = _kf_local(jnp.where(isp0, _rho_species(rnuc[ar, j], rgrid, rhoP),
+                                            _rho_species(rnuc[ar, j], rgrid, rhoN)))
 
-        def scat_one(p_lead, pN_i, kf_i, k):
-            p_out = _two_body_cm_scatter(p_lead, pN_i, M_N, k)        # leading out (isotropic)
+        def scat_one(p_lead, pN_i, kf_out, kf_rec, k):
+            p_out = _two_body_cm_scatter(p_lead, pN_i, M_N, k)        # leading out (isotropic CM, as ACHILLES)
             p_rec = (p_lead + pN_i) - p_out
-            blocked = (jnp.linalg.norm(p_out[1:]) < kf_i) | (jnp.linalg.norm(p_rec[1:]) < kf_i)
+            blocked = (jnp.linalg.norm(p_out[1:]) < kf_out) | (jnp.linalg.norm(p_rec[1:]) < kf_rec)
             return p_out, blocked
-        p_out, blocked = jax.vmap(scat_one)(p_N, pN_j, kf_j, jax.random.split(ks, n))
+        p_out, blocked = jax.vmap(scat_one)(p_N, pN_j, kf_lead, kf_j, jax.random.split(ks, n))
+        if not cfg.pauli:                                            # ablation gate (consistent with the
+            blocked = blocked & False                                # pion/inelastic blocks); no-op at pauli=True
         # ---- NN -> N Delta -> N N pi (inelastic) branch: fold_in keys leave the elastic
         # stream untouched (bit-exact when nn_inelastic=False) ------------------------------
         sig_in_j = sig_in[ar, j]; sig_el_j = sig_el[ar, j]

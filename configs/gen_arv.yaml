@@ -1,0 +1,12 @@
+# Throwaway: 20-seed Ar (P=6) to validate the isospin-CG absorption fix vs the old 20-seed topology.
+# Overwrites _ar banks; regenerate 50-seed gen_ar.yaml after. Run: python -u scripts/adonis_generate.py configs/gen_arv.yaml
+name: t2k_arv
+material: Ar
+n_per_seed: 30000
+n_seeds: 20
+channels: [qe, res]
+cascade: {P: 6, max_gen: 3, n_recoil: 2, step: 0.04, max_steps: 260,
+          cylinder: true, nn_inelastic: true, mprot: 4}
+tracking: {enabled: false, steps: false}
+out_dir: data/oracle
+tag: _ar

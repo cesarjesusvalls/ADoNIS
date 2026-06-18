@@ -1,0 +1,98 @@
+"""Single-pass primary-nucleon FATE dump for the ADoNIS cascade (NO daughter re-cascade).
+
+Methodical cascade diagnostic: take the pre-FSI primary nucleons, propagate each ONCE through the
+Argon background (the leading-nucleon walk = `_propagate_nucleon_discrete`), and classify its fate +
+its produced knockouts -- granular, per species, per initial-momentum bin, so it can be compared
+EXACTLY against an ACHILLES single-FSI-pass dump.
+
+Fate categories (mutually exclusive, primary only):
+  ESCAPED_FREE : never interacted (nsc==0), left the nucleus           (transparency)
+  ELASTIC      : >=1 NN-elastic scatter, no pion, escaped (degraded |p|)
+  INELASTIC    : produced a pion (NN->NDelta->NN'pi)
+  RECAPTURED   : reached the boundary with KE<10 MeV -> bound (#8)      (absorbed)
+
+Per primary we also record: initial |p|, final |p|, #proton-knockouts, #neutron-knockouts, and the
+leading knockout |p|.  Saved to an npz for the ADoNIS-vs-ACHILLES comparison.
+
+Run: python -u scripts/cascade_fate_dump.py [Ar|C] [proton|neutron] [n_events] [out.npz]
+"""
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("ADONIS_N_RECOIL", "6")          # generous so knockout counting is not truncated
+import numpy as np, jax, jax.numpy as jnp
+np.seterr(all="ignore")
+from adonis.workflow.materials import resolve_targets
+from adonis.workflow.generate import gen_events
+from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _propagate_nucleon_discrete
+from adonis.fsi.cascade_full import setup_carbon
+from adonis.xsec.spectral import SpectralFunction
+import adonis.xsec.flux as flux
+from adonis.fsi import oset_xsec as ox
+
+M_N = float(ox.M_N)
+mat = sys.argv[1] if len(sys.argv) > 1 else "Ar"
+species = sys.argv[2] if len(sys.argv) > 2 else "proton"
+N = int(sys.argv[3]) if len(sys.argv) > 3 else 60000
+out = sys.argv[4] if len(sys.argv) > 4 else f"/tmp/ado_fate_{mat}_{species}.npz"
+pauli = (sys.argv[5].lower() not in ("0", "false", "nopauli")) if len(sys.argv) > 5 else True
+flux.BEAM_MODE = "is"
+
+tg = resolve_targets(mat)[0][0]
+cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=260, seed=1, nn_inelastic=True,
+                            pauli=pauli, nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
+print(f"[cfg] pauli={pauli}")
+sf_n = SpectralFunction(tg.spectral_n)
+
+# Primary nucleons: use the QE struck->outgoing proton momenta as the realistic primary |p| spectrum.
+# For the neutron-primary characterization we keep the SAME momentum spectrum but set species=neutron,
+# isolating the cascade's species dependence at matched kinematics.
+a = gen_events("qe", N, 0, sf_n=sf_n, n_neutron=tg.A - tg.Z, n_proton=tg.Z)
+w = np.asarray(a["w"]); sel = w > 0
+pN = jnp.asarray(a["p_N"][sel]); ipid = jnp.asarray(a["ipid"][sel]); m = int(sel.sum()); w = w[sel]
+is_p = jnp.full(m, species == "proton")
+
+su = setup_carbon(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
+ret = _propagate_nucleon_discrete(su["pos0"], pN, is_p, su["npos"], su["nmom"], su["nisp"],
+                                  cfg, jax.random.PRNGKey(99), jnp.zeros(m), su["consumed0"], 1.0)
+pN_out = np.asarray(ret[0]); nsc = np.asarray(ret[1]); made_pi = np.asarray(ret[7])
+ko = np.asarray(ret[8][0]); ko_chg = np.asarray(ret[8][3])          # (m,K,4), (m,K)
+ko_mom = np.linalg.norm(ko[:, :, 1:], axis=2)
+
+p_init = np.linalg.norm(np.asarray(pN)[:, 1:], axis=1)
+p_fin = np.linalg.norm(pN_out[:, 1:], axis=1)
+ke_fin = pN_out[:, 0] - M_N
+n_ko_p = ((ko_mom > 0) & (ko_chg == 1)).sum(1)
+n_ko_n = ((ko_mom > 0) & (ko_chg == 0)).sum(1)
+lead_ko = ko_mom.max(1)
+
+# fate codes: 0 ESCAPED_FREE, 1 ELASTIC, 2 INELASTIC, 3 RECAPTURED
+fate = np.where(made_pi, 2, np.where(p_fin < 1.0, 3, np.where(nsc == 0, 0, 1)))
+names = ["ESCAPED_FREE", "ELASTIC", "INELASTIC", "RECAPTURED"]
+
+def wfrac(mask): return float((w * mask).sum() / w.sum())
+print(f"=== ADoNIS single-pass primary fate: {mat} {species}  (N={m}, weighted) ===")
+print(f"primary <|p|>={(w*p_init).sum()/w.sum():.1f} MeV")
+print(f"{'fate':14s} {'frac':>8s}  {'<|p|_in>':>9s} {'<|p|_fin>':>10s}")
+for c, nm in enumerate(names):
+    mk = fate == c
+    fr = wfrac(mk)
+    pin = (w[mk]*p_init[mk]).sum()/max((w[mk]).sum(),1e-30) if mk.any() else 0
+    pfn = (w[mk]*p_fin[mk]).sum()/max((w[mk]).sum(),1e-30) if mk.any() else 0
+    print(f"{nm:14s} {fr:8.4f}  {pin:9.1f} {pfn:10.1f}")
+print(f"\nknockouts/primary:  proton={ (w*n_ko_p).sum()/w.sum():.3f}  neutron={ (w*n_ko_n).sum()/w.sum():.3f}")
+print(f"mean elastic scatters nsc = {(w*nsc).sum()/w.sum():.3f}")
+# fate fractions by initial-|p| bin
+print(f"\n{'p_in bin':>14s} | " + " ".join(f"{n:>12s}" for n in names))
+edges = [0, 200, 350, 500, 700, 1000, 5000]
+for lo, hi in zip(edges[:-1], edges[1:]):
+    b = (p_init >= lo) & (p_init < hi)
+    if not b.any(): continue
+    wb = w[b]; row = [f"[{lo},{hi})"]
+    for c in range(4):
+        row.append(f"{(wb*(fate[b]==c)).sum()/wb.sum():12.4f}")
+    print(" ".join(f"{x:>14s}" if i == 0 else x for i, x in enumerate(row)))
+
+np.savez(out, p_init=p_init, p_fin=p_fin, ke_fin=ke_fin, nsc=nsc, made_pi=made_pi,
+         fate=fate, n_ko_p=n_ko_p, n_ko_n=n_ko_n, lead_ko=lead_ko, w=w,
+         species=species, material=mat)
+print(f"\nwrote {out}")

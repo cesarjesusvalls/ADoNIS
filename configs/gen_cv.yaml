@@ -1,0 +1,12 @@
+# Carbon production at the SAME buffers as Ar (P=8/g4/nr3/mp6) for an apples-to-apples comparison with
+# all cascade fixes. Run: python -u scripts/adonis_generate.py configs/gen_cv.yaml
+name: t2k_cv
+material: C
+n_per_seed: 30000
+n_seeds: 50
+channels: [qe, res]
+cascade: {P: 8, max_gen: 4, n_recoil: 3, step: 0.04, max_steps: 260,
+          cylinder: true, nn_inelastic: true, mprot: 6}
+tracking: {enabled: false, steps: false}
+out_dir: data/oracle
+tag: _cv

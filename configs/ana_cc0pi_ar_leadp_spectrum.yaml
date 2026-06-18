@@ -1,0 +1,28 @@
+# Diagnostic: leading-proton |p| spectrum for CC0pi Ar, ADoNIS vs ACHILLES, down to 0 MeV.
+# No proton momentum cut (p_win=[0,inf]), NO proton angle cut (cth=-1) -> the pure leading-proton
+# momentum spectrum over all CC0pi (mu + no pion) events with >=1 proton. Fine 50 MeV bins to
+# resolve the sub-250 MeV region where the 0p topology anomaly (ACH/ADO 1.5) originates.
+# Run: python -u scripts/adonis_analyze.py configs/ana_cc0pi_ar_leadp_spectrum.yaml
+name: t2k_cc0pi_ar_leadp_spectrum
+inputs:
+  adonis_qe:  [data/oracle/t2k_cc0pi_engine_rich_ar.npz]
+  adonis_res: [data/oracle/t2k_cc1pi_engine_rich_ar.npz]
+  reference:  [data/oracle/t2k_cc1pi_rich_ach_FSI_Ar.npz]
+signal:
+  mu_win: [250.0, inf]
+  cos_mu: -0.6
+  p_win:  [0.0, inf]
+  cth: -1.0
+  pi_win: null
+  proton_lead: global
+  pion_id: none
+  proton_count: ge1
+  require_proton: true
+  target: carbon
+observables:
+  - {key: lp_p, label: "lead $p_p$ [MeV]", linspace: [0, 1500, 31]}
+data: {enabled: false}
+out_path: paper_figures/cc0pi_argon_leadp_spectrum.png
+title: "CC0$\\pi$ ($^{40}$Ar) leading-proton $|p|$ spectrum (no p/angle cut): ADoNIS vs ACHILLES"
+ratio_ylim: [0.5, 1.6]
+carbon_only: false
