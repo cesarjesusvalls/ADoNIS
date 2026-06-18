@@ -223,6 +223,23 @@ def run_cascade(init, kernel, key, consumed0, P=10, max_gen=6):
     return terminals, overflow
 
 
+def run_cascade_pool(init, su, cfg, key, P=10, max_gen=6, channel="res"):
+    """POOLED engine (WIP, docs/logbook/cascade_pool_engine.md): one fixed-size (n, P) particle stack
+    stepped ONCE per step, with the in/out reconciliation (drop terminal, insert created, count overflow)
+    inside the step body -- the ACHILLES evolving-list, vectorized.  Replaces the BFS's max_gen separate
+    full-max_steps passes (~10-24x dead-slot waste).  Returns (terminals_list_compatible, overflow).
+
+    Staged build (each a clean commit):
+      S1 (this): config switch + skeleton.
+      S2: per-step body extraction/vectorization to (n,P), per-particle fold_in keys, slot-serialized
+          consumed depletion.
+      S3: reconcile inside the loop.  S4: kind-1 records.  S5: validate vs ACHILLES.  S6: flip default.
+    """
+    raise NotImplementedError(
+        "cfg.engine='pool' is WIP (S1 scaffold only); use engine='bfs'. See "
+        "docs/logbook/cascade_pool_engine.md for the staged plan.")
+
+
 def _nucleon_kernel(npos, nmom, nisp, cfg, sscat=1.0):
     """v2 nucleon-only generation kernel: run nucleon_segment on every slot (NO 2x-run-both, NO pion).
     Each slot emits its TOP-K all-species knockouts -> spawn buffer (n, P*K).  Threads the DEPLETING
@@ -322,7 +339,10 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
         g0["w"] = jnp.ones((n, 1))
         g0["track_id"] = jnp.zeros((n, 1), jnp.int32)                  # gen-0 track id 0 (QE proton)
     kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], cfg, sscat)
-    nterms, ofl = run_cascade(g0, kernel, knuc, su["consumed0"], P=P, max_gen=max_gen)
+    if getattr(cfg, "engine", "bfs") == "pool":
+        nterms, ofl = run_cascade_pool(g0, su, cfg, knuc, P=P, max_gen=max_gen, channel=channel)
+    else:
+        nterms, ofl = run_cascade(g0, kernel, knuc, su["consumed0"], P=P, max_gen=max_gen)
     # CREATED-PION RE-ENTRY: gather the leading NN-created pion per event across the nucleon BFS, then
     # cascade it as a pion (it can survive as a pi+ and BE the signal pion when the primary died).
     ar = jnp.arange(n)

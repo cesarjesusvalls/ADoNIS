@@ -163,6 +163,9 @@ class DiscreteCascadeConfig:
     track_steps: bool = False  # MC-truth: also stack the per-step (pos, p4, alive) trajectory from the
                              # scan -> returns traj for viz/diagnostics (adonis/fsi/tracking).  Forces the
                              # reference scan (not early_exit).  DEFAULT OFF -> production path unchanged.
+    engine: str = "bfs"      # cascade structure: "bfs" = generation-synchronized (default, validated);
+                             # "pool" = single per-step-reconciled particle stack (faster, true step-order
+                             # consumption; see docs/logbook/cascade_pool_engine.md).  WIP behind switch.
 
 
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
