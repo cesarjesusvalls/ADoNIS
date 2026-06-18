@@ -135,6 +135,13 @@ Loop `while jnp.any(alive)` (global `max_steps` cap):
     live): <nterm>_live = 1.986 IDENTICAL at M=16 and M=32 (max live 16 both); only dead-event avalanches
     grow (2.645->3.083, max 21->36).  out_ofl=0 at M_out=24.  So the ~556/30k stack overflow per seed is
     zero-weight runaway events; the bank's live physics is unbiased and **M=16 is sufficient**.
+- **Pool stack width M is a PURE CAPACITY dial** (`configs/gen_ar_pool_qe_p10.yaml`, P=10 vs P=16):
+  `jax.random.split(key, num)[m]` is num-INDEPENDENT (threefry positional counters), so slots 0..m-1 get
+  IDENTICAL keys at any M>=m -> reducing M never perturbs the RNG of an event that fits.  P=10 vs P=16:
+  inclusive sigma 1.014, 0p 0.951, 1p 1.014, 2p 0.986, <lead p> 470.4632 -- ALL bit-identical to displayed
+  precision; only 24/141028 live events (0.02%, 0.004% of weight) have differing prot (concurrent
+  occupancy >10).  => **P=10 is sufficient** for QE Ar live physics (M=16 was conservative); extra
+  overflow at P=10 (825 vs 645/seed) is again dead w=0 runaway events.
 - S4: kind-1 record accumulation + reweight closures (differentiability through the pool).
 - S6: flip default to "pool" once RES integrated + S4 done; keep "bfs" available.
 - **RES pool integration** (CC1pi): primary pion as a gen-0 PION stack slot + the pterm/created schema
