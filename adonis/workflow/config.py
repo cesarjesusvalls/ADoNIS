@@ -50,6 +50,8 @@ class CascadeHyperparams:
     cylinder: bool = True
     nn_inelastic: bool = True
     mprot: int = 6              # top-M proton terminals stored per event (-> ADONIS_MPROT)
+    engine: str = "bfs"         # cascade engine: "bfs" (generation-synchronized, default) | "pool"
+                                # (single per-step-reconciled stack, ~2.8x faster, QE only so far)
 
 
 @dataclass
