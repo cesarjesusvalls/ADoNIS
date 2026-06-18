@@ -238,28 +238,37 @@ def pool_reconcile(stack, terminal, spawn, M):
     return compact(combined, M)
 
 
-def run_cascade_pool(init, stepper, key, M, max_steps):
-    """POOLED engine loop (S2, docs/logbook/cascade_pool_engine.md): ONE fixed-size (n, M) particle stack
+def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24):
+    """POOLED engine loop (docs/logbook/cascade_pool_engine.md): ONE fixed-size (n, M) particle stack
     stepped once per step; the in/out reconcile (pool_reconcile) runs INSIDE the step, vs the BFS's
     per-generation compact across max_gen separate full-max_steps passes (~10-24x dead-slot waste).
-      stepper(stack, key) -> (stack2 (n,M), terminal (n,M) bool, spawn ParticleBatch (n,K)) advances
-        every live slot ONE step and returns the newly-terminal flag + the particles created this step.
-        (S2b plugs in the physics stepper; the loop + reconcile mechanism is built & tested here.)
-    Returns (final_stack, overflow).  Per-step terminal/output collection is S3."""
+      stepper(stack, key, state) -> (stack2 (n,M), terminal (n,M) bool, spawn (n,K), state2)
+        advances every live slot ONE step and returns: the post-step stack, the newly-terminal flag, the
+        particles created this step (spawn ParticleBatch), and the threaded step state (e.g. the consumed
+        mask).  state0 = initial step state.
+    The terminal particles (escaped/absorbed/captured = the cascade FINAL STATE) are accumulated into a
+    fixed (n, M_out) output batch each step.  Returns (out_batch, stack_overflow, out_overflow)."""
     stack, _ = compact(init, M)
+    out0 = empty_batch(init["alive"].shape[0], M_out)
 
     def cond(st):
-        i, stk, _ = st
+        i = st[0]; stk = st[1]
         return (i < max_steps) & jnp.any(stk["alive"])
 
     def body(st):
-        i, stk, ofl = st
-        stk2, terminal, spawn = stepper(stk, jax.random.fold_in(key, i))
-        newstk, o = pool_reconcile(stk2, terminal, spawn, M)
-        return i + jnp.int32(1), newstk, ofl + o.astype(ofl.dtype)   # keep carry dtypes fixed (while_loop)
+        i, stk, state, out, sofl, oofl = st
+        stk2, terminal, spawn, state2 = stepper(stk, jax.random.fold_in(key, i), state)
+        # collect terminals (final-state particles) into the output buffer
+        term_batch = {**stk2, "alive": stk2["alive"] & terminal}
+        out2, oo = compact({k: jnp.concatenate([out[k], term_batch[k]], axis=1) for k in out}, M_out)
+        # reconcile the live stack (drop terminals, insert spawns)
+        newstk, so = pool_reconcile(stk2, terminal, spawn, M)
+        return (i + jnp.int32(1), newstk, state2, out2,
+                sofl + so.astype(sofl.dtype), oofl + oo.astype(oofl.dtype))
 
-    _, stack, ofl = jax.lax.while_loop(cond, body, (jnp.int32(0), stack, jnp.int32(0)))
-    return stack, ofl
+    init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0))
+    _, stack, _, out, sofl, oofl = jax.lax.while_loop(cond, body, init_st)
+    return out, sofl, oofl
 
 
 def _nucleon_kernel(npos, nmom, nisp, cfg, sscat=1.0):

@@ -41,13 +41,14 @@ def test_reconcile_overflow():
     assert int(new["alive"].sum()) == 4            # packed full
 
 
-def test_loop_drains_and_counts_overflow():
-    # Toy stepper: each live slot escapes after its tag reaches 0 (tag decremented each step); a slot
-    # with tag>=3 spawns ONE child (tag 1).  Verify the loop terminates (stack drains) and runs.
+def test_loop_drains_and_collects_output():
+    # Toy stepper: each live slot escapes when its tag reaches 0 (decremented each step); a slot with
+    # tag>=3 spawns ONE child (tag 1).  Original tag 5 -> escapes after 5 steps + spawns 3 children
+    # (at tag 5,4,3), each escaping shortly after -> 4 terminals collected in the output buffer.
     M = 6
     init = _batch(1, M, [[5, 0, 0, 0, 0, 0]], [[True, False, False, False, False, False]])
 
-    def stepper(stk, key):
+    def stepper(stk, key, state):
         tag = stk["p4"][..., 0]
         alive = stk["alive"]
         terminal = alive & (tag <= 0.5)                       # escape when tag hits 0
@@ -56,11 +57,12 @@ def test_loop_drains_and_counts_overflow():
         spawn = empty_batch(1, M)
         spawn["alive"] = spawn_here
         spawn["p4"] = spawn["p4"].at[..., 0].set(jnp.where(spawn_here, 1.0, 0.0))
-        return stk2, terminal, spawn
+        return stk2, terminal, spawn, state
 
-    final, ofl = run_cascade_pool(init, stepper, jax.random.PRNGKey(0), M, max_steps=50)
-    assert int(final["alive"].sum()) == 0          # fully drained
-    assert int(ofl) >= 0
+    out, sofl, oofl = run_cascade_pool(init, stepper, jax.random.PRNGKey(0), jnp.int32(0),
+                                       M, max_steps=50, M_out=24)
+    assert int(out["alive"].sum()) == 4            # 1 original + 3 children collected
+    assert int(sofl) == 0 and int(oofl) == 0
 
 
 def test_nucleon_step_matches_bfs_segment():
@@ -103,6 +105,6 @@ def test_nucleon_step_matches_bfs_segment():
 
 
 if __name__ == "__main__":
-    test_reconcile_drop_keep_insert(); test_reconcile_overflow(); test_loop_drains_and_counts_overflow()
+    test_reconcile_drop_keep_insert(); test_reconcile_overflow(); test_loop_drains_and_collects_output()
     test_nucleon_step_matches_bfs_segment()
     print("pool reconcile + loop + nucleon-step OK")
