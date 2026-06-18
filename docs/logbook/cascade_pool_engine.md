@@ -78,10 +78,26 @@ Loop `while jnp.any(alive)` (global `max_steps` cap):
     (`scripts/cascade_pool_validate.py 0`, Ar QE, 7537 ev, M=12, ms683, nn_inelastic=False):
     BFS proton(>250)/ev=1.2716, POOL=1.2721, **ratio 1.0004**, stack/out overflow 0.  Pool is not
     bit-identical (true step-order consumption + slot-positional RNG) so ~1.0 is the expected agreement.
-  - **S2b-pion TODO**: the stepper only advances NUCLEON slots (`keep=is_N`); PION slots are left
-    unchanged -> never terminal -> they'd sit alive to the max_steps cap.  So the inelastic branch
-    (nn_inelastic=True, which spawns created pions into the stack) is NOT yet runnable in the pool.
-    `_pion_step` (the `_propagate_discrete` body re-expressed as spawn-per-step) + mixed dispatch is next.
+  - **S2b-pion DONE** (this commit): `_pion_step` = `_propagate_discrete.body` (algo="step") re-expressed
+    spawn-per-step (absorption piNN->NN up to 2 protons, scatter recoil, eta-N' conversion baryon emitted
+    as IMMEDIATE nucleon spawns; scattered pion continues in place, charge oscillates; abs/conv pion
+    removed).  Bit-exact vs bfs leading-pion trajectory (`test_pion_step_matches_bfs_segment`: p_pi, ch,
+    nsc, absorbed, conv, pos all exact).  `make_pool_stepper` now does MIXED dispatch: both bodies run on
+    every slot, selected by species (the v1 2x-eval tradeoff; the dominant dead-slot 10-24x waste is gone).
+    Each slot emits up to 2 NUCLEON spawns + 1 PION spawn (nucleon slot -> 1 knockout N + 1 NN-created pi;
+    pion slot -> up to 2 abs/recoil N).  Stack gains an `nsc` field (pion beam-vs-internal escape).
+  - **Created-pion divergence from bfs (expected, subtlety #5)**: bfs re-cascades only the SINGLE leading
+    created pion per event, from the QE vertex with a FRESH consumed mask (`cascade_carbon_v2` re-entry).
+    The pool propagates EVERY created pion from its TRUE creation point with the running consumed mask ->
+    MORE faithful, NOT bit-identical.  Created pions start `nsc=0` (beam/plane escape) matching the bfs
+    `pion_segment` re-entry convention.  Validate inelastic vs ACHILLES, not vs bfs.
+  - **S2b multiplicity validation** (`scripts/cascade_pool_validate.py`, Ar QE, 7537 ev, ms683):
+    - elastic (nn_inel=False, M=12): BFS proton(>250)/ev=1.2716, POOL=1.2707, **ratio 0.9993**, ovf 0.
+    - inelastic (nn_inel=True, M=16): BFS=1.2850, POOL=1.3099, **ratio 1.0194** (+1.9%), stack_ofl=2.
+      The +1.9% is the created-pion faithfulness divergence above (pool propagates ALL created pions);
+      direction-vs-ACHILLES is an OPEN S5 question.  M=16 already overflows twice -> re-measure
+      concurrent occupancy for production sizing (the old P=12 measurement predated all-created-pion
+      propagation).  carbon bit-exact BFS suite (10 tests) still green after the nsc/compact additions.
   - **RNG note (for S4)**: slot keys are `split(key,M)[m]` (slot-positional).  After a compaction a
     particle changes slot -> its RNG stream shifts.  Valid randomness, but not reproducible-per-particle;
     S4 should re-key via `fold_in(base, persistent_track_id)` (subtlety #1) for determinism.

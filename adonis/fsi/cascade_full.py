@@ -116,6 +116,7 @@ def empty_batch(n, P):
     1 = pion-scatter-knockout chain), gen = BFS depth -- PROVENANCE for offline debugging."""
     return dict(species=jnp.zeros((n, P), jnp.int32), charge=jnp.zeros((n, P), jnp.int32),
                 p4=jnp.zeros((n, P, 4)), pos=jnp.zeros((n, P, 3)), fz=jnp.zeros((n, P)),
+                nsc=jnp.zeros((n, P), jnp.int32),                     # pion scatter count (pool: beam-vs-internal escape)
                 alive=jnp.zeros((n, P), bool), w=jnp.ones((n, P)), fate=jnp.zeros((n, P), jnp.int32),
                 origin=jnp.zeros((n, P), jnp.int32), gen=jnp.zeros((n, P), jnp.int32),
                 track_id=jnp.zeros((n, P), jnp.int32),                # MC-truth: unique id (tracking.py)
@@ -142,7 +143,9 @@ def compact(b, P_out):
     out = empty_batch(n, P_out)
     ar = jnp.broadcast_to(jnp.arange(n)[:, None], (n, M))
     dst = jnp.where(rank < P_out, rank, P_out)                    # P_out = scratch drop slot (will be sliced off)
-    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id"):
+    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id", "nsc"):
+        if k not in b:                                            # optional (e.g. BFS kernel spawns omit nsc)
+            continue
         out[k] = jnp.zeros((n, P_out + 1), b[k].dtype).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
     for k in ("fz", "w"):
         out[k] = jnp.zeros((n, P_out + 1)).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
@@ -225,12 +228,16 @@ def run_cascade(init, kernel, key, consumed0, P=10, max_gen=6):
 
 def make_pool_stepper(su, cfg):
     """Build the pooled-engine physics stepper (S2b): advance every slot of the (n, M) stack ONE step,
-    dispatched by species, with the consumed mask threaded SLOT-SERIALLY (slot m+1 sees m's depletion).
-    Reuses the validated per-step physics (_nucleon_step; _pion_step is S2b-pion).  Returns
-    stepper(stack, key, consumed) -> (stack2, terminal (n,M) bool, spawn ParticleBatch (n,2M), consumed)."""
-    from adonis.fsi.cascade_discrete import _nucleon_step, _load_density
+    dispatched by species (NUCLEON -> _nucleon_step, PION -> _pion_step), with the consumed mask threaded
+    SLOT-SERIALLY (slot m+1 sees m's depletion).  Both per-step bodies run on every slot and are selected
+    by species (the v1 2x-eval tradeoff; the dead-slot waste, the dominant 10-24x factor, is gone).  Each
+    slot emits up to 2 NUCLEON spawns + 1 PION spawn: a nucleon slot -> (1 knockout N, 1 NN-created pion);
+    a pion slot -> (up to 2 absorption/recoil N, 0 pion).  Returns stepper(stack, key, consumed) ->
+    (stack2, terminal (n,M) bool [escaped final-state particles], spawn ParticleBatch (n,3M), consumed)."""
+    from adonis.fsi.cascade_discrete import _nucleon_step, _pion_step, _load_density
     npos, nmom, nisp = su["npos"], su["nmom"], su["nisp"]
     rgrid, rhoP, rhoN, radius = _load_density(cfg.nucleus, cfg.density_n)
+    _dead = lambda n: (jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, jnp.int32), jnp.zeros(n, bool))
 
     def stepper(stack, key, consumed):
         n, M = stack["alive"].shape
@@ -238,32 +245,60 @@ def make_pool_stepper(su, cfg):
 
         def slot(consumed, m):
             p4 = stack["p4"][:, m]; pos = stack["pos"][:, m]; fz = stack["fz"][:, m]
-            isp = stack["charge"][:, m].astype(bool)                  # nucleon: charge = isospin (1=p)
-            is_N = (stack["species"][:, m] == NUCLEON) & stack["alive"][:, m]
+            nsc = stack["nsc"][:, m]; chg = stack["charge"][:, m]; al = stack["alive"][:, m]
+            sp = stack["species"][:, m]
+            is_N = (sp == NUCLEON) & al; is_pi = (sp == PION) & al
             d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
-            (p4n, posn, dhatn, fzn, aln), esc, recap, do, ko, pin, consumed2, srec = _nucleon_step(
-                p4, pos, dhat, fz, isp, is_N, npos, nmom, nisp, consumed,
-                rgrid, rhoP, rhoN, radius, cfg, keys[m])
-            keep = is_N                                              # non-nucleon/dead slots unchanged
-            new = (jnp.where(keep[:, None], p4n, p4), jnp.where(keep[:, None], posn, pos),
-                   jnp.where(keep, fzn, fz), jnp.where(keep, aln, stack["alive"][:, m]), keep & esc)
-            return consumed2, (new, ko, pin)
+            kN, kP = jax.random.split(keys[m])
+            # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
+            (p4n, posn, _dn, fzn, alnN), escN, _rc, _do, koN, pinN, consumedN, _ = _nucleon_step(
+                p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
+                rgrid, rhoP, rhoN, radius, cfg, kN)
+            # PION branch (charge = pion index 0/1/2); scatter continues, abs/conv removed.
+            (p4p, posp, _dp, chp, nscp, alnP), escP, is_abs, is_conv, s1, s2, consumedP, _ = _pion_step(
+                p4, pos, dhat, chg, nsc, is_pi, npos, nmom, nisp, consumed,
+                rgrid, rhoP, rhoN, radius, cfg, kP)
+            consumed = consumedN | consumedP                          # only the active species adds bits
+            p4_2 = jnp.where(is_N[:, None], p4n, jnp.where(is_pi[:, None], p4p, p4))
+            pos_2 = jnp.where(is_N[:, None], posn, jnp.where(is_pi[:, None], posp, pos))
+            fz_2 = jnp.where(is_N, fzn, fz)                           # only the nucleon updates fz
+            nsc_2 = jnp.where(is_pi, nscp, nsc)                       # only the pion updates nsc
+            chg_2 = jnp.where(is_pi, chp, chg)                        # pion charge oscillates
+            al_2 = jnp.where(is_N, alnN, jnp.where(is_pi, alnP, al))
+            term = (is_N & escN) | (is_pi & escP)                    # escaped = final-state (collected)
+            new = (p4_2, pos_2, fz_2, nsc_2, chg_2, al_2, term)
+            # nucleon-slot knockout / pion-slot 1st product -> nuc1; pion-slot 2nd product -> nuc2.
+            nuc1 = tuple(jnp.where(is_N, kn, jnp.where(is_pi, s1k, dk)) if kn.ndim == 1
+                         else jnp.where(is_N[:, None], kn, jnp.where(is_pi[:, None], s1k, dk))
+                         for kn, s1k, dk in zip(koN, s1, _dead(n)))
+            nuc2 = tuple(jnp.where(is_pi, s2k, dk) if s2k.ndim == 1
+                         else jnp.where(is_pi[:, None], s2k, dk)
+                         for s2k, dk in zip(s2, _dead(n)))
+            pio = tuple(jnp.where(is_N, pk, dk) if pk.ndim == 1
+                        else jnp.where(is_N[:, None], pk, dk)
+                        for pk, dk in zip(pinN, _dead(n)))
+            return consumed, (new, nuc1, nuc2, pio)
 
-        consumed, (new, ko, pin) = jax.lax.scan(slot, consumed, jnp.arange(M))
+        consumed, (new, nuc1, nuc2, pio) = jax.lax.scan(slot, consumed, jnp.arange(M))
         T = lambda x: jnp.moveaxis(x, 0, 1)                          # (M, n, ...) -> (n, M, ...)
-        p4s, poss, fzs, als, terms = new
-        stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "alive": T(als)}
+        p4s, poss, fzs, nscs, chgs, als, terms = new
+        stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "nsc": T(nscs),
+                  "charge": T(chgs), "alive": T(als)}
         terminal = T(terms)
-        ko_p4, ko_pos, ko_fz, ko_q, ko_al = (T(x) for x in ko)
-        pi_p4, pi_pos, pi_fz, pi_ch, pi_al = (T(x) for x in pin)
-        spawn = empty_batch(n, 2 * M)
-        spawn["species"] = jnp.concatenate([jnp.full((n, M), NUCLEON, jnp.int32),
+
+        def _spawn(species, packs):                                  # packs: list of (p4,pos,fz,q,al) (M,n,...)
+            p4_, pos_, fz_, q_, al_ = (jnp.concatenate([T(p[i]) for p in packs], axis=1) for i in range(5))
+            return species, p4_, pos_, fz_, q_.astype(jnp.int32), al_
+        sp_n, np4, npos_, nfz, nq, nal = _spawn(NUCLEON, [nuc1, nuc2])
+        sp_p, pp4, ppos, pfz, pq, pal = _spawn(PION, [pio])
+        spawn = empty_batch(n, 3 * M)
+        spawn["species"] = jnp.concatenate([jnp.full((n, 2 * M), NUCLEON, jnp.int32),
                                             jnp.full((n, M), PION, jnp.int32)], axis=1)
-        spawn["charge"] = jnp.concatenate([ko_q, pi_ch], axis=1).astype(jnp.int32)
-        spawn["p4"] = jnp.concatenate([ko_p4, pi_p4], axis=1)
-        spawn["pos"] = jnp.concatenate([ko_pos, pi_pos], axis=1)
-        spawn["fz"] = jnp.concatenate([ko_fz, pi_fz], axis=1)
-        spawn["alive"] = jnp.concatenate([ko_al, pi_al], axis=1)
+        spawn["charge"] = jnp.concatenate([nq, pq], axis=1)
+        spawn["p4"] = jnp.concatenate([np4, pp4], axis=1)
+        spawn["pos"] = jnp.concatenate([npos_, ppos], axis=1)
+        spawn["fz"] = jnp.concatenate([nfz, pfz], axis=1)
+        spawn["alive"] = jnp.concatenate([nal, pal], axis=1)
         return stack2, terminal, spawn, consumed
 
     return stepper

@@ -1052,6 +1052,210 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
             jax.lax.stop_gradient((has_hit, perp2_c, sig_c)))
 
 
+def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
+               rgrid, rhoP, rhoN, radius, cfg, key):
+    """ONE step of the PION cascade for one pion per event (n,) -- a line-for-line extraction of
+    `_propagate_discrete.body` (algo="step"), re-expressed for the POOLED engine: the absorption
+    products (piNN->NN, up to 2 protons), the scatter recoil, and the eta-N' conversion baryon are
+    returned as IMMEDIATE NUCLEON spawns (no best_abs/best_rec top-K deferral); the scattered pion
+    continues in place (charge oscillates) and the absorbed/converted pion is removed.  RNG usage
+    matches body exactly (split(sk,7) + fold_in(ka,211/212) + per-event splits), so iterating this with
+    the same per-step keys reproduces the bfs leading PION trajectory (p_pi, ch, nsc, absorbed, conv,
+    pos) bit-for-bit.  ch = pion charge INDEX (0=pi+,1=pi0,2=pi-).
+    Returns: (p4', pos', dhat', ch', nsc', alive'), escaping, is_abs, is_conv,
+             (s1_p4,s1_pos,s1_fz,s1_q,s1_al), (s2_p4,s2_pos,s2_fz,s2_q,s2_al), consumed', srec."""
+    assert cfg.algo == "step", "pool pion step implements the 'step' algo (production path) only"
+    n, A = nisp.shape; ar = jnp.arange(n)
+    p_pi = p4
+    # ----- escape (Cascade.cc:532-553): beam pion (nsc==0) -> z>=radius PLANE; scattered -> sphere -----
+    ext = nsc == 0
+    outward = jnp.sum(pos * dhat, axis=1) > 0
+    esc_plane = ext & (pos[:, 2] >= radius)
+    esc_sphere = (~ext) & (jnp.linalg.norm(pos, axis=1) > radius) & outward
+    escaping = esc_plane | esc_sphere
+    alive = alive & ~escaping
+    rel = npos - pos[:, None, :]
+    par = jnp.sum(rel * dhat[:, None, :], axis=2)
+    perp2 = jnp.sum(rel ** 2, axis=2) - par ** 2
+    cand = (par > 0) & (~consumed) & alive[:, None] & (par <= cfg.step)
+    pE = p_pi[:, 0]; pmom = jnp.linalg.norm(p_pi[:, 1:], axis=1); m_pi = _CH_MASS[ch]
+    vpi = p_pi[:, 1:] / pE[:, None]
+    rnuc = jnp.linalg.norm(npos, axis=2)
+    kf_n = _kf_local(jnp.where(nisp, _rho_species(rnuc, rgrid, rhoP), _rho_species(rnuc, rgrid, rhoN)))
+
+    def _xsec(nm, npo, nip):
+        vN = nm[..., 1:] / nm[..., 0:1]
+        vrel = jnp.clip(jnp.linalg.norm(vpi[:, None, :] - vN, axis=-1), 1e-3, None)
+        rnpo = jnp.linalg.norm(npo, axis=-1)
+        rho_t = _rho_species(rnpo, rgrid, rhoP) + _rho_species(rnpo, rgrid, rhoN)
+        kf = _kf_local(jnp.where(nip, _rho_species(rnpo, rgrid, rhoP), _rho_species(rnpo, rgrid, rhoN)))
+        Pp = p_pi[:, None, :] + nm
+        Wl = jnp.sqrt(jnp.clip(Pp[..., 0] ** 2 - jnp.sum(Pp[..., 1:] ** 2, axis=-1), 1.0, None))
+        sal = jnp.clip(ox.abs_cross_section(pE[:, None] + 0 * Wl, m_pi[:, None] + 0 * Wl,
+                       pmom[:, None] + 0 * Wl, vrel, jnp.clip(kf, 1e-6, None),
+                       jnp.clip(rho_t, 1e-9, None)), 0.0, None)
+        K_ = Wl.shape[1]
+        nuc_i = jnp.where(nip, 0, 1).astype(jnp.int32)
+        sio = cascade_mb.jax_channel_sigmas_resolved(Wl.reshape(-1),
+                  jnp.broadcast_to(ch[:, None], (n, K_)).reshape(-1),
+                  nuc_i.reshape(-1)).reshape(n, K_, 3)
+        ssl = jnp.clip(jnp.sum(sio, axis=-1), 0.0, None)
+        sil = jnp.clip(cascade_mb.jax_conversion_sigma(Wl.reshape(-1),
+                  jnp.broadcast_to(ch[:, None], (n, K_)).reshape(-1),
+                  nuc_i.reshape(-1)).reshape(n, K_), 0.0, None)
+        return sal, ssl, sil, sio, Wl
+
+    if cfg.fast_xsec:
+        score = jnp.where(cand, -perp2, -jnp.inf)
+        _, idx = jax.lax.top_k(score, _KSLAB)
+        gi = (ar[:, None], idx)
+        sa_k, ss_k, si_k, sio_k, W_k = _xsec(nmom[ar[:, None], idx], npos[ar[:, None], idx], nisp[ar[:, None], idx])
+        sa = jnp.zeros((n, A)).at[gi].set(sa_k); ss = jnp.zeros((n, A)).at[gi].set(ss_k)
+        si = jnp.zeros((n, A)).at[gi].set(si_k); sig_io = jnp.zeros((n, A, 3)).at[gi].set(sio_k).reshape(n * A, 3)
+        W = jnp.zeros((n, A)).at[gi].set(W_k)
+    else:
+        sa, ss, si, sio, W = _xsec(nmom, npos, nisp); sig_io = sio.reshape(n * A, 3)
+    like_charge = ((ch == 0)[:, None] & nisp) | ((ch == 2)[:, None] & (~nisp))
+    sa = sa * jnp.where(like_charge, 5.0 / 6.0, 1.0)
+    sig = sa + ss + si
+    _mode = cfg.prob if cfg.prob else ("cylinder" if cfg.cylinder else "gaussian")
+    _sfm = jnp.clip(sig * MB_TO_FM2, 1e-12, None)
+    if _mode == "cylinder":
+        prob = jnp.where(cand & (perp2 < jnp.clip(sig * MB_TO_FM2, 0.0, None) / jnp.pi), 1.0, 0.0)
+    elif _mode == "pion":
+        prob = jnp.where(cand, jnp.exp(-jnp.sqrt(2.0 * jnp.pi * perp2 / _sfm)), 0.0)
+    else:
+        prob = jnp.where(cand, jnp.exp(-jnp.pi * perp2 / _sfm), 0.0)
+    sk, ku, kc, kf, ka, kab, knp = jax.random.split(key, 7)
+    passes = cand & (jax.random.uniform(ku, (n, A)) < prob)
+    metric = jnp.where(passes, perp2, jnp.inf)
+    j = jnp.argmin(metric, axis=1)
+    has_hit = jnp.isfinite(metric[ar, j]) & alive
+    sa_j = sa[ar, j]; si_j = si[ar, j]; sig_j = sig[ar, j]
+    W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
+    kf_p_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoP))
+    kf_n_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoN))
+    p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)
+    p_conv = si_j / jnp.clip(sig_j, 1e-12, None)
+    u_br = jax.random.uniform(kc, (n,))
+    chose_abs = has_hit & (u_br < p_abs)
+    chose_conv = has_hit & ~chose_abs & (u_br < p_abs + p_conv)
+    # ----- absorption final state (isospin partition; per-species Pauli) -----
+    struck_p = nisp[ar, j].astype(jnp.int32)
+    d2 = jnp.sum((npos - npos[ar, j][:, None, :]) ** 2, axis=2)
+    self_used = (jnp.arange(A)[None, :] == j[:, None]) | consumed
+    d2p = jnp.where(self_used | (~nisp), jnp.inf, d2)
+    d2n = jnp.where(self_used | nisp, jnp.inf, d2)
+    pj_p = jnp.argmin(d2p, axis=1); has_p = jnp.isfinite(d2p[ar, pj_p])
+    pj_n = jnp.argmin(d2n, axis=1); has_n = jnp.isfinite(d2n[ar, pj_n])
+    idx2 = ch * 2 + struck_p
+    Wabs = jnp.asarray(_ABS_W_NP)[idx2]; PARTabs = jnp.asarray(_ABS_PART_NP)[idx2]
+    avail = jnp.where(PARTabs == 1, has_p[:, None], jnp.where(PARTabs == 0, has_n[:, None], False))
+    Wm = jnp.where(avail, Wabs, 0.0); wtot = jnp.sum(Wm, axis=1, keepdims=True)
+    Wm = Wm / jnp.clip(wtot, 1e-12, None)
+    u_np = jax.random.uniform(knp, (n,))
+    nprot_out = jnp.clip(jnp.sum((u_np[:, None] > jnp.cumsum(Wm, axis=1)).astype(jnp.int32), axis=1), 0, 2)
+    has_mode = wtot[:, 0] > 0
+    part_is_p = PARTabs[ar, nprot_out] == 1
+    pN_p = jnp.where(part_is_p[:, None], nmom[ar, pj_p], nmom[ar, pj_n])
+    pos_hit = pos
+    rA = jnp.linalg.norm(pos_hit, axis=1); rB = jnp.linalg.norm(npos[ar, j], axis=1)
+    kfPA = _kf_local(_rho_species(rA, rgrid, rhoP)); kfNA = _kf_local(_rho_species(rA, rgrid, rhoN))
+    kfPB = _kf_local(_rho_species(rB, rgrid, rhoP)); kfNB = _kf_local(_rho_species(rB, rgrid, rhoN))
+
+    def abs_one(p_pi_i, pNj_i, pNp_i, npr, kfpa, kfna, kfpb, kfnb, k):
+        P = p_pi_i + pNj_i + pNp_i
+        s = P[0] ** 2 - jnp.sum(P[1:] ** 2)
+        sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
+        Estar = sqrts / 2.0
+        pstar = jnp.sqrt(jnp.clip(Estar ** 2 - M_N ** 2, 0.0, None))
+        k1, k2, k3 = jax.random.split(k, 3)
+        cth = 2.0 * jax.random.uniform(k1) - 1.0
+        sth = jnp.sqrt(jnp.clip(1 - cth ** 2, 0.0, None)); phi = 2 * jnp.pi * jax.random.uniform(k2)
+        dirn = jnp.array([sth * jnp.cos(phi), sth * jnp.sin(phi), cth])
+        beta = P[1:] / P[0]
+        pa = _boost(jnp.concatenate([Estar[None], pstar * dirn]), beta)
+        pb = _boost(jnp.concatenate([Estar[None], -pstar * dirn]), beta)
+        ma = jnp.linalg.norm(pa[1:]); mb = jnp.linalg.norm(pb[1:])
+        a_is_p = jax.random.uniform(k3) < 0.5
+        A_is_p = (npr >= 2) | ((npr == 1) & a_is_p)
+        B_is_p = (npr >= 2) | ((npr == 1) & (~a_is_p))
+        kfA = jnp.where(A_is_p, kfpa, kfna); kfB = jnp.where(B_is_p, kfpb, kfnb)
+        blocked = (ma < kfA) | (mb < kfB)
+        protA = jnp.where(A_is_p, pa, jnp.zeros(4)); protB = jnp.where(B_is_p, pb, jnp.zeros(4))
+        return protA, protB, blocked
+    abs_protA, abs_protB, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out,
+                                                         kfPA, kfNA, kfPB, kfNB, jax.random.split(kab, n))
+    if not cfg.pauli:
+        abs_blocked = abs_blocked & False
+    is_abs = chose_abs & ~abs_blocked & has_mode
+    # ----- scatter: out-pion charge, DCC angle, per-species Pauli recoil -----
+    sig_io_j = sig_io.reshape(n, A, 3)[ar, j]
+    probs = sig_io_j / jnp.clip(jnp.sum(sig_io_j, axis=1, keepdims=True), 1e-12, None)
+    u = jax.random.uniform(kf, (n, 1))
+    out_ch = jnp.clip(jnp.sum((u > jnp.cumsum(probs, axis=1)).astype(jnp.int32), axis=1), 0, 2).astype(jnp.int32)
+    nuc_idx = jnp.where(nisp[ar, j], 0, 1)
+    chan_idx = ch * 6 + nuc_idx * 3 + out_ch
+    cos_cm = cascade_mb.jax_sample_cos_cm(W_j, jax.random.uniform(ka, (n,)), chan_idx)
+    kf_rec_pi = jnp.where((struck_p + out_ch - ch) == 1, kf_p_j, kf_n_j)
+
+    def scat_one(p_pi_i, pN_i, out_i, kf_i, cc, k):
+        p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k, cos_cm=cc)
+        p_rec = (p_pi_i + pN_i) - p_out
+        return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
+    p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_rec_pi, cos_cm, jax.random.split(sk, n))
+    if not cfg.pauli:
+        blocked = blocked & False
+    # ----- conversion (piN -> etaN'): emit the N' baryon (eta neutral -> q_bary = q_pi + q_struck) -----
+    is_conv = chose_conv
+    q_bary = (1 - ch) + struck_p
+    eta_ok = is_conv & ((q_bary == 0) | (q_bary == 1))
+    Pcv = p_pi + pN_j
+    scv = Pcv[:, 0] ** 2 - jnp.sum(Pcv[:, 1:] ** 2, axis=1)
+    rscv = jnp.sqrt(jnp.clip(scv, (M_N + _M_ETA) ** 2, None))
+    EN = (scv + M_N ** 2 - _M_ETA ** 2) / (2.0 * rscv)
+    pst = jnp.sqrt(jnp.clip(EN ** 2 - M_N ** 2, 0.0, None))
+    ccv = 2.0 * jax.random.uniform(jax.random.fold_in(ka, 211), (n,)) - 1.0
+    scv_ = jnp.sqrt(jnp.clip(1 - ccv ** 2, 0.0, None)); phcv = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(ka, 212), (n,))
+    dcv = jnp.stack([scv_ * jnp.cos(phcv), scv_ * jnp.sin(phcv), ccv], axis=1)
+    beta = Pcv[:, 1:] / Pcv[:, [0]]; b2 = jnp.sum(beta ** 2, axis=1); gcv = 1 / jnp.sqrt(jnp.clip(1 - b2, 1e-12, None))
+    Ncm = jnp.concatenate([EN[:, None], pst[:, None] * dcv], axis=1)
+    bpcv = jnp.sum(beta * Ncm[:, 1:], axis=1)
+    p3cv = Ncm[:, 1:] + ((gcv - 1) * bpcv / jnp.clip(b2, 1e-30, None) + gcv * Ncm[:, 0])[:, None] * beta
+    p_bary = jnp.concatenate([(gcv * (Ncm[:, 0] + bpcv))[:, None], p3cv], axis=1)
+    is_scat = has_hit & ~chose_abs & ~chose_conv & ~blocked
+    p_rec = (p_pi + pN_j) - p_out
+    q_rec = struck_p + out_ch - ch
+    rcand = jnp.where(is_conv[:, None], p_bary, p_rec)
+    q_rcand = jnp.where(is_conv, q_bary, q_rec)
+    fz_rec = _formation_zone(p_pi, rcand)
+    # ----- spawns: slot1 = abs proton A | scatter recoil | conv baryon ; slot2 = abs proton B -----
+    s1_p4 = jnp.where(is_abs[:, None], abs_protA, jnp.where(is_scat[:, None], p_rec, jnp.where(eta_ok[:, None], p_bary, 0.0)))
+    s1_q = jnp.where(is_abs, 1, jnp.where(is_scat, q_rec, jnp.where(eta_ok, q_bary, 0))).astype(jnp.int32)
+    s1_pos = jnp.where(is_abs[:, None], pos_hit, npos[ar, j])
+    s1_fz = jnp.where(is_abs, _formation_zone(p_pi, abs_protA), jnp.where(is_scat | eta_ok, fz_rec, 0.0))
+    s1_al = (jnp.linalg.norm(s1_p4[:, 1:], axis=1) > 1.0) & (is_abs | is_scat | eta_ok)
+    s2_p4 = jnp.where(is_abs[:, None], abs_protB, 0.0)
+    s2_q = jnp.where(is_abs, 1, 0).astype(jnp.int32)
+    s2_pos = pos_hit
+    s2_fz = _formation_zone(p_pi, abs_protB)
+    s2_al = (jnp.linalg.norm(s2_p4[:, 1:], axis=1) > 1.0) & is_abs
+    # ----- pion state update (scatter continues; abs/conv removed) -----
+    p_pi = jnp.where(is_scat[:, None], p_out, p_pi)
+    ch = jnp.where(is_scat, out_ch, ch)
+    nsc = nsc + is_scat.astype(jnp.int32)
+    alive = alive & ~is_abs & ~is_conv
+    interacted = is_abs | is_scat | is_conv
+    consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & interacted[:, None])
+    d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
+    pos = pos + cfg.step * dhat * alive[:, None]
+    bcode = jnp.where(chose_abs, 1, jnp.where(chose_conv, 2, 0)).astype(jnp.int32)
+    ss_j = sig_j - sa_j - si_j
+    return ((p_pi, pos, dhat, ch, nsc, alive), escaping, is_abs, is_conv,
+            (s1_p4, s1_pos, s1_fz, s1_q, s1_al), (s2_p4, s2_pos, s2_fz, s2_q, s2_al), consumed,
+            jax.lax.stop_gradient((has_hit, bcode, sa_j, ss_j, si_j)))
+
+
 def propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg, key, fz0=None, consumed0=None, sscat=1.0):
     _load_density(cfg.nucleus, cfg.density_n)
     n, A = nisp.shape
