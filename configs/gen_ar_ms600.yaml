@@ -1,0 +1,14 @@
+# Argon 5-seed IS-sampler run with max_steps=600 (Argon-sized cascade reach) + the committed
+# per-species Pauli k_F fix.  Same buffers as gen_ar5.yaml; ONLY max_steps changes (260->600) so the
+# effect of the slow-nucleon truncation fix is isolated.  Overwrites _ar banks.
+# Run: python -u scripts/adonis_generate.py configs/gen_ar_ms600.yaml
+name: t2k_ar_ms600
+material: Ar
+n_per_seed: 30000
+n_seeds: 5
+channels: [qe, res]
+cascade: {P: 6, max_gen: 3, n_recoil: 2, step: 0.04, max_steps: 600,
+          cylinder: true, nn_inelastic: true, mprot: 4}
+tracking: {enabled: false, steps: false}
+out_dir: data/oracle
+tag: _ar

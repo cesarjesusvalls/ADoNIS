@@ -1,0 +1,14 @@
+# Carbon 5-seed IS-sampler run, max_steps=260 (carbon's ~5.5 fm radius fits the 10.4 fm reach), same
+# dev buffers as the Ar comparison. Confirms the committed fixes (per-species Pauli k_F -> no-op for
+# N=Z; IS flux sampler -> unbiased) keep carbon's ACHILLES agreement. Writes _cv banks.
+# Run: python -u scripts/adonis_generate.py configs/gen_cv5.yaml
+name: t2k_cv5_flat
+material: C
+n_per_seed: 30000
+n_seeds: 5
+channels: [qe, res]
+cascade: {P: 6, max_gen: 3, n_recoil: 2, step: 0.04, max_steps: 260,
+          cylinder: true, nn_inelastic: true, mprot: 4}
+tracking: {enabled: false, steps: false}
+out_dir: data/oracle
+tag: _cvflat

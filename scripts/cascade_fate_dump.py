@@ -35,12 +35,13 @@ species = sys.argv[2] if len(sys.argv) > 2 else "proton"
 N = int(sys.argv[3]) if len(sys.argv) > 3 else 60000
 out = sys.argv[4] if len(sys.argv) > 4 else f"/tmp/ado_fate_{mat}_{species}.npz"
 pauli = (sys.argv[5].lower() not in ("0", "false", "nopauli")) if len(sys.argv) > 5 else True
+max_steps = int(sys.argv[6]) if len(sys.argv) > 6 else 260
 flux.BEAM_MODE = "is"
 
 tg = resolve_targets(mat)[0][0]
-cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=260, seed=1, nn_inelastic=True,
+cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=max_steps, seed=1, nn_inelastic=True,
                             pauli=pauli, nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
-print(f"[cfg] pauli={pauli}")
+print(f"[cfg] pauli={pauli} max_steps={max_steps}")
 sf_n = SpectralFunction(tg.spectral_n)
 
 # Primary nucleons: use the QE struck->outgoing proton momenta as the realistic primary |p| spectrum.
