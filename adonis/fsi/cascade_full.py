@@ -223,6 +223,52 @@ def run_cascade(init, kernel, key, consumed0, P=10, max_gen=6):
     return terminals, overflow
 
 
+def make_pool_stepper(su, cfg):
+    """Build the pooled-engine physics stepper (S2b): advance every slot of the (n, M) stack ONE step,
+    dispatched by species, with the consumed mask threaded SLOT-SERIALLY (slot m+1 sees m's depletion).
+    Reuses the validated per-step physics (_nucleon_step; _pion_step is S2b-pion).  Returns
+    stepper(stack, key, consumed) -> (stack2, terminal (n,M) bool, spawn ParticleBatch (n,2M), consumed)."""
+    from adonis.fsi.cascade_discrete import _nucleon_step, _load_density
+    npos, nmom, nisp = su["npos"], su["nmom"], su["nisp"]
+    rgrid, rhoP, rhoN, radius = _load_density(cfg.nucleus, cfg.density_n)
+
+    def stepper(stack, key, consumed):
+        n, M = stack["alive"].shape
+        keys = jax.random.split(key, M)
+
+        def slot(consumed, m):
+            p4 = stack["p4"][:, m]; pos = stack["pos"][:, m]; fz = stack["fz"][:, m]
+            isp = stack["charge"][:, m].astype(bool)                  # nucleon: charge = isospin (1=p)
+            is_N = (stack["species"][:, m] == NUCLEON) & stack["alive"][:, m]
+            d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
+            (p4n, posn, dhatn, fzn, aln), esc, recap, do, ko, pin, consumed2, srec = _nucleon_step(
+                p4, pos, dhat, fz, isp, is_N, npos, nmom, nisp, consumed,
+                rgrid, rhoP, rhoN, radius, cfg, keys[m])
+            keep = is_N                                              # non-nucleon/dead slots unchanged
+            new = (jnp.where(keep[:, None], p4n, p4), jnp.where(keep[:, None], posn, pos),
+                   jnp.where(keep, fzn, fz), jnp.where(keep, aln, stack["alive"][:, m]), keep & esc)
+            return consumed2, (new, ko, pin)
+
+        consumed, (new, ko, pin) = jax.lax.scan(slot, consumed, jnp.arange(M))
+        T = lambda x: jnp.moveaxis(x, 0, 1)                          # (M, n, ...) -> (n, M, ...)
+        p4s, poss, fzs, als, terms = new
+        stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "alive": T(als)}
+        terminal = T(terms)
+        ko_p4, ko_pos, ko_fz, ko_q, ko_al = (T(x) for x in ko)
+        pi_p4, pi_pos, pi_fz, pi_ch, pi_al = (T(x) for x in pin)
+        spawn = empty_batch(n, 2 * M)
+        spawn["species"] = jnp.concatenate([jnp.full((n, M), NUCLEON, jnp.int32),
+                                            jnp.full((n, M), PION, jnp.int32)], axis=1)
+        spawn["charge"] = jnp.concatenate([ko_q, pi_ch], axis=1).astype(jnp.int32)
+        spawn["p4"] = jnp.concatenate([ko_p4, pi_p4], axis=1)
+        spawn["pos"] = jnp.concatenate([ko_pos, pi_pos], axis=1)
+        spawn["fz"] = jnp.concatenate([ko_fz, pi_fz], axis=1)
+        spawn["alive"] = jnp.concatenate([ko_al, pi_al], axis=1)
+        return stack2, terminal, spawn, consumed
+
+    return stepper
+
+
 def pool_reconcile(stack, terminal, spawn, M):
     """The POOLED engine's per-step in/out (docs/logbook/cascade_pool_engine.md): drop the slots that
     terminated this step (escape/absorb/convert), KEEP the survivors, INSERT the particles created this
@@ -258,8 +304,10 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24):
     def body(st):
         i, stk, state, out, sofl, oofl = st
         stk2, terminal, spawn, state2 = stepper(stk, jax.random.fold_in(key, i), state)
-        # collect terminals (final-state particles) into the output buffer
-        term_batch = {**stk2, "alive": stk2["alive"] & terminal}
+        # collect terminals (escaped/captured = final-state particles) into the output buffer.  `terminal`
+        # IS the mask of slots that terminated this step (the stepper may already have set stk2.alive=False
+        # for them), so collect with alive=terminal directly.
+        term_batch = {**stk2, "alive": terminal}
         out2, oo = compact({k: jnp.concatenate([out[k], term_batch[k]], axis=1) for k in out}, M_out)
         # reconcile the live stack (drop terminals, insert spawns)
         newstk, so = pool_reconcile(stk2, terminal, spawn, M)

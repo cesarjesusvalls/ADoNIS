@@ -68,9 +68,26 @@ Loop `while jnp.any(alive)` (global `max_steps` cap):
     NN->NDelta->NN'pi inelastic branch + channel charges) rather than copy the body.  This is the large
     focused block; do it incrementally (nucleon step -> validate vs a single-particle bfs segment ->
     pion step -> mixed dispatch).
+  - **S2b-1 DONE** (commit 1ce28bc): `_nucleon_step` per-step physics, spawn-emitting; bit-exact vs
+    bfs leading trajectory (`test_nucleon_step_matches_bfs_segment`, max|Δp4|=6e-12, nsc exact).
+  - **S2b-2 DONE** (commit 96acde4): `run_cascade_pool` state-threading + terminal/output collection.
+  - **S2b-3 DONE** (this commit): `make_pool_stepper` ((n,M) slot-serial scan, per-slot keys, consumed
+    threaded) + output-collection fix (collect `term_batch alive = terminal` directly; the stepper
+    already sets escaped slots `alive=False`, so the old `alive & terminal` mask dropped every escape ->
+    0 protons).  **Validated**: pool reproduces the bfs nucleon-elastic avalanche multiplicity
+    (`scripts/cascade_pool_validate.py 0`, Ar QE, 7537 ev, M=12, ms683, nn_inelastic=False):
+    BFS proton(>250)/ev=1.2716, POOL=1.2721, **ratio 1.0004**, stack/out overflow 0.  Pool is not
+    bit-identical (true step-order consumption + slot-positional RNG) so ~1.0 is the expected agreement.
+  - **S2b-pion TODO**: the stepper only advances NUCLEON slots (`keep=is_N`); PION slots are left
+    unchanged -> never terminal -> they'd sit alive to the max_steps cap.  So the inelastic branch
+    (nn_inelastic=True, which spawns created pions into the stack) is NOT yet runnable in the pool.
+    `_pion_step` (the `_propagate_discrete` body re-expressed as spawn-per-step) + mixed dispatch is next.
+  - **RNG note (for S4)**: slot keys are `split(key,M)[m]` (slot-positional).  After a compaction a
+    particle changes slot -> its RNG stream shifts.  Valid randomness, but not reproducible-per-particle;
+    S4 should re-key via `fold_in(base, persistent_track_id)` (subtlety #1) for determinism.
 - S3: reconcile (drop terminal, insert created, overflow) inside the step loop.  **DONE in S2** (it IS
-  `pool_reconcile`).  Remaining: per-step TERMINAL/output collection (escaped particles = the final
-  state) into a fixed output buffer (scatter each step).
+  `pool_reconcile`).  Per-step TERMINAL/output collection **DONE in S2b-2/3** (escaped particles
+  scattered into the fixed (n,M_out) output buffer each step).
 - S4: kind-1 record accumulation + reweight closures.
 - S5: validation vs ACHILLES (transparency, fate, multiplicity, topology) + speedup measurement.
 - S6: flip default to "pool" once green; keep "bfs" available.
