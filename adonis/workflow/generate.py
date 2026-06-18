@@ -19,6 +19,7 @@ import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import res_xsec
 from adonis.xsec.spectral import SpectralFunction
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _N_RECOIL
+from adonis.fsi.cascade_real import _load_density
 import adonis.fsi.cascade_full as CF
 import adonis.fsi.tracking as TK
 from adonis.workflow.materials import resolve_targets
@@ -105,7 +106,16 @@ def run_channel(channel, gc, target):
     if _N_RECOIL != cas.n_recoil:
         raise RuntimeError(f"_N_RECOIL={_N_RECOIL} != cascade.n_recoil={cas.n_recoil}: set "
                            f"ADONIS_N_RECOIL before importing adonis.workflow.generate (driver does this).")
-    cfg_cascade = DiscreteCascadeConfig(cylinder=cas.cylinder, step=cas.step, max_steps=cas.max_steps,
+    # Nucleus-aware cascade length: a nucleon must be able to traverse the FULL nucleus (diameter =
+    # 2*radius, the rho<1e-6 escape cutoff) plus margin for scattered paths, else slow nucleons get
+    # truncated mid-flight ("alive inside" -> spurious soft final state instead of escape/capture).  The
+    # fixed 260 was carbon-tuned (C radius 6.55 fm) and far too short for larger nuclei (Ar 9.10 fm).
+    # Scale ~3*radius/step; keep the YAML value as a floor.  early_exit makes max_steps a CAP -> the walk
+    # stops once every nucleon has escaped, so a generous cap costs ~the actual escape distribution.
+    _, _, _, _radius = _load_density(target.density_p, target.density_n)
+    _ms = max(cas.max_steps, int(np.ceil(3.0 * _radius / cas.step)))
+    print(f"[cascade] nucleus radius={_radius:.2f} fm -> max_steps={_ms} (floor {cas.max_steps})", flush=True)
+    cfg_cascade = DiscreteCascadeConfig(cylinder=cas.cylinder, step=cas.step, max_steps=_ms,
                                         seed=1, nn_inelastic=cas.nn_inelastic,
                                         nucleus=target.density_p, density_n=target.density_n,
                                         configs=target.configs)
