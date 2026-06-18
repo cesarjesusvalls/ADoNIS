@@ -114,6 +114,10 @@ Loop `while jnp.any(alive)` (global `max_steps` cap):
   RES pool (primary pion as a gen-0 PION stack slot + pterm/created schema split) is the next step.
   NOTE: the generate.py driver does not yet thread `engine` through GenConfig -> a bank generation still
   uses bfs; engine is selectable only at the cascade_carbon_v2 call (S2b-integrate-driver follow-up).
+- **Speedup (the payoff)** `scripts/cascade_pool_timing.py` (Ar QE, 3775 ev, P=16, ms683,
+  nn_inelastic, post-JIT run-only): **bfs 94.53 ms/ev -> pool 33.76 ms/ev = 2.8x faster.**  Confirms
+  the dead-slot elimination beats the dual-body 2x-eval cost.
 - S4: kind-1 record accumulation + reweight closures.
-- S5: validation vs ACHILLES (transparency, fate, multiplicity, topology) + speedup measurement.
+- S5: validation vs ACHILLES (transparency, fate, multiplicity, topology) + speedup measurement
+  (speedup DONE above: 2.8x).
 - S6: flip default to "pool" once green; keep "bfs" available.
