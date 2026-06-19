@@ -23,7 +23,7 @@ import numpy as np, jax, jax.numpy as jnp
 np.seterr(all="ignore")
 from adonis.workflow.materials import resolve_targets
 from adonis.workflow.generate import gen_events
-from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _propagate_nucleon_discrete
+from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _propagate_nucleon_discrete, _nucleon_step, _load_density
 from adonis.fsi.cascade_full import setup_carbon
 from adonis.xsec.spectral import SpectralFunction
 import adonis.xsec.flux as flux
@@ -36,6 +36,7 @@ N = int(sys.argv[3]) if len(sys.argv) > 3 else 60000
 out = sys.argv[4] if len(sys.argv) > 4 else f"/tmp/ado_fate_{mat}_{species}.npz"
 pauli = (sys.argv[5].lower() not in ("0", "false", "nopauli")) if len(sys.argv) > 5 else True
 max_steps = int(sys.argv[6]) if len(sys.argv) > 6 else 260
+engine = sys.argv[7] if len(sys.argv) > 7 else "bfs"     # bfs (=_propagate_nucleon_discrete) | pool (=_nucleon_step, no spawns)
 flux.BEAM_MODE = "is"
 
 tg = resolve_targets(mat)[0][0]
@@ -53,18 +54,43 @@ pN = jnp.asarray(a["p_N"][sel]); ipid = jnp.asarray(a["ipid"][sel]); m = int(sel
 is_p = jnp.full(m, species == "proton")
 
 su = setup_carbon(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
-ret = _propagate_nucleon_discrete(su["pos0"], pN, is_p, su["npos"], su["nmom"], su["nisp"],
-                                  cfg, jax.random.PRNGKey(99), jnp.zeros(m), su["consumed0"], 1.0)
-pN_out = np.asarray(ret[0]); nsc = np.asarray(ret[1]); made_pi = np.asarray(ret[7])
-ko = np.asarray(ret[8][0]); ko_chg = np.asarray(ret[8][3])          # (m,K,4), (m,K)
-ko_mom = np.linalg.norm(ko[:, :, 1:], axis=2)
+print(f"[engine] {engine}")
+if engine == "bfs":
+    ret = _propagate_nucleon_discrete(su["pos0"], pN, is_p, su["npos"], su["nmom"], su["nisp"],
+                                      cfg, jax.random.PRNGKey(99), jnp.zeros(m), su["consumed0"], 1.0)
+    pN_out = np.asarray(ret[0]); nsc = np.asarray(ret[1]); made_pi = np.asarray(ret[7])
+    ko = np.asarray(ret[8][0]); ko_chg = np.asarray(ret[8][3])      # (m,K,4), (m,K)
+    ko_mom = np.linalg.norm(ko[:, :, 1:], axis=2)
+    n_ko_p = ((ko_mom > 0) & (ko_chg == 1)).sum(1)
+    n_ko_n = ((ko_mom > 0) & (ko_chg == 0)).sum(1)
+    lead_ko = ko_mom.max(1)
+else:                                                              # POOL single-pass: iterate _nucleon_step on
+    # the PRIMARY ALONE -- spawns (knockouts/created pion) are NOT inserted, so the primary shares the
+    # consumed mask with nothing (faithful isolated single-pass in the pool's per-step physics).  We still
+    # RECORD the spawns it WOULD emit (knockout counts, made_pi) without propagating them.
+    rgrid, rhoP, rhoN, radius = _load_density(tg.density_p, tg.density_n)
+    keys = jax.random.split(jax.random.PRNGKey(99), max_steps)
+    p4 = pN; pos = su["pos0"]; d3 = p4[:, 1:]
+    dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
+    fz = jnp.zeros(m); alive = jnp.ones(m, bool); consumed = su["consumed0"]
+    nsc = jnp.zeros(m, jnp.int32); made_pi = jnp.zeros(m, bool)
+    n_ko_p = jnp.zeros(m, jnp.int32); n_ko_n = jnp.zeros(m, jnp.int32); lead_ko = jnp.zeros(m)
+    for i in range(max_steps):
+        (p4, pos, dhat, fz, alive), esc, recap, do, ko, pin, consumed, _ = _nucleon_step(
+            p4, pos, dhat, fz, is_p, alive, su["npos"], su["nmom"], su["nisp"], consumed,
+            rgrid, rhoP, rhoN, radius, cfg, keys[i])
+        nsc = nsc + do                                             # elastic-scatter count
+        ko_p4, ko_pos, ko_fz, ko_q, ko_al = ko
+        made_pi = made_pi | pin[4]                                 # created-pion (NN->NDelta->Npi) emitted
+        n_ko_p = n_ko_p + (ko_al & (ko_q == 1)).astype(jnp.int32)
+        n_ko_n = n_ko_n + (ko_al & (ko_q == 0)).astype(jnp.int32)
+        lead_ko = jnp.maximum(lead_ko, jnp.linalg.norm(ko_p4[:, 1:], axis=1) * ko_al)
+    pN_out = np.asarray(p4); nsc = np.asarray(nsc); made_pi = np.asarray(made_pi)
+    n_ko_p = np.asarray(n_ko_p); n_ko_n = np.asarray(n_ko_n); lead_ko = np.asarray(lead_ko)
 
 p_init = np.linalg.norm(np.asarray(pN)[:, 1:], axis=1)
 p_fin = np.linalg.norm(pN_out[:, 1:], axis=1)
 ke_fin = pN_out[:, 0] - M_N
-n_ko_p = ((ko_mom > 0) & (ko_chg == 1)).sum(1)
-n_ko_n = ((ko_mom > 0) & (ko_chg == 0)).sum(1)
-lead_ko = ko_mom.max(1)
 
 # fate codes: 0 ESCAPED_FREE, 1 ELASTIC, 2 INELASTIC, 3 RECAPTURED
 fate = np.where(made_pi, 2, np.where(p_fin < 1.0, 3, np.where(nsc == 0, 0, 1)))
