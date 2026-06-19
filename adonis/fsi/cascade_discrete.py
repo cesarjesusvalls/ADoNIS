@@ -1068,11 +1068,16 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     n, A = nisp.shape; ar = jnp.arange(n)
     p_pi = p4
     # ----- escape (Cascade.cc:532-553): beam pion (nsc==0) -> z>=radius PLANE; scattered -> sphere -----
+    # The POOL has no early-exit "inert" skip (unlike _propagate_discrete's while_loop), so a pion that
+    # has LEFT the nucleus (|pos|>radius, moving outward -> rho=0 ahead, can never re-enter) must be
+    # escaped explicitly here for ALL nsc; otherwise an un-scattered (nsc==0) pion leaving in any
+    # direction but +z never triggers esc_plane/esc_sphere and idles to max_steps (BFS treats these as
+    # inert-survived).  inert subsumes esc_sphere; esc_plane keeps the +z beam-transparency convention.
     ext = nsc == 0
     outward = jnp.sum(pos * dhat, axis=1) > 0
     esc_plane = ext & (pos[:, 2] >= radius)
-    esc_sphere = (~ext) & (jnp.linalg.norm(pos, axis=1) > radius) & outward
-    escaping = esc_plane | esc_sphere
+    inert = (jnp.linalg.norm(pos, axis=1) > radius) & outward          # outside & outward -> will escape
+    escaping = esc_plane | inert
     alive = alive & ~escaping
     rel = npos - pos[:, None, :]
     par = jnp.sum(rel * dhat[:, None, :], axis=2)

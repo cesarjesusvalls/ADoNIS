@@ -32,6 +32,7 @@ from adonis.fsi.tracking import GEN_STRIDE as _GEN_STRIDE
 
 PION, NUCLEON = 0, 1
 FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
+_ORIG_PRIM_PI = 2          # pool origin tag for the RES PRIMARY pion (0=RES recoil/QE chain, 1=pi-knockout)
 
 
 def pion_segment(p4, pos, ch, consumed, npos, nmom, nisp, cfg, key, sabs=1.0, sscat=1.0):
@@ -266,7 +267,12 @@ def make_pool_stepper(su, cfg):
             chg_2 = jnp.where(is_pi, chp, chg)                        # pion charge oscillates
             al_2 = jnp.where(is_N, alnN, jnp.where(is_pi, alnP, al))
             term = (is_N & escN) | (is_pi & escP)                    # escaped = final-state (collected)
-            new = (p4_2, pos_2, fz_2, nsc_2, chg_2, al_2, term)
+            # per-slot fate (for the primary-pion latch in run_cascade_pool; output stays escape-only):
+            # nucleon/pion escape -> ESCAPE, pion absorbed -> ABSORB, pion converted -> CONVERT.
+            fate_2 = jnp.where((is_N & escN) | (is_pi & escP), FATE_ESCAPE,
+                     jnp.where(is_pi & is_abs, FATE_ABSORB,
+                     jnp.where(is_pi & is_conv, FATE_CONVERT, FATE_NONE))).astype(jnp.int32)
+            new = (p4_2, pos_2, fz_2, nsc_2, chg_2, al_2, term, fate_2)
             # nucleon-slot knockout / pion-slot 1st product -> nuc1; pion-slot 2nd product -> nuc2.
             nuc1 = tuple(jnp.where(is_N, kn, jnp.where(is_pi, s1k, dk)) if kn.ndim == 1
                          else jnp.where(is_N[:, None], kn, jnp.where(is_pi[:, None], s1k, dk))
@@ -281,9 +287,9 @@ def make_pool_stepper(su, cfg):
 
         consumed, (new, nuc1, nuc2, pio) = jax.lax.scan(slot, consumed, jnp.arange(M))
         T = lambda x: jnp.moveaxis(x, 0, 1)                          # (M, n, ...) -> (n, M, ...)
-        p4s, poss, fzs, nscs, chgs, als, terms = new
+        p4s, poss, fzs, nscs, chgs, als, terms, fates = new
         stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "nsc": T(nscs),
-                  "charge": T(chgs), "alive": T(als)}
+                  "charge": T(chgs), "alive": T(als), "fate": T(fates)}
         terminal = T(terms)
 
         def _spawn(species, packs):                                  # packs: list of (p4,pos,fz,q,al) (M,n,...)
@@ -319,7 +325,7 @@ def pool_reconcile(stack, terminal, spawn, M):
     return compact(combined, M)
 
 
-def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24):
+def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_origin=-999):
     """POOLED engine loop (docs/logbook/cascade_pool_engine.md): ONE fixed-size (n, M) particle stack
     stepped once per step; the in/out reconcile (pool_reconcile) runs INSIDE the step, vs the BFS's
     per-generation compact across max_gen separate full-max_steps passes (~10-24x dead-slot waste).
@@ -327,31 +333,40 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24):
         advances every live slot ONE step and returns: the post-step stack, the newly-terminal flag, the
         particles created this step (spawn ParticleBatch), and the threaded step state (e.g. the consumed
         mask).  state0 = initial step state.
-    The terminal particles (escaped/absorbed/captured = the cascade FINAL STATE) are accumulated into a
-    fixed (n, M_out) output batch each step.  Returns (out_batch, stack_overflow, out_overflow)."""
+    Escaped terminals (the cascade FINAL STATE) are accumulated into a fixed (n, M_out) output batch each
+    step.  `prim_origin` (RES): the origin tag of the PRIMARY pion -- its terminal FATE (escape/absorb/
+    convert) is latched per event (so the CC1pi schema can set pi_post pid 0/-1 for abs/conv, which the
+    escape-only output cannot record); -999 (default) never matches -> a no-op for QE/tests.
+    Returns (out_batch, stack_overflow, out_overflow, prim_fate (n,) -- FATE_NONE where the primary never
+    terminated or prim_origin unset)."""
+    n = init["alive"].shape[0]; ar = jnp.arange(n)
     stack, _ = compact(init, M)
-    out0 = empty_batch(init["alive"].shape[0], M_out)
+    out0 = empty_batch(n, M_out)
 
     def cond(st):
         i = st[0]; stk = st[1]
         return (i < max_steps) & jnp.any(stk["alive"])
 
     def body(st):
-        i, stk, state, out, sofl, oofl = st
+        i, stk, state, out, sofl, oofl, prim = st
         stk2, terminal, spawn, state2 = stepper(stk, jax.random.fold_in(key, i), state)
-        # collect terminals (escaped/captured = final-state particles) into the output buffer.  `terminal`
-        # IS the mask of slots that terminated this step (the stepper may already have set stk2.alive=False
-        # for them), so collect with alive=terminal directly.
+        # collect ESCAPED terminals (final-state particles) into the output buffer.
         term_batch = {**stk2, "alive": terminal}
         out2, oo = compact({k: jnp.concatenate([out[k], term_batch[k]], axis=1) for k in out}, M_out)
+        # latch the primary pion's terminal fate (RES): first step its origin-tagged slot terminates.
+        isprim = (stk2["origin"] == prim_origin) & (stk2["species"] == PION) & (stk2["fate"] != FATE_NONE)
+        anyp = jnp.any(isprim, axis=1); j = jnp.argmax(isprim, axis=1)
+        newly = anyp & (prim == FATE_NONE)
+        prim = jnp.where(newly, stk2["fate"][ar, j], prim)
         # reconcile the live stack (drop terminals, insert spawns)
         newstk, so = pool_reconcile(stk2, terminal, spawn, M)
         return (i + jnp.int32(1), newstk, state2, out2,
-                sofl + so.astype(sofl.dtype), oofl + oo.astype(oofl.dtype))
+                sofl + so.astype(sofl.dtype), oofl + oo.astype(oofl.dtype), prim)
 
-    init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0))
-    _, stack, _, out, sofl, oofl = jax.lax.while_loop(cond, body, init_st)
-    return out, sofl, oofl
+    init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0),
+               jnp.full(n, FATE_NONE, jnp.int32))
+    _, stack, _, out, sofl, oofl, prim = jax.lax.while_loop(cond, body, init_st)
+    return out, sofl, oofl, prim
 
 
 def _nucleon_kernel(npos, nmom, nisp, cfg, sscat=1.0):
@@ -411,6 +426,66 @@ def _nucleon_kernel(npos, nmom, nisp, cfg, sscat=1.0):
     return kernel
 
 
+def _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P):
+    """POOLED-engine realization of cascade_carbon_v2 (QE + RES), mapping the flat (n,M_out) terminal
+    buffer back to the rich (pterm, nterms, overflow, created) schema.
+      QE : gen-0 stack = the struck->proton (1 NUCLEON slot); pterm = QE "none"; created = leading
+           surviving pion.
+      RES: gen-0 stack = the PRIMARY pion (PION slot, origin-tagged) + the RES recoil nucleon; the pion's
+           own scatter-recoils / absorption protons / created pions spawn natively during the walk.
+           pterm = the primary pion's outcome (escape -> its pid/p4; absorbed -> pid 0; converted -> -1,
+           via the latched fate); created = leading surviving NON-primary pion."""
+    ar = jnp.arange(n)
+    if channel == "qe":
+        g0 = empty_batch(n, 1)
+        g0["alive"] = jnp.ones((n, 1), bool)
+        g0["species"] = jnp.full((n, 1), NUCLEON, jnp.int32)
+        g0["charge"] = (Npid == 2212).astype(jnp.int32)[:, None]
+        g0["p4"] = p_N[:, None, :]; g0["pos"] = su["pos0"][:, None, :]
+        prim_origin = -999
+    else:                                                              # RES: primary pion + recoil nucleon
+        g0 = empty_batch(n, 2)
+        g0["alive"] = jnp.ones((n, 2), bool)
+        g0["species"] = jnp.array([PION, NUCLEON], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
+        g0["charge"] = jnp.stack([su["ch0"], (Npid == 2212).astype(jnp.int32)], axis=1)
+        g0["p4"] = jnp.stack([p_pi, p_N], axis=1)
+        g0["pos"] = jnp.broadcast_to(su["pos0"][:, None, :], (n, 2, 3))
+        g0["origin"] = jnp.array([_ORIG_PRIM_PI, 0], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
+        prim_origin = _ORIG_PRIM_PI
+    stepper = make_pool_stepper(su, cfg)
+    out, sofl, oofl, prim_fate = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P,
+                                                  max_steps=cfg.max_steps, M_out=24, prim_origin=prim_origin)
+    sp = out["species"]; chg = out["charge"]; al = out["alive"]; p4o = out["p4"]
+    nterms = [dict(species=sp, pid=jnp.where((sp == NUCLEON) & (chg == 1), 2212, 2112),
+                   p4=p4o, alive=al, origin=out["origin"], gen=out["gen"])]
+    is_surv_pi = (sp == PION) & al                                     # escaped pions (output is escape-only)
+    if channel == "qe":
+        pim = jnp.linalg.norm(p4o[:, :, 1:], axis=2) * is_surv_pi
+        jpi = jnp.argmax(pim, axis=1); has_pi = pim[ar, jpi] > 0.0
+        created = dict(pid=jnp.where(has_pi, _CH_PID[chg[ar, jpi]], 0), p4=p4o[ar, jpi],
+                       w=jnp.ones((n,)), alive=has_pi)
+        pterm = dict(species=jnp.zeros((n,), jnp.int32), pid=jnp.zeros((n,), jnp.int32),
+                     p4=jnp.zeros((n, 4)), charge=jnp.zeros((n,), jnp.int32), w=jnp.ones((n,)),
+                     alive=jnp.ones((n,), bool), nsc=jnp.zeros((n,), jnp.int32))
+        return pterm, nterms, sofl + oofl, created
+    # RES: split surviving pions into primary (origin tag) vs created
+    is_prim = is_surv_pi & (out["origin"] == _ORIG_PRIM_PI)            # escaped primary pion (>=0 per event)
+    jp = jnp.argmax(is_prim, axis=1); esc_prim = jnp.any(is_prim, axis=1)
+    prim_ch = chg[ar, jp]
+    # pterm pid: escaped -> charge->pid; converted -> -1 (vetoes); absorbed/none -> 0.
+    pterm_pid = jnp.where(prim_fate == FATE_ESCAPE, _CH_PID[prim_ch],
+                jnp.where(prim_fate == FATE_CONVERT, -1, 0)).astype(jnp.int32)
+    pterm = dict(species=jnp.full((n,), PION, jnp.int32), pid=pterm_pid,
+                 p4=jnp.where(esc_prim[:, None], p4o[ar, jp], 0.0), charge=prim_ch,
+                 w=jnp.ones((n,)), alive=jnp.ones((n,), bool), nsc=jnp.zeros((n,), jnp.int32))
+    is_cr = is_surv_pi & (out["origin"] != _ORIG_PRIM_PI)             # cascade-created surviving pion
+    cim = jnp.linalg.norm(p4o[:, :, 1:], axis=2) * is_cr
+    jc = jnp.argmax(cim, axis=1); has_cr = cim[ar, jc] > 0.0
+    created = dict(pid=jnp.where(has_cr, _CH_PID[chg[ar, jc]], 0), p4=p4o[ar, jc],
+                   w=jnp.ones((n,)), alive=has_cr)
+    return pterm, nterms, sofl + oofl, created
+
+
 def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0, channel="res"):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
@@ -422,6 +497,13 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
     su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
     kpi, knuc, kpi2 = jax.random.split(su["kp"], 3)
+    if getattr(cfg, "engine", "bfs") == "pool":
+        # POOLED engine: ONE fixed-size stack stepped once/step, in/out reconcile inside the step (vs the
+        # BFS's max_gen full-max_steps passes).  More faithful (true step-order consumption + ALL created
+        # pions propagated from their creation point; for RES the primary pion is a gen-0 PION stack slot
+        # whose own scatter-recoils/knockouts spawn natively -- no pre-segment extraction).  NOT bit-
+        # identical to the BFS -> validated vs ACHILLES (docs/logbook/cascade_pool_engine.md).
+        return _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P)
     if channel == "res":
         pt, _, precK = pion_segment(p_pi, su["pos0"], su["ch0"], su["consumed0"], su["npos"], su["nmom"],
                                     su["nisp"], cfg, kpi, sabs, sscat)
@@ -453,34 +535,6 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
         g0["w"] = jnp.ones((n, 1))
         g0["track_id"] = jnp.zeros((n, 1), jnp.int32)                  # gen-0 track id 0 (QE proton)
     kernel = _nucleon_kernel(su["npos"], su["nmom"], su["nisp"], cfg, sscat)
-    if getattr(cfg, "engine", "bfs") == "pool":
-        # POOLED engine (S2b-integrate): ONE fixed-size stack stepped once/step, in/out reconcile inside
-        # the step (vs the BFS's max_gen full-max_steps passes).  More faithful (true step-order
-        # consumption + ALL created pions propagated from their creation point) -> NOT bit-identical to
-        # the BFS; validated vs ACHILLES (docs/logbook/cascade_pool_engine.md).  QE only for now (the RES
-        # primary-pion-as-stack-slot + pterm/created schema split is deferred).
-        if channel != "qe":
-            raise NotImplementedError("pool engine integration is QE-only so far; RES primary-pion "
-                                      "stack-slot + pterm/created split is the next step (S2b-integrate-res).")
-        stepper = make_pool_stepper(su, cfg)
-        out, sofl, oofl = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P,
-                                           max_steps=cfg.max_steps, M_out=24)
-        ar = jnp.arange(n)
-        sp = out["species"]; chg = out["charge"]; al = out["alive"]
-        nterms = [dict(species=sp, pid=jnp.where((sp == NUCLEON) & (chg == 1), 2212, 2112),
-                       p4=out["p4"], alive=al, origin=out["origin"], gen=out["gen"])]
-        # surviving pion (any charge), leading by momentum -> the CC0pi veto pion (BFS `created` slot;
-        # QE has no primary pion so pterm is the QE "none" sentinel).
-        is_pi = (sp == PION) & al
-        pim = jnp.linalg.norm(out["p4"][:, :, 1:], axis=2) * is_pi
-        jpi = jnp.argmax(pim, axis=1); has_pi = pim[ar, jpi] > 0.0
-        cch = out["charge"][ar, jpi]
-        created = dict(pid=jnp.where(has_pi, _CH_PID[cch], 0), p4=out["p4"][ar, jpi],
-                       w=jnp.ones((n,)), alive=has_pi)
-        pterm = dict(species=jnp.zeros((n,), jnp.int32), pid=jnp.zeros((n,), jnp.int32),
-                     p4=jnp.zeros((n, 4)), charge=jnp.zeros((n,), jnp.int32), w=jnp.ones((n,)),
-                     alive=jnp.ones((n,), bool), nsc=jnp.zeros((n,), jnp.int32))
-        return pterm, nterms, sofl + oofl, created
     nterms, ofl = run_cascade(g0, kernel, knuc, su["consumed0"], P=P, max_gen=max_gen)
     # CREATED-PION RE-ENTRY: gather the leading NN-created pion per event across the nucleon BFS, then
     # cascade it as a pion (it can survive as a pi+ and BE the signal pion when the primary died).

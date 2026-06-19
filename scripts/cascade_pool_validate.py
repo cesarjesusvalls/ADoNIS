@@ -56,7 +56,7 @@ g0["pos"] = su["pos0"][:, None, :]
 g0["fz"] = jnp.zeros((m, 1))
 stepper = CF.make_pool_stepper(su, cfg)
 kpi, knuc, kpi2 = jax.random.split(su["kp"], 3)
-out, sofl, oofl = CF.run_cascade_pool(g0, stepper, knuc, su["consumed0"], M, MS, M_out=24)
+out, sofl, oofl, _ = CF.run_cascade_pool(g0, stepper, knuc, su["consumed0"], M, MS, M_out=24)
 sp = np.asarray(out["species"]); chg = np.asarray(out["charge"]); p4 = np.asarray(out["p4"]); al = np.asarray(out["alive"])
 mom = np.linalg.norm(p4[:, :, 1:], axis=2)
 good = (sp == CF.NUCLEON) & (chg == 1) & al

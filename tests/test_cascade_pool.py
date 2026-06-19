@@ -59,8 +59,8 @@ def test_loop_drains_and_collects_output():
         spawn["p4"] = spawn["p4"].at[..., 0].set(jnp.where(spawn_here, 1.0, 0.0))
         return stk2, terminal, spawn, state
 
-    out, sofl, oofl = run_cascade_pool(init, stepper, jax.random.PRNGKey(0), jnp.int32(0),
-                                       M, max_steps=50, M_out=24)
+    out, sofl, oofl, _ = run_cascade_pool(init, stepper, jax.random.PRNGKey(0), jnp.int32(0),
+                                          M, max_steps=50, M_out=24)
     assert int(out["alive"].sum()) == 4            # 1 original + 3 children collected
     assert int(sofl) == 0 and int(oofl) == 0
 
@@ -142,12 +142,20 @@ def test_pion_step_matches_bfs_segment():
             p4, pos, dhat, ch, nsc, alive, su["npos"], su["nmom"], su["nisp"], consumed,
             rgrid, rhoP, rhoN, radius, cfg, keys[i])
         absorbed = absorbed | is_abs; conv = conv | is_conv
+    # Interacting physics is bit-exact vs the bfs scan (p4, ch, nsc, absorbed, conv).
     assert np.allclose(np.asarray(p4), p_bfs, atol=1e-6, rtol=0), np.abs(np.asarray(p4) - p_bfs).max()
     assert np.array_equal(np.asarray(ch), ch_bfs)
     assert np.array_equal(np.asarray(nsc), nsc_bfs)
     assert np.array_equal(np.asarray(absorbed), abs_bfs)
     assert np.array_equal(np.asarray(conv), conv_bfs)
-    assert np.allclose(np.asarray(pos), pos_bfs, atol=1e-6, rtol=0), np.abs(np.asarray(pos) - pos_bfs).max()
+    # pos: _pion_step ESCAPES a pion once it is outside the radius moving outward (the pool has no
+    # early-exit "inert" skip), freezing its pos there; the bfs SCAN keeps advancing such a pion in a
+    # straight line (no interaction outside -> physics unchanged).  So pos matches bit-exact EXCEPT for
+    # these inert-escaped pions (escaped without absorb/convert), whose final position is irrelevant.
+    al = np.asarray(alive); ab = np.asarray(absorbed); cv = np.asarray(conv)
+    keep = ~((~al) & (~ab) & (~cv))                                   # drop inert-escaped pions
+    assert np.allclose(np.asarray(pos)[keep], pos_bfs[keep], atol=1e-6, rtol=0), \
+        np.abs(np.asarray(pos)[keep] - pos_bfs[keep]).max()
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ _, knuc, _ = jax.random.split(su["kp"], 3)
 # it was capacity; compare to M=16 to localize.  Here just report total at M=16 split is not per-event,
 # so approximate: events whose proton-terminal count is clipped.  Use the out buffer alive-count.
 for M, Mout in ((16, 24), (32, 64)):
-    out, sofl, oofl = CF.run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=M, max_steps=683, M_out=Mout)
+    out, sofl, oofl, _ = CF.run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=M, max_steps=683, M_out=Mout)
     nterm = np.asarray(out["alive"]).sum(axis=1)               # terminals collected per event
     print(f"[M={M},Mout={Mout}] stack_ofl={int(sofl)} out_ofl={int(oofl)}  "
           f"<nterm live>={nterm[live].mean():.3f}  <nterm dead>={nterm[~live].mean():.3f}  "

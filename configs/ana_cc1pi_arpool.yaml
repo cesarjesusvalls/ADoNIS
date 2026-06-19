@@ -1,0 +1,33 @@
+# ADoNIS vs ACHILLES, T2K CC1pi+Np selection, on ARGON-40 (unphysical-on-purpose; same machinery as C).
+# ADoNIS Ar engine banks vs ACHILLES Ar FSI reference. Run: python -u scripts/adonis_analyze.py configs/ana_cc1pi_ar.yaml
+name: t2k_cc1pi_arpool
+inputs:
+  adonis_res: [data/oracle/t2k_cc1pi_engine_rich_arpool.npz]
+  adonis_qe:  [data/oracle/t2k_cc0pi_engine_rich_arpool.npz]
+  reference:  [data/oracle/t2k_cc1pi_rich_ach_FSI_Ar.npz]
+signal:
+  mu_win: [250.0, 7000.0]
+  pi_win: [150.0, 1200.0]
+  p_win:  [450.0, 1200.0]
+  cth: cos70
+  proton_lead: in_window
+  proton_count: ge1
+  require_proton: true
+  pion_id: pip
+  count_recoil_neutron: false
+  target: carbon   # = bound-nucleon selection (|p_struck|>1, true for ALL Ar events) + carbon TKI mass
+                   # convention applied identically to both sides ('argon' is not a valid target key).
+  W_conv: vertex
+observables:
+  - {key: pn,      label: "$p_N$",            edges: [0, 120, 240, 600, 1500]}
+  - {key: dptt,    label: "$\\delta p_{TT}$", edges: [-700, -300, -100, 100, 300, 700]}
+  - {key: dalphat, label: "$\\delta\\alpha_T$", linspace: [0, pi, 7]}
+  - {key: W,       label: "$W$",              linspace: [1080, 1700, 13]}
+  - {key: Q2,      label: "$Q^2$",            linspace: [0, 1.5, 13]}
+  - {key: pi_p,    label: "$p_\\pi$",         linspace: [150, 1200, 13]}
+  - {key: lp_p,    label: "lead $p_p$",       linspace: [450, 1200, 13]}
+data: {enabled: false}
+out_path: paper_figures/cc1pi_ENGINE_argon_POOL.png
+title: "T2K CC1$\\pi^+$Np ($^{40}$Ar) FAITHFUL ENGINE vs ACHILLES [POOL]"
+ratio_ylim: [0.5, 1.6]
+carbon_only: false
