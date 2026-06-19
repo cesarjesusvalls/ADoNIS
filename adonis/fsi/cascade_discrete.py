@@ -714,9 +714,14 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         # select per outgoing-nucleon species below -- using one species (kf_j) for all outgoing
         # over-blocks in neutron-rich nuclei (k_F,n>k_F,p) -> Ar-specific deficit; bit-exact for N=Z.
         _rnuc_j = rnuc[ar, j]
-        kf_p_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoP))        # proton-species k_F at the vertex
-        kf_n_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoN))        # neutron-species k_F at the vertex
-        kf_lead = jnp.where(isp0, kf_p_j, kf_n_j)                     # elastic leading outgoing = primary species
+        kf_p_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoP))        # proton-species k_F at the struck vertex
+        kf_n_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoN))        # neutron-species k_F at the struck vertex
+        # LEADING outgoing Pauli k_F at the LEADING's OWN position (|pos|), not the struck nucleon's --
+        # ACHILLES blocks paOut against k_F(paOut.Position()).  Using the struck nucleon's k_F leaked
+        # sub-k_F leading outgoing for large-sigma (slow-proton) scatters -> 5sigma over-interaction.
+        _r_lead = jnp.linalg.norm(pos, axis=1)
+        kf_lead = jnp.where(isp0, _kf_local(_rho_species(_r_lead, rgrid, rhoP)),
+                            _kf_local(_rho_species(_r_lead, rgrid, rhoN)))
 
         def scat_one(p_lead, pN_i, kf_out, kf_rec, k):
             p_out = _two_body_cm_scatter(p_lead, pN_i, M_N, k)        # leading out (isotropic CM, as ACHILLES)
@@ -959,11 +964,18 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     pN_j = nmom[ar, j]
     rnuc = jnp.linalg.norm(npos, axis=2)
     kf_n = _kf_local(jnp.where(nisp, _rho_species(rnuc, rgrid, rhoP), _rho_species(rnuc, rgrid, rhoN)))
-    kf_j = kf_n[ar, j]
+    kf_j = kf_n[ar, j]                                            # recoil (struck nucleon) k_F at the struck vertex
     _rnuc_j = rnuc[ar, j]
-    kf_p_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoP))
+    kf_p_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoP))        # (charge-exchange recoil uses the struck vertex)
     kf_n_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoN))
-    kf_lead = jnp.where(isp, kf_p_j, kf_n_j)
+    # LEADING outgoing Pauli k_F: evaluate at the LEADING's OWN position (|pos|), NOT the struck nucleon's
+    # position -- ACHILLES PauliBlocking(paOut) uses k_F at the outgoing's own position.  For large-sigma
+    # (slow-proton, near-threshold) scatters the struck nucleon sits up to ~the impact parameter (~2 fm)
+    # away at a different density, so using its k_F leaked sub-k_F leading outgoing -> slow-proton
+    # over-interaction (5sigma at 125-250 MeV vs ACHILLES).
+    _r_lead = jnp.linalg.norm(pos, axis=1)
+    kf_lead = jnp.where(isp, _kf_local(_rho_species(_r_lead, rgrid, rhoP)),
+                        _kf_local(_rho_species(_r_lead, rgrid, rhoN)))
 
     def scat_one(p_lead, pN_i, kf_out, kf_rec, k):
         p_o = _two_body_cm_scatter(p_lead, pN_i, M_N, k)
