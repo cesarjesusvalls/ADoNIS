@@ -24,6 +24,7 @@ MESONS = {111, 211, -211, 221, 130, 310, 311, 321, -321, -311}
 
 mu_l, nu_l, st_l, sp_l, w_l, nom_l = [], [], [], [], [], []
 pip4_l, pipid_l, pr4_l = [], [], []
+proc_l = []
 n_evt = nkept = 0
 for evt in parse_events(Path(HEPMC)):
     n_evt += 1
@@ -59,6 +60,7 @@ for evt in parse_events(Path(HEPMC)):
     pip4_l.append(p4p); pipid_l.append(pidp); pr4_l.append(prp)
     n_other_pi0_minus = n_other
     nom_l.append(n_other_pi0_minus); w_l.append(evt["w"] or 1.0)
+    proc_l.append(evt["proc"] if evt["proc"] is not None else -1)
     if n_evt % 200000 == 0:
         print(f"  {n_evt} parsed, {nkept} kept", flush=True)
 
@@ -66,5 +68,6 @@ nrm = hepmc_norm(HEPMC)
 np.savez(OUT, mu=np.array(mu_l), nu=np.array(nu_l), struck=np.array(st_l),
          struck_pid=np.array(sp_l), pi_p4=np.array(pip4_l), pi_pid=np.array(pipid_l),
          prot_p4=np.array(pr4_l), n_other_meson=np.array(nom_l), w=np.array(w_l),
+         proc=np.array(proc_l, np.int64),
          gen_xs_pb=nrm["gen_xs_pb"], sum_w_all=nrm["sum_w_all"], weight_to_nb=nrm["weight_to_nb"])
 print(f"kept {nkept}/{n_evt}; wrote {OUT}  weight_to_nb={nrm['weight_to_nb']:.4e}", flush=True)

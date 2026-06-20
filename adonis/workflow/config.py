@@ -109,6 +109,8 @@ class SignalDef:
     W_conv: str = "vertex"
     n_ejected: int | None = None            # require EXACTLY this many ejected protons (|p|>eject_thresh)
     eject_thresh: float = 250.0             # MeV; final-state proton momentum to count as "ejected"
+    ref_proc: tuple | None = None           # restrict ACHILLES reference to these signal_process_id
+                                            #   (200=QE, 401/402=RES); None = all modes
 
     def __post_init__(self):
         self.mu_win = tuple(_resolve_seq(self.mu_win))
@@ -122,6 +124,8 @@ class SignalDef:
             raise ValueError(f"pion_id {self.pion_id!r} not in pip|anypi|none")
         if self.proton_count not in ("ge1", "eq1"):
             raise ValueError(f"proton_count {self.proton_count!r} not in ge1|eq1")
+        if self.ref_proc is not None:
+            self.ref_proc = tuple(int(p) for p in self.ref_proc)
 
 
 @dataclass

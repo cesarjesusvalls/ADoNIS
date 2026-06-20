@@ -121,6 +121,11 @@ def _ach_cc0pi(b, sd, weight_to_nb, carbon_only=True):
     lcth = lead[:, 3] / np.clip(lpm, 1e-9, None)
     in_win = (lpm > sd.p_win[0]) & (lpm < sd.p_win[1]) & (lcth > sd.cth)
     sel = (b["w"] > 0) & (npi == 0) & (pmu > sd.mu_win[0]) & (cmu > sd.cos_mu)
+    if sd.ref_proc is not None:
+        if "proc" not in b:
+            raise ValueError("ref_proc set but reference bank has no 'proc' field; "
+                             "re-extract with scripts/extract_cc1pi_rich.py")
+        sel = sel & np.isin(b["proc"], list(sd.ref_proc))
     if sd.n_ejected is not None:
         sel = sel & (_n_ejected(pr, sd.eject_thresh) == sd.n_ejected)
     if sd.require_proton:
@@ -142,6 +147,12 @@ def select_reference(bank, sd, carbon_only=True):
     b = _load(bank); wnb = float(b["weight_to_nb"])
     if sd.pion_id == "none":
         return _ach_cc0pi(b, sd, wnb, carbon_only)
+    if sd.ref_proc is not None:                                # restrict to QE/RES process ids
+        if "proc" not in b:
+            raise ValueError("ref_proc set but reference bank has no 'proc' field; "
+                             "re-extract with scripts/extract_cc1pi_rich.py")
+        n = len(b["w"]); m = np.isin(b["proc"], list(sd.ref_proc))
+        b = {k: (v[m] if hasattr(v, "shape") and v.shape[:1] == (n,) else v) for k, v in b.items()}
     import scripts.cc1pi_signal as S
     H = S.ach_select(b, _sd_to_legacy(sd)); H["w"] = H["w"] * wnb
     return H
