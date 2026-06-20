@@ -24,6 +24,21 @@ strength moves from CC0π(absorbed) into CC1π(surviving). The CC0π total barel
 QE-dominated (absorbed is ~11% of CC0π); the CC1π channel is small so the same Δσ is a large fractional
 effect.
 
+## Full 3x2 matrix (ACH/ADO, all six channel x topology combinations)
+|        | QE-only | RES-only | QE+RES |
+|--------|---------|----------|--------|
+| C  CC0π | 1.001 | 1.019 | 1.003 |
+| C  CC1π | 1.077 | 0.980 | 0.983 |
+| Ar CC0π | 0.999 | 1.045 | 1.004 |
+| Ar CC1π | **0.581** | 0.932 | 0.915 |
+
+Two separable pion-cascade effects, both growing C->Ar:
+- **RES-absorbed** (CC0π RES-only): C 1.019, Ar 1.045 -> ADoNIS absorbs slightly LESS (low in absorbed).
+- **Cascade-CREATED π⁺** (CC1π QE-only; NN-inelastic / Δ on the QE primary path): C 1.077, **Ar 0.581**
+  -> ADoNIS OVER-creates FSI pions, dramatically on Ar.  Small channel (σ 1.3e-7 vs RES CC1π ~2.7e-6,
+  ~5% of CC1π), so the Ar full CC1π 0.915 is mostly the RES-only 0.932 deficit, worsened by this excess.
+Both push CC1π up.  Unified: ADoNIS's Ar pion cascade absorbs less AND creates more than ACHILLES.
+
 ## A-dependence
 Carbon CC1π RES-only is 0.980 (~2% high); Argon is 0.932 (~7% high). The deficit in pion absorption
 **grows with nucleus size** (C12 → Ar40). Points at the cascade pion-absorption rate not scaling
