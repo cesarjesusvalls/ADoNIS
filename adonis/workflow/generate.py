@@ -133,7 +133,11 @@ def run_channel(channel, gc, target):
     if vg is not None and vg.enabled and channel == "res":
         from adonis.xsec import res_xsec as _R
         from adonis.xsec.vegas_grid import VegasGrid
-        gp = vg.grid_path or out.replace(".npz", "_vegasgrid.npz")
+        # Grid cache key = the PHYSICS that determines the proposal: material (spectral fns + N counts)
+        # and flux mode.  Flux is T2K-neutrino only today, so the canonical key is the material -> one
+        # shared grid auto-reused across tags/seed-counts of the same nucleus.  (When a nubar/other flux
+        # is wired, extend this key with the flux mode -- the grid's beam axis + lepton current change.)
+        gp = vg.grid_path or os.path.join(gc.out_dir, f"res_vegasgrid_{target.symbol}{target.A}.npz")
         have = os.path.exists(gp)
         if vg.cache == "load" and not have:
             raise FileNotFoundError(f"vegas.cache='load' but no grid at {gp} (build one first / use 'auto').")
