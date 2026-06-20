@@ -48,6 +48,21 @@ Post-fix INTERACTED vs |p| (Δ/σ): [75,125) 0.7, **[125,175) 0.3, [175,250) 0.6
 - Matched per-primary comparison: classify primaries as INTERACTED (nsc>0|made_pi), CAPTURED
   (~interacted & p_fin<1), ESCAPED; compare to ACHILLES status 29/26/1 per |p| bracket WITH stat errors.
 
+## Analogous-bug audit (other channels / particles)
+Checked every Pauli-block k_F position evaluation against ACHILLES (which blocks each outgoing at ITS
+OWN `Particle.Position()`):
+- **Pion scatter recoil** (`kf_rec_pi` @ struck vertex): the recoil IS the struck nucleon -> struck
+  vertex = its own position -> CORRECT, no bug.
+- **Pion absorption** (product A @ pion `pos`, B @ struck `npos[j]`): MATCHES ACHILLES exactly --
+  `PionAbsorption` returns `{paOut @ particle1(pion).Position(), pbOut @ particle2(struck).Position()}`.
+  No bug.
+- **NN-inelastic** (NN->NDelta->NN'pi): HAD the same bug -- both products blocked @ struck vertex, but
+  ACHILLES `NucleonNucleon` returns `{paOut @ particle1(leading).Position(), pbOut @ particle2(struck)}`.
+  FIXED: the leading inelastic product (faster, continues from |pos|) now blocked @ the leading position,
+  the other @ the struck.  Benign in practice (inelastic is high-sqrts -> high momentum -> products
+  rarely Pauli-blocked; the fate INTERACTED already agreed at >250 MeV), but fixed for consistency.
+  bit-exact nucleon-step test (pool==bfs) still passes after both fixes.
+
 ## Downstream (NOT yet done) -- this changes the cascade
 Reduces slow-nucleon scattering -> shifts proton multiplicity / topology / the carbon 0p tension and ALL
 banks.  Needs: re-baseline the carbon cascade bit-exact tests (they freeze the old buggy output);

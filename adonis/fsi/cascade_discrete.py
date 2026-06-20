@@ -779,15 +779,19 @@ def _propagate_nucleon_discrete(pos0, p_N0, isp0, npos, nmom, nisp, cfg: Discret
         pi_q = jnp.where(dch == 2, 1,                                          # ++ -> pi+
                 jnp.where(dch == 1, jnp.where(u108 < 1.0/3.0, 1, 0),           # + -> pi+ 1/3 | pi0 2/3
                 jnp.where(dch == 0, jnp.where(u108 < 2.0/3.0, 0, -1), -1)))    # 0 -> pi0 2/3 | pi- 1/3 ; - -> pi-
-        kf_N1 = jnp.where((q_pair - dch) == 1, kf_p_j, kf_n_j)                 # per-species k_F (1=proton)
-        kf_N2 = jnp.where((dch - pi_q) == 1, kf_p_j, kf_n_j)
+        # leading inelastic product blocked at the LEADING's position (|pos|), the other at the struck --
+        # same position fix as the elastic channel (ACHILLES paOut @ leading pos, pbOut @ struck).
+        _kfp_lead = _kf_local(_rho_species(_r_lead, rgrid, rhoP)); _kfn_lead = _kf_local(_rho_species(_r_lead, rgrid, rhoN))
+        nl_is1 = jnp.linalg.norm(pN1[:, 1:], axis=1) >= jnp.linalg.norm(pN2[:, 1:], axis=1)
+        _n1p = (q_pair - dch) == 1; _n2p = (dch - pi_q) == 1
+        kf_N1 = jnp.where(nl_is1, jnp.where(_n1p, _kfp_lead, _kfn_lead), jnp.where(_n1p, kf_p_j, kf_n_j))
+        kf_N2 = jnp.where(~nl_is1, jnp.where(_n2p, _kfp_lead, _kfn_lead), jnp.where(_n2p, kf_p_j, kf_n_j))
         in_blocked = ((jnp.linalg.norm(pN1[:, 1:], axis=1) < kf_N1)
                       | (jnp.linalg.norm(pN2[:, 1:], axis=1) < kf_N2))
         if not cfg.pauli:
             in_blocked = in_blocked & False
         is_inel = chose_inel & ~in_blocked
-        lead_in = jnp.where((jnp.linalg.norm(pN1[:, 1:], axis=1)
-                             >= jnp.linalg.norm(pN2[:, 1:], axis=1))[:, None], pN1, pN2)
+        lead_in = jnp.where(nl_is1[:, None], pN1, pN2)
         made_pi = made_pi | is_inel
         pi_chidx = (1 - pi_q).astype(jnp.int32)                               # +1->0(pi+),0->1(pi0),-1->2(pi-)
         # track the LEADING created pion (4-vec _pPiX + charge + vertex + formation zone)
@@ -1025,15 +1029,20 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     pi_q = jnp.where(dch == 2, 1,
             jnp.where(dch == 1, jnp.where(u108 < 1.0 / 3.0, 1, 0),
             jnp.where(dch == 0, jnp.where(u108 < 2.0 / 3.0, 0, -1), -1)))
-    kf_N1 = jnp.where((q_pair - dch) == 1, kf_p_j, kf_n_j)
-    kf_N2 = jnp.where((dch - pi_q) == 1, kf_p_j, kf_n_j)
+    # Pauli-block the two inelastic outgoing nucleons per species; the LEADING one (faster -> continues
+    # from |pos|) is blocked at the LEADING's position (like the elastic kf_lead), the other (knockout at
+    # the struck vertex) at the struck k_F -- same position fix as the elastic channel.
+    _kfp_lead = _kf_local(_rho_species(_r_lead, rgrid, rhoP)); _kfn_lead = _kf_local(_rho_species(_r_lead, rgrid, rhoN))
+    nl_is1 = jnp.linalg.norm(pN1[:, 1:], axis=1) >= jnp.linalg.norm(pN2[:, 1:], axis=1)   # pN1 is leading
+    _n1p = (q_pair - dch) == 1; _n2p = (dch - pi_q) == 1
+    kf_N1 = jnp.where(nl_is1, jnp.where(_n1p, _kfp_lead, _kfn_lead), jnp.where(_n1p, kf_p_j, kf_n_j))
+    kf_N2 = jnp.where(~nl_is1, jnp.where(_n2p, _kfp_lead, _kfn_lead), jnp.where(_n2p, kf_p_j, kf_n_j))
     in_blocked = ((jnp.linalg.norm(pN1[:, 1:], axis=1) < kf_N1)
                   | (jnp.linalg.norm(pN2[:, 1:], axis=1) < kf_N2))
     if not cfg.pauli:
         in_blocked = in_blocked & False
     is_inel = chose_inel & ~in_blocked
-    lead_in = jnp.where((jnp.linalg.norm(pN1[:, 1:], axis=1)
-                         >= jnp.linalg.norm(pN2[:, 1:], axis=1))[:, None], pN1, pN2)
+    lead_in = jnp.where(nl_is1[:, None], pN1, pN2)
     pi_chidx = (1 - pi_q).astype(jnp.int32)
     do = has_hit & ~chose_inel & ~blocked
     recoil = (p4 + pN_j) - p_out
