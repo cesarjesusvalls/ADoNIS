@@ -1,0 +1,33 @@
+# ADoNIS analysis: T2K CC1pi+Np engine vs ACHILLES (carbon).  Reproduces cc1pi_engine_plot.py.
+# ADoNIS CC1pi = RES bank (surviving pi+) + QE bank (cascade-created pi+).
+# Run: python -u scripts/adonis_analyze.py configs/ana_cc1pi.yaml
+name: t2k_cc1pi_res7
+inputs:
+  adonis_res: [data/oracle/t2k_cc1pi_engine_rich_res7.npz]
+  adonis_qe:  [data/oracle/t2k_cc0pi_engine_rich_cfix.npz]
+  reference:  [data/oracle/t2k_cc1pi_rich_ach_FSI.npz]
+signal:
+  mu_win: [250.0, 7000.0]
+  pi_win: [150.0, 1200.0]
+  p_win:  [450.0, 1200.0]
+  cth: cos70
+  proton_lead: in_window
+  proton_count: ge1
+  require_proton: true
+  pion_id: pip
+  count_recoil_neutron: false
+  target: carbon
+  W_conv: vertex
+observables:
+  - {key: pn,      label: "$p_N$",            edges: [0, 120, 240, 600, 1500]}
+  - {key: dptt,    label: "$\\delta p_{TT}$", edges: [-700, -300, -100, 100, 300, 700]}
+  - {key: dalphat, label: "$\\delta\\alpha_T$", linspace: [0, pi, 7]}
+  - {key: W,       label: "$W$",              linspace: [1080, 1700, 13]}
+  - {key: Q2,      label: "$Q^2$",            linspace: [0, 1.5, 13]}
+  - {key: pi_p,    label: "$p_\\pi$",         linspace: [150, 1200, 13]}
+  - {key: lp_p,    label: "lead $p_p$",       linspace: [450, 1200, 13]}
+data: {enabled: false}
+out_path: paper_figures/cc1pi_ratios_ENGINE_carbon_RES7.png
+title: "CC1$\\pi^+$Np  FAITHFUL ENGINE vs ACHILLES (carbon) [FIX + resonance prop x7]"
+ratio_ylim: [0.5, 1.6]
+carbon_only: false        # engine_signal does not carbon-filter (RES bank is already carbon)

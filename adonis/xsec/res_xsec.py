@@ -111,7 +111,8 @@ def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
 # arbitrary k_nu / p_struck.  ADoNIS's default _sample_3body uses an ISOTROPIC pion split (same
 # integral, higher variance); ACHILLES uses this t-channel map (FinalStateMapper.cc TChannelMomenta).
 _TBM_ALPHA, _TBM_CTMAX, _TBM_CTMIN, _TBM_AMCT = 0.9, 1.0, -1.0, 1.0
-SAMPLER_3BODY = "tchannel"           # "tchannel" (ACHILLES-faithful, default) | "isotropic" (legacy)
+SAMPLER_3BODY = "resonance"          # "resonance" (BW-importance hadronic mass, ~7x N_eff, default) |
+                                     #   "tchannel" (ACHILLES-faithful) | "isotropic" (legacy)
 
 
 def _m2(p):
@@ -191,7 +192,66 @@ def _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u):
     return dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
 
 
+# ===== Resonance-importance proposal: lepton-first split + Breit-Wigner hadronic mass =========== #
+# The DCC amplitude peaks at the Delta(1232) in the hadronic (N pi) invariant mass.  The default
+# samplers split the PION off first (s23 = mu-N mass sampled flat), so W_Npi is never a sampling
+# variable -> the proposal over-samples threshold and under-samples the resonance (heavy-tailed w).
+# This proposal splits the LEPTON off first (total -> mu + Had), making the N-pi mass m_H a direct
+# variable importance-sampled from a truncated Cauchy/Breit-Wigner around M_Delta.  SAME 3-body
+# phase-space integral with an exact Jacobian -> identical expectation, far higher N_eff.  The
+# mu/Had and N/pi splits are isotropic (same as _sample_3body).  Proposal params are tunable knobs
+# of the SAMPLER only (they never enter the physics: w = a2 * fl * iw * J cancels the proposal).
+_BW_M0, _BW_GAMMA = 1232.0, 350.0     # Cauchy center/width for the N-pi mass proposal (MeV); wide
+                                      #   on purpose so the tails of W stay well-covered.
+
+
+def _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u):
+    """Lepton-first 3-body proposal with a Breit-Wigner-importance hadronic (N pi) mass.  Same
+    signature/return as _sample_3body.  u is (n,5) = [m_H (BW), ctA, phA, ctB, phB]."""
+    P = k_nu + p_struck
+    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
+    sqrts = np.sqrt(np.clip(s, 1e-9, None))
+    mHmin = m_Nf + m_pi; mHmax = np.clip(sqrts - M_MU, mHmin + 1e-6, None)
+    # truncated Cauchy(M0, Gamma/2) in m_H:  m_H = M0 + (G/2) tan(theta), theta in [atan(a), atan(b)]
+    hg = _BW_GAMMA / 2.0
+    a = (mHmin - _BW_M0) / hg; b = (mHmax - _BW_M0) / hg
+    ata, atb = np.arctan(a), np.arctan(b)
+    theta = ata + (atb - ata) * u[:, 0]
+    m_H = _BW_M0 + hg * np.tan(theta)
+    sH = m_H ** 2
+    # proposal density in m_H (normalized over [mHmin,mHmax]) -> in sH via |dm_H/dsH| = 1/(2 m_H)
+    Z = (atb - ata) / hg                                  # int_{min}^{max} dm /((m-M0)^2+(G/2)^2)
+    pdf_m = 1.0 / np.clip(Z * ((m_H - _BW_M0) ** 2 + hg ** 2), 1e-300, None)
+    pdf_sH = pdf_m / np.clip(2.0 * m_H, 1e-12, None)
+    # split A: total -> Had(sH) + mu, isotropic
+    EHad = (s + sH - M_MU ** 2) / (2 * sqrts); pA = sqrts * _sqlam(s, sH, M_MU ** 2) / 2
+    ctA = 2 * u[:, 1] - 1; stA = np.sqrt(np.clip(1 - ctA ** 2, 0, None)); phA = _TWO_PI * u[:, 2]
+    dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
+    Had_cm = np.concatenate([EHad[:, None], pA[:, None] * dA], axis=1)
+    mu_cm = np.concatenate([np.sqrt(M_MU ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
+    p_Had = _boost_to_lab(Had_cm, P); k_mu = _boost_to_lab(mu_cm, P)
+    I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, sH, M_MU ** 2), 1e-12, None)
+    # split B: Had -> N + pi, isotropic (in the Had rest frame)
+    EN = (sH + m_Nf ** 2 - m_pi ** 2) / (2 * m_H); pB = m_H * _sqlam(sH, m_Nf ** 2, m_pi ** 2) / 2
+    ctB = 2 * u[:, 3] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 4]
+    dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
+    N_cm = np.concatenate([EN[:, None], pB[:, None] * dB], axis=1)
+    pi_cm = np.concatenate([np.sqrt(m_pi ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
+    p_N = _boost_to_lab(N_cm, p_Had); p_pi = _boost_to_lab(pi_cm, p_Had)
+    I2W_B = 2.0 / np.pi / np.clip(_sqlam(sH, m_Nf ** 2, m_pi ** 2), 1e-12, None)
+    density = (2 * np.pi) ** 5 * I2W_A * I2W_B * pdf_sH
+    J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
+    valid3 = ((mHmax > mHmin) & (_sqlam(s, sH, M_MU ** 2) > 0) & (_sqlam(sH, m_Nf ** 2, m_pi ** 2) > 0)
+              & np.isfinite(J_3body) & (J_3body > 0))
+    # s23 (mu-N invariant mass^2) returned for compatibility with downstream validity (s>Smin uses s)
+    muN = k_mu + p_N
+    s23 = muN[:, 0] ** 2 - np.sum(muN[:, 1:] ** 2, axis=1)
+    return dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
+
+
 def _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u):
+    if SAMPLER_3BODY == "resonance":
+        return _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u)
     if SAMPLER_3BODY == "tchannel":
         return _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u)
     return _sample_3body(k_nu, p_struck, m_pi, m_Nf, u)
