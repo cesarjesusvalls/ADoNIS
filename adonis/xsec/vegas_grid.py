@@ -46,6 +46,19 @@ class VegasGrid:
             jac *= N * (hi - lo)
         return x, jac
 
+    def density(self, x):
+        """Proposal density p_vegas(x) at arbitrary x in [0,1]^ndim (relative to uniform): per axis the
+        local 1/(N*bin_width) of the bin containing x; product over axes.  This is 1/jac at x, and is
+        what a defensive mixture needs to weight events drawn from EITHER component by the mixture
+        density q(x) = alpha*p_vegas(x) + (1-alpha)."""
+        x = np.asarray(x, float); n = x.shape[0]; N = self.nbins
+        dens = np.ones(n)
+        for ax in range(self.ndim):
+            e = self.edges[ax]
+            i = np.clip(np.searchsorted(e, x[:, ax], side="right") - 1, 0, N - 1)
+            dens *= 1.0 / (N * np.clip(e[i + 1] - e[i], 1e-300, None))
+        return dens
+
     # ---- adaptation ----
     def accumulate(self, x, fval):
         """Add f^2 (f = full weight including the current grid jac) into the x-bin per axis."""

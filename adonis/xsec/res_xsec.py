@@ -257,17 +257,30 @@ def _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u):
     return _sample_3body(k_nu, p_struck, m_pi, m_Nf, u)
 
 
-def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None):
+def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None, defensive=0.0):
     """One RES channel for the importance estimator: spectrum beam + importance struck nucleon
     (imp = the nucleus's |p|^2 S_n sampler; defaults to carbon _IMP) + the shared 3-body core.
 
     Optional frozen VegasGrid remaps the 6 hypercube dims [beam u[4] + 3-body u[5:10]] (the struck-
     nucleon |p|^2 S sampler stays OUTSIDE the grid); its Jacobian is folded into J and the mapped grid
-    coords are returned as `x_grid` (for warm-up accumulation).  grid=None -> bit-identical sampling."""
+    coords are returned as `x_grid` (for warm-up accumulation).  grid=None -> bit-identical sampling.
+
+    defensive in (0,1): DEFENSIVE MIXTURE q = (1-defensive)*p_vegas + defensive*uniform.  A fraction
+    `defensive` of events is drawn uniformly (covering the regions the grid under-samples); EVERY event
+    is weighted by the mixture density 1/q -> the grid Jacobian is bounded by 1/defensive, capping the
+    grid-induced weight tail.  Unbiased (same expectation), 0.0 -> pure Vegas."""
     imp = imp or _IMP
     u = rng.random((n, 10))
     jac_grid = 1.0; x_grid = u[:, 4:10]
-    if grid is not None:                                        # warp the 6 active dims; struck dims untouched
+    if grid is not None and defensive > 0.0:                    # defensive mixture over the 6 active dims
+        a = 1.0 - defensive
+        xv, _ = grid.map(u[:, 4:10])
+        ub = rng.random(n) >= a                                # uniform-branch mask (fraction `defensive`)
+        x_grid = np.where(ub[:, None], u[:, 4:10], xv)         # sample from the mixture
+        q = a * grid.density(x_grid) + defensive               # mixture density at the sampled x
+        jac_grid = 1.0 / np.clip(q, 1e-300, None)              # = 1/q, bounded by 1/defensive
+        u = u.copy(); u[:, 4:10] = x_grid
+    elif grid is not None:                                      # pure Vegas: warp the 6 active dims
         x_grid, jac_grid = grid.map(u[:, 4:10]); u = u.copy(); u[:, 4:10] = x_grid
     Smin = (M_MU + m_Nf + m_pi) ** 2
     # BeamMapper seed is PROCESS-dependent (BeamMapper.cc); validated bit-exact vs RESDUMP psw.
@@ -462,7 +475,7 @@ def warmup_vegas(n=100000, iters=6, nbins=50, alpha=0.5, seed=987654321, sf_n=No
 
 
 def generate(n=20000, seed=0, return_events=False, method=None, sf_n=None, sf_p=None,
-             n_neutron=N_NUC, n_proton=N_NUC, grid=None):
+             n_neutron=N_NUC, n_proton=N_NUC, grid=None, defensive=0.0):
     """Dispatch to the faithful (transliteration) or importance RES estimator.  Both estimate the
     same sigma; faithful mirrors ACHILLES operation-for-operation, importance is lower variance.
     sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P).
@@ -472,13 +485,13 @@ def generate(n=20000, seed=0, return_events=False, method=None, sf_n=None, sf_p=
     m = method or RES_METHOD
     if m == "importance":
         return generate_importance(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p,
-                                   n_neutron=n_neutron, n_proton=n_proton, grid=grid)
+                                   n_neutron=n_neutron, n_proton=n_proton, grid=grid, defensive=defensive)
     return generate_faithful(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p,
                              n_neutron=n_neutron, n_proton=n_proton)
 
 
 def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None,
-                        n_neutron=N_NUC, n_proton=N_NUC, grid=None):
+                        n_neutron=N_NUC, n_proton=N_NUC, grid=None, defensive=0.0):
     sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
     rng = np.random.default_rng(seed)
     flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
@@ -486,7 +499,8 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
     ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
         Npid = 2212 if mNf == M_P else 2112
-        s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp, grid=grid)  # mpi0 like ACHILLES
+        s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp, grid=grid,
+                            defensive=defensive)  # mpi0 like ACHILLES
         w = _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton)
         sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc
         if return_events:
