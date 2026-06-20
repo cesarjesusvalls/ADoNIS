@@ -257,11 +257,18 @@ def _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u):
     return _sample_3body(k_nu, p_struck, m_pi, m_Nf, u)
 
 
-def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None):
+def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None):
     """One RES channel for the importance estimator: spectrum beam + importance struck nucleon
-    (imp = the nucleus's |p|^2 S_n sampler; defaults to carbon _IMP) + the shared 3-body core."""
+    (imp = the nucleus's |p|^2 S_n sampler; defaults to carbon _IMP) + the shared 3-body core.
+
+    Optional frozen VegasGrid remaps the 6 hypercube dims [beam u[4] + 3-body u[5:10]] (the struck-
+    nucleon |p|^2 S sampler stays OUTSIDE the grid); its Jacobian is folded into J and the mapped grid
+    coords are returned as `x_grid` (for warm-up accumulation).  grid=None -> bit-identical sampling."""
     imp = imp or _IMP
     u = rng.random((n, 10))
+    jac_grid = 1.0; x_grid = u[:, 4:10]
+    if grid is not None:                                        # warp the 6 active dims; struck dims untouched
+        x_grid, jac_grid = grid.map(u[:, 4:10]); u = u.copy(); u[:, 4:10] = x_grid
     Smin = (M_MU + m_Nf + m_pi) ** 2
     # BeamMapper seed is PROCESS-dependent (BeamMapper.cc); validated bit-exact vs RESDUMP psw.
     minE = max((Smin - m_Nf ** 2) / (2 * m_Nf) / 1000.0, flux.min_energy)
@@ -271,14 +278,15 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None):
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
     J_had = np.ones(n)                                          # |p|^2 S J_had absorbed -> N_NUC
-    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u[:, 5:10])  # isotropic | tchannel
+    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u[:, 5:10])  # isotropic | tchannel | resonance
     # ACHILLES QESpectralMapper removal-energy ceiling (HadronicMapper.cc:50-53), Smin = 3-body thr.
     det_e = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
     emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
     valid = ((tb["s"] > Smin) & tb["valid3"] & (energy < emax))
     return dict(k_nu=k_nu, p_struck=p_struck, k_mu=tb["k_mu"], p_N=tb["p_N"], p_pi=tb["p_pi"],
-                J=J_beam * J_had * tb["J_3body"], mom=mom, energy=energy, Enu=Enu, E_GeV=E_GeV, valid=valid)
+                J=J_beam * J_had * tb["J_3body"] * jac_grid, mom=mom, energy=energy, Enu=Enu,
+                E_GeV=E_GeV, valid=valid, x_grid=x_grid)
 
 
 # --- ACHILLES-faithful ProcessGroup mirror -------------------------------------------------- #
@@ -384,23 +392,93 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
 RES_METHOD = "importance"
 
 
+def _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton):
+    """Per-event RES weight for one channel from a sampled-channel dict `s` (importance estimator):
+    w = a2 * flux * (N species) * SPIN_AVG * J * (S_p/S_n reweight on the proton channel).  Shared by
+    generate_importance and warmup_vegas (single source of truth for the weight assembly)."""
+    n = len(s["valid"]); v = s["valid"]
+    iw = n_neutron if ipid == 2112 else n_proton                # target species count (importance: |p|^2 S)
+    a2 = np.zeros(n)
+    idx = np.where(v & (s["energy"] > 2.5) & (s["energy"] < 400) & (s["J"] > 0))[0]
+    if len(idx):
+        a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
+                                        s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
+    fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=mstr))
+    # D3: struck nucleon is proposed from pke12n (|p|^2 S_n) for every channel, but the PROTON-initiated
+    # channel's integrand carries S_p, not S_n.  Importance-reweight it by S_p/S_n (=1 for n channels).
+    if ipid == 2212:
+        sn = sf_n.batch(s["mom"], s["energy"]); sp = sf_p.batch(s["mom"], s["energy"])
+        reweight = np.where(sn > 0, sp / np.clip(sn, 1e-300, None), 0.0)
+    else:
+        reweight = 1.0
+    w = np.where(v, a2 * fl * iw * SPIN_AVG * s["J"] * reweight, 0.0)
+    return np.where(np.isfinite(w) & (a2 > 0), w, 0.0)
+
+
+def _warmup_pbar(total, desc):
+    """tqdm progress bar if available, else a minimal stderr fallback with elapsed/ETA (same .update/
+    .close interface).  The warm-up (integration) phase has a heavy first step (JAX amps2 compile), so
+    the ETA settles after a couple of channels."""
+    try:
+        from tqdm import tqdm
+        return tqdm(total=total, desc=desc, unit="step", dynamic_ncols=True)
+    except Exception:
+        import sys, time
+        class _Bar:
+            def __init__(s): s.t0 = time.time(); s.n = 0
+            def update(s, k=1):
+                s.n += k; el = time.time() - s.t0; rate = s.n / el if el > 0 else 0
+                eta = (total - s.n) / rate if rate > 0 else float("inf")
+                sys.stderr.write(f"\r{desc}: {s.n}/{total}  elapsed {el:5.0f}s  ETA {eta:5.0f}s   ")
+                sys.stderr.flush()
+            def close(s): sys.stderr.write("\n"); sys.stderr.flush()
+        return _Bar()
+
+
+def warmup_vegas(n=100000, iters=6, nbins=50, alpha=0.5, seed=987654321, sf_n=None, sf_p=None,
+                 n_neutron=N_NUC, n_proton=N_NUC, progress=True):
+    """Build + FREEZE a 6-dim VegasGrid for the RES importance estimator by warming up on the summed
+    3-channel weight at nominal knobs.  Grid dims = [beam, hadronic-mass(BW), ctA, phA, ctB, phB].
+    One shared grid across the 3 (kinematically similar) channels.  Returns the frozen VegasGrid.
+    `progress` shows a tqdm-style bar (iters x channels steps) with ETA for the integration phase."""
+    from adonis.xsec.vegas_grid import VegasGrid
+    sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
+    flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
+    grid = VegasGrid(6, nbins)
+    pbar = _warmup_pbar(iters * len(CHANNELS), "vegas warm-up") if progress else None
+    for it in range(iters):
+        rng = np.random.default_rng(seed + it)
+        xs, ws = [], []
+        for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
+            s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp, grid=grid)
+            w = _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton)
+            xs.append(s["x_grid"]); ws.append(w)
+            if pbar is not None:
+                pbar.update(1)
+        grid.accumulate(np.concatenate(xs), np.concatenate(ws)); grid.refine(alpha=alpha)
+    if pbar is not None:
+        pbar.close()
+    return grid.freeze()
+
+
 def generate(n=20000, seed=0, return_events=False, method=None, sf_n=None, sf_p=None,
-             n_neutron=N_NUC, n_proton=N_NUC):
+             n_neutron=N_NUC, n_proton=N_NUC, grid=None):
     """Dispatch to the faithful (transliteration) or importance RES estimator.  Both estimate the
     same sigma; faithful mirrors ACHILLES operation-for-operation, importance is lower variance.
     sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P).
     n_neutron/n_proton = # of target neutrons (A-Z) / protons (Z) for the initwgt = N*S scaling
-    (default 6 = carbon; n-initiated channels use n_neutron, the p-initiated channel n_proton)."""
+    (default 6 = carbon; n-initiated channels use n_neutron, the p-initiated channel n_proton).
+    grid = optional frozen VegasGrid (importance method only) over the 6 final-state hypercube dims."""
     m = method or RES_METHOD
     if m == "importance":
         return generate_importance(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p,
-                                   n_neutron=n_neutron, n_proton=n_proton)
+                                   n_neutron=n_neutron, n_proton=n_proton, grid=grid)
     return generate_faithful(n, seed=seed, return_events=return_events, sf_n=sf_n, sf_p=sf_p,
                              n_neutron=n_neutron, n_proton=n_proton)
 
 
 def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None,
-                        n_neutron=N_NUC, n_proton=N_NUC):
+                        n_neutron=N_NUC, n_proton=N_NUC, grid=None):
     sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
     rng = np.random.default_rng(seed)
     flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
@@ -408,25 +486,8 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
     ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
         Npid = 2212 if mNf == M_P else 2112
-        s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp)   # mpi0 like ACHILLES
-        v = s["valid"]
-        iw = n_neutron if ipid == 2112 else n_proton            # target species count (importance: |p|^2 S)
-        a2 = np.zeros(n)
-        idx = np.where(v & (s["energy"] > 2.5) & (s["energy"] < 400) & (s["J"] > 0))[0]
-        if len(idx):
-            a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
-                                            s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
-        fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=mstr))
-        # D3: the struck nucleon is proposed from pke12n (|p|^2 S_n) for every channel, but the
-        # PROTON-initiated channel's integrand carries S_p, not S_n.  Importance-reweight it by
-        # S_p/S_n (both normalised; =1 for the neutron channels).  Closes the pke12p/pke12n gap.
-        if ipid == 2212:
-            sn = sf_n.batch(s["mom"], s["energy"]); sp = sf_p.batch(s["mom"], s["energy"])
-            reweight = np.where(sn > 0, sp / np.clip(sn, 1e-300, None), 0.0)
-        else:
-            reweight = 1.0
-        w = np.where(v, a2 * fl * iw * SPIN_AVG * s["J"] * reweight, 0.0)
-        w = np.where(np.isfinite(w) & (a2 > 0), w, 0.0)
+        s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp, grid=grid)  # mpi0 like ACHILLES
+        w = _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton)
         sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc
         if return_events:
             keep = w > 0

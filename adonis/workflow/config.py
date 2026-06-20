@@ -55,6 +55,25 @@ class CascadeHyperparams:
 
 
 @dataclass
+class VegasConfig:
+    enabled: bool = False       # RES importance estimator only: frozen VegasGrid over the 6 final-state
+                                #   hypercube dims (beam + 3-body); default OFF -> bit-identical sampling
+    nbins: int = 50             # per-axis grid bins
+    warmup_iters: int = 6       # adapt iterations (accumulate -> refine), then freeze
+    warmup_n: int = 100000      # events per warm-up iteration (per channel)
+    alpha: float = 0.5          # VEGAS damping exponent
+    seed: int = 987654321       # warm-up RNG seed (fixed -> reproducible grid)
+    cache: str = "auto"         # "auto" (load the sidecar grid if present, else build+save),
+                                # "rebuild" (always warm up + overwrite the sidecar),
+                                # "load" (require an existing sidecar; error if missing)
+    grid_path: str | None = None  # explicit sidecar path; None -> <bank>_vegasgrid.npz next to the bank
+
+    def __post_init__(self):
+        if self.cache not in ("auto", "rebuild", "load"):
+            raise ValueError(f"vegas.cache {self.cache!r} not in auto|rebuild|load")
+
+
+@dataclass
 class TrackingConfig:
     enabled: bool = False       # store per-event MC-truth summary (track/parent/pdg/end-process)
     steps: bool = False         # per-step trajectories (viz only; NOT in batch generation)
@@ -70,6 +89,7 @@ class GenConfig:
     channels: tuple = ("res",)              # subset of {"res","qe"}
     cascade: CascadeHyperparams = field(default_factory=CascadeHyperparams)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
+    vegas: VegasConfig = field(default_factory=VegasConfig)
     out_dir: str = "data/oracle"
     tag: str = ""
     seed0: int = 0
@@ -86,6 +106,7 @@ def load_gen_config(path) -> GenConfig:
     d.pop("name", None)
     d["cascade"] = _coerce(CascadeHyperparams, d.get("cascade"))
     d["tracking"] = _coerce(TrackingConfig, d.get("tracking"))
+    d["vegas"] = _coerce(VegasConfig, d.get("vegas"))
     if "channels" in d:
         d["channels"] = tuple(d["channels"])
     return _coerce(GenConfig, d)

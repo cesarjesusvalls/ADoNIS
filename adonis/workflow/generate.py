@@ -27,14 +27,14 @@ from adonis.workflow.materials import resolve_targets
 _CHAN_OUT = {"res": "cc1pi", "qe": "cc0pi"}
 
 
-def gen_events(channel, n, seed, sf_n=None, sf_p=None, n_neutron=6, n_proton=6):
+def gen_events(channel, n, seed, sf_n=None, sf_p=None, n_neutron=6, n_proton=6, grid=None):
     """Primary events for one seed (verbatim gen_cc_engine_rich.gen_events).  sf_n/sf_p = the target's
     neutron/proton SpectralFunction (None -> carbon default inside the generator).  CC QE struck
     nucleon is a neutron (n->p) so it uses sf_n; RES uses both.  n_neutron/n_proton (target A-Z / Z)
     scale the initwgt = N*S normalization per species (default 6/6 = carbon)."""
     if channel == "res":
         e = res_xsec.generate(n, seed=seed, return_events=True, sf_n=sf_n, sf_p=sf_p,
-                              n_neutron=n_neutron, n_proton=n_proton)["events"]
+                              n_neutron=n_neutron, n_proton=n_proton, grid=grid)["events"]
         return {k: np.asarray(e[k]) for k in
                 ("k_nu", "k_mu", "p_struck", "p_pi", "p_N", "w", "ppid", "ipid", "Npid")}
     from adonis.xsec import qe_xsec
@@ -63,10 +63,10 @@ def _prefsi_record(channel, a):
 
 
 def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n=None, sf_p=None,
-                 n_neutron=6, n_proton=6):
+                 n_neutron=6, n_proton=6, grid=None):
     """One seed -> (record dict, truth dict|None, overflow).  Verbatim gen_cc_engine_rich.one (fsi=True);
     fsi=False returns the PRE-FSI primary record (no cascade)."""
-    a = gen_events(channel, n, seed, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton)
+    a = gen_events(channel, n, seed, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton, grid=grid)
     if not fsi:
         return _prefsi_record(channel, a), None, 0
     nn = len(a["w"]); ar = np.arange(nn)
@@ -124,6 +124,28 @@ def run_channel(channel, gc, target):
     n_neutron = target.A - target.Z; n_proton = target.Z      # initwgt = N_species * S scaling
     out = os.path.join(gc.out_dir, f"t2k_{_CHAN_OUT[channel]}_engine_rich{gc.tag}.npz")
     truth_out = out.replace(".npz", "_truth.npz")
+    # Optional frozen VegasGrid (RES importance estimator only) over the 6 final-state hypercube dims
+    # (beam + 3-body).  Default OFF -> `grid=None` -> bit-identical sampling.  QE has no grid (its
+    # struck-nucleon sampler is near-optimal).  The warm-up is ONE-TIME per material: the frozen grid is
+    # a reproducible sidecar, so `cache="auto"` reuses it across runs (warm-up is deterministic anyway).
+    grid = None
+    vg = getattr(gc, "vegas", None)
+    if vg is not None and vg.enabled and channel == "res":
+        from adonis.xsec import res_xsec as _R
+        from adonis.xsec.vegas_grid import VegasGrid
+        gp = vg.grid_path or out.replace(".npz", "_vegasgrid.npz")
+        have = os.path.exists(gp)
+        if vg.cache == "load" and not have:
+            raise FileNotFoundError(f"vegas.cache='load' but no grid at {gp} (build one first / use 'auto').")
+        if vg.cache != "rebuild" and have:                    # auto+present or load -> reuse cached grid
+            grid = VegasGrid.load(gp)
+            print(f"[{channel}] VEGAS grid loaded from cache -> {gp}", flush=True)
+        else:                                                 # rebuild, or auto+missing -> warm up + save
+            print(f"[{channel}] VEGAS warm-up: {vg.warmup_iters} iters x {vg.warmup_n} ev, nbins={vg.nbins}", flush=True)
+            grid = _R.warmup_vegas(n=vg.warmup_n, iters=vg.warmup_iters, nbins=vg.nbins, alpha=vg.alpha,
+                                   seed=vg.seed, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton)
+            grid.save(gp)
+            print(f"[{channel}] VEGAS grid frozen -> {gp}", flush=True)
     parts, truths = [], []
     print(f"[{channel}] target={target.symbol}{target.A} Z={target.Z} N={n_neutron} "
           f"dens=({target.density_p},{target.density_n}) cfg={target.configs}", flush=True)
@@ -132,7 +154,8 @@ def run_channel(channel, gc, target):
     for k in range(gc.n_seeds):
         sd = gc.seed0 + k
         rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled,
-                                       gc.fsi, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton)
+                                       gc.fsi, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton,
+                                       grid=grid)
         parts.append(rec)
         bank = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
         bank["w"] = bank["w"] / len(parts)               # normalize by ACTUAL seeds banked
