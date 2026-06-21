@@ -61,7 +61,7 @@ class VegasConfig:
     nbins: int = 50             # per-axis grid bins
     warmup_iters: int = 6       # adapt iterations (accumulate -> refine), then freeze
     warmup_n: int = 100000      # events per warm-up iteration (per channel)
-    alpha: float = 0.5          # VEGAS damping exponent
+    alpha: float = 1.5          # VEGAS damping exponent (ACHILLES VegasParams::alpha_default)
     seed: int = 987654321       # warm-up RNG seed (fixed -> reproducible grid)
     cache: str = "auto"         # "auto" (load the sidecar grid if present, else build+save),
                                 # "rebuild" (always warm up + overwrite the sidecar),

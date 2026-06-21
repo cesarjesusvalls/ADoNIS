@@ -71,24 +71,36 @@ class VegasGrid:
             i = np.clip(np.searchsorted(self.edges[ax], x[:, ax], side="right") - 1, 0, self.nbins - 1)
             np.add.at(self.acc[ax], i, f2)
 
-    def refine(self, alpha=0.5):
-        """Rebin each axis: smooth + damp the accumulated f^2, then place new edges so every bin carries
-        equal cumulative importance.  Resets the accumulator."""
+    def refine(self, alpha=1.5):
+        """Rebin each axis exactly as ACHILLES AdaptiveMap::Adapt: 3-point smooth the accumulated f^2,
+        normalize to r_i = sm_i/sum(sm), apply the Lepage damping importance fac_i = ((r_i-1)/ln r_i)^alpha
+        (-> 1 as r->1, -> 0 as r->0), then place new edges so every bin carries equal cumulative `fac`.
+        alpha=1.5 matches ACHILLES VegasParams::alpha_default.  Resets the accumulator."""
         if self.frozen:
             return
         for ax in range(self.ndim):
             d = self.acc[ax].astype(float).copy()
             if d.sum() <= 0:
                 continue                                    # no info this axis -> leave edges
-            # 3-point smoothing (Lepage), edge-aware
+            # 3-point smoothing (ACHILLES Adapt), edge-aware
             sm = d.copy()
-            sm[1:-1] = (d[:-2] + d[1:-1] + d[2:]) / 3.0
-            sm[0] = (d[0] + d[1]) / 2.0 if self.nbins > 1 else d[0]
-            sm[-1] = (d[-1] + d[-2]) / 2.0 if self.nbins > 1 else d[-1]
-            sm = sm + 1e-300
-            imp = sm ** alpha                                # damping exponent
-            cum = np.concatenate([[0.0], np.cumsum(imp)])    # (nbins+1,) cumulative importance at OLD edges
+            if self.nbins > 1:
+                sm[1:-1] = (d[:-2] + d[1:-1] + d[2:]) / 3.0
+                sm[0] = (d[0] + d[1]) / 2.0
+                sm[-1] = (d[-1] + d[-2]) / 2.0
+            norm = sm.sum()
+            if norm <= 0:
+                continue
+            r = sm / norm                                   # per-bin importance fraction
+            with np.errstate(divide="ignore", invalid="ignore"):
+                fac = (r - 1.0) / np.log(r)                 # Lepage damping kernel
+            fac = np.where(np.abs(r - 1.0) < 1e-12, 1.0, fac)   # (r-1)/ln r -> 1 at r=1
+            fac = np.where(r > 0, np.clip(fac, 1e-300, None), 1e-300)
+            imp = fac ** alpha
+            cum = np.concatenate([[0.0], np.cumsum(imp)])    # cumulative importance at OLD edges
             tot = cum[-1]
+            if tot <= 0:
+                continue
             targets = np.linspace(0.0, tot, self.nbins + 1)
             e_new = np.interp(targets, cum, self.edges[ax])  # invert: x where cum = target
             e_new[0] = 0.0; e_new[-1] = 1.0

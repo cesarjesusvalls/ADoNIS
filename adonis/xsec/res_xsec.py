@@ -111,8 +111,13 @@ def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
 # arbitrary k_nu / p_struck.  ADoNIS's default _sample_3body uses an ISOTROPIC pion split (same
 # integral, higher variance); ACHILLES uses this t-channel map (FinalStateMapper.cc TChannelMomenta).
 _TBM_ALPHA, _TBM_CTMAX, _TBM_CTMIN, _TBM_AMCT = 0.9, 1.0, -1.0, 1.0
-SAMPLER_3BODY = "resonance"          # "resonance" (BW-importance hadronic mass, ~7x N_eff, default) |
-                                     #   "tchannel" (ACHILLES-faithful) | "isotropic" (legacy)
+SAMPLER_3BODY = "resonance"          # "resonance" (BW-importance hadronic mass, DEFAULT; 2x the N_eff of
+                                     #   the ACHILLES-faithful "tchannel" because it rotates the Delta
+                                     #   resonance onto a sampling axis -- physics-neutral, validated) |
+                                     #   "tchannel" (ACHILLES ThreeBodyMapper, faithful reference) |
+                                     #   "isotropic" (legacy).  Empirically the resonance is the ONLY
+                                     #   sharp off-axis structure: invariant + pairwise-correlation scans
+                                     #   found no other importance map above ~noise (Q2/angle <=+3%).
 
 
 def _m2(p):
@@ -206,8 +211,10 @@ _BW_M0, _BW_GAMMA = 1232.0, 350.0     # Cauchy center/width for the N-pi mass pr
 
 
 def _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u):
-    """Lepton-first 3-body proposal with a Breit-Wigner-importance hadronic (N pi) mass.  Same
-    signature/return as _sample_3body.  u is (n,5) = [m_H (BW), ctA, phA, ctB, phB]."""
+    """Lepton-first 3-body proposal with a Breit-Wigner-importance hadronic (N pi) mass -- the DEFAULT
+    RES proposal.  Same signature/return as _sample_3body.  u is (n,5) = [m_H (BW), ctA, phA, ctB, phB].
+    (q-relative angle / Q^2-axis variants were tested and gave <=+3% i.e. noise -- the resonance mass is
+    the only sharp off-axis structure worth mapping; see docs and the invariant/correlation scans.)"""
     P = k_nu + p_struck
     s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
     sqrts = np.sqrt(np.clip(s, 1e-9, None))
@@ -448,7 +455,7 @@ def _warmup_pbar(total, desc):
         return _Bar()
 
 
-def warmup_vegas(n=100000, iters=6, nbins=50, alpha=0.5, seed=987654321, sf_n=None, sf_p=None,
+def warmup_vegas(n=100000, iters=6, nbins=50, alpha=1.5, seed=987654321, sf_n=None, sf_p=None,
                  n_neutron=N_NUC, n_proton=N_NUC, progress=True):
     """Build + FREEZE a 6-dim VegasGrid for the RES importance estimator by warming up on the summed
     3-channel weight at nominal knobs.  Grid dims = [beam, hadronic-mass(BW), ctA, phA, ctB, phB].
