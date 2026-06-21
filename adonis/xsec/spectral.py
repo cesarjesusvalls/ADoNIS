@@ -152,12 +152,25 @@ class SpectralImportanceSampler:
 
     def __init__(self, sf: SpectralFunction):
         mom = np.asarray(sf.mom); ne = sf.ne; np_ = sf.np
-        S = (np.asarray(sf.spec).reshape(np_, ne)) / sf.norm     # S(p_j, E_i), normalized
-        S = np.clip(S, 0, None)
-        n_p = S.sum(axis=1) * (sf.energy[1] - sf.energy[0])       # int S dE  (momentum marginal)
-        self.mom = mom; self.energy = np.asarray(sf.energy)
-        self.p_cdf = _trapz_cdf(mom ** 2 * n_p)                   # |p| ~ |p|^2 n_p
-        self.e_cdf = np.stack([_trapz_cdf(S[j]) for j in range(np_)])   # E | p
+        Eraw = np.asarray(sf.energy)
+        # FINE grids for BOTH inverse-CDFs.  The raw table is coarse (E 5 MeV around the sharp shell
+        # removal-energy peak ~15 MeV; |p| 20 MeV); a trapz CDF + linear inverse-interp on it assumes
+        # CONSTANT density within each coarse bin while S/|p|^2 n_p are sloped, smearing the peak ->
+        # under-samples the lowest E_rm and biases |p| (vs ACHILLES, which draws flat and weights by
+        # the per-point Polint S).  Rebuild the CDFs on ~0.25 MeV (E) and ~1 MeV (|p|) grids, with S
+        # evaluated by the SF's OWN Polint (sf.batch: cubic-p pox=4, linear-E poy=2) == exactly the
+        # ACHILLES interpolation, so the inverse-CDFs reproduce |p|^2 S(p,E) -- unbiased, variance
+        # reduction preserved, faithful to ACHILLES.
+        Ef = np.linspace(Eraw[0], Eraw[-1], max(int((Eraw[-1] - Eraw[0]) / 0.25) + 1, len(Eraw)))
+        pf = np.linspace(mom[0], mom[-1], max(int((mom[-1] - mom[0]) / 1.0) + 1, np_))
+        # evaluate S on the fine grid via the SF's OWN vectorised Polint == ACHILLES (cubic-p pox=4,
+        # linear-E poy=2); returns S/norm.  (NOT np.interp: that would be linear-in-p, a divergence.)
+        PP, EE = np.meshgrid(pf, Ef, indexing="ij")
+        Sff = np.clip(sf.batch(PP.ravel(), EE.ravel()).reshape(len(pf), len(Ef)), 0, None)
+        n_p = Sff.sum(axis=1) * (Ef[1] - Ef[0])                  # int S dE  (momentum marginal)
+        self.mom = pf; self.energy = Ef
+        self.p_cdf = _trapz_cdf(pf ** 2 * n_p)                    # |p| ~ |p|^2 n_p (fine grid)
+        self.e_cdf = np.stack([_trapz_cdf(Sff[j]) for j in range(len(pf))])  # E | p (fine grid)
 
     def sample(self, n, rng):
         up = rng.random(n)

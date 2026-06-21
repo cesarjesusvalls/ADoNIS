@@ -25,8 +25,28 @@ import jax
 import jax.numpy as jnp
 
 from adonis.paths import achilles_data_root
+from adonis.xsec.spectral import _neville_batch          # the validated ACHILLES Polint (Neville)
 
 SF_DIR = achilles_data_root() / "Spectral_Functions"
+
+
+def _polint_SE(mom, energy, S, pf, Ef):
+    """S(pf, Ef) via the ACHILLES Polint -- cubic (4pt) in |p|, linear (2pt) in E -- on the fine
+    output grids.  S is the raw (np, ne) table.  Mirrors adonis/xsec/spectral.py SpectralFunction.batch
+    (same window selection + Neville), so the importance sampler reproduces ACHILLES's S exactly."""
+    mom = np.asarray(mom); energy = np.asarray(energy); S = np.asarray(S)
+    nx, ny = len(mom), len(energy); pox, poy = 4, 2
+    PP, EE = np.meshgrid(pf, Ef, indexing="ij"); p = PP.ravel(); E = EE.ravel()
+    pc = np.clip(p, mom[0], mom[-1]); Ec = np.clip(E, energy[0], energy[-1])
+    ix = np.clip(np.searchsorted(mom, pc, side="left"), pox // 2, nx - (pox // 2 + pox % 2))
+    iy = np.clip(np.searchsorted(energy, Ec, side="left"), poy // 2, ny - (poy // 2 + poy % 2))
+    xi = (ix - pox // 2)[:, None] + np.arange(pox); yi = (iy - poy // 2)[:, None] + np.arange(poy)
+    z = S[xi[:, :, None], yi[:, None, :]]                       # (N,4,2)
+    xk = mom[xi]; yk = energy[yi]
+    t = (Ec - yk[:, 0]) / (yk[:, 1] - yk[:, 0])
+    tmp2 = z[:, :, 0] + (z[:, :, 1] - z[:, :, 0]) * t[:, None]  # linear in E
+    val = _neville_batch(xk, tmp2, pc)                          # cubic in |p|
+    return np.clip(val, 0, None).reshape(len(pf), len(Ef))
 
 
 @dataclass(frozen=True)
@@ -71,19 +91,20 @@ class SpectralSampler:
 
     def __init__(self, table: SpectralTable):
         self.t = table
-        self.mom = jnp.asarray(table.mom)
-        self.energy = jnp.asarray(table.energy)
-        # momentum-magnitude pdf rho(p) ~ p^2 n(p). Build the CDF by the TRAPEZOIDAL
-        # rule (mass per interval = (rho_i+rho_{i+1})/2), so inverse-CDF interpolation
-        # samples |p| unbiased -- a point-mass cumsum biases |p| ~half a grid-spacing
-        # low (the grid is coarse, 20 MeV).
-        rho = table.mom ** 2 * np.clip(table.n_p, 0, None)
-        self.p_cdf = jnp.asarray(_trapz_cdf(rho))
-        # per-momentum energy CDF, trapezoidal; sampled WITH interpolation (the old code
-        # snapped E to the nearest grid node -> biased E ~half a 5 MeV spacing high).
-        Sclip = np.clip(table.S, 0, None)
-        ecdf = np.stack([_trapz_cdf(Sclip[j]) for j in range(Sclip.shape[0])])
-        self.e_cdf = jnp.asarray(ecdf)                       # (np, ne), each 0..1
+        # FINE grids for BOTH inverse-CDFs.  The raw table is coarse (E 5 MeV around the sharp shell
+        # removal peak ~15 MeV; |p| 20 MeV); a trapz CDF + linear inverse-interp on it assumes CONSTANT
+        # density within each coarse bin while S / |p|^2 n_p are sloped, so it smears the peak (under-
+        # samples low E_rm) and biases |p|.  Rebuild on ~0.25 MeV (E) and ~1 MeV (|p|) grids, linear-
+        # interpolating S onto them, so the inverse-CDFs reproduce |p|^2 S(p,E) -- unbiased, matching
+        # ACHILLES's per-point S-weighted draw.  (Same fix as adonis/xsec/spectral.py.)
+        mom = np.asarray(table.mom); Eraw = np.asarray(table.energy); S = np.clip(table.S, 0, None)
+        Ef = np.linspace(Eraw[0], Eraw[-1], max(int((Eraw[-1] - Eraw[0]) / 0.25) + 1, len(Eraw)))
+        pf = np.linspace(mom[0], mom[-1], max(int((mom[-1] - mom[0]) / 1.0) + 1, len(mom)))
+        Sff = _polint_SE(mom, Eraw, S, pf, Ef)                  # cubic-p (4pt) + linear-E (2pt) == ACHILLES Polint
+        n_p = Sff.sum(axis=1) * (Ef[1] - Ef[0])
+        self.mom = jnp.asarray(pf); self.energy = jnp.asarray(Ef)
+        self.p_cdf = jnp.asarray(_trapz_cdf(pf ** 2 * n_p))                          # |p| ~ |p|^2 n_p
+        self.e_cdf = jnp.asarray(np.stack([_trapz_cdf(Sff[j]) for j in range(len(pf))]))  # E | p
 
     def sample(self, key, n):
         """Return (p_vec [n,3] MeV, E_removal [n] MeV), all detached draws."""
