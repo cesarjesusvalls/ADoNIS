@@ -143,8 +143,8 @@ class SignalDef:
             raise ValueError(f"proton_lead {self.proton_lead!r} not in in_window|global")
         if self.pion_id not in ("pip", "anypi", "none"):
             raise ValueError(f"pion_id {self.pion_id!r} not in pip|anypi|none")
-        if self.proton_count not in ("ge1", "eq1"):
-            raise ValueError(f"proton_count {self.proton_count!r} not in ge1|eq1")
+        if self.proton_count not in ("ge1", "eq0", "eq1", "eq2"):
+            raise ValueError(f"proton_count {self.proton_count!r} not in ge1|eq0|eq1|eq2")
         if self.ref_proc is not None:
             self.ref_proc = tuple(int(p) for p in self.ref_proc)
 

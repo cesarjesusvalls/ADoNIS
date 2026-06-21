@@ -1,0 +1,32 @@
+# ADoNIS analysis: T2K CC1pi (RES only, carbon) with EXACTLY 0 in-window protons.
+# Pion (pi+) present, but no proton in p_win=[450,1200] MeV -> proton-free observable panel
+# (W, Q2, p_pi, p_mu, cos_mu).  ADoNIS RES bank vs ACHILLES RES (proc 401/402).  Vegas-50, 5 seeds.
+# Run: python -u scripts/adonis_analyze.py configs/ana_cc1pi_resonly_0p_cv5.yaml
+name: t2k_cc1pi_full_0p_cv5
+inputs:
+  adonis_res: [data/oracle/t2k_cc1pi_engine_rich_cv5.npz]
+  adonis_qe:  [data/oracle/t2k_cc0pi_engine_rich_cv5.npz]
+  reference:  [data/oracle/t2k_cc1pi_rich_ach_FSI.npz]
+signal:
+  mu_win: [250.0, 7000.0]
+  pi_win: [150.0, 1200.0]
+  p_win:  [450.0, 1200.0]
+  cth: cos70
+  proton_lead: in_window
+  proton_count: eq0
+  require_proton: false
+  pion_id: pip
+  count_recoil_neutron: false
+  target: carbon
+  W_conv: vertex
+observables:
+  - {key: W,      label: "$W$",                linspace: [1080, 1700, 13]}
+  - {key: Q2,     label: "$Q^2$",              linspace: [0, 1.5, 13]}
+  - {key: pi_p,   label: "$p_\\pi$",           linspace: [150, 1200, 13]}
+  - {key: p_mu,   label: "$p_\\mu$ [MeV]",     linspace: [0, 2000, 21]}
+  - {key: cos_mu, label: "$\\cos\\theta_\\mu$", linspace: [-0.6, 1.0, 21]}
+data: {enabled: false}
+out_path: paper_figures/cc1pi_FULL_0p_CV5.png
+title: 'CC1pi FULL (RES+QE), exactly 0 in-window protons [carbon, vegas]: ADoNIS vs ACHILLES'
+ratio_ylim: [0.5, 1.6]
+carbon_only: false

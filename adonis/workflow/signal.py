@@ -35,12 +35,19 @@ def _muon_mask(mu, sd):
     return _acc(mu, sd.mu_win, sd.cth)     # CC1pi: full window + forward cos
 
 
+def _inwin(prot, sd):
+    """Boolean (n,M): protons inside the signal momentum window p_win + forward cth.
+    Single source for both the leading-proton pick and the in-window multiplicity count."""
+    pm = np.linalg.norm(prot[:, :, 1:], axis=2); cth = prot[:, :, 3] / np.clip(pm, 1e-9, None)
+    return (pm > sd.p_win[0]) & (pm < sd.p_win[1]) & (cth > sd.cth)
+
+
 def _lead_proton(prot, sd):
     """Returns (lead_p4 (n,4), has_p (n,)).  in_window: leading among in-window top-M;
     global: global max-|p| proton that must itself pass the window (T2K NUISANCE def)."""
     n = prot.shape[0]; ar = np.arange(n)
-    pm = np.linalg.norm(prot[:, :, 1:], axis=2); cth = prot[:, :, 3] / np.clip(pm, 1e-9, None)
-    inwin = (pm > sd.p_win[0]) & (pm < sd.p_win[1]) & (cth > sd.cth)
+    pm = np.linalg.norm(prot[:, :, 1:], axis=2)
+    inwin = _inwin(prot, sd)
     if sd.proton_lead == "global":
         j = np.argmax(pm, axis=1); lead = prot[ar, j]
         return lead, inwin[ar, j]
@@ -80,6 +87,8 @@ def select_signal(bank, sd, carbon_only=True):
     sel = meson_ok & (b["w"] > 0) & _muon_mask(mu, sd)
     if sd.n_ejected is not None:
         sel = sel & (_n_ejected(b["prot"], sd.eject_thresh) == sd.n_ejected)
+    if sd.proton_count in ("eq0", "eq1", "eq2"):              # EXACTLY N in-window protons (CCNpi split)
+        sel = sel & (_inwin(b["prot"], sd).sum(1) == int(sd.proton_count[-1]))
     if sd.require_proton:
         sel = sel & has_p
     if pi_f is not None:
@@ -88,7 +97,10 @@ def select_signal(bank, sd, carbon_only=True):
         sel = sel & (np.linalg.norm(struck[:, 1:], axis=1) > 1.0)
     s = sel
     proton_obs = sd.require_proton or (sd.n_ejected is not None and sd.n_ejected >= 1)
-    if pi_f is not None:                                      # CC1pi TKI observables
+    if pi_f is not None and sd.proton_count == "eq0":        # CC1pi 0-proton: pion+muon obs (no proton TKI)
+        W, Q2 = O.vertex_W_Q2(nu[s], mu[s], struck[s]); mo = O.muon_obs(mu[s], nu[s])
+        out = dict(W=W, Q2=Q2, pi_p=O.mom(pi_f[s]), p_mu=mo["p_mu"], cos_mu=mo["cos_mu"])
+    elif pi_f is not None:                                    # CC1pi TKI observables
         dptt, pn, dat, _ = O.tki(mu[s], pi_f[s], best[s], np.zeros(int(s.sum()), bool), 0)
         W, Q2 = O.vertex_W_Q2(nu[s], mu[s], struck[s])
         out = dict(pn=pn, dptt=dptt, dalphat=dat, W=W, Q2=Q2,

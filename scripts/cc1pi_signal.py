@@ -73,7 +73,7 @@ def ado_select(b, sd):
     cands = np.stack(cands, axis=1)                                   # (n,K,4)
     inwin = np.stack([_acc(cands[:, i], sd["p_win"], sd["cth"]) for i in range(cands.shape[1])], axis=1)
     nprot = inwin.sum(1)
-    has_p = (nprot == 1) if sd.get("proton_count") == "eq1" else (nprot >= 1)
+    has_p = ({"eq1": nprot == 1, "eq2": nprot == 2}.get(sd.get("proton_count"), nprot >= 1))
     lead = cands[np.arange(len(pid)), np.argmax(_mom(cands.reshape(-1, 4)).reshape(len(pid), -1) * inwin, axis=1)]
     pstr_p = _mom(b["struck"])
     tgt = {"carbon": pstr_p > 1.0, "hydrogen": pstr_p <= 1.0, "CH": np.ones(len(pid), bool)}[sd["target"]]
@@ -102,12 +102,19 @@ def ach_select(b, sd):
     # leading in-window proton
     pacc = np.stack([_acc(b["prot_p4"][:, i], sd["p_win"], sd["cth"]) for i in range(M)], axis=1)
     nprot = pacc.sum(1)
-    has_p = (nprot == 1) if sd.get("proton_count") == "eq1" else (nprot >= 1)
+    pc = sd.get("proton_count")
+    if pc in ("eq0", "eq1", "eq2"):                                  # EXACTLY N in-window protons
+        p_req = (nprot == int(pc[-1]))
+    else:
+        p_req = (nprot >= 1) if sd.get("require_proton", True) else np.ones(n, bool)
     lead = b["prot_p4"][np.arange(n), np.argmax(_mom(b["prot_p4"].reshape(-1, 4)).reshape(n, M) * pacc, axis=1)]
     pstr_p = _mom(b["struck"])
     tgt = {"carbon": pstr_p > 1.0, "hydrogen": pstr_p <= 1.0, "CH": np.ones(n, bool)}[sd["target"]]
-    p_req = has_p if sd.get("require_proton", True) else np.ones(n, bool)
     mask = (pion_ok & p_req & (b["w"] > 0) & tgt
             & _acc(b["mu"], sd["mu_win"], sd["cth"]) & _acc(pi, sd["pi_win"], sd["cth"]))
     is_h = ~(pstr_p > 1.0)
+    if pc == "eq0":                                                  # CC1pi 0-proton: pion+muon obs
+        s = mask; mu = b["mu"][s]; pmu = _mom(mu); W, Q2 = _vertexW(b["nu"][s], mu, b["struck"][s])
+        return dict(W=W, Q2=Q2, pi_p=_mom(pi[s]), p_mu=pmu,
+                    cos_mu=mu[:, 3] / np.clip(pmu, 1e-9, None), w=b["w"][s])
     return _finish(b["mu"], pi, lead, b["struck"], b["nu"], b["w"], mask, sd, is_h, b["struck_pid"])
