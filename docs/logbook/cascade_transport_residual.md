@@ -223,11 +223,24 @@ The bulk 1p/2p −5σ over-production is RESOLVED — multiplicity redistributes
 predicted by re-cascading the abs neutron. BFS path (`_propagate_discrete`) still proton-only —
 non-production (always-pool), no re-cascade pool there.
 
-**Two residuals remain after lead #2:**
-- **0p still −3.1σ** (ADoNIS ~1.8× too many zero-proton absorbed-RES events; only 31 ev). Candidate
-  lead #4: absorbed-RES leading proton too soft (below the 250 MeV ejection threshold).
-- **Total absorbed-RES rate ADoNIS ~4.8% low** (incl+0p: ACH/ADO=1.048). A *normalization* residual
-  (fewer absorbed-RES events overall), distinct from the now-matched multiplicity shape. Next lead.
+**Two residuals remain after lead #2 — both MAPPED (`scripts/_lead2_map.py`):**
+
+1. **Total absorbed-RES rate ADoNIS ~4.8% low** (incl+0p: ACH/ADO=1.048) decomposes as:
+   - **RES total σ (CC0π+CC1π, T2K window): ACH/ADO=1.027** — i.e. ADoNIS RES σ ~2.7% low. This is the
+     *known pre-FSI RES normalization* residual (inclusive σ_RES 1.6631e-5 vs ACHILLES ~1.698e-5,
+     ~2.2%), NOT a cascade effect. → tracked separately under σ_RES.
+   - **Absorption fraction CC0π/(CC0π+CC1π): ADO 0.319 vs ACH 0.3255** (~2%, ~2σ, borderline). Small
+     cascade-side piece; could be the §4 +1.5% @245 transport overshoot folded over the RES π spectrum.
+   - 1.027 × 1.020 ≈ 1.048 ✓.
+
+2. **0p −3.1σ is NOT a soft-proton effect.** With p_win opened and threshold→0, the absorbed-RES leading
+   proton is almost always >250 MeV (0.11% in [150,250), nothing <150; in-window shape matches ACHILLES
+   to ~3% across all brackets). The 0p category is the rare (~31 ev, ~0.1% of absorbed-RES)
+   2-neutron-absorption / recapture tail — negligible absolute impact.
+
+**Conclusion:** lead #2 closes the cascade-side absorbed-RES multiplicity shape. The remaining
+absorbed-RES rate deficit is dominated by the separate pre-FSI σ_RES ~2.5% normalization, not the
+cascade.
 
 ## 5. Instrumentation & reproduction
 
