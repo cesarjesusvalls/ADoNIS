@@ -37,6 +37,15 @@ MATERIALS = {
 }
 REF_PROC = {"qe": [200], "res": [401, 402], "both": None}
 
+# PRE-FSI (no cascade) bank set + PURE-target ACHILLES no-FSI references (no proc field needed:
+# pre-FSI the pion selection itself separates channels -- CC0pi=pion-veto->QE, CC1pi=pi+ ->RES).
+MATERIALS_NOFSI = {
+    "C":  ("data/oracle/t2k_cc1pi_engine_rich_nofsi.npz", "data/oracle/t2k_cc0pi_engine_rich_nofsi.npz",
+           "data/oracle/t2k_cc1pi_rich_ach_C_nofsi.npz"),
+    "Ar": ("data/oracle/t2k_cc1pi_engine_rich_ar_nofsi.npz", "data/oracle/t2k_cc0pi_engine_rich_ar_nofsi.npz",
+           "data/oracle/t2k_cc1pi_rich_ach_nofsi_Ar.npz"),
+}
+
 # observable panels
 TKI   = [("pn", "$p_N$", [0, 120, 240, 600, 1500]),
          ("dptt", r"$\delta p_{TT}$", [-700, -300, -100, 100, 300, 700]),
@@ -92,23 +101,31 @@ def neff(w):
     w = np.asarray(w); w = w[w > 0]
     return (int(w.size), float(w.sum()**2 / np.sum(w**2)) if w.size else 0.0, float(w.sum()))
 
-def run_cell(material, channel, contrib, pcat):
-    res_bank, qe_bank, ref = MATERIALS[material]
+def run_cell(material, channel, contrib, pcat, mode="fsi"):
+    mats = MATERIALS_NOFSI if mode == "nofsi" else MATERIALS
+    res_bank, qe_bank, ref = mats[material]
+    if mode == "nofsi" and (not os.path.exists(res_bank) or not os.path.exists(qe_bank) or not os.path.exists(ref)):
+        return dict(cell=f"{channel}_{contrib}_{pcat}_{material}", ok=False, err="bank/ref missing")
     sigd, obs = signal_block(channel, contrib, pcat)
+    if mode == "nofsi":
+        sigd["ref_proc"] = None                     # pre-FSI: selection separates channels, no proc filter
+    outdir = "paper_figures/matrix_nofsi" if mode == "nofsi" else "paper_figures/matrix"
     inp = banks(contrib, res_bank, qe_bank); inp["reference"] = [ref]
     tag = f"{channel}_{contrib}_{pcat}_{material}"
     cfg_d = dict(inputs=inp, signal=sigd, observables=_obs(obs), data={"enabled": False},
-                 out_path=f"paper_figures/matrix/{tag}.png", carbon_only=True, ratio_ylim=[0.5, 1.6],
-                 title=f"{material} {channel} [{contrib}] {pcat}: ADoNIS vs ACHILLES")
+                 out_path=f"{outdir}/{tag}.png", carbon_only=True, ratio_ylim=[0.5, 1.6],
+                 title=f"{material} {channel} [{contrib}] {pcat} {'noFSI' if mode=='nofsi' else 'FSI'}: ADoNIS vs ACHILLES")
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
         yaml.safe_dump(cfg_d, fh); tmp = fh.name
     cfg = load_analysis_config(tmp); os.unlink(tmp)
     try:
+        ado = A.build_adonis(cfg); ref_d = A.build_reference(cfg)
+        Na, nea, sa = neff(ado["w"]); Nr, ner, sr = neff(ref_d["w"])
+        if Na == 0 or Nr == 0:                      # empty cell (e.g. pre-FSI CC0pi-RES / CC1pi-QE)
+            return dict(cell=tag, ok=False, err="empty selection")
         A.run_analysis(cfg)
     except Exception as e:
         return dict(cell=tag, ok=False, err=str(e)[:80])
-    ado = A.build_adonis(cfg); ref_d = A.build_reference(cfg)
-    Na, nea, sa = neff(ado["w"]); Nr, ner, sr = neff(ref_d["w"])
     ratio = sr / sa if sa else float("nan")
     rel = math.sqrt((1/nea if nea else 0) + (1/ner if ner else 0))
     pull = (ratio - 1) / (ratio * rel) if (rel and ratio == ratio) else float("nan")
@@ -116,15 +133,18 @@ def run_cell(material, channel, contrib, pcat):
                 err=ratio*rel, pull=pull)
 
 if __name__ == "__main__":
-    os.makedirs("paper_figures/matrix", exist_ok=True)
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
-    mats = list(MATERIALS) if which == "all" else [which]
+    mode = sys.argv[2] if len(sys.argv) > 2 else "fsi"
+    os.makedirs("paper_figures/matrix_nofsi" if mode == "nofsi" else "paper_figures/matrix", exist_ok=True)
+    base = MATERIALS_NOFSI if mode == "nofsi" else MATERIALS
+    mats = list(base) if which == "all" else [which]
+    contribs = ("both",) if mode == "nofsi" else ("qe", "res", "both")  # pre-FSI: selection separates channels
     rows = []
     for material in mats:
         for channel in ("cc0pi", "cc1pi"):
-            for contrib in ("qe", "res", "both"):
+            for contrib in contribs:
                 for pcat in ("incl", "0p", "1p", "2p"):
-                    r = run_cell(material, channel, contrib, pcat)
+                    r = run_cell(material, channel, contrib, pcat, mode)
                     rows.append(r)
                     if r["ok"]:
                         print(f"[OK] {r['cell']:26s} ACH/ADO={r['ratio']:.3f}+/-{r['err']:.3f} "
@@ -139,5 +159,5 @@ if __name__ == "__main__":
             print(f"{r['cell']:30s} {r['ratio']:9.3f} {r['pull']:+6.1f} {r['nea']:9.0f} {r['ner']:9.0f}")
         else:
             print(f"{r['cell']:30s}   FAIL: {r['err']}")
-    np.savez("/tmp/cc_matrix_summary.npz", rows=rows)
+    np.savez(f"/tmp/cc_matrix_summary_{mode}.npz", rows=rows)
     print("MATRIX DONE", flush=True)

@@ -7,7 +7,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.image as mpimg
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "paper_figures/cc_matrix_all.pdf"
-D = "paper_figures/matrix"
+D = sys.argv[2] if len(sys.argv) > 2 else "paper_figures/matrix"
 order_mat = ["C", "Ar"]; order_ch = ["cc0pi", "cc1pi"]; order_co = ["qe", "res", "both"]; order_p = ["incl", "0p", "1p", "2p"]
 def key(fn):
     b = os.path.basename(fn)[:-4]; parts = b.split("_")  # channel_contrib_pcat_material
