@@ -8,9 +8,8 @@ the nominal forward prediction bit-for-bit -- NO toy, NO free normalization (A i
 nominal).  Covariance-weighted two-replica chi^2; Hessian parameter covariance at the BFP.
 
 WALK/WEIGHT SPLIT: the cascade walk is theta-independent (kind-1), so a bank of NREP walk replicas
-is precomputed once (the only expensive step) and each fit iteration is a pure reweight via
-pion_branch_reweight / nucleon_scat_reweight (~ms, vs ~minutes for a re-walk at this N).
-Verified: model_hist(theta, replica) == hist_nb(theta, key) to <5e-16 and identical gradients.
+is precomputed once (the only expensive step, via the pool engine) and each fit iteration is a pure
+reweight via pool_fsi_reweight (~ms, vs ~minutes for a re-walk at this N).
 """
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,15 +19,8 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import qe_xsec, res_xsec
-from adonis.xsec.backend import me_cross_section
-from adonis.core.event import EventRecord
-from adonis.fsi.cascade_discrete import (DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig,
-                                         pion_branch_reweight, nucleon_scat_reweight)
-from adonis.primary.dcc.form_factors import axial_reweight_dipole
+from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
 
-CFG = lambda **k: DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=260, **k)   # Gaussian (diff'able)
-# max_steps 260 (10.4 fm) is saturation-verified == 325; fast_xsec=True (default) slab-restricts the
-# Oset/DCC cross sections (bit-exact, ~1.15x).  Together ~1.4x vs the original 325/dense.
 MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
 NQE, NRES = 120000, 120000
 CONV = 1e-33 / 12.0 * 1000.0 * 1e38                       # nb/MeV per-12C -> 1e-38 cm^2/(GeV/c)/nucleon
@@ -48,15 +40,6 @@ DATA = jnp.asarray(np.asarray(_r["Result"].values()) * 1e38)
 D_ERR = np.asarray(_r["Result"].errors()) * 1e38
 COV = np.asarray(_r["Covariance_Matrix"].values())
 COVINV = jnp.asarray(np.linalg.inv(COV + 1e-12 * np.eye(8)))
-
-
-def _mk_ev(d, pid_Ni, p_N, p_pi, ppid):
-    m = len(d["w"])
-    return EventRecord(k=jnp.asarray(d["k_nu"]), kp=jnp.asarray(d["k_mu"]), p_struck=jnp.asarray(d["p_struck"]),
-                       p_pi=jnp.asarray(p_pi), p_N=jnp.asarray(p_N), w=jnp.ones(m),
-                       channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.asarray(ppid, jnp.int32),
-                       pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.asarray(pid_Ni, jnp.int32),
-                       W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
 
 
 def _dpt(kmu, lead):
@@ -102,99 +85,11 @@ def build_ma_records(qe, res):
     return dict(qe=(j(qa), j(qb), j(qc), j(qq2)), res=(j(ra), j(rb), j(rc), j(rq2)))
 
 
-def hist_nb(theta, kcasc, qe, qw, res, rw):
-    """Differentiable CC0pi dsigma/ddpt [1e-38 units] for theta=(sabs, sscat); kcasc fixes the
-    sampled cascade (frozen proposal) so only the knobs move."""
-    sabs, sscat = theta[0], theta[1]
-    k1, k2, k3 = jax.random.split(kcasc, 3)
-    # --- QE: proton through the nucleon cascade (sigma_scatter) ---
-    qev = _mk_ev(qe, np.full(NQE, 2112), qe["p_out"], np.zeros((NQE, 4)), np.zeros(NQE))
-    nf = DiscreteNucleonFSI(CFG(seed=2)); qev2 = nf.apply(None, qev, key=k1, sscat=sscat)
-    q_lead = qev2.p_N; q_w = jnp.asarray(qw) * nf.last_w_scat
-    q_dpt = _obs(jnp.asarray(qe["k_mu"]), q_lead); q_keep = _sel(jnp.asarray(qe["k_mu"]), q_lead)
-    # --- RES: pion cascade (absorb) then nucleon cascade ---
-    rev = _mk_ev(res, np.asarray(res["ipid"]), res["p_N"], res["p_pi"], np.asarray(res["ppid"]))
-    pion = DiscreteCascadeFSI(CFG(seed=1)); rev2 = pion.apply(None, rev, key=k2, sabs=sabs, sscat=sscat)
-    absb = pion.last_absorbed.astype(float); abs_p = pion.last_abs_proton; w_fsi = pion.last_w_fsi
-    nf2 = DiscreteNucleonFSI(CFG(seed=2)); rev3 = nf2.apply(None, rev2, key=k3, sscat=sscat)
-    pNf = rev3.p_N; mom_p = jnp.linalg.norm(pNf[:, 1:], axis=1) * (rev3.pid_N == 2212)
-    mom_a = jnp.linalg.norm(abs_p[:, 1:], axis=1)
-    r_lead = jnp.where((mom_a > mom_p)[:, None], abs_p, pNf)
-    has_p = (mom_a > 1) | (rev3.pid_N == 2212)
-    r_w = jnp.asarray(rw) * w_fsi * nf2.last_w_scat * absb * has_p.astype(float)
-    r_dpt = _obs(jnp.asarray(res["k_mu"]), r_lead); r_keep = _sel(jnp.asarray(res["k_mu"]), r_lead)
-    # --- histogram (absolute nb -> data units) ---
-    def H(x, w, keep):
-        idx = jnp.clip(jnp.searchsorted(jnp.asarray(EDGES), x) - 1, 0, len(EDGES) - 2)
-        return jax.ops.segment_sum(w * keep, jax.lax.stop_gradient(idx), num_segments=len(EDGES) - 1)
-    h_nb_per_MeV = (H(q_dpt, q_w, q_keep) + H(r_dpt, r_w, r_keep)) / jnp.diff(jnp.asarray(EDGES))
-    return h_nb_per_MeV * CONV
-
-
-# ---- walk/weight split: precompute theta-INDEPENDENT walks once, reweight per theta ----------- #
-# The cascade trajectory is sampled at NOMINAL cross sections (kind-1); (sabs, sscat) enter only
-# through pion_branch_reweight / nucleon_scat_reweight, pure functions of the compressed walk
-# records.  So each cascade replica is run ONCE; a fit iteration is then an O(n*K) elementwise
-# reweight + histogram (~ms), not a 260-step re-walk (~minutes at production N).
-
-def build_replica(kcasc, qe, qw, res, rw):
-    """Run the full FSI chain ONCE at nominal for cascade key `kcasc`; return everything the
-    theta-reweight needs.  Mirrors hist_nb's chain exactly (same keys, same selections)."""
-    k1, k2, k3 = jax.random.split(kcasc, 3)
-    # --- QE: proton through the nucleon cascade ---
-    qev = _mk_ev(qe, np.full(NQE, 2112), qe["p_out"], np.zeros((NQE, 4)), np.zeros(NQE))
-    nf = DiscreteNucleonFSI(CFG(seed=2)); qev2 = nf.apply(None, qev, key=k1, sscat=1.0)
-    q_lead = qev2.p_N
-    q_dpt = _obs(jnp.asarray(qe["k_mu"]), q_lead); q_keep = _sel(jnp.asarray(qe["k_mu"]), q_lead)
-    # --- RES: pion cascade (absorb) then nucleon cascade ---
-    rev = _mk_ev(res, np.asarray(res["ipid"]), res["p_N"], res["p_pi"], np.asarray(res["ppid"]))
-    pion = DiscreteCascadeFSI(CFG(seed=1)); rev2 = pion.apply(None, rev, key=k2, sabs=1.0, sscat=1.0)
-    absb = pion.last_absorbed.astype(float); abs_p = pion.last_abs_proton
-    nf2 = DiscreteNucleonFSI(CFG(seed=2)); rev3 = nf2.apply(None, rev2, key=k3, sscat=1.0)
-    pNf = rev3.p_N; mom_p = jnp.linalg.norm(pNf[:, 1:], axis=1) * (rev3.pid_N == 2212)
-    mom_a = jnp.linalg.norm(abs_p[:, 1:], axis=1)
-    r_lead = jnp.where((mom_a > mom_p)[:, None], abs_p, pNf)
-    has_p = (mom_a > 1) | (rev3.pid_N == 2212)
-    r_dpt = _obs(jnp.asarray(res["k_mu"]), r_lead); r_keep = _sel(jnp.asarray(res["k_mu"]), r_lead)
-    edges = jnp.asarray(EDGES)
-    R = dict(
-        q_idx=jnp.clip(jnp.searchsorted(edges, q_dpt) - 1, 0, len(EDGES) - 2),
-        q_keep=q_keep, q_w0=jnp.asarray(qw), q_srec=nf.last_srec,
-        r_idx=jnp.clip(jnp.searchsorted(edges, r_dpt) - 1, 0, len(EDGES) - 2),
-        r_keep=r_keep, r_w0=jnp.asarray(rw) * absb * has_p.astype(float),
-        r_brec=pion.last_brec, r_srec=nf2.last_srec)
-    # overflow guards on the compressed records (capacities _K_BR / _K_SLAB_REC)
-    nh = int(jnp.max(R["r_brec"][4]))
-    nsmax = max(int(jnp.max(s[2])) for s in (R["q_srec"][0], R["q_srec"][1], R["r_srec"][0], R["r_srec"][1]))
-    assert nh <= R["r_brec"][1].shape[1] and nsmax <= R["q_srec"][0][1].shape[1], (nh, nsmax)
-    return jax.block_until_ready(R)
-
-
-def _w_nuc(srec, sscat):
-    s1, s2, has_ko = srec
-    return nucleon_scat_reweight(s1, sscat) * jnp.where(has_ko, nucleon_scat_reweight(s2, sscat), 1.0)
-
-
-@jax.jit
-def model_hist(theta, R, M=None):
-    """Differentiable CC0pi dsigma/dx [1e-38 units] from a precomputed walk replica.
-    theta = (sabs, sscat) or (sabs, sscat, MA_GeV); MA needs M = build_ma_records(...)."""
-    sabs, sscat = theta[0], theta[1]
-    w_ma_q = ma_reweight(M["qe"], theta[2]) if M is not None else 1.0
-    w_ma_r = ma_reweight(M["res"], theta[2]) if M is not None else 1.0
-    q_w = R["q_w0"] * w_ma_q * _w_nuc(R["q_srec"], sscat)
-    r_w = R["r_w0"] * w_ma_r * pion_branch_reweight(R["r_brec"], sabs, sscat) * _w_nuc(R["r_srec"], sscat)
-    nb = len(EDGES) - 1
-    h = (jax.ops.segment_sum(q_w * R["q_keep"], R["q_idx"], num_segments=nb)
-         + jax.ops.segment_sum(r_w * R["r_keep"], R["r_idx"], num_segments=nb))
-    return h / jnp.diff(jnp.asarray(EDGES)) * CONV
-
-
 # ============================================================================================== #
 # POOL-BACKED blueprint (the differentiable core): ONE joint cascade per channel (cascade_carbon_v2,
-# engine="pool"), emitting the joint kind-1 FSI record reweighted by pool_fsi_reweight.  Same walk/
-# weight-split PATTERN as the legacy build_replica/model_hist, but the single validated+fixed pool
-# engine underneath (re-cascades both absorption nucleons, charge-resolved sigma, etc.).
+# engine="pool"), emitting the joint kind-1 FSI record reweighted by pool_fsi_reweight.  The walk is
+# theta-independent and the knobs enter only through the kind-1 reweight; the single validated+fixed
+# pool engine underneath (re-cascades both absorption nucleons, charge-resolved sigma, etc.).
 # ============================================================================================== #
 import adonis.fsi.cascade_full as _CF
 # Gaussian (cylinder=False) everywhere -> ADoNIS forward + differentiable tuning share ONE model and the
@@ -215,9 +110,9 @@ def _lead_proton_pool(nt):
 
 
 def build_replica_pool(kcasc, qe, qw, res, rw):
-    """Pool analog of build_replica: one cascade_carbon_v2 pool run per channel -> leading proton (for
-    the theta-independent dpt/keep/idx) + the joint kind-1 FSI record (theta enters via pool_fsi_reweight).
-    CC0pi-RES = primary pion absorbed (pterm pid==0), mirroring the legacy last_absorbed selection."""
+    """Walk one replica: one cascade_carbon_v2 pool run per channel -> leading proton (for the
+    theta-independent dpt/keep/idx) + the joint kind-1 FSI record (theta enters via pool_fsi_reweight).
+    CC0pi-RES = primary pion absorbed (pterm pid==0)."""
     kq, kr = jax.random.split(kcasc, 2); j = jnp.asarray; edges = j(EDGES)
     nq = len(qe["w"]); nr = len(res["w"])                       # actual event counts (RES generate != NRES)
     # QE: struck neutron -> proton through the pool (no pion); record carries only nucleon scatters.
@@ -250,7 +145,7 @@ def build_replica_pool(kcasc, qe, qw, res, rw):
 
 @jax.jit
 def model_hist_pool(theta, R, M=None):
-    """Pool analog of model_hist: theta=(sabs,sscat[,MA]); reweight the precomputed pool walk replica."""
+    """Differentiable CC0pi dsigma/dx [1e-38 units]: theta=(sabs,sscat[,MA]); reweight a precomputed pool walk."""
     sabs, sscat = theta[0], theta[1]
     w_ma_q = ma_reweight(M["qe"], theta[2]) if M is not None else 1.0
     w_ma_r = ma_reweight(M["res"], theta[2]) if M is not None else 1.0
@@ -265,19 +160,13 @@ def model_hist_pool(theta, R, M=None):
 def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:6.1f}s] {m}", flush=True)
-    # ENGINE: pool (the new differentiable core, default) vs legacy segment.  The pool is faithful +
-    # differentiable but ~9x the segment per replica, so default to fewer/smaller replicas (env-tunable).
+    # ENGINE: the pool is the single differentiable core.  It is faithful + differentiable but ~9x the
+    # old segment per replica, so default to fewer/smaller replicas (env-tunable).
     global NQE, NRES
-    POOL = os.environ.get("CC0PI_POOL", "1") == "1"
-    if POOL:
-        NQE = NRES = int(os.environ.get("CC0PI_N", "40000"))
-        NREP = int(os.environ.get("CC0PI_NREP", "4"))
-        _build, _hist = build_replica_pool, model_hist_pool
-        log(f"ENGINE=pool (differentiable core)  NQE=NRES={NQE}  NREP={NREP}")
-    else:
-        NREP = int(os.environ.get("CC0PI_NREP", "8"))
-        _build, _hist = build_replica, model_hist
-        log(f"ENGINE=legacy segment  NQE=NRES={NQE}  NREP={NREP}")
+    NQE = NRES = int(os.environ.get("CC0PI_N", "40000"))
+    NREP = int(os.environ.get("CC0PI_NREP", "4"))
+    _build, _hist = build_replica_pool, model_hist_pool
+    log(f"ENGINE=pool (differentiable core)  NQE=NRES={NQE}  NREP={NREP}")
     qe, qw, res, rw = build_proposal(); log("proposal sampled")
 
     # ---- precompute the cascade-walk replica bank (the ONLY expensive step) ------------------- #

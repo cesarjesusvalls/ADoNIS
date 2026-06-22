@@ -27,6 +27,10 @@ def run():
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
     import scripts.cc0pi_tune_adonis as T        # observable picked by argv[1] there too
+    # POOL differentiable core (single engine).  Pool is ~9x the legacy segment/replica, so use reduced
+    # stats by default (env-tunable), mirroring cc0pi_tune_adonis.main's pool path.
+    T.NQE = T.NRES = int(os.environ.get("CC0PI_N", "40000"))
+    _build, _hist = T.build_replica_pool, T.model_hist_pool
 
     th_true = np.array([float(sys.argv[2]) if len(sys.argv) > 2 else 1.6,
                         float(sys.argv[3]) if len(sys.argv) > 3 else 0.7,
@@ -43,24 +47,24 @@ def run():
     # pseudo-data: ADoNIS at theta*, from cascade walks INDEPENDENT of the fit bank
     pse = []
     for i in range(NPSE):
-        R = T.build_replica(jax.random.PRNGKey(200 + i), qe, qw, res, rw)
-        pse.append(np.asarray(T.model_hist(jnp.asarray(th_true), R, M)))
+        R = _build(jax.random.PRNGKey(200 + i), qe, qw, res, rw)
+        pse.append(np.asarray(_hist(jnp.asarray(th_true), R, M)))
         log(f"  pseudo-data replica {i+1}/{NPSE}")
     dstar = np.mean(pse, axis=0); DSTAR = jnp.asarray(dstar)
 
     bank = []
     for r_i in range(NREP):
-        bank.append(T.build_replica(jax.random.PRNGKey(50 + r_i), qe, qw, res, rw))
+        bank.append(_build(jax.random.PRNGKey(50 + r_i), qe, qw, res, rw))
         log(f"  fit replica {r_i+1}/{NREP}")
 
-    nom = np.mean([np.asarray(T.model_hist(jnp.array([1.0, 1.0, 1.0]), R, M)) for R in bank], axis=0)
+    nom = np.mean([np.asarray(_hist(jnp.array([1.0, 1.0, 1.0]), R, M)) for R in bank], axis=0)
     A = (float((jnp.asarray(nom) @ T.COVINV @ DSTAR) / (jnp.asarray(nom) @ T.COVINV @ jnp.asarray(nom)))
          if profile_a else 1.0)
     r0 = A * nom - dstar; chi2_nom = float(jnp.asarray(r0) @ T.COVINV @ jnp.asarray(r0))
     log(f"NOMINAL vs pseudo-data: chi2/ndf = {chi2_nom/(8-2):.2f}  (A_nom={A:.3f})")
 
     def loss(theta, R1, R2):
-        r1 = A * T.model_hist(theta, R1, M) - DSTAR; r2 = A * T.model_hist(theta, R2, M) - DSTAR
+        r1 = A * _hist(theta, R1, M) - DSTAR; r2 = A * _hist(theta, R2, M) - DSTAR
         return r1 @ T.COVINV @ r2
     vg = jax.jit(jax.value_and_grad(loss))
     theta = jnp.array([1.0, 1.0, 1.0]); m = jnp.zeros(3); v = jnp.zeros(3); lr = 0.02
@@ -78,7 +82,7 @@ def run():
     bfp = np.asarray(theta); traj = np.array(traj)
 
     def chi2_1(theta, R):
-        r = A * T.model_hist(theta, R, M) - DSTAR; return r @ T.COVINV @ r
+        r = A * _hist(theta, R, M) - DSTAR; return r @ T.COVINV @ r
     chi2_bf = float(np.mean([float(chi2_1(theta, R)) for R in bank]))
     H = np.mean([np.asarray(jax.hessian(chi2_1)(theta, R)) for R in bank], axis=0)
     V = 2.0 * np.linalg.inv(H); sig = np.sqrt(np.clip(np.diag(V), 0.0, None))
@@ -86,7 +90,7 @@ def run():
     for i, nm in enumerate(NAMES):
         log(f"  {nm:>14s} = {bfp[i]:.4f} +/- {sig[i]:.4f}   (true {th_true[i]:.3f}, pull {pull[i]:+.2f}sig)")
     log(f"chi2/ndf {chi2_nom/(8-2):.2f} -> {chi2_bf/(8-2):.2f}")
-    mb = A * np.mean([np.asarray(T.model_hist(jnp.asarray(bfp), R, M)) for R in bank], axis=0)
+    mb = A * np.mean([np.asarray(_hist(jnp.asarray(bfp), R, M)) for R in bank], axis=0)
 
     os.makedirs(RUN_DIR, exist_ok=True)
     tag = ("" if th_true[2] == 1.0 else "_ma") + ("" if profile_a else "_abs")
