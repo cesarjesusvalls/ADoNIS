@@ -25,8 +25,12 @@ fixed-capacity event buffers via a running per-event write-index (scratch-slot t
 
 ## Stages (each commit+push)
 1. Pool emits kind-1 FSI records + `pool_fsi_reweight`. Gate: θ=(1,1)≡1 bit-exact; forward byte-identical.
-2. Thread sabs/sscat into the pool walk (default nominal=no-op); gate reweight(nominal,θ)==in-walk(θ);
-   autodiff==FD.
+2. autodiff==FD closure on `pool_fsi_reweight`. NOTE (corrected): the legacy walk is FULLY θ-independent
+   (`_propagate_discrete` branch decision uses nominal `p_abs=sa/sig`; θ enters only via `w_fsi=
+   pion_branch_reweight`). The pool walk is likewise θ-independent (Stage 1), so "reweight==in-walk" is
+   automatic by construction (the engine multiplies event w by `pool_fsi_reweight(record,θ)` at apply,
+   exactly as legacy multiplies by w_fsi). Threading θ into the walk would VIOLATE kind-1 — not done.
+   Stage 2 = the autodiff==FD gradient gate only.
 3. Single pool-backed FSI engine + migrate blueprint (cc0pi_tune*, cc0pi_disaggregated, cc1pi_fig_tki,
    gen_t2k_cc0pi/cc1pi_adonis) + reweight tests. Gate: cc0pi_tune via pool ≈ legacy within stats; ADoNIS
    vs ACHILLES forward unchanged. COMMIT (pre-cleanup checkpoint).
@@ -44,3 +48,7 @@ fixed-capacity event buffers via a running per-event write-index (scratch-slot t
   `run_cascade_pool(rec_caps=(Kp,Kn))` accumulates via `_rec_scatter` (running write-index, scratch-slot
   drop); `pool_fsi_reweight` = legacy `pion_branch_reweight`×`nucleon_scat_reweight` on the joint record.
   Engine-API threading (cascade_carbon_v2 returning the record) deferred to Stage 3.
+- **Stage 2 done**: autodiff==FD on the real pool record (`scripts/_pool_rec_check.py` @θ=(1.15,0.85)):
+  grad_ad=[151.21,-20280.20] vs grad_fd same, maxreldiff 2.7e-8 → PASS. Synthetic-record pytest
+  `tests/test_pool_fsi_reweight.py` 3/3 (nominal identity, factorization==legacy, autodiff==FD). No
+  θ-walk threaded (would violate kind-1; walk already θ-independent).

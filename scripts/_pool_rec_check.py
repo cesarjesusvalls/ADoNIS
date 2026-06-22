@@ -56,3 +56,17 @@ print("STAGE1 GATE:", "PASS" if (same and np.abs(wnom-1).max() < 1e-12 and int(r
 for th in [(1.3, 1.0), (1.0, 0.7), (1.3, 0.7)]:
     wt = np.asarray(CF.pool_fsi_reweight(rec, th[0], th[1]))
     print(f"  reweight{th}: mean={wt.mean():.4f} min={wt.min():.3f} max={wt.max():.3f}")
+
+# save the real pool record (Stage-2 grad closure + fast reuse)
+np.savez("/tmp/pool_fsi_record.npz", **{k: np.asarray(v) for k, v in rec.items()})
+
+# STAGE 2: autodiff == finite-difference closure on pool_fsi_reweight (the record is theta-independent;
+# theta enters only via the pure reweight -> gradients must be exact, mirroring the legacy grad test).
+def loss(theta):
+    return jnp.sum(CF.pool_fsi_reweight(rec, theta[0], theta[1]))
+th0 = jnp.array([1.15, 0.85])
+g_ad = np.asarray(jax.grad(loss)(th0))
+eps = 1e-4
+g_fd = np.array([float((loss(th0.at[d].add(eps)) - loss(th0.at[d].add(-eps))) / (2 * eps)) for d in (0, 1)])
+print(f"[autodiff==FD @theta=(1.15,0.85)] grad_ad={g_ad}  grad_fd={g_fd}  maxreldiff={np.abs((g_ad-g_fd)/g_fd).max():.2e}")
+print("STAGE2 GATE:", "PASS" if np.allclose(g_ad, g_fd, rtol=1e-4) else "FAIL")
