@@ -105,3 +105,45 @@ The fit itself succeeded; only the final plot line had a leftover legacy `model_
   (n=events), nominal≡1 bit-exact, forward identical 4-tuple vs 5-tuple — PASS (also after the rec opt-in
   refactor). `build_replica_pool`/`model_hist_pool` (pool-backed blueprint, Gaussian) added to
   cc0pi_tune_adonis. Pool-vs-legacy nominal comparison: see `scripts/_pool_blueprint_compare.py`.
+
+## FULL CLEANUP (this session): pool is now the SOLE engine, Gaussian-only, de-versioned
+Executed the approved full-cleanup plan in 5 gated, committed phases. The pool is the single cascade
+engine; BFS-forward, the legacy `DiscreteCascadeFSI`/`DiscreteNucleonFSI` segment classes, the
+`_propagate_*`/`propagate_*` walks, `RealCascadeFSI`, and the Cylinder interaction-probability are all
+removed. ~1700 lines deleted net.
+
+- **Phase 1** (`2949e84`): `adonis/fsi/pool_fsi.py` shared helper (`run_fsi`/`lead_proton`); `cc0pi_tune_adonis`
+  is pool-only (legacy `build_replica`/`model_hist`/`hist_nb`/`_mk_ev` removed); `cc0pi_tune_closure`→pool.
+  Gate: tune exit 0; closure recovers θ*=(1.3,0.8,1.0) within errors (pulls +0.45/+1.34/+0.50σ, χ²/ndf
+  0.19→0.53 at reduced stats); `test_pool_fsi_reweight` 3/3.
+- **Phase 2** (`687c4b4`,`d8de47b`,`af303fd`): migrated CC0π gens (h_cc0pi, cc0pi_disaggregated,
+  gen_t2k_cc0pi_combined) to the pool; **rm** 5 superseded bespoke gens (gen_t2k_cc0pi/cc1pi_adonis,
+  gen_minerva_cc0pi_adonis, gen_pion_fate, cc1pi_pion_survival — the config-driven engine_rich+matrix
+  pipeline supersedes them). **cc1pi_fig_tki unified on the validated pool extraction** (user decision):
+  `res_C` emits the workflow-schema rich bank (`prot[]`/`prot_origin`/`prot_gen` + `cr_p4`/`cr_pid` + `pi_nsc`,
+  via `pool_fsi.proton_candidates` = verbatim `workflow/generate.run_one_seed`); `cc1pi_signal.ado_select`
+  consumes `prot[]` (mirrors `workflow/signal`); `KNOCKOUT_MODE` re-expressed as an origin/gen filter; Npid
+  threaded from the generator. NOTE: `t2k_cc1pi_rich_adonis.npz` must be regenerated (gen_cc1pi_rich) for the
+  new schema before its run-at-import consumers (cc1pi_sweep) work.
+- **Phase 3** (`7ef9941`): cascade_fate_dump→pool (dropped the BFS branch); retired BFS-only/legacy-vs-pool
+  dev tools (_res_diag, _pool_blueprint_compare, _pool_timing, cascade_viz, later _pool_cyl_vs_gauss).
+  **CAPABILITY LOSS (accepted):** per-step cascade trajectory visualization — it was a BFS-only feature
+  (pion_segment `track_steps`); the pool `while_loop` has no StepTrace. The MC-truth track tree
+  (`tracking.finalize`/`print_tree`) remains for cascade introspection.
+- **Phase 4** (`2d2a21d`): deleted BFS-forward (pion_segment, nucleon_segment, make_kernel, run_cascade,
+  _nucleon_kernel, old cascade_carbon) + cascade_carbon_v2's BFS else-branch; deleted _propagate_discrete/
+  propagate_discrete/DiscreteCascadeFSI + _propagate_nucleon_discrete/propagate_nucleon_discrete/
+  DiscreteNucleonFSI + RealCascadeFSI; forced Gaussian in `_pion_step`/`_nucleon_step`; removed the
+  cylinder/prob config fields + CascadeHyperparams.cylinder + the generate.py pass; stripped `cylinder:`
+  from 50 configs/*.yaml; deleted 5 obsolete tests (test_cascade_{real,discrete,early_exit,reweight_records},
+  test_flux_and_real_fsi) + the BFS bit-exactness cross-checks in test_cascade_pool.
+- **Phase 4b** (`b113cf1`): stripped the now-removed `cylinder=` kwarg from 22 scripts (frozen dataclass
+  rejects it); de-versioned identifiers cascade_carbon_v2→cascade_carbon, _cascade_pool_v2→_cascade_pool,
+  build_replica_pool→build_replica, model_hist_pool→model_hist. `currents_opt_v1` LEFT AS-IS (it is the
+  upstream ACHILLES Fortran source filename in a provenance docstring, not a versioned identifier).
+- **Phase 5**: full suite + forward pool-gen smoke. The **forward smoke caught a real regression the unit
+  tests missed**: deleting the legacy blocks also removed two MID-FILE module-level imports
+  (`nn_elastic_sigma` from nucleon_cascade, `nn_inelastic as nni`) that the KEPT `_nucleon_step` depends on
+  → `NameError` at cascade runtime (unit tests use a toy stepper, so they passed). Re-added both at the top
+  import block (no circular import). Lesson: deleting a contiguous line range can take out mid-file imports
+  used by code OUTSIDE that range — a forward run, not just unit tests, is the real gate.

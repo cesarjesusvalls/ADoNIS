@@ -32,6 +32,8 @@ from adonis.fsi.mb import cascade_mb
 from adonis.fsi.cascade_real import (_load_density, _rho_species, _kf_local, _two_body_cm_scatter,
                                      _boost, MB_TO_FM2, _CH_MASS, _CH_PID)
 from adonis.fsi.absorption_modes import kernel_tables as _abs_kernel_tables
+from adonis.fsi.nucleon_cascade import nn_elastic_sigma     # NN-elastic sigma (used by _nucleon_step)
+from adonis.fsi import nn_inelastic as nni                  # NN -> N Delta -> N N pi (nn_inelastic)
 
 # pion-absorption proton-count distribution + partner species, indexed by ch*2+struck_p (ch 0:pi+
 # 1:pi0 2:pi-; struck_p 1=proton).  Faithful ACHILLES isospin partition (Nucl.Phys. A568) -- replaces

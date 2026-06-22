@@ -92,7 +92,7 @@ def build_ma_records(qe, res):
 # pool engine underneath (re-cascades both absorption nucleons, charge-resolved sigma, etc.).
 # ============================================================================================== #
 import adonis.fsi.cascade_full as _CF
-# Gaussian (cylinder=False) everywhere -> ADoNIS forward + differentiable tuning share ONE model and the
+# Gaussian interaction probability everywhere -> ADoNIS forward + differentiable tuning share ONE model and the
 # kind-1 sigma-reweight is exact (see all-gaussian decision).  max_steps=600 is a SATURATION CEILING:
 # the pool early-exits once every particle has escaped, so a generous cap costs ~nothing but removes the
 # legacy 260 truncation risk (260 was BFS-verified, not pool-verified).
