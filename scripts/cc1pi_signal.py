@@ -31,6 +31,7 @@ DEFAULT = dict(mu_win=(250., 7000.), pi_win=(150., 1200.), p_win=(450., 1200.), 
 # pion_id: "pip" = require a surviving pi+ ; "anypi" = any surviving pion (pi+/pi0/pi-) -> only
 # absorption removes it (charge-exchange does not), so it isolates absorption from charge-exchange.
 _PIONS = (211, 111, -211)
+_OTHER_MESON = (111, -211, -1)            # vs a pi+ signal: pi0 / pi- / converted(eta,K)
 
 
 def _mom(p):
@@ -60,27 +61,43 @@ def _finish(mu, pi, lead, struck, nu, w, mask, sd, is_h, chan):
 
 
 def ado_select(b, sd):
-    """ADoNIS rich bank -> selected signal observables under sigdef sd."""
+    """ADoNIS rich bank -> selected signal observables under sigdef sd.
+
+    POST-FSI uses the unified pool proton-candidate set prot[] (every escaped proton terminal across
+    cascade generations) -- the validated extraction (cf. adonis.workflow.signal).  PRE-FSI uses the
+    single primary recoil nucleon (a proton iff Npid==2212, or always if count_recoil_neutron)."""
     fsi = sd["fsi"]
-    pi = b["pi_post" if fsi else "pi_pre"]
-    pid = b["pid_pi_post" if fsi else "ppid_pre"]
-    rec = b["rec_post" if fsi else "rec_pre"]
-    rec_isp = b["rec_post_isp"] if fsi else (b["Npid"] == 2212)
-    rec_is_p = np.ones(len(pid), bool) if sd["count_recoil_neutron"] else rec_isp
-    cands = [np.where(rec_is_p[:, None], rec, 0.0)]
-    if sd["proton_source"] == "native+knockout" and fsi:
-        cands += [b["nuc_ko"], b["pi_ko1"], b["pi_ko2"]]
-    cands = np.stack(cands, axis=1)                                   # (n,K,4)
-    inwin = np.stack([_acc(cands[:, i], sd["p_win"], sd["cth"]) for i in range(cands.shape[1])], axis=1)
+    pi = b["pi_post"] if fsi else b["pi_pre"]
+    pid = b["pid_pi_post"] if fsi else b["ppid_pre"]
+    n = len(pid); ar = np.arange(n)
+    if fsi:
+        prot = b["prot"]; cr_pid = b["cr_pid"]                       # (n,M,4) pool candidates + created pion
+    else:
+        rec = b["rec_pre"]; rec_isp = (b["Npid"] == 2212)
+        rec_is_p = np.ones(n, bool) if sd["count_recoil_neutron"] else rec_isp
+        prot = np.where(rec_is_p[:, None], rec, 0.0)[:, None, :]      # single primary candidate
+        cr_pid = np.zeros(n, np.int64)                               # no created pion pre-FSI
+    pm = np.linalg.norm(prot[:, :, 1:], axis=2); cth = prot[:, :, 3] / np.clip(pm, 1e-9, None)
+    inwin = (pm > sd["p_win"][0]) & (pm < sd["p_win"][1]) & (cth > sd["cth"])
     nprot = inwin.sum(1)
     has_p = ({"eq1": nprot == 1, "eq2": nprot == 2}.get(sd.get("proton_count"), nprot >= 1))
-    lead = cands[np.arange(len(pid)), np.argmax(_mom(cands.reshape(-1, 4)).reshape(len(pid), -1) * inwin, axis=1)]
+    lead = prot[ar, np.argmax(np.where(inwin, pm, -1.0), axis=1)]
+    # pion selection over {primary, created}: pip = exactly one pi+ and no other meson; anypi = any pion
+    if sd.get("pion_id") == "anypi":
+        prim = np.isin(pid, _PIONS); pid_ok = prim | np.isin(cr_pid, _PIONS)
+        if fsi:
+            pi = np.where(prim[:, None], pi, b["cr_p4"])
+    else:
+        prim_pip = (pid == 211); cr_pip = (cr_pid == 211)
+        n_pip = prim_pip.astype(int) + cr_pip.astype(int)
+        n_other = np.isin(pid, _OTHER_MESON).astype(int) + np.isin(cr_pid, _OTHER_MESON).astype(int)
+        pid_ok = (n_pip == 1) & (n_other == 0)
+        if fsi:
+            pi = np.where(prim_pip[:, None], pi, b["cr_p4"])
     pstr_p = _mom(b["struck"])
-    tgt = {"carbon": pstr_p > 1.0, "hydrogen": pstr_p <= 1.0, "CH": np.ones(len(pid), bool)}[sd["target"]]
-    no_extra = b["no_extra_pi"] if fsi else np.ones(len(pid), bool)
-    p_req = has_p if sd.get("require_proton", True) else np.ones(len(pid), bool)
-    pid_ok = np.isin(pid, _PIONS) if sd.get("pion_id") == "anypi" else (pid == 211)
-    mask = (pid_ok & p_req & no_extra & (b["w"] > 0) & tgt
+    tgt = {"carbon": pstr_p > 1.0, "hydrogen": pstr_p <= 1.0, "CH": np.ones(n, bool)}[sd["target"]]
+    p_req = has_p if sd.get("require_proton", True) else np.ones(n, bool)
+    mask = (pid_ok & p_req & (b["w"] > 0) & tgt
             & _acc(b["mu"], sd["mu_win"], sd["cth"]) & _acc(pi, sd["pi_win"], sd["cth"]))
     is_h = ~(pstr_p > 1.0)
     return _finish(b["mu"], pi, lead, b["struck"], b["nu"], b["w"], mask, sd, is_h, b["ipid"])

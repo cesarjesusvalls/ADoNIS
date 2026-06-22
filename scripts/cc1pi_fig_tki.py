@@ -8,11 +8,11 @@ proton 3-body generator (pi+ always survives; no FSI).  QE contributes nothing (
 Selection/observables mirror scripts/extract_t2k_cc1pi_tki.py exactly (tight windows, theta<70deg;
 NUISANCE hydrogen prescription: flat delta_alphaT throw, carbon-mass p_N formula for all events).
 
-Pion-scatter RECOIL protons are emitted and re-cascaded (ACHILLES FinalizeMomentum/UpdateKicked
-mirrored via DiscreteCascadeFSI.last_scat_ko): the leading proton is the highest-momentum
-IN-WINDOW candidate among {RES nucleon, scatter knockout, its secondary knockout}.  Declared
-approximation: only the leading PROTON recoil per pion is tracked (neutron recoils' secondary
-knockouts neglected).
+FSI runs through the single Gaussian POOL cascade (cascade_carbon_v2): pion + recoil + ALL knockout
+generations are tracked jointly, so the leading proton is the highest-momentum IN-WINDOW proton among
+the unified pool candidate set prot[] (every escaped proton terminal across generations, origin-tagged:
+0=RES/QE nucleon chain, 1=pion-knockout, 2=primary pion).  This supersedes the old approximate
+{RES nucleon, scatter knockout, its secondary knockout} set (which neglected deeper knockouts).
 
 Usage: python scripts/cc1pi_fig_tki.py [N_per_seed]   (default 200000; NSEED=4)
 """
@@ -28,14 +28,14 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import res_xsec
-from adonis.core.event import EventRecord
-from adonis.fsi.cascade_discrete import (DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig,
-                                         sample_nucleons, propagate_nucleon_discrete)
+from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
+from adonis.fsi.pool_fsi import run_fsi, proton_candidates
 from scripts.h_cc0pi import generate_H
 
 NRES = int(sys.argv[1]) if (len(sys.argv) > 1 and sys.argv[1].isdigit()) else 200000  # robust when imported
 NH, NSEED = 50000, 4
-_CFG = lambda **k: DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=260, **k)  # T2K run-card
+MPROT = 6                                                       # top-M proton terminals kept from the pool
+_CFG = lambda **k: DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=600, engine="pool", **k)  # Gaussian pool
 
 # tight signal phase space (PRD 103 112009; == extract_t2k_cc1pi_tki.py)
 MU_LO, MU_HI = 250.0, 7000.0
@@ -45,11 +45,42 @@ COS70 = np.cos(np.deg2rad(70.0))
 M_A12, M_A11 = 11174.862, 10252.547                  # 12C, 11B [MeV]
 NB_PER_CM2 = 1e33
 A_CH = 13.0                                          # data is per NUCLEON of CH (12 C + 1 H)
-# ABLATION knob (default "full" = production, unchanged): which proton candidates feed the signal.
-#   "full"        = {RES nucleon, leading pion-scatter knockout, its secondary knockout} (faithful set)
-#   "no_secondary"= drop the secondary knockout (tests the bounded-recursion approximation)
-#   "res_only"    = RES nucleon only, no pion-scatter knockouts (removes the n->n pi+-via-knockout path)
+# ABLATION knob (default "full" = production): which pool proton candidates feed the signal, by origin tag.
+#   "full"        = every escaped proton terminal across all generations (the validated pool set)
+#   "no_secondary"= drop pion-knockout SECONDARIES (origin==1 & gen>=2; bounded-recursion test)
+#   "res_only"    = RES/QE nucleon chain only (origin==0: primary recoil + its NN knockouts; no pion ko)
 KNOCKOUT_MODE = "full"
+
+
+def _apply_knockout_mode(prot, org, gen):
+    """Filter the unified pool proton-candidate set by the KNOCKOUT_MODE ablation (origin/gen tags)."""
+    if KNOCKOUT_MODE == "full":
+        return prot, org, gen
+    if KNOCKOUT_MODE == "res_only":
+        keep = (org == 0)
+    elif KNOCKOUT_MODE == "no_secondary":
+        keep = ~((org == 1) & (gen >= 2))
+    else:
+        raise ValueError(f"KNOCKOUT_MODE={KNOCKOUT_MODE!r}")
+    return (np.where(keep[:, :, None], prot, 0.0), np.where(keep, org, -1), np.where(keep, gen, -1))
+
+
+_OTHER_MESON = (111, -211, -1)            # vs a pi+ signal: pi0 / pi- / converted(eta,K)
+
+
+def _signal_pip(prot, pid_pi, cr_pid, pi_post, cr_p4, p_win=(P_LO, P_HI), cth=COS70):
+    """Validated CC1pi+ signal core on the pool bank: exactly one pi+ over {primary, created} with no
+    other meson, and the leading IN-WINDOW proton from prot[].  Returns (lead, has_p, pi_f, meson_ok)."""
+    n = len(pid_pi); ar = np.arange(n)
+    prim_pip = (pid_pi == 211); cr_pip = (cr_pid == 211)
+    n_pip = prim_pip.astype(int) + cr_pip.astype(int)
+    n_other = np.isin(pid_pi, _OTHER_MESON).astype(int) + np.isin(cr_pid, _OTHER_MESON).astype(int)
+    meson_ok = (n_pip == 1) & (n_other == 0)
+    pi_f = np.where(prim_pip[:, None], pi_post, cr_p4)
+    pm = np.linalg.norm(prot[:, :, 1:], axis=2); ct = prot[:, :, 3] / np.clip(pm, 1e-9, None)
+    inwin = (pm > p_win[0]) & (pm < p_win[1]) & (ct > cth)
+    j = np.argmax(np.where(inwin, pm, -1.0), axis=1)
+    return prot[ar, j], inwin[ar, j], pi_f, meson_ok
 
 
 def _acc(p4, lo, hi):
@@ -83,70 +114,37 @@ def res_C(n, seed, return_raw=False):
     e = res_xsec.generate(n, seed=seed, return_events=True)["events"]
     knu, kmu, pstr = (np.asarray(e[k]) for k in ("k_nu", "k_mu", "p_struck"))
     ppi, pN, w = np.asarray(e["p_pi"]), np.asarray(e["p_N"]), np.asarray(e["w"])
-    m = len(w)
-    ev = EventRecord(k=jnp.asarray(knu), kp=jnp.asarray(kmu), p_struck=jnp.asarray(pstr),
-                     p_pi=jnp.asarray(ppi), p_N=jnp.asarray(pN), w=jnp.asarray(w),
-                     channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.asarray(e["ppid"], jnp.int32),
-                     pid_N=jnp.asarray(e["Npid"], jnp.int32), pid_Ni=jnp.asarray(e["ipid"], jnp.int32),
-                     W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
-    pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
-    ko, ko_pos, ko_fz = pion.last_scat_ko                        # leading pi-scatter recoil proton
-    nf = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf.apply(None, ev, key=jax.random.PRNGKey(seed + 13))
-    ppi_f = np.asarray(ev.p_pi); pid_pi = np.asarray(ev.pid_pi)
-    # re-cascade the scatter knockout through the nucleon transport (ACHILLES UpdateKicked);
-    # its own (proton) knockout is a further candidate.
-    has_ko = np.linalg.norm(np.asarray(ko)[:, 1:], axis=1) > 1.0
-    cfg = _CFG(seed=3)
-    kn = jax.random.PRNGKey(seed + 17)
-    npos2, nmom2, nisp2 = sample_nucleons(jax.random.fold_in(kn, 1), m, cfg)
-    ko_in = jnp.where(jnp.asarray(has_ko)[:, None], jnp.asarray(ko), ev.p_N)   # dummy where none
-    ko_f, _, ko_ko, _, _, _, _, ko_made_pi, _, _, _, _, _ = propagate_nucleon_discrete(
-        jnp.asarray(ko_pos), ko_in, jnp.ones(m, bool), npos2, nmom2, nisp2, cfg,
-        jax.random.fold_in(kn, 2), fz0=jnp.asarray(ko_fz))
-    ko_f = np.where(has_ko[:, None], np.asarray(ko_f), 0.0)
-    ko_ko = np.where(has_ko[:, None], np.asarray(ko_ko), 0.0)
-    # leading proton = highest-momentum IN-WINDOW candidate among
-    # {nucleon-cascade leading PROTON (primary-if-proton OR its NN knockout proton -- the only n->n pi+
-    #  signal-proton path, species threaded from the cascade), re-cascaded pion-scatter knockout, its
-    #  secondary knockout}
-    lead0 = np.asarray(nf.last_lead_prot)
-    if KNOCKOUT_MODE == "res_only":
-        cands = lead0[:, None, :]                                # RES nucleon only (ablation)
-    elif KNOCKOUT_MODE == "no_secondary":
-        cands = np.stack([lead0, ko_f], axis=1)                  # drop the secondary knockout (ablation)
-    else:
-        cands = np.stack([lead0, ko_f, ko_ko], axis=1)           # (m, 3, 4) faithful set
-    inwin = np.stack([_acc(cands[:, i], P_LO, P_HI) for i in range(cands.shape[1])], axis=1)
-    mom = np.linalg.norm(cands[:, :, 1:], axis=2) * inwin
-    lead = cands[np.arange(m), np.argmax(mom, axis=1)]
-    has_p = inwin.any(axis=1)
-    no_extra_pi = ~(np.asarray(nf.last_made_pion) | (has_ko & np.asarray(ko_made_pi)))
+    ppid, ipid, Npid = np.asarray(e["ppid"]), np.asarray(e["ipid"]), np.asarray(e["Npid"])
+    # ONE joint pool cascade: primary pion + recoil nucleon + every knockout generation (origin-tagged).
+    out = run_fsi(jnp.asarray(ppi), jnp.asarray(pN), jnp.asarray(ppid, jnp.int32),
+                  jnp.asarray(ipid, jnp.int32), jnp.asarray(Npid, jnp.int32),
+                  _CFG(seed=1), jax.random.PRNGKey(seed + 11), channel="res")
+    pid_pi = np.asarray(out["pterm"]["pid"]); pi_post = np.asarray(out["pterm"]["p4"])
+    nsc = np.asarray(out["pterm"]["nsc"])
+    cr_pid = np.where(np.asarray(out["created"]["alive"]), np.asarray(out["created"]["pid"]), 0)
+    cr_p4 = np.asarray(out["created"]["p4"])
+    prot, prot_org, prot_gen = _apply_knockout_mode(*proton_candidates(out["nterms"], MPROT))
     if return_raw:
-        # RICH per-event bank (ALL m events): full 4-vectors, PRE- and POST-FSI, and EVERY proton
-        # candidate as a separate 4-vec + species -> any signal definition is pure re-binning (no rerun).
-        # 4-vectors are (E,px,py,pz) [MeV].  Proton candidates (post-FSI): rec_post (primary nucleon
-        # after the cascade; a proton iff rec_post_isp), nuc_ko (leading NN knockout proton), pi_ko1/2
-        # (pion-scatter knockout protons).  Knockouts are protons by construction.
+        # RICH per-event bank: full PRE-/POST-FSI 4-vectors + the unified pool proton-candidate set
+        # prot[] (every escaped proton terminal across generations, origin/gen tagged) -> any signal
+        # definition is pure re-binning (scripts/cc1pi_signal.ado_select).  4-vectors are (E,px,py,pz) MeV.
         return dict(
-            # --- pre-FSI (primary RES) ---
-            nu=knu, mu=kmu, struck=pstr, ipid=np.asarray(e["ipid"]),
-            pi_pre=ppi, ppid_pre=np.asarray(e["ppid"]),
-            rec_pre=pN, Npid=np.asarray(e["Npid"]),
-            # --- post-FSI ---
-            pi_post=ppi_f, pid_pi_post=pid_pi,
-            rec_post=np.asarray(nf.last_primary), rec_post_isp=np.asarray(nf.last_primary_isp),
-            nuc_ko=np.asarray(nf.last_nuc_ko), pi_ko1=ko_f, pi_ko2=ko_ko,
-            no_extra_pi=no_extra_pi, w=w)
-    sel = ((pid_pi == 211) & has_p & no_extra_pi & (w > 0)
-           & _acc(kmu, MU_LO, MU_HI) & _acc(ppi_f, PI_LO, PI_HI))
-    dptt, pN_o, dat, dpt = observables(kmu[sel], ppi_f[sel], lead[sel], np.zeros(sel.sum(), bool), seed)
-    pim = np.linalg.norm(ppi_f[sel][:, 1:], axis=1)
+            nu=knu, mu=kmu, struck=pstr, ipid=ipid,
+            pi_pre=ppi, ppid_pre=ppid, rec_pre=pN, Npid=Npid,             # pre-FSI (primary RES)
+            pi_post=pi_post, pid_pi_post=pid_pi, pi_nsc=nsc,              # post-FSI primary pion
+            cr_p4=cr_p4, cr_pid=cr_pid,                                   # leading cascade-created pion
+            prot=prot, prot_origin=prot_org, prot_gen=prot_gen, w=w)
+    # DEFAULT CC1pi+ signal on the unified pool candidates (single source: _signal_pip / observables)
+    lead, has_p, pi_f, meson_ok = _signal_pip(prot, pid_pi, cr_pid, pi_post, cr_p4)
+    sel = (meson_ok & has_p & (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pi_f, PI_LO, PI_HI))
+    dptt, pN_o, dat, dpt = observables(kmu[sel], pi_f[sel], lead[sel], np.zeros(int(sel.sum()), bool), seed)
+    pim = np.linalg.norm(pi_f[sel][:, 1:], axis=1)
     qv = (knu - kmu)[sel]; totv = qv + pstr[sel]                 # vertex hadronic 4-mom
     Wv = np.sqrt(np.clip(totv[:, 0] ** 2 - np.sum(totv[:, 1:] ** 2, axis=1), 0, None))
     Q2v = (np.sum(qv[:, 1:] ** 2, axis=1) - qv[:, 0] ** 2) / 1e6  # GeV^2
     return dict(dptt=dptt, pn=pN_o, dalphat=dat, dpt=dpt, w=w[sel],
-                nsc=np.asarray(pion.last_nsc)[sel],           # pion scatter count (diagnostics)
-                pi_p=pim, pi_cth=ppi_f[sel][:, 3] / np.clip(pim, 1e-9, None),
+                nsc=nsc[sel],                                  # pion scatter count (diagnostics)
+                pi_p=pim, pi_cth=pi_f[sel][:, 3] / np.clip(pim, 1e-9, None),
                 lp_p=np.linalg.norm(lead[sel][:, 1:], axis=1), W=Wv, Q2=Q2v)
 
 
