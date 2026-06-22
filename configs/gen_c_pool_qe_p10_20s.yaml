@@ -6,7 +6,7 @@ n_per_seed: 30000
 n_seeds: 20
 channels: [qe]
 cascade: {P: 10, max_gen: 3, n_recoil: 2, step: 0.04, max_steps: 600,
-          cylinder: true, nn_inelastic: true, mprot: 4, engine: pool}
+          nn_inelastic: true, mprot: 4, engine: pool}
 tracking: {enabled: false, steps: false}
 out_dir: data/oracle
 tag: _cpool20

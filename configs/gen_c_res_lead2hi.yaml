@@ -1,11 +1,11 @@
-name: t2k_c_res_hicap
+name: t2k_c_res_lead2hi
 material: C
-n_per_seed: 30000
-n_seeds: 3
+n_per_seed: 20000
+n_seeds: 8
 channels: [res]
 cascade: {P: 10, max_gen: 6, n_recoil: 6, step: 0.04, max_steps: 600,
           nn_inelastic: true, mprot: 10, engine: pool}
 vegas: {enabled: true, nbins: 50, warmup_iters: 6, warmup_n: 100000, cache: auto}
 tracking: {enabled: false, steps: false}
 out_dir: data/oracle
-tag: _hicap
+tag: _lead2hi

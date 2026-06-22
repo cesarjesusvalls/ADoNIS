@@ -276,33 +276,3 @@ def sample_vertex(key, n, nucleus="c12_density.txt", density_n=None):
     rad = jnp.asarray(rr)[idx]
     dirs = jax.random.normal(kd, (n, 3)); dirs = dirs / jnp.linalg.norm(dirs, axis=1, keepdims=True)
     return dirs * rad[:, None]
-
-
-# pid <-> charge index for the cascade (0:pi+, 1:pi0, 2:pi-)
-_PID_TO_CH = {211: 0, 111: 1, -211: 2}
-
-
-class RealCascadeFSI:
-    """FSIModel: propagate the produced pion through the nucleus with the REAL (untuned) Oset +
-    DCC cascade (`propagate`), returning the FSI'd EventRecord (pion momentum/charge updated;
-    absorbed pions -> pid 0).  This is the production wrapper of the validated cascade
-    (paper_figures/make_fig3.py); the toy `ToyCascadeFSI` is the tunable-knob differentiable
-    surrogate.  `protfrac = (N_n - N_p)/A` (0 for 12C, 0.1 for 40Ar)."""
-
-    def __init__(self, cfg: RealCascadeConfig = RealCascadeConfig(), protfrac: float = 0.0):
-        self.cfg = cfg
-        self.protfrac = float(protfrac)
-
-    def apply(self, params, event, key=None):
-        key = jax.random.PRNGKey(self.cfg.seed) if key is None else key
-        kv, kp = jax.random.split(key)
-        n = event.p_pi.shape[0]
-        ch0 = jnp.asarray([_PID_TO_CH.get(int(p), 1) for p in np.asarray(event.pid_pi)],
-                          dtype=jnp.int32)
-        pos0 = sample_vertex(kv, n, self.cfg.nucleus, self.cfg.density_n)
-        p_pi, ch, absorbed, nsc = propagate(pos0, event.p_pi, ch0, self.cfg, kp,
-                                            protfrac=self.protfrac)
-        keep = (~absorbed)[:, None]
-        p_pi_out = p_pi * keep
-        pid_out = jnp.where(absorbed, 0, _CH_PID[ch])
-        return event._replace(p_pi=p_pi_out, pid_pi=pid_out)

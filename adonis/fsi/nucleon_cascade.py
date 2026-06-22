@@ -126,7 +126,7 @@ def _propagate_nucleon_scan(pos0, p_N0, is_proton0, cfg: NucleonCascadeConfig, k
 
 class NucleonFSI:
     """FSIModel add-on: propagate the leading outgoing NUCLEON (p_N) through the nucleus with the
-    NN-elastic cascade.  Composable with RealCascadeFSI (pion) -- apply both for full CC1pi+ FSI.
+    NN-elastic cascade.  Composable with the pion cascade (cascade_full pool) for full CC1pi+ FSI.
     protfrac = (N_n - N_p)/A (0 for 12C, 0.1 for 40Ar)."""
 
     def __init__(self, cfg: NucleonCascadeConfig = NucleonCascadeConfig(), protfrac: float = 0.0):

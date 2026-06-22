@@ -115,7 +115,7 @@ def run_channel(channel, gc, target):
     _, _, _, _radius = _load_density(target.density_p, target.density_n)
     _ms = max(cas.max_steps, int(np.ceil(3.0 * _radius / cas.step)))
     print(f"[cascade] nucleus radius={_radius:.2f} fm -> max_steps={_ms} (floor {cas.max_steps})", flush=True)
-    cfg_cascade = DiscreteCascadeConfig(cylinder=cas.cylinder, step=cas.step, max_steps=_ms,
+    cfg_cascade = DiscreteCascadeConfig(step=cas.step, max_steps=_ms,
                                         seed=1, nn_inelastic=cas.nn_inelastic,
                                         engine=getattr(cas, "engine", "pool"),
                                         nucleus=target.density_p, density_n=target.density_n,

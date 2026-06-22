@@ -47,7 +47,6 @@ class CascadeHyperparams:
     n_recoil: int = 4           # top-K proton recoils per scatter (-> ADONIS_N_RECOIL)
     step: float = 0.04          # Glauber step [fm]
     max_steps: int = 260
-    cylinder: bool = True
     nn_inelastic: bool = True
     mprot: int = 6              # top-M proton terminals stored per event (-> ADONIS_MPROT)
     engine: str = "pool"        # cascade engine: "pool" (default, validated single core) | "bfs" (legacy)
