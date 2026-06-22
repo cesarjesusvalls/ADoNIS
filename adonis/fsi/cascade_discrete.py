@@ -1208,9 +1208,11 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
         B_is_p = (npr >= 2) | ((npr == 1) & (~a_is_p))
         kfA = jnp.where(A_is_p, kfpa, kfna); kfB = jnp.where(B_is_p, kfpb, kfnb)
         blocked = (ma < kfA) | (mb < kfB)
-        protA = jnp.where(A_is_p, pa, jnp.zeros(4)); protB = jnp.where(B_is_p, pb, jnp.zeros(4))
-        return protA, protB, blocked
-    abs_protA, abs_protB, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out,
+        # ACHILLES re-cascades BOTH absorption nucleons (Cascade.cc particles_out[0],[1]) regardless of
+        # charge: a neutron product can knock out a proton downstream.  Emit both full 4-vecs + their
+        # true charges, NOT proton-only slots (zeroing neutrons dropped secondary proton knockouts).
+        return pa, pb, A_is_p.astype(jnp.int32), B_is_p.astype(jnp.int32), blocked
+    abs_pa, abs_pb, abs_qa, abs_qb, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out,
                                                          kfPA, kfNA, kfPB, kfNB, jax.random.split(kab, n))
     if not cfg.pauli:
         abs_blocked = abs_blocked & False
@@ -1255,16 +1257,18 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     rcand = jnp.where(is_conv[:, None], p_bary, p_rec)
     q_rcand = jnp.where(is_conv, q_bary, q_rec)
     fz_rec = _formation_zone(p_pi, rcand)
-    # ----- spawns: slot1 = abs proton A | scatter recoil | conv baryon ; slot2 = abs proton B -----
-    s1_p4 = jnp.where(is_abs[:, None], abs_protA, jnp.where(is_scat[:, None], p_rec, jnp.where(eta_ok[:, None], p_bary, 0.0)))
-    s1_q = jnp.where(is_abs, 1, jnp.where(is_scat, q_rec, jnp.where(eta_ok, q_bary, 0))).astype(jnp.int32)
+    # ----- spawns: slot1 = abs nucleon A | scatter recoil | conv baryon ; slot2 = abs nucleon B -----
+    # Both absorption nucleons (A,B) carry their TRUE charge (abs_qa/abs_qb) and full 4-vec; neutron
+    # products re-cascade (ACHILLES particles_out[0],[1]) instead of being dropped.
+    s1_p4 = jnp.where(is_abs[:, None], abs_pa, jnp.where(is_scat[:, None], p_rec, jnp.where(eta_ok[:, None], p_bary, 0.0)))
+    s1_q = jnp.where(is_abs, abs_qa, jnp.where(is_scat, q_rec, jnp.where(eta_ok, q_bary, 0))).astype(jnp.int32)
     s1_pos = jnp.where(is_abs[:, None], pos_hit, npos[ar, j])
-    s1_fz = jnp.where(is_abs, _formation_zone(p_pi, abs_protA), jnp.where(is_scat | eta_ok, fz_rec, 0.0))
+    s1_fz = jnp.where(is_abs, _formation_zone(p_pi, abs_pa), jnp.where(is_scat | eta_ok, fz_rec, 0.0))
     s1_al = (jnp.linalg.norm(s1_p4[:, 1:], axis=1) > 1.0) & (is_abs | is_scat | eta_ok)
-    s2_p4 = jnp.where(is_abs[:, None], abs_protB, 0.0)
-    s2_q = jnp.where(is_abs, 1, 0).astype(jnp.int32)
+    s2_p4 = jnp.where(is_abs[:, None], abs_pb, 0.0)
+    s2_q = jnp.where(is_abs, abs_qb, 0).astype(jnp.int32)
     s2_pos = pos_hit
-    s2_fz = _formation_zone(p_pi, abs_protB)
+    s2_fz = _formation_zone(p_pi, abs_pb)
     s2_al = (jnp.linalg.norm(s2_p4[:, 1:], axis=1) > 1.0) & is_abs
     # ----- pion state update (scatter continues; abs/conv removed) -----
     p_pi = jnp.where(is_scat[:, None], p_out, p_pi)

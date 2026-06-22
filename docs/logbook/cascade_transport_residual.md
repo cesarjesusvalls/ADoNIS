@@ -184,6 +184,51 @@ Validated on identical configs (#12) and on the high-stat transparency (§3 will
 
 ---
 
+## 4b. Absorbed-RES (CC0π·RES) low-proton over-production → dropped abs neutron (lead #2)
+
+Distinct from the transparency residual above: in the **CC0π·RES channel** (RES event whose primary π is
+absorbed → 0π final state), ADoNIS over-produced **low ejected-proton multiplicity** on ¹²C vs ACHILLES-C
+(FSI, proc 401/402). Old banks (both dev-cap cv5 *and* high-cap hicap — so NOT a buffer effect):
+
+| ejected p | OLD cv5 | OLD hicap | ACH/ADO target |
+|---|---|---|---|
+| 0p | 0.476 (−4.7σ) | 0.426 (−5.2σ) | 1.0 |
+| 1p | 0.736 (−5.3σ) | 0.726 (−5.2σ) | 1.0 |
+| 2p | 0.884 (−5.7σ) | 0.879 (−5.3σ) | 1.0 |
+
+(ACH/ADO; <1 = ADoNIS over-produces that multiplicity.)
+
+**Root cause.** ADoNIS pion absorption emitted **proton-only slots**: `abs_one` returned
+`protA = where(A_is_p, pa, 0)` (neutron momenta zeroed) and the spawn charges were hardcoded
+`s1_q/s2_q = 1`. The neutron product was dropped (and the 2-neutron mode emitted *nothing*). ACHILLES
+re-cascades **both** absorption nucleons (`Cascade.cc` `particles_out[0],[1]`); a neutron product can
+knock out a proton downstream. Dropping it lost those secondary proton knockouts → events stuck at low
+multiplicity.
+
+**Fix** (`adonis/fsi/cascade_discrete.py` `_pion_step`): `abs_one` returns both full 4-vecs `pa,pb` and
+their true charges `abs_qa,abs_qb`; both nucleons spawn into the pool with their real charge and
+re-cascade. The pool `_nucleon_step` already handles neutron projectiles (`same_iso=isp==nisp`,
+recoil charge `bg_proton=nisp[ar,j]`), so an absorbed neutron correctly knocks out a proton.
+
+**Result** (NEW high-cap `lead2`, 2-seed, 40k primaries):
+
+| ejected p | NEW lead2 | was | verdict |
+|---|---|---|---|
+| 0p | 0.543 (−3.1σ) | 0.43 | improved, residual (N=31) |
+| 1p | 0.912 (−0.9σ) | 0.73 | **closed** |
+| 2p | 1.045 (+1.1σ) | 0.88 | **closed** |
+| incl (≥1p) | 1.049 (+2.2σ) | 1.045 | unchanged |
+
+The bulk 1p/2p −5σ over-production is RESOLVED — multiplicity redistributes 0p→1p→2p exactly as
+predicted by re-cascading the abs neutron. BFS path (`_propagate_discrete`) still proton-only —
+non-production (always-pool), no re-cascade pool there.
+
+**Two residuals remain after lead #2:**
+- **0p still −3.1σ** (ADoNIS ~1.8× too many zero-proton absorbed-RES events; only 31 ev). Candidate
+  lead #4: absorbed-RES leading proton too soft (below the 250 MeV ejection threshold).
+- **Total absorbed-RES rate ADoNIS ~4.8% low** (incl+0p: ACH/ADO=1.048). A *normalization* residual
+  (fewer absorbed-RES events overall), distinct from the now-matched multiplicity shape. Next lead.
+
 ## 5. Instrumentation & reproduction
 
 ACHILLES images (LOCAL build; do NOT pass `--platform` — forces a failing pull):
