@@ -27,7 +27,8 @@ Fields per particle (all leading dim (n, P)):
 from __future__ import annotations
 import jax, jax.numpy as jnp
 from adonis.fsi.cascade_discrete import (_propagate_discrete, _propagate_nucleon_discrete, _CH_PID,
-                                         sample_nucleons, DiscreteCascadeConfig, _formation_zone)
+                                         sample_nucleons, DiscreteCascadeConfig, _formation_zone,
+                                         MB_TO_FM2, pion_branch_reweight, nucleon_scat_reweight)
 from adonis.fsi.tracking import GEN_STRIDE as _GEN_STRIDE
 
 PION, NUCLEON = 0, 1
@@ -252,13 +253,21 @@ def make_pool_stepper(su, cfg):
             d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
             kN, kP = jax.random.split(keys[m])
             # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
-            (p4n, posn, _dn, fzn, alnN), escN, _rc, _do, koN, pinN, consumedN, _ = _nucleon_step(
+            (p4n, posn, _dn, fzn, alnN), escN, _rc, _do, koN, pinN, consumedN, nstat = _nucleon_step(
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kN)
             # PION branch (charge = pion index 0/1/2); scatter continues, abs/conv removed.
-            (p4p, posp, _dp, chp, nscp, alnP), escP, is_abs, is_conv, s1, s2, consumedP, _ = _pion_step(
+            (p4p, posp, _dp, chp, nscp, alnP), escP, is_abs, is_conv, s1, s2, consumedP, pstat = _pion_step(
                 p4, pos, dhat, chg, nsc, is_pi, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kP)
+            # kind-1 FSI reweight sufficient statistics (mirrors the legacy brec/srec per-step records):
+            #   pion: record every geometric hit (has_hit) -> branch code + sigma components (sa,ss,si).
+            #   nucleon: record every in-slab candidate step (perp2_c<1e5) -> hit flag + a_nom=pi b^2/sigma.
+            p_hh, p_bc, p_sa, p_ss, p_si = pstat                      # _pion_step stats
+            n_hh, n_perp2, n_sig = nstat                              # _nucleon_step stats
+            a_nom = jnp.pi * n_perp2 / jnp.clip(n_sig * MB_TO_FM2, 1e-12, None)
+            rec_slot = (is_pi & p_hh, p_bc, p_sa, p_ss, p_si,        # pion hit mask + branch stats
+                        is_N & (n_perp2 < 1e5), n_hh, a_nom)         # nucleon candidate mask + hit + a_nom
             consumed = consumedN | consumedP                          # only the active species adds bits
             p4_2 = jnp.where(is_N[:, None], p4n, jnp.where(is_pi[:, None], p4p, p4))
             pos_2 = jnp.where(is_N[:, None], posn, jnp.where(is_pi[:, None], posp, pos))
@@ -283,14 +292,17 @@ def make_pool_stepper(su, cfg):
             pio = tuple(jnp.where(is_N, pk, dk) if pk.ndim == 1
                         else jnp.where(is_N[:, None], pk, dk)
                         for pk, dk in zip(pinN, _dead(n)))
-            return consumed, (new, nuc1, nuc2, pio)
+            return consumed, (new, nuc1, nuc2, pio, rec_slot)
 
-        consumed, (new, nuc1, nuc2, pio) = jax.lax.scan(slot, consumed, jnp.arange(M))
+        consumed, (new, nuc1, nuc2, pio, recs) = jax.lax.scan(slot, consumed, jnp.arange(M))
         T = lambda x: jnp.moveaxis(x, 0, 1)                          # (M, n, ...) -> (n, M, ...)
         p4s, poss, fzs, nscs, chgs, als, terms, fates = new
         stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "nsc": T(nscs),
                   "charge": T(chgs), "alive": T(als), "fate": T(fates)}
         terminal = T(terms)
+        # per-slot (n,M) kind-1 record fields for this step (consumed by run_cascade_pool accumulation)
+        rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss", "pi_si", "nu_m", "nu_hh", "nu_a")
+        rec = {k: T(v) for k, v in zip(rk, recs)}
 
         def _spawn(species, packs):                                  # packs: list of (p4,pos,fz,q,al) (M,n,...)
             p4_, pos_, fz_, q_, al_ = (jnp.concatenate([T(p[i]) for p in packs], axis=1) for i in range(5))
@@ -305,7 +317,7 @@ def make_pool_stepper(su, cfg):
         spawn["pos"] = jnp.concatenate([npos_, ppos], axis=1)
         spawn["fz"] = jnp.concatenate([nfz, pfz], axis=1)
         spawn["alive"] = jnp.concatenate([nal, pal], axis=1)
-        return stack2, terminal, spawn, consumed
+        return stack2, terminal, spawn, consumed, rec
 
     return stepper
 
@@ -325,47 +337,88 @@ def pool_reconcile(stack, terminal, spawn, M):
     return compact(combined, M)
 
 
-def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_origin=-999):
+def _rec_scatter(bufs, cnt, mask, vals, cap):
+    """Append per-event the masked slots' `vals` into persistent (n, cap) buffers at a running write
+    index `cnt` (the scratch-slot `cap` is out of range -> mode='drop' discards overflow + invalid).
+    Within a step the masked slots get distinct indices (cumsum order); across steps gidx>=cnt, so no
+    collision with prior writes.  Returns (new_bufs, new_cnt, overflow_this_step)."""
+    n, M = mask.shape; ar = jnp.arange(n)[:, None]
+    order = jnp.cumsum(mask.astype(jnp.int32), axis=1) - 1
+    gidx = cnt[:, None] + order
+    valid = mask & (gidx < cap)
+    dst = jnp.where(valid, gidx, cap)
+    new_bufs = [b.at[ar, dst].set(v, mode="drop") for b, v in zip(bufs, vals)]
+    overflow = jnp.sum((mask & (gidx >= cap)).astype(jnp.int32)).astype(jnp.int32)
+    return new_bufs, (cnt + jnp.sum(mask.astype(jnp.int32), axis=1)).astype(cnt.dtype), overflow
+
+
+def _empty_fsi_record(n, Kp, Kn):
+    """Per-event kind-1 FSI reweight buffers in legacy brec/srec layout (defaults give per-slot LR=1)."""
+    return dict(bc=jnp.zeros((n, Kp), jnp.int32), sa=jnp.ones((n, Kp)), ss=jnp.ones((n, Kp)),
+                si=jnp.zeros((n, Kp)), nh=jnp.zeros(n, jnp.int32),
+                hh=jnp.zeros((n, Kn), bool), a=jnp.full((n, Kn), 50.0), ns=jnp.zeros(n, jnp.int32))
+
+
+def pool_fsi_reweight(record, sabs, sscat):
+    """Joint kind-1 FSI reweight for the pool (mirrors legacy): pion branch-split (sabs,sscat) x nucleon
+    sigma_scatter (sscat).  Pure in (sabs,sscat); == 1 at nominal; == the in-walk weight at any theta."""
+    wp = pion_branch_reweight((record["bc"], record["sa"], record["ss"], record["si"], record["nh"]),
+                              sabs, sscat)
+    wn = nucleon_scat_reweight((record["hh"], record["a"], record["ns"]), sscat)
+    return wp * wn
+
+
+def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_origin=-999, rec_caps=None):
     """POOLED engine loop (docs/logbook/cascade_pool_engine.md): ONE fixed-size (n, M) particle stack
     stepped once per step; the in/out reconcile (pool_reconcile) runs INSIDE the step, vs the BFS's
     per-generation compact across max_gen separate full-max_steps passes (~10-24x dead-slot waste).
-      stepper(stack, key, state) -> (stack2 (n,M), terminal (n,M) bool, spawn (n,K), state2)
+      stepper(stack, key, state) -> (stack2 (n,M), terminal (n,M) bool, spawn (n,K), state2, rec)
         advances every live slot ONE step and returns: the post-step stack, the newly-terminal flag, the
-        particles created this step (spawn ParticleBatch), and the threaded step state (e.g. the consumed
-        mask).  state0 = initial step state.
+        particles created this step (spawn ParticleBatch), the threaded step state (e.g. the consumed
+        mask), and per-slot kind-1 FSI record fields `rec` (consumed only when rec_caps is set).
     Escaped terminals (the cascade FINAL STATE) are accumulated into a fixed (n, M_out) output batch each
     step.  `prim_origin` (RES): the origin tag of the PRIMARY pion -- its terminal FATE (escape/absorb/
-    convert) is latched per event (so the CC1pi schema can set pi_post pid 0/-1 for abs/conv, which the
-    escape-only output cannot record); -999 (default) never matches -> a no-op for QE/tests.
-    Returns (out_batch, stack_overflow, out_overflow, prim_fate (n,) -- FATE_NONE where the primary never
-    terminated or prim_origin unset)."""
+    convert) is latched per event; -999 (default) never matches -> a no-op for QE/tests.
+    rec_caps=(Kp,Kn): if set, accumulate the per-event kind-1 FSI reweight record (pion hits<=Kp,
+    nucleon candidate steps<=Kn) and return it as a 5th element; if None, return the 4-tuple as before.
+    Returns (out_batch, stack_overflow, out_overflow, prim_fate[, fsi_record])."""
     n = init["alive"].shape[0]; ar = jnp.arange(n)
     stack, _ = compact(init, M)
     out0 = empty_batch(n, M_out)
+    with_rec = rec_caps is not None
+    Kp, Kn = rec_caps if with_rec else (1, 1)
+    rec0 = _empty_fsi_record(n, Kp, Kn)
 
     def cond(st):
-        i = st[0]; stk = st[1]
-        return (i < max_steps) & jnp.any(stk["alive"])
+        return (st[0] < max_steps) & jnp.any(st[1]["alive"])
 
     def body(st):
-        i, stk, state, out, sofl, oofl, prim = st
-        stk2, terminal, spawn, state2 = stepper(stk, jax.random.fold_in(key, i), state)
-        # collect ESCAPED terminals (final-state particles) into the output buffer.
+        i, stk, state, out, sofl, oofl, prim, rb, rofl = st
+        _step = stepper(stk, jax.random.fold_in(key, i), state)      # 4- or 5-tuple (rec optional)
+        stk2, terminal, spawn, state2 = _step[:4]
+        rec = _step[4] if len(_step) == 5 else None
         term_batch = {**stk2, "alive": terminal}
         out2, oo = compact({k: jnp.concatenate([out[k], term_batch[k]], axis=1) for k in out}, M_out)
-        # latch the primary pion's terminal fate (RES): first step its origin-tagged slot terminates.
         isprim = (stk2["origin"] == prim_origin) & (stk2["species"] == PION) & (stk2["fate"] != FATE_NONE)
         anyp = jnp.any(isprim, axis=1); j = jnp.argmax(isprim, axis=1)
-        newly = anyp & (prim == FATE_NONE)
-        prim = jnp.where(newly, stk2["fate"][ar, j], prim)
-        # reconcile the live stack (drop terminals, insert spawns)
+        prim = jnp.where(anyp & (prim == FATE_NONE), stk2["fate"][ar, j], prim)
+        if with_rec:                                                  # accumulate kind-1 FSI records
+            (bc, sa, ss, si), nh, op = _rec_scatter(
+                [rb["bc"], rb["sa"], rb["ss"], rb["si"]], rb["nh"], rec["pi_hh"],
+                [rec["pi_bc"], rec["pi_sa"], rec["pi_ss"], rec["pi_si"]], Kp)
+            (hh, a), ns, on = _rec_scatter([rb["hh"], rb["a"]], rb["ns"], rec["nu_m"],
+                                           [rec["nu_hh"], rec["nu_a"]], Kn)
+            rb = dict(bc=bc, sa=sa, ss=ss, si=si, nh=nh, hh=hh, a=a, ns=ns)
+            rofl = (rofl + op + on).astype(rofl.dtype)
         newstk, so = pool_reconcile(stk2, terminal, spawn, M)
         return (i + jnp.int32(1), newstk, state2, out2,
-                sofl + so.astype(sofl.dtype), oofl + oo.astype(oofl.dtype), prim)
+                sofl + so.astype(sofl.dtype), oofl + oo.astype(oofl.dtype), prim, rb, rofl)
 
     init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0),
-               jnp.full(n, FATE_NONE, jnp.int32))
-    _, stack, _, out, sofl, oofl, prim = jax.lax.while_loop(cond, body, init_st)
+               jnp.full(n, FATE_NONE, jnp.int32), rec0, jnp.int32(0))
+    _, stack, _, out, sofl, oofl, prim, rb, rofl = jax.lax.while_loop(cond, body, init_st)
+    if with_rec:
+        return out, sofl, oofl, prim, (rb, rofl)
     return out, sofl, oofl, prim
 
 
