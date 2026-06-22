@@ -563,7 +563,7 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
     su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
     kpi, knuc, kpi2 = jax.random.split(su["kp"], 3)
-    if getattr(cfg, "engine", "bfs") == "pool":
+    if getattr(cfg, "engine", "pool") == "pool":
         # POOLED engine: ONE fixed-size stack stepped once/step, in/out reconcile inside the step (vs the
         # BFS's max_gen full-max_steps passes).  More faithful (true step-order consumption + ALL created
         # pions propagated from their creation point; for RES the primary pion is a gen-0 PION stack slot

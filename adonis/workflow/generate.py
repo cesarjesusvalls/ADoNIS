@@ -117,7 +117,7 @@ def run_channel(channel, gc, target):
     print(f"[cascade] nucleus radius={_radius:.2f} fm -> max_steps={_ms} (floor {cas.max_steps})", flush=True)
     cfg_cascade = DiscreteCascadeConfig(cylinder=cas.cylinder, step=cas.step, max_steps=_ms,
                                         seed=1, nn_inelastic=cas.nn_inelastic,
-                                        engine=getattr(cas, "engine", "bfs"),
+                                        engine=getattr(cas, "engine", "pool"),
                                         nucleus=target.density_p, density_n=target.density_n,
                                         configs=target.configs)
     sf_n = SpectralFunction(target.spectral_n); sf_p = SpectralFunction(target.spectral_p)
