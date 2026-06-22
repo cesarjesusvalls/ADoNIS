@@ -38,6 +38,10 @@ MATERIALS = {
     "CG": ("data/oracle/t2k_cc1pi_engine_rich_5seedG.npz",
            "data/oracle/t2k_cc0pi_engine_rich_5seedG.npz",
            "data/oracle/t2k_cc1pi_rich_ach_FSI_C_gauss.npz"),
+    # Ar-GAUSSIAN.
+    "ArG": ("data/oracle/t2k_cc1pi_engine_rich_ar5seedG.npz",
+            "data/oracle/t2k_cc0pi_engine_rich_ar5seedG.npz",
+            "data/oracle/t2k_cc1pi_rich_ach_FSI_Ar_gauss.npz"),
 }
 REF_PROC = {"qe": [200], "res": [401, 402], "both": None}
 

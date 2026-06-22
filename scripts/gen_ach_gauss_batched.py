@@ -14,28 +14,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 TARGET = int(sys.argv[1]) if len(sys.argv) > 1 else 2_000_000
 BATCH = int(sys.argv[2]) if len(sys.argv) > 2 else 500_000
-BASE = Path("_oracle_out/run_T2K_C_fate_gauss.yml")
-BDIR = Path("data/oracle/_ach_gauss_batches"); BDIR.mkdir(parents=True, exist_ok=True)
-OUT = "data/oracle/t2k_cc1pi_rich_ach_FSI_C_gauss.npz"
+TAG = sys.argv[3] if len(sys.argv) > 3 else "C"            # target: C or Ar
+STEM = f"T2K_{TAG}_fate_gauss"                             # base card stem (run_<STEM>.yml -> <STEM>.hepmc)
+BASE = Path(f"_oracle_out/run_{STEM}.yml")
+BDIR = Path(f"data/oracle/_ach_gauss_batches_{TAG}"); BDIR.mkdir(parents=True, exist_ok=True)
+OUT = f"data/oracle/t2k_cc1pi_rich_ach_FSI_{TAG}_gauss.npz"
 base_txt = BASE.read_text()
 
 def card_for(seed, nev):
-    t = base_txt.replace("  NEvents: 2000000", f"  NEvents: {nev}")
-    t = t.replace("      Name: /out/T2K_C_fate_gauss.hepmc", f"      Name: /out/T2K_C_fate_gauss_s{seed}.hepmc")
+    t = base_txt.replace("  NEvents: 2000000", f"  NEvents: {nev}").replace("  NEvents: 50000", f"  NEvents: {nev}")
+    t = t.replace(f"      Name: /out/{STEM}.hepmc", f"      Name: /out/{STEM}_s{seed}.hepmc")
     t = t.replace('Options: !include "data/default/OptionDefaults.yml"',
                   f"Options:\n  Initialize:\n    Seed: {seed}\n    Accuracy: 1e-2\n"
                   f"  Unweighting:\n    Name: Percentile\n    percentile: 99")
-    p = Path(f"_oracle_out/run_T2K_C_fate_gauss_s{seed}.yml"); p.write_text(t); return p
+    p = Path(f"_oracle_out/run_{STEM}_s{seed}.yml"); p.write_text(t); return p
 
 def run_batch(seed):
     card = card_for(seed, BATCH)
-    hep = Path(f"_oracle_out/T2K_C_fate_gauss_s{seed}.hepmc")
+    hep = Path(f"_oracle_out/{STEM}_s{seed}.hepmc")
     log = f"/tmp/ach_gauss_s{seed}.log"
     print(f"  [batch seed={seed}] docker run (NEvents={BATCH}) -> {log}", flush=True)
     with open(log, "w") as fh:
         rc = subprocess.run(["docker", "run", "--rm", "-v", f"{os.getcwd()}/_oracle_out:/out",
                              "--entrypoint", "/achilles/bin/achilles", "achilles:fullcascade",
-                             f"/out/run_T2K_C_fate_gauss_s{seed}.yml"], stdout=fh, stderr=subprocess.STDOUT).returncode
+                             f"/out/run_{STEM}_s{seed}.yml"], stdout=fh, stderr=subprocess.STDOUT).returncode
     if not hep.exists():
         print(f"  [batch seed={seed}] NO hepmc (rc={rc}) -- skip", flush=True); return None
     npz = BDIR / f"s{seed}.npz"
@@ -53,18 +55,17 @@ while total < TARGET:
     if seed > 60: print("  too many batches, stopping"); break
 bar.close()
 
-# --- combine batch npzs with correct normalization ---
+# --- combine batch npzs with the CORRECT POOLED normalization (events weighted ~equally; a tiny
+#     crashed batch contributes proportionally to its stats, not 1/B): combined w = w * sigma_bar/Sum_w.
 files = sorted(glob.glob(str(BDIR / "s*.npz")))
-B = len(files); print(f"\ncombining {B} batches, total ~{total} events", flush=True)
-acc = {}
-for f in files:
-    d = np.load(f, allow_pickle=True)
-    wnb = d["w"].astype(float) * float(d["weight_to_nb"]) / B           # combined absolute nb weight
-    for k in d.files:
-        if k in ("weight_to_nb", "gen_xs_pb", "sum_w_all"):
-            continue
-        acc.setdefault(k, []).append(d["w"]*0 + wnb if k == "w" else d[k])
-out = {k: np.concatenate(v) for k, v in acc.items()}
-out["weight_to_nb"] = 1.0                                               # w already in nb
+META = {"weight_to_nb", "gen_xs_pb", "sum_w_all"}
+ds = [np.load(f, allow_pickle=True) for f in files]
+sumw_b = [float(d["w"].sum()) for d in ds]
+sig_b = [sw * float(d["weight_to_nb"]) for sw, d in zip(sumw_b, ds)]
+scale = float(np.mean(sig_b)) / float(np.sum(sumw_b))                   # mean_sigma / total_raw_w
+print(f"\ncombining {len(files)} batches, total ~{total} events  sigma spread {np.std(sig_b)/np.mean(sig_b)*100:.1f}%", flush=True)
+out = {k: np.concatenate([(d["w"].astype(float) * scale) if k == "w" else d[k] for d in ds])
+       for k in ds[0].files if k not in META}
+out["weight_to_nb"] = 1.0
 np.savez(OUT, **out)
-print(f"DONE -> {OUT}  ({len(out['w'])} events, weight_to_nb folded in)", flush=True)
+print(f"DONE -> {OUT}  ({len(out['w'])} events, pooled, weight_to_nb=1)", flush=True)
