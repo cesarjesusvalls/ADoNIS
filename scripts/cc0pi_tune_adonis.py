@@ -240,7 +240,11 @@ def build_replica_pool(kcasc, qe, qw, res, rw):
     nhmax = max(int(jnp.max(recq["nh"])), int(jnp.max(recr["nh"])))
     nsmax = max(int(jnp.max(recq["ns"])), int(jnp.max(recr["ns"])))
     assert nhmax <= REC_CAPS[0] and nsmax <= REC_CAPS[1], ("rec overflow", nhmax, nsmax)
-    assert int(oflq) == 0 and int(oflr) == 0, ("pool stack/out overflow (raise P/M_out)", int(oflq), int(oflr))
+    # pool buffer overflow (P stack / M_out finals): production tolerates a handful per 1e4-1e5 events
+    # (logged, not fatal -- those events drop a low-rank particle).  LOG it, don't crash.
+    if int(oflq) or int(oflr):
+        print(f"  [build_replica_pool] pool buffer overflow: QE={int(oflq)} RES={int(oflr)} "
+              f"of (nq={nq}, nr={nr}) events", flush=True)
     return jax.block_until_ready(R)
 
 

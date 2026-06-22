@@ -1,0 +1,10 @@
+name: t2k_c_qe_5seedG
+material: C
+n_per_seed: 30000
+n_seeds: 5
+channels: [qe]
+cascade: {P: 10, max_gen: 3, n_recoil: 2, step: 0.04, max_steps: 600,
+          cylinder: false, nn_inelastic: true, mprot: 4, engine: pool}
+tracking: {enabled: false, steps: false}
+out_dir: data/oracle
+tag: _5seedG

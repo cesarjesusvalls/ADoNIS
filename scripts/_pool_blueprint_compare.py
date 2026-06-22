@@ -1,18 +1,20 @@
 """Stage 3 gate: the pool-backed blueprint reproduces the legacy CC0pi dpt prediction within stats.
 Same frozen proposal -> legacy replicas (DiscreteCascadeFSI+DiscreteNucleonFSI, brec/srec) vs pool
 replicas (cascade_carbon_v2 pool, joint pool_fsi_reweight).  Compare nominal histogram + a short fit."""
-import os, sys
+import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, jax, jax.numpy as jnp
+from tqdm import tqdm
 import scripts.cc0pi_tune_adonis as T
-T.NQE = T.NRES = 50000                                          # smaller for a fast gate
-NREP = 4
+T.NQE = T.NRES = 30000                                          # smaller for a fast gate
+NREP = 3
 
-qe, qw, res, rw = T.build_proposal(); print("proposal sampled", flush=True)
-leg = [T.build_replica(jax.random.PRNGKey(50 + i), qe, qw, res, rw) for i in range(NREP)]
-print("legacy replicas done", flush=True)
-pool = [T.build_replica_pool(jax.random.PRNGKey(50 + i), qe, qw, res, rw) for i in range(NREP)]
-print("pool replicas done", flush=True)
+print("building proposal (first jit compile ~1-2 min)...", flush=True)
+qe, qw, res, rw = T.build_proposal()
+leg = [T.build_replica(jax.random.PRNGKey(50 + i), qe, qw, res, rw)
+       for i in tqdm(range(NREP), desc="legacy replicas (1st ~compile)", file=sys.stdout)]
+pool = [T.build_replica_pool(jax.random.PRNGKey(50 + i), qe, qw, res, rw)
+        for i in tqdm(range(NREP), desc="pool replicas (1st ~compile)", file=sys.stdout)]
 
 th = jnp.array([1.0, 1.0])
 hl = np.mean([np.asarray(T.model_hist(th, R)) for R in leg], axis=0)

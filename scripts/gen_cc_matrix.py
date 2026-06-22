@@ -34,6 +34,10 @@ MATERIALS = {
     "Ar": (_pick("data/oracle/t2k_cc1pi_engine_rich_av12.npz", "data/oracle/t2k_cc1pi_engine_rich_av5.npz"),
            _pick("data/oracle/t2k_cc0pi_engine_rich_av30.npz", "data/oracle/t2k_cc0pi_engine_rich_av5.npz"),
            "data/oracle/t2k_cc1pi_rich_ach_FSI_Ar_proc.npz"),
+    # C-GAUSSIAN (all-Gaussian apples-to-apples): 5-seed Gaussian ADoNIS banks vs the 2M Gaussian ACHILLES ref.
+    "CG": ("data/oracle/t2k_cc1pi_engine_rich_5seedG.npz",
+           "data/oracle/t2k_cc0pi_engine_rich_5seedG.npz",
+           "data/oracle/t2k_cc1pi_rich_ach_FSI_C_gauss.npz"),
 }
 REF_PROC = {"qe": [200], "res": [401, 402], "both": None}
 

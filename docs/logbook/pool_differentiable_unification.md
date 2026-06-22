@@ -52,6 +52,29 @@ Kn 256->64, and asserts pool stack/out overflow==0. Open self-review item: the p
 nucleon scatters (more complete than legacy leading+1) -> the FIT BFP legitimately differs from legacy;
 the Stage 3 gate is the NOMINAL prediction match (+ ACHILLES + autodiff), NOT BFP-match.
 
+## ALL-GAUSSIAN VALIDATION (apples-to-apples, the new reference)
+Built the Gaussian ACHILLES C reference + Gaussian ADoNIS and compared like-for-like:
+- ACHILLES: `_oracle_out/run_T2K_C_fate_gauss.yml` (Probability: Gaussian). Single 2M runs hit a
+  DETERMINISTIC mid-run SIGSEGV (fixed Seed 12345678 always crashes at the same event ~60k), so
+  `scripts/gen_ach_gauss_batched.py` batches over distinct seeds (override Options.Initialize.Seed),
+  keeps partials, and `scripts/combine_ach_gauss.py` concats with the POOLED normalization
+  (per-event nb = w_i·σ̄_b/Σw_all, weight_to_nb=1; reduces to single-file for B=1). 11 batches ->
+  2,024,263 events, σ_b spread 2.4%. (ACHILLES native arm64 `achilles:fullcascade` ~4.6 ms/event.)
+- ADoNIS: 5-seed Gaussian banks (`configs/gen_c_{res,qe}_5seedG.yaml`, cylinder=false, pool, 600). RES
+  413,908 ev, QE 150k. 1-seed Gaussian wall time ~840 s (cascade ~10 ms/ev).
+- Matrix `gen_cc_matrix.py CG` (new "CG" material) -> `paper_figures/cc_matrix_CG.pdf`.
+
+RESULT (ACH/ADO, main channels ~1%): CC0π QE incl 0.996, CC0π RES incl 1.012, CC0π both 0.998,
+CC1π RES incl 0.994, CC1π both 0.985; QE/RES proton splits ~0.99-1.03. **The earlier "RES 9% low"
+(1.092) was a LOW-STATS artifact (1 ADoNIS seed vs 50k ACHILLES) — gone at 5-seed/2M.** Off cells are
+genuinely low-stats: CC1π·QE (cascade-created pions only, N~35-126) + a few 2p tails; CC0π·RES 0p
+(0.773, N=30) is the known soft-knockout tail. Pipeline: `scripts/_pipeline_5seed_gauss.sh`.
+
+PERF note (`scripts/_pool_timing.py`): pool ~9x the legacy SEGMENT cascade per replica (intrinsic
+per-step compaction, NOT my records which add ~0; max_steps 600 vs 260 is a real 2x but 600 is the
+production value). cylinder==gaussian speed. The legacy segment is fast only because it is the
+approximate proton-only path (the thing lead #2 fixed).
+
 ## Log
 - Baseline: `tests/test_cascade_reweight_records.py` + `tests/test_cascade_pool.py` → 8 passed (pre-work).
 - **Stage 1 done** (`scripts/_pool_rec_check.py`, C RES 15814 ev, caps (Kp,Kn)=(32,256)):
