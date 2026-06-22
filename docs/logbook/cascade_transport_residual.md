@@ -242,10 +242,17 @@ non-production (always-pool), no re-cascade pool there.
    inside the nucleus vs the transparency beam fired from outside); RES π momentum spectrum vs the
    transparency beam range.
 
-2. **0p −3.1σ is NOT a soft-proton effect.** With p_win opened and threshold→0, the absorbed-RES leading
-   proton is almost always >250 MeV (0.11% in [150,250), nothing <150; in-window shape matches ACHILLES
-   to ~3% across all brackets). The 0p category is the rare (~31 ev, ~0.1% of absorbed-RES)
-   2-neutron-absorption / recapture tail — negligible absolute impact.
+2. **0p residual VERDICT (4× stats, `lead2hi` 8-seed, N_ado 90 vs 47; `scripts/_lead2_0p_hi.py`).**
+   - NOT global softness: absorbed-RES leading-proton mean 682.9 (ADO) vs 681.4 (ACH); bulk spectrum
+     matches 1–2% in every bracket; multiplicity 1p/2p/3p/4p all within 2–4% (1.04/1.02/0.98/1.03).
+   - REAL & localized (persists at 4× stats, 0p ACH/ADO=0.623): ADoNIS over-produces absorbed-RES events
+     whose LEADING proton lands just below 250 MeV — [0,175)/[175,225)/[225,250) ratios 0.39/0.67/0.70;
+     0p-subset leading-|p| mean 189 (ADO) vs 211 (ACH).
+   - Mechanism: lead #2's re-cascaded absorption-neutron knockouts are SOFT secondary protons; in the
+     rare 2-neutron-absorption channel the only protons are these soft knockouts → leading <250 → 0p.
+     ADoNIS's soft secondary-knockout tail is slightly more abundant/softer than ACHILLES.
+   - Magnitude: 0p is 0.1% of absorbed-RES → negligible for any paper observable. Understood, not a
+     stats artifact, parked as a sub-percent soft-knockout-tail difference in the 2-neutron channel.
 
 **Conclusion:** lead #2 closes the cascade-side absorbed-RES multiplicity SHAPE (1p/2p). The remaining
 absorbed-RES rate deficit (~4.5%) is dominated by the **cascade under-absorbing RES pions by ~3%**
