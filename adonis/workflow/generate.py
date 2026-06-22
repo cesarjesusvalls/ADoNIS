@@ -175,8 +175,9 @@ def run_channel(channel, gc, target):
 def run_generation(gc):
     """Drive generation from a GenConfig.  Engine generates the carbon cascade target only."""
     if gc.tracking.steps:
-        raise NotImplementedError("per-step trajectory storage in batch generation is not supported; "
-                                  "use scripts/cascade_viz.py for viz (small N).")
+        raise NotImplementedError("per-step trajectory storage is not supported by the pool engine "
+                                  "(it was a BFS-only capability); use the MC-truth track tree "
+                                  "(adonis.fsi.tracking.finalize/print_tree) for cascade introspection.")
     targets = resolve_targets(gc.material)
     cascade_targets = [t for t, _ in targets if t.runs_cascade]
     if len(cascade_targets) != 1:
