@@ -32,15 +32,13 @@ g0["charge"] = jnp.stack([su["ch0"], (Npid == 2212).astype(jnp.int32)], axis=1)
 g0["p4"] = jnp.stack([pPi, pN], axis=1)
 g0["pos"] = jnp.broadcast_to(su["pos0"][:, None, :], (m, 2, 3))
 g0["origin"] = jnp.array([CF._ORIG_PRIM_PI, 0], jnp.int32)[None, :] * jnp.ones((m, 1), jnp.int32)
-stepper = CF.make_pool_stepper(su, cfg)
-
-# (1) without records (baseline forward)
-o0, sof0, oof0, pf0 = CF.run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P, max_steps=MS,
-                                          M_out=24, prim_origin=CF._ORIG_PRIM_PI)
-# (2) with records
-o1, sof1, oof1, pf1, (rec, rofl) = CF.run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P,
-                                                       max_steps=MS, M_out=24,
-                                                       prim_origin=CF._ORIG_PRIM_PI, rec_caps=(KP, KN))
+# (1) without records (baseline forward) -- stepper built with_rec=False (forward path, no overhead)
+o0, sof0, oof0, pf0 = CF.run_cascade_pool(g0, CF.make_pool_stepper(su, cfg), knuc, su["consumed0"],
+                                          M=P, max_steps=MS, M_out=24, prim_origin=CF._ORIG_PRIM_PI)
+# (2) with records -- stepper built with_rec=True
+o1, sof1, oof1, pf1, (rec, rofl) = CF.run_cascade_pool(
+    g0, CF.make_pool_stepper(su, cfg, with_rec=True), knuc, su["consumed0"], M=P, max_steps=MS, M_out=24,
+    prim_origin=CF._ORIG_PRIM_PI, rec_caps=(KP, KN))
 
 # forward identical?
 same = all(np.array_equal(np.asarray(o0[k]), np.asarray(o1[k])) for k in o0)

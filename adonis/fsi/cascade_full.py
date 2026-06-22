@@ -228,7 +228,7 @@ def run_cascade(init, kernel, key, consumed0, P=10, max_gen=6):
     return terminals, overflow
 
 
-def make_pool_stepper(su, cfg):
+def make_pool_stepper(su, cfg, with_rec=False):
     """Build the pooled-engine physics stepper (S2b): advance every slot of the (n, M) stack ONE step,
     dispatched by species (NUCLEON -> _nucleon_step, PION -> _pion_step), with the consumed mask threaded
     SLOT-SERIALLY (slot m+1 sees m's depletion).  Both per-step bodies run on every slot and are selected
@@ -263,11 +263,13 @@ def make_pool_stepper(su, cfg):
             # kind-1 FSI reweight sufficient statistics (mirrors the legacy brec/srec per-step records):
             #   pion: record every geometric hit (has_hit) -> branch code + sigma components (sa,ss,si).
             #   nucleon: record every in-slab candidate step (perp2_c<1e5) -> hit flag + a_nom=pi b^2/sigma.
-            p_hh, p_bc, p_sa, p_ss, p_si = pstat                      # _pion_step stats
-            n_hh, n_perp2, n_sig = nstat                              # _nucleon_step stats
-            a_nom = jnp.pi * n_perp2 / jnp.clip(n_sig * MB_TO_FM2, 1e-12, None)
-            rec_slot = (is_pi & p_hh, p_bc, p_sa, p_ss, p_si,        # pion hit mask + branch stats
-                        is_N & (n_perp2 < 1e5), n_hh, a_nom)         # nucleon candidate mask + hit + a_nom
+            # Computed ONLY when with_rec (the differentiable/tuning path) -> forward generation pays nothing.
+            if with_rec:
+                p_hh, p_bc, p_sa, p_ss, p_si = pstat                  # _pion_step stats
+                n_hh, n_perp2, n_sig = nstat                          # _nucleon_step stats
+                a_nom = jnp.pi * n_perp2 / jnp.clip(n_sig * MB_TO_FM2, 1e-12, None)
+                rec_slot = (is_pi & p_hh, p_bc, p_sa, p_ss, p_si,    # pion hit mask + branch stats
+                            is_N & (n_perp2 < 1e5), n_hh, a_nom)     # nucleon candidate mask + hit + a_nom
             consumed = consumedN | consumedP                          # only the active species adds bits
             p4_2 = jnp.where(is_N[:, None], p4n, jnp.where(is_pi[:, None], p4p, p4))
             pos_2 = jnp.where(is_N[:, None], posn, jnp.where(is_pi[:, None], posp, pos))
@@ -292,17 +294,19 @@ def make_pool_stepper(su, cfg):
             pio = tuple(jnp.where(is_N, pk, dk) if pk.ndim == 1
                         else jnp.where(is_N[:, None], pk, dk)
                         for pk, dk in zip(pinN, _dead(n)))
-            return consumed, (new, nuc1, nuc2, pio, rec_slot)
+            out_slot = (new, nuc1, nuc2, pio, rec_slot) if with_rec else (new, nuc1, nuc2, pio)
+            return consumed, out_slot
 
-        consumed, (new, nuc1, nuc2, pio, recs) = jax.lax.scan(slot, consumed, jnp.arange(M))
+        consumed, scanned = jax.lax.scan(slot, consumed, jnp.arange(M))
+        new, nuc1, nuc2, pio = scanned[:4]
         T = lambda x: jnp.moveaxis(x, 0, 1)                          # (M, n, ...) -> (n, M, ...)
         p4s, poss, fzs, nscs, chgs, als, terms, fates = new
         stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "nsc": T(nscs),
                   "charge": T(chgs), "alive": T(als), "fate": T(fates)}
         terminal = T(terms)
-        # per-slot (n,M) kind-1 record fields for this step (consumed by run_cascade_pool accumulation)
-        rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss", "pi_si", "nu_m", "nu_hh", "nu_a")
-        rec = {k: T(v) for k, v in zip(rk, recs)}
+        if with_rec:                                                 # per-slot (n,M) kind-1 record this step
+            rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss", "pi_si", "nu_m", "nu_hh", "nu_a")
+            rec = {k: T(v) for k, v in zip(rk, scanned[4])}
 
         def _spawn(species, packs):                                  # packs: list of (p4,pos,fz,q,al) (M,n,...)
             p4_, pos_, fz_, q_, al_ = (jnp.concatenate([T(p[i]) for p in packs], axis=1) for i in range(5))
@@ -317,7 +321,9 @@ def make_pool_stepper(su, cfg):
         spawn["pos"] = jnp.concatenate([npos_, ppos], axis=1)
         spawn["fz"] = jnp.concatenate([nfz, pfz], axis=1)
         spawn["alive"] = jnp.concatenate([nal, pal], axis=1)
-        return stack2, terminal, spawn, consumed, rec
+        if with_rec:
+            return stack2, terminal, spawn, consumed, rec
+        return stack2, terminal, spawn, consumed
 
     return stepper
 
@@ -479,7 +485,7 @@ def _nucleon_kernel(npos, nmom, nisp, cfg, sscat=1.0):
     return kernel
 
 
-def _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P):
+def _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None):
     """POOLED-engine realization of cascade_carbon_v2 (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
       QE : gen-0 stack = the struck->proton (1 NUCLEON slot); pterm = QE "none"; created = leading
@@ -505,9 +511,13 @@ def _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P):
         g0["pos"] = jnp.broadcast_to(su["pos0"][:, None, :], (n, 2, 3))
         g0["origin"] = jnp.array([_ORIG_PRIM_PI, 0], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
         prim_origin = _ORIG_PRIM_PI
-    stepper = make_pool_stepper(su, cfg)
-    out, sofl, oofl, prim_fate = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P,
-                                                  max_steps=cfg.max_steps, M_out=24, prim_origin=prim_origin)
+    stepper = make_pool_stepper(su, cfg, with_rec=rec_caps is not None)
+    _rc = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps,
+                           M_out=24, prim_origin=prim_origin, rec_caps=rec_caps)
+    if rec_caps is not None:
+        out, sofl, oofl, prim_fate, (fsi_rec, _rofl) = _rc      # joint per-event kind-1 FSI record
+    else:
+        out, sofl, oofl, prim_fate = _rc; fsi_rec = None
     sp = out["species"]; chg = out["charge"]; al = out["alive"]; p4o = out["p4"]
     nterms = [dict(species=sp, pid=jnp.where((sp == NUCLEON) & (chg == 1), 2212, 2112),
                    p4=p4o, alive=al, origin=out["origin"], gen=out["gen"])]
@@ -520,7 +530,7 @@ def _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P):
         pterm = dict(species=jnp.zeros((n,), jnp.int32), pid=jnp.zeros((n,), jnp.int32),
                      p4=jnp.zeros((n, 4)), charge=jnp.zeros((n,), jnp.int32), w=jnp.ones((n,)),
                      alive=jnp.ones((n,), bool), nsc=jnp.zeros((n,), jnp.int32))
-        return pterm, nterms, sofl + oofl, created
+        return pterm, nterms, sofl + oofl, created, fsi_rec
     # RES: split surviving pions into primary (origin tag) vs created
     is_prim = is_surv_pi & (out["origin"] == _ORIG_PRIM_PI)            # escaped primary pion (>=0 per event)
     jp = jnp.argmax(is_prim, axis=1); esc_prim = jnp.any(is_prim, axis=1)
@@ -536,17 +546,20 @@ def _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P):
     jc = jnp.argmax(cim, axis=1); has_cr = cim[ar, jc] > 0.0
     created = dict(pid=jnp.where(has_cr, _CH_PID[chg[ar, jc]], 0), p4=p4o[ar, jc],
                    w=jnp.ones((n,)), alive=has_cr)
-    return pterm, nterms, sofl + oofl, created
+    return pterm, nterms, sofl + oofl, created, fsi_rec
 
 
-def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0, channel="res"):
+def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0,
+                      channel="res", rec_caps=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
                    pion knockouts}; pterm = the surviving pion.
     channel="qe":  NO primary pion -- gen-0 nucleon = the QE proton (p_N); pterm = "no pion" (pid 0).
     Both share the nucleon BFS (top-K knockouts) + the created-pion (NN->NDelta->Npi) re-entry, so the
     meson veto (no surviving pion for CC0pi / exactly one pi+ for CC1pi) is handled uniformly.
-    Returns (pterm, nucleon_terminals_per_gen, overflow, created)."""
+    rec_caps=(Kp,Kn) (pool only): also return the joint per-event kind-1 FSI reweight record as a 5th
+    element (for pool_fsi_reweight / the differentiable blueprint).  Default None -> 4-tuple as before.
+    Returns (pterm, nucleon_terminals_per_gen, overflow, created[, fsi_record])."""
     su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
     kpi, knuc, kpi2 = jax.random.split(su["kp"], 3)
@@ -556,7 +569,10 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
         # pions propagated from their creation point; for RES the primary pion is a gen-0 PION stack slot
         # whose own scatter-recoils/knockouts spawn natively -- no pre-segment extraction).  NOT bit-
         # identical to the BFS -> validated vs ACHILLES (docs/logbook/cascade_pool_engine.md).
-        return _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P)
+        res5 = _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps)
+        return res5 if rec_caps is not None else res5[:4]
+    if rec_caps is not None:
+        raise NotImplementedError("rec_caps (kind-1 FSI record) requires engine='pool'")
     if channel == "res":
         pt, _, precK = pion_segment(p_pi, su["pos0"], su["ch0"], su["consumed0"], su["npos"], su["nmom"],
                                     su["nisp"], cfg, kpi, sabs, sscat)

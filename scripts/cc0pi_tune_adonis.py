@@ -190,6 +190,74 @@ def model_hist(theta, R, M=None):
     return h / jnp.diff(jnp.asarray(EDGES)) * CONV
 
 
+# ============================================================================================== #
+# POOL-BACKED blueprint (the differentiable core): ONE joint cascade per channel (cascade_carbon_v2,
+# engine="pool"), emitting the joint kind-1 FSI record reweighted by pool_fsi_reweight.  Same walk/
+# weight-split PATTERN as the legacy build_replica/model_hist, but the single validated+fixed pool
+# engine underneath (re-cascades both absorption nucleons, charge-resolved sigma, etc.).
+# ============================================================================================== #
+import adonis.fsi.cascade_full as _CF
+# Gaussian (cylinder=False) everywhere -> ADoNIS forward + differentiable tuning share ONE model and the
+# kind-1 sigma-reweight is exact (see all-gaussian decision).  max_steps=600 is a SATURATION CEILING:
+# the pool early-exits once every particle has escaped, so a generous cap costs ~nothing but removes the
+# legacy 260 truncation risk (260 was BFS-verified, not pool-verified).
+POOLCFG = lambda **k: DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=600, engine="pool", **k)
+REC_CAPS = (32, 64)            # pion hits<=32, nucleon candidate steps<=64 per event (measured ns_max~43)
+_P_BUF, _MGEN = 12, 6
+
+
+def _lead_proton_pool(nt):
+    """Leading (global max-momentum) escaped proton from a pool nucleon-terminal batch."""
+    p4 = nt["p4"]; isp = (nt["pid"] == 2212) & nt["alive"]
+    mom = jnp.linalg.norm(p4[:, :, 1:], axis=2) * isp
+    n = p4.shape[0]; ar = jnp.arange(n); j = jnp.argmax(mom, axis=1)
+    return jnp.where((mom[ar, j] > 0)[:, None], p4[ar, j], 0.0)
+
+
+def build_replica_pool(kcasc, qe, qw, res, rw):
+    """Pool analog of build_replica: one cascade_carbon_v2 pool run per channel -> leading proton (for
+    the theta-independent dpt/keep/idx) + the joint kind-1 FSI record (theta enters via pool_fsi_reweight).
+    CC0pi-RES = primary pion absorbed (pterm pid==0), mirroring the legacy last_absorbed selection."""
+    kq, kr = jax.random.split(kcasc, 2); j = jnp.asarray; edges = j(EDGES)
+    nq = len(qe["w"]); nr = len(res["w"])                       # actual event counts (RES generate != NRES)
+    # QE: struck neutron -> proton through the pool (no pion); record carries only nucleon scatters.
+    _pt, ntq, oflq, _c, recq = _CF.cascade_carbon_v2(
+        jnp.zeros((nq, 4)), j(qe["p_out"]), jnp.zeros(nq, jnp.int32), jnp.full(nq, 2112, jnp.int32),
+        jnp.full(nq, 2212, jnp.int32), POOLCFG(seed=2), kq, P=_P_BUF, max_gen=_MGEN, channel="qe", rec_caps=REC_CAPS)
+    q_lead = _lead_proton_pool(ntq[0])
+    q_dpt = _obs(j(qe["k_mu"]), q_lead); q_keep = _sel(j(qe["k_mu"]), q_lead)
+    # RES: primary pion + recoil through the pool (joint pion+nucleon record).
+    ptr, ntr, oflr, _c2, recr = _CF.cascade_carbon_v2(
+        j(res["p_pi"]), j(res["p_N"]), j(res["ppid"]).astype(jnp.int32), j(res["ipid"]).astype(jnp.int32),
+        jnp.full(nr, 2212, jnp.int32), POOLCFG(seed=1), kr, P=_P_BUF, max_gen=_MGEN, channel="res", rec_caps=REC_CAPS)
+    r_lead = _lead_proton_pool(ntr[0])
+    absb = (ptr["pid"] == 0).astype(float)                      # primary pion absorbed -> CC0pi
+    r_dpt = _obs(j(res["k_mu"]), r_lead); r_keep = _sel(j(res["k_mu"]), r_lead)
+    R = dict(q_idx=jnp.clip(jnp.searchsorted(edges, q_dpt) - 1, 0, len(EDGES) - 2),
+             q_keep=q_keep, q_w0=j(qw), q_rec=recq,
+             r_idx=jnp.clip(jnp.searchsorted(edges, r_dpt) - 1, 0, len(EDGES) - 2),
+             r_keep=r_keep, r_w0=j(rw) * absb, r_rec=recr)
+    nhmax = max(int(jnp.max(recq["nh"])), int(jnp.max(recr["nh"])))
+    nsmax = max(int(jnp.max(recq["ns"])), int(jnp.max(recr["ns"])))
+    assert nhmax <= REC_CAPS[0] and nsmax <= REC_CAPS[1], ("rec overflow", nhmax, nsmax)
+    assert int(oflq) == 0 and int(oflr) == 0, ("pool stack/out overflow (raise P/M_out)", int(oflq), int(oflr))
+    return jax.block_until_ready(R)
+
+
+@jax.jit
+def model_hist_pool(theta, R, M=None):
+    """Pool analog of model_hist: theta=(sabs,sscat[,MA]); reweight the precomputed pool walk replica."""
+    sabs, sscat = theta[0], theta[1]
+    w_ma_q = ma_reweight(M["qe"], theta[2]) if M is not None else 1.0
+    w_ma_r = ma_reweight(M["res"], theta[2]) if M is not None else 1.0
+    q_w = R["q_w0"] * w_ma_q * _CF.pool_fsi_reweight(R["q_rec"], sabs, sscat)
+    r_w = R["r_w0"] * w_ma_r * _CF.pool_fsi_reweight(R["r_rec"], sabs, sscat)
+    nb = len(EDGES) - 1
+    h = (jax.ops.segment_sum(q_w * R["q_keep"], R["q_idx"], num_segments=nb)
+         + jax.ops.segment_sum(r_w * R["r_keep"], R["r_idx"], num_segments=nb))
+    return h / jnp.diff(jnp.asarray(EDGES)) * CONV
+
+
 def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:6.1f}s] {m}", flush=True)

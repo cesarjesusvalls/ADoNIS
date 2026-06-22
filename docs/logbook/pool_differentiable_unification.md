@@ -37,6 +37,21 @@ fixed-capacity event buffers via a running per-event write-index (scratch-slot t
 4. Cleanup: remove BFS forward + legacy classes + propagate_discrete; engine switch; extract cascade_real
    utilities, drop RealCascadeFSI/cascade_exact/dead tests. Gate: full suite green.
 
+## DECISION: all-Gaussian (this session)
+Use the Gaussian interaction probability everywhere (ADoNIS + ACHILLES), not Cylinder — see
+[[all-gaussian-cascade-probability]]. Cylinder is a deterministic geometric hit (no kind-1 sigma
+reweight); Gaussian is stochastic -> exact differentiable reweight, and both integrate to the same
+total sigma. Apples-to-apples requires REGENERATING the ACHILLES T2K references in Gaussian (they used
+Cylinder). Transition: finish unification (Gaussian) -> flip gen configs cylinder:false -> regen
+ACHILLES+ADoNIS in Gaussian -> re-validate (48-cell matrices, lead #2, 0p).
+
+Self-review fixes (applied before Stage 3 commit): rec emission is now OPT-IN at stepper build
+(make_pool_stepper with_rec=) so forward generation pays zero overhead; build_replica_pool uses
+max_steps=600 as an early-exit CEILING (removes the unverified legacy-260 truncation risk at no cost),
+Kn 256->64, and asserts pool stack/out overflow==0. Open self-review item: the pool reweights ALL
+nucleon scatters (more complete than legacy leading+1) -> the FIT BFP legitimately differs from legacy;
+the Stage 3 gate is the NOMINAL prediction match (+ ACHILLES + autodiff), NOT BFP-match.
+
 ## Log
 - Baseline: `tests/test_cascade_reweight_records.py` + `tests/test_cascade_pool.py` → 8 passed (pre-work).
 - **Stage 1 done** (`scripts/_pool_rec_check.py`, C RES 15814 ev, caps (Kp,Kn)=(32,256)):
@@ -52,3 +67,8 @@ fixed-capacity event buffers via a running per-event write-index (scratch-slot t
   grad_ad=[151.21,-20280.20] vs grad_fd same, maxreldiff 2.7e-8 → PASS. Synthetic-record pytest
   `tests/test_pool_fsi_reweight.py` 3/3 (nominal identity, factorization==legacy, autodiff==FD). No
   θ-walk threaded (would violate kind-1; walk already θ-independent).
+- **Stage 3a done**: `cascade_carbon_v2(rec_caps=(Kp,Kn))` returns the joint per-event FSI record (4-tuple
+  default unchanged; 5-tuple with record). Gate `scripts/_engine_rec_check.py`: per-event aligned
+  (n=events), nominal≡1 bit-exact, forward identical 4-tuple vs 5-tuple — PASS (also after the rec opt-in
+  refactor). `build_replica_pool`/`model_hist_pool` (pool-backed blueprint, Gaussian) added to
+  cc0pi_tune_adonis. Pool-vs-legacy nominal comparison: see `scripts/_pool_blueprint_compare.py`.
