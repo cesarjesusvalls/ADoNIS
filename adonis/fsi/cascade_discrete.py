@@ -385,6 +385,13 @@ def _propagate_discrete(pos0, p_pi0, ch0, npos, nmom, nisp, cfg: DiscreteCascade
         if not cfg.pauli:
             abs_blocked = abs_blocked & False
         is_abs = chose_abs & ~abs_blocked & has_mode                          # absorption survives Pauli + realizable
+        # KNOWN DIVERGENCE (BFS only): proton-only absorption products -- abs_protA/B zero the neutron
+        # (abs_one returns where(A_is_p, pa, 0)), so the absorption NEUTRON is dropped and never
+        # re-cascaded.  This is the SAME bug fixed in the pool path (_pion_step, commit f78224f), where
+        # ACHILLES re-cascades BOTH nucleons (Cascade.cc particles_out[0],[1]) -> a neutron can knock out
+        # a downstream proton.  The BFS top-K (best_abs) tracks proton recoils only and cannot re-cascade
+        # arbitrary neutrons, so it is NOT fixed here; use engine="pool".  See docs/logbook/
+        # cascade_transport_residual.md sec 4b.
         best_abs = jnp.where(is_abs[:, None], abs_protA, best_abs)            # 1st absorption proton
         best_abs2 = jnp.where(is_abs[:, None], abs_protB, best_abs2)          # 2nd absorption proton (piNN->NN)
 
@@ -1334,7 +1341,12 @@ class DiscreteNucleonFSI:
         kp2 = jax.random.fold_in(kp, 99)
         has_ko = jnp.linalg.norm(best_ko[:, 1:], axis=1) > 1.0
         ko_start = jnp.where(has_ko[:, None], best_ko, event.p_N)         # dummy where no knockout
-        isp_ko = jnp.ones(n, bool)                                       # knockout proton
+        # KNOWN DIVERGENCE (legacy DiscreteNucleonFSI only): proton-only knockout tracking.  best_ko
+        # tracks only proton recoils and isp_ko is hardcoded proton, so neutron knockouts (which can
+        # knock out a proton in a later generation) are dropped -- the same class as the pion-absorption
+        # #2 bug.  The pool _nucleon_step threads the recoil species (bg_proton) and re-cascades neutrons
+        # correctly; use engine="pool".  The blueprint scripts that call .apply() inherit this limitation.
+        isp_ko = jnp.ones(n, bool)                                       # knockout proton (legacy assumption)
         ko_f, _, ko_ko, _, _, w_sc2, srec2, made_pi2, _, _, _, _, _, _ = propagate_nucleon_discrete(best_ko_pos, ko_start, isp_ko, npos, nmom,
                                                                         nisp, self.cfg, kp2, fz0=best_ko_fz,
                                                                         consumed0=consumed0, sscat=sscat)
