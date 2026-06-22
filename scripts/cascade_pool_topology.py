@@ -1,6 +1,6 @@
 """End-to-end pool-vs-BFS QE CC0pi proton TOPOLOGY (0p/1p/2p) on identical primaries.
 
-Confirms the S2b-integrate pool path in cascade_carbon_v2 runs and quantifies the engine difference on
+Confirms the S2b-integrate pool path in cascade_carbon runs and quantifies the engine difference on
 the observable that matters (proton multiplicity per event), weighted, with binomial uncertainties."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,10 +27,10 @@ print(f"[gen] {m} live QE events, P={P} ms={MS}", flush=True)
 
 
 def topo(engine):
-    cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
                                 pauli=True, early_exit=True, nucleus=tg.density_p,
                                 density_n=tg.density_n, configs=tg.configs, engine=engine)
-    pterm, nterms, ofl, created = CF.cascade_carbon_v2(
+    pterm, nterms, ofl, created = CF.cascade_carbon(
         pN, pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), Npid.astype(jnp.int32),
         cfg, jax.random.PRNGKey(11), P=P, max_gen=6, channel="qe")
     npr = np.zeros(m)

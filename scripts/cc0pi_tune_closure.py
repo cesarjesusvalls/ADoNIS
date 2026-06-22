@@ -30,7 +30,7 @@ def run():
     # POOL differentiable core (single engine).  Pool is ~9x the legacy segment/replica, so use reduced
     # stats by default (env-tunable), mirroring cc0pi_tune_adonis.main's pool path.
     T.NQE = T.NRES = int(os.environ.get("CC0PI_N", "40000"))
-    _build, _hist = T.build_replica_pool, T.model_hist_pool
+    _build, _hist = T.build_replica, T.model_hist
 
     th_true = np.array([float(sys.argv[2]) if len(sys.argv) > 2 else 1.6,
                         float(sys.argv[3]) if len(sys.argv) > 3 else 0.7,

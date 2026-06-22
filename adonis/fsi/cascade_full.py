@@ -294,8 +294,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     return out, sofl, oofl, prim
 
 
-def _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None):
-    """POOLED-engine realization of cascade_carbon_v2 (QE + RES), mapping the flat (n,M_out) terminal
+def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None):
+    """POOLED-engine realization of cascade_carbon (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
       QE : gen-0 stack = the struck->proton (1 NUCLEON slot); pterm = QE "none"; created = leading
            surviving pion.
@@ -358,7 +358,7 @@ def _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=Non
     return pterm, nterms, sofl + oofl, created, fsi_rec
 
 
-def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0,
+def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0,
                       channel="res", rec_caps=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
@@ -376,5 +376,5 @@ def cascade_carbon_v2(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6
     # inside the step.  Faithful: true step-order consumption + ALL created pions propagated from their
     # creation point; for RES the primary pion is a gen-0 PION stack slot whose own scatter-recoils/
     # knockouts spawn natively.  Validated vs ACHILLES (docs/logbook/cascade_pool_engine.md).
-    res5 = _cascade_pool_v2(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps)
+    res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps)
     return res5 if rec_caps is not None else res5[:4]

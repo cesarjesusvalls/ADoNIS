@@ -27,10 +27,10 @@ print(f"[gen] {MAT}: {m} live RES events, P={P}", flush=True)
 
 
 def run(engine, MS):
-    cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
                                 pauli=True, early_exit=True, nucleus=tg.density_p,
                                 density_n=tg.density_n, configs=tg.configs, engine=engine)
-    pterm, nterms, ofl, created = CF.cascade_carbon_v2(
+    pterm, nterms, ofl, created = CF.cascade_carbon(
         pPi, pN, ppid.astype(jnp.int32), ipid.astype(jnp.int32), Npid.astype(jnp.int32),
         cfg, jax.random.PRNGKey(11), P=P, max_gen=6, channel="res")
     pp = np.asarray(pterm["pid"]); cp = np.asarray(created["pid"])

@@ -16,7 +16,7 @@ N, NCHUNK, MPROT = 30000, 12, 4
 tg = resolve_targets("C")[0][0]
 from adonis.xsec.spectral import SpectralFunction
 sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
-CFG = DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=600, seed=1, nn_inelastic=True, pauli=True,
+CFG = DiscreteCascadeConfig(step=0.04, max_steps=600, seed=1, nn_inelastic=True, pauli=True,
                             early_exit=True, nucleus=tg.density_p, density_n=tg.density_n,
                             configs=tg.configs, engine="pool")   # GAUSSIAN (apples-to-apples vs ACHILLES-Gaussian)
 T0 = time.time(); st = lambda m: print(f"[{time.time()-T0:6.1f}s] {m}", flush=True)
@@ -28,7 +28,7 @@ m = len(a["w"]); st(f"primary done: {m} RES events -> cascading in {NCHUNK} chun
 
 def one_chunk(sl, key):
     g = lambda k: jnp.asarray(a[k][sl])
-    pterm, nterms, ofl, created = CF.cascade_carbon_v2(
+    pterm, nterms, ofl, created = CF.cascade_carbon(
         g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
         g("Npid").astype(jnp.int32), CFG, key, P=10, max_gen=3, channel="res")
     p4s = []

@@ -26,7 +26,7 @@ MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
 _MODE = sys.argv[1] if len(sys.argv) > 1 else "cylinder"        # "cylinder" (T2K) or "gaussian"
 _CYL = _MODE != "gaussian"
 _OUT = "data/oracle/cc0pi_disaggregated.npz" if _CYL else "data/oracle/cc0pi_disaggregated_gaussian.npz"
-_CFG = lambda **k: DiscreteCascadeConfig(cylinder=_CYL, step=0.04, max_steps=600, engine="pool", **k)
+_CFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool", **k)
 NQE, NRES, NH, NSEED = 200000, 200000, 2000, 4   # H contributes 0 CC0pi (free p can't absorb) -> token NH
 
 

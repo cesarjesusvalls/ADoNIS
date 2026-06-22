@@ -17,7 +17,7 @@ a = gen_events("res", 6000, 0, sf_n=sf_n, sf_p=sf_p, n_neutron=tg.A - tg.Z, n_pr
 w = np.asarray(a["w"]); s = w > 0; m = int(s.sum())
 pPi = jnp.asarray(a["p_pi"][s]); pN = jnp.asarray(a["p_N"][s])
 ppid = jnp.asarray(a["ppid"][s]); ipid = jnp.asarray(a["ipid"][s]); Npid = jnp.asarray(a["Npid"][s])
-cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
+cfg = DiscreteCascadeConfig(step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
                             pauli=True, early_exit=True, nucleus=tg.density_p,
                             density_n=tg.density_n, configs=tg.configs, engine="pool")
 su = CF.setup_carbon(pPi, ppid.astype(jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))

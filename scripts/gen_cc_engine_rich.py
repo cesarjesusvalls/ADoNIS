@@ -18,7 +18,7 @@ import adonis.fsi.cascade_full as CF
 CHAN = sys.argv[1] if len(sys.argv) > 1 else "res"
 NRES = int(sys.argv[2]) if len(sys.argv) > 2 else 30000
 NSEED = int(sys.argv[3]) if len(sys.argv) > 3 else 56
-CFG = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=260, seed=1, nn_inelastic=True)
+CFG = DiscreteCascadeConfig(step=0.04, max_steps=260, seed=1, nn_inelastic=True)
 # capacity buffers (env-overridable to shrink): P = BFS width, MAX_GEN = cascade depth, MPROT = stored
 # protons.  _N_RECOIL (recoils/scatter) is set in cascade_discrete via ADONIS_N_RECOIL.  Defaults =
 # the validated generous values; shrink only after the validation closure (ACH/ADO + chi2 unchanged).
@@ -46,7 +46,7 @@ def one(seed):
     a = gen_events(seed)
     n = len(a["w"]); ar = np.arange(n)
     p_pi_in = jnp.asarray(a["p_pi"]) if "p_pi" in a else jnp.asarray(a["p_N"])   # qe: dummy (ignored)
-    pterm, nterms, ofl, created = CF.cascade_carbon_v2(
+    pterm, nterms, ofl, created = CF.cascade_carbon(
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
         jnp.asarray(a["Npid"], jnp.int32), CFG, jax.random.PRNGKey(seed + 11), P=P_BUF, max_gen=MAX_GEN, channel=CHAN)
     # top-M proton terminals across all nucleon generations (regardless of window) + PROVENANCE

@@ -86,7 +86,7 @@ def build_ma_records(qe, res):
 
 
 # ============================================================================================== #
-# POOL-BACKED blueprint (the differentiable core): ONE joint cascade per channel (cascade_carbon_v2,
+# POOL-BACKED blueprint (the differentiable core): ONE joint cascade per channel (cascade_carbon,
 # engine="pool"), emitting the joint kind-1 FSI record reweighted by pool_fsi_reweight.  The walk is
 # theta-independent and the knobs enter only through the kind-1 reweight; the single validated+fixed
 # pool engine underneath (re-cascades both absorption nucleons, charge-resolved sigma, etc.).
@@ -96,7 +96,7 @@ import adonis.fsi.cascade_full as _CF
 # kind-1 sigma-reweight is exact (see all-gaussian decision).  max_steps=600 is a SATURATION CEILING:
 # the pool early-exits once every particle has escaped, so a generous cap costs ~nothing but removes the
 # legacy 260 truncation risk (260 was BFS-verified, not pool-verified).
-POOLCFG = lambda **k: DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=600, engine="pool", **k)
+POOLCFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool", **k)
 REC_CAPS = (32, 64)            # pion hits<=32, nucleon candidate steps<=64 per event (measured ns_max~43)
 _P_BUF, _MGEN = 12, 6
 
@@ -109,20 +109,20 @@ def _lead_proton_pool(nt):
     return jnp.where((mom[ar, j] > 0)[:, None], p4[ar, j], 0.0)
 
 
-def build_replica_pool(kcasc, qe, qw, res, rw):
-    """Walk one replica: one cascade_carbon_v2 pool run per channel -> leading proton (for the
+def build_replica(kcasc, qe, qw, res, rw):
+    """Walk one replica: one cascade_carbon pool run per channel -> leading proton (for the
     theta-independent dpt/keep/idx) + the joint kind-1 FSI record (theta enters via pool_fsi_reweight).
     CC0pi-RES = primary pion absorbed (pterm pid==0)."""
     kq, kr = jax.random.split(kcasc, 2); j = jnp.asarray; edges = j(EDGES)
     nq = len(qe["w"]); nr = len(res["w"])                       # actual event counts (RES generate != NRES)
     # QE: struck neutron -> proton through the pool (no pion); record carries only nucleon scatters.
-    _pt, ntq, oflq, _c, recq = _CF.cascade_carbon_v2(
+    _pt, ntq, oflq, _c, recq = _CF.cascade_carbon(
         jnp.zeros((nq, 4)), j(qe["p_out"]), jnp.zeros(nq, jnp.int32), jnp.full(nq, 2112, jnp.int32),
         jnp.full(nq, 2212, jnp.int32), POOLCFG(seed=2), kq, P=_P_BUF, max_gen=_MGEN, channel="qe", rec_caps=REC_CAPS)
     q_lead = _lead_proton_pool(ntq[0])
     q_dpt = _obs(j(qe["k_mu"]), q_lead); q_keep = _sel(j(qe["k_mu"]), q_lead)
     # RES: primary pion + recoil through the pool (joint pion+nucleon record).
-    ptr, ntr, oflr, _c2, recr = _CF.cascade_carbon_v2(
+    ptr, ntr, oflr, _c2, recr = _CF.cascade_carbon(
         j(res["p_pi"]), j(res["p_N"]), j(res["ppid"]).astype(jnp.int32), j(res["ipid"]).astype(jnp.int32),
         jnp.full(nr, 2212, jnp.int32), POOLCFG(seed=1), kr, P=_P_BUF, max_gen=_MGEN, channel="res", rec_caps=REC_CAPS)
     r_lead = _lead_proton_pool(ntr[0])
@@ -138,13 +138,13 @@ def build_replica_pool(kcasc, qe, qw, res, rw):
     # pool buffer overflow (P stack / M_out finals): production tolerates a handful per 1e4-1e5 events
     # (logged, not fatal -- those events drop a low-rank particle).  LOG it, don't crash.
     if int(oflq) or int(oflr):
-        print(f"  [build_replica_pool] pool buffer overflow: QE={int(oflq)} RES={int(oflr)} "
+        print(f"  [build_replica] pool buffer overflow: QE={int(oflq)} RES={int(oflr)} "
               f"of (nq={nq}, nr={nr}) events", flush=True)
     return jax.block_until_ready(R)
 
 
 @jax.jit
-def model_hist_pool(theta, R, M=None):
+def model_hist(theta, R, M=None):
     """Differentiable CC0pi dsigma/dx [1e-38 units]: theta=(sabs,sscat[,MA]); reweight a precomputed pool walk."""
     sabs, sscat = theta[0], theta[1]
     w_ma_q = ma_reweight(M["qe"], theta[2]) if M is not None else 1.0
@@ -165,7 +165,7 @@ def main():
     global NQE, NRES
     NQE = NRES = int(os.environ.get("CC0PI_N", "40000"))
     NREP = int(os.environ.get("CC0PI_NREP", "4"))
-    _build, _hist = build_replica_pool, model_hist_pool
+    _build, _hist = build_replica, model_hist
     log(f"ENGINE=pool (differentiable core)  NQE=NRES={NQE}  NREP={NREP}")
     qe, qw, res, rw = build_proposal(); log("proposal sampled")
 

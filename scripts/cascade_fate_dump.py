@@ -39,7 +39,7 @@ max_steps = int(sys.argv[6]) if len(sys.argv) > 6 else 260
 flux.BEAM_MODE = "is"
 
 tg = resolve_targets(mat)[0][0]
-cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=max_steps, seed=1, nn_inelastic=True,
+cfg = DiscreteCascadeConfig(step=0.04, max_steps=max_steps, seed=1, nn_inelastic=True,
                             pauli=pauli, nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
 print(f"[cfg] pauli={pauli} max_steps={max_steps}")
 sf_n = SpectralFunction(tg.spectral_n)

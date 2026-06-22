@@ -18,7 +18,7 @@ sf_n = SpectralFunction(tg.spectral_n)
 a = gen_events("qe", 30000, 0, sf_n=sf_n, n_neutron=tg.A - tg.Z, n_proton=tg.Z)
 w = np.asarray(a["w"]); m = len(w); live = w > 0
 print(f"[gen] {m} events, {int(live.sum())} live ({100*live.mean():.1f}%)", flush=True)
-cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=683, seed=1, nn_inelastic=True,
+cfg = DiscreteCascadeConfig(step=0.04, max_steps=683, seed=1, nn_inelastic=True,
                             pauli=True, early_exit=True, nucleus=tg.density_p,
                             density_n=tg.density_n, configs=tg.configs, engine="pool")
 pN = jnp.asarray(a["p_N"]); ipid = jnp.asarray(a["ipid"]); Npid = jnp.asarray(a["Npid"])

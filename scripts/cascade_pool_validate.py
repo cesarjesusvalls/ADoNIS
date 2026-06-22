@@ -1,6 +1,6 @@
 """Pool-vs-BFS QE nucleon-elastic avalanche multiplicity check.
 
-Runs the SAME QE primary bank through (a) the BFS nucleon cascade (cascade_carbon_v2 engine=bfs) and
+Runs the SAME QE primary bank through (a) the BFS nucleon cascade (cascade_carbon engine=bfs) and
 (b) the pooled engine (make_pool_stepper + run_cascade_pool) on the gen-0 QE stack, and compares
 proton(>250 MeV)/event.  Pool is NOT bit-identical to bfs (true step-order consumption) so we expect
 ratio ~1.0, not exact.  nn_inelastic toggled via argv[1] (default False = pure elastic avalanche)."""
@@ -22,7 +22,7 @@ MS = int(sys.argv[4]) if len(sys.argv) > 4 else 683
 print(f"[cfg] nn_inelastic={NN} nev={NEV} M={M} max_steps={MS}", flush=True)
 
 tg = resolve_targets("Ar")[0][0]
-cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=MS, seed=1, nn_inelastic=NN,
+cfg = DiscreteCascadeConfig(step=0.04, max_steps=MS, seed=1, nn_inelastic=NN,
                             pauli=True, early_exit=True, nucleus=tg.density_p,
                             density_n=tg.density_n, configs=tg.configs)
 sf_n = SpectralFunction(tg.spectral_n)
@@ -34,7 +34,7 @@ print(f"[gen] {m} live QE events", flush=True)
 
 # ---- BFS ----
 key = jax.random.PRNGKey(11)
-pterm, nterms, ofl, created = CF.cascade_carbon_v2(
+pterm, nterms, ofl, created = CF.cascade_carbon(
     pN, pN, ppid, ipid.astype(jnp.int32), Npid.astype(jnp.int32), cfg, key,
     P=M, max_gen=6, channel="qe")
 bfs_n = np.zeros(m)

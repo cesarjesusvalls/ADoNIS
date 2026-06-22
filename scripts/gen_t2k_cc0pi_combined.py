@@ -46,7 +46,7 @@ M_P = 938.272
 # CC0pi-Np tight phase space
 MU_LO = 250.0; COSMU = -0.6; P_LO, P_HI = 450.0, 1000.0; COSP = 0.4
 # the joint Gaussian pool is the single differentiable cascade engine (cylinder honored until removed)
-_CFG = lambda **k: DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=600, engine="pool", **k)
+_CFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool", **k)
 
 
 def _qe_cc0pi(key, n, flux, nuc, MA_GeV=1.03):

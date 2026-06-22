@@ -21,7 +21,7 @@ from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
 from adonis.fsi.pool_fsi import run_fsi
 
 MU_LO = 250.0; COSMU = -0.6; P_LO, P_HI = 450.0, 1000.0; COSP = 0.4
-_CFG = lambda **k: DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=600, engine="pool", **k)
+_CFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool", **k)
 
 
 def generate_H(n, seed=0):

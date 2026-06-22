@@ -15,7 +15,7 @@ import adonis.xsec.flux as flux; flux.BEAM_MODE = "is"
 M_N = float(ox.M_N); MS = 600
 
 tg = resolve_targets("C")[0][0]
-cfg = DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
+cfg = DiscreteCascadeConfig(step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
                             pauli=True, nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
 sf_n = SpectralFunction(tg.spectral_n)
 a = gen_events("qe", 40000, 0, sf_n=sf_n, n_neutron=tg.A - tg.Z, n_proton=tg.Z)
