@@ -49,8 +49,8 @@ class CascadeHyperparams:
     max_steps: int = 260
     nn_inelastic: bool = True
     mprot: int = 6              # top-M proton terminals stored per event (-> ADONIS_MPROT)
-    engine: str = "pool"        # cascade engine: "pool" (default, validated single core) | "bfs" (legacy)
-                                # (single per-step-reconciled stack, ~2.8x faster, QE only so far)
+    engine: str = "pool"        # cascade engine: "pool" -- the single validated core (per-step-reconciled
+                                # stack, QE+RES); the only supported value (BFS/legacy paths removed)
 
 
 @dataclass

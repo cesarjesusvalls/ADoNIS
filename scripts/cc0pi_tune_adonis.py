@@ -8,8 +8,7 @@ the nominal forward prediction bit-for-bit -- NO toy, NO free normalization (A i
 nominal).  Covariance-weighted two-replica chi^2; Hessian parameter covariance at the BFP.
 
 WALK/WEIGHT SPLIT: the cascade walk is theta-independent (kind-1), so a bank of NREP walk replicas
-is precomputed once (the only expensive step, via the pool engine) and each fit iteration is a pure
-reweight via pool_fsi_reweight (~ms, vs ~minutes for a re-walk at this N).
+is precomputed once (the sampling step) and each fit iteration is a pure reweight via pool_fsi_reweight.
 """
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -160,8 +159,8 @@ def model_hist(theta, R, M=None):
 def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:6.1f}s] {m}", flush=True)
-    # ENGINE: the pool is the single differentiable core.  It is faithful + differentiable but ~9x the
-    # old segment per replica, so default to fewer/smaller replicas (env-tunable).
+    # ENGINE: the pool is the single faithful + differentiable cascade core.  N and NREP are env-tunable;
+    # size them to the statistics the fit needs.
     global NQE, NRES
     NQE = NRES = int(os.environ.get("CC0PI_N", "40000"))
     NREP = int(os.environ.get("CC0PI_NREP", "4"))
@@ -169,7 +168,7 @@ def main():
     log(f"ENGINE=pool (differentiable core)  NQE=NRES={NQE}  NREP={NREP}")
     qe, qw, res, rw = build_proposal(); log("proposal sampled")
 
-    # ---- precompute the cascade-walk replica bank (the ONLY expensive step) ------------------- #
+    # ---- precompute the cascade-walk replica bank (the sampling step) ------------------------- #
     bank = []
     for r_i in range(NREP):
         bank.append(_build(jax.random.PRNGKey(50 + r_i), qe, qw, res, rw))

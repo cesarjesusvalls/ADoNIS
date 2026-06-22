@@ -1,6 +1,6 @@
 # Pool → differentiable core: unification log
 
-**Goal.** Make the pool cascade the single core cascade of ADoNIS — faithful forward (its physics/perf
+**Goal.** Make the pool cascade the single core cascade of ADoNIS — faithful forward (its physics/correctness
 fixes) AND differentiable via the blueprint's kind-1 walk/weight split. Pool replaces BFS + the legacy
 `DiscreteCascadeFSI`/`DiscreteNucleonFSI` and becomes the blueprint engine, preserving the blueprint
 *pattern* (frozen θ-independent walk + pure reweight + replica banks + autodiff==FD).
@@ -70,19 +70,13 @@ CC1π RES incl 0.994, CC1π both 0.985; QE/RES proton splits ~0.99-1.03. **The e
 genuinely low-stats: CC1π·QE (cascade-created pions only, N~35-126) + a few 2p tails; CC0π·RES 0p
 (0.773, N=30) is the known soft-knockout tail. Pipeline: `scripts/_pipeline_5seed_gauss.sh`.
 
-PERF note (`scripts/_pool_timing.py`): pool ~9x the legacy SEGMENT cascade per replica (intrinsic
-per-step compaction, NOT my records which add ~0; max_steps 600 vs 260 is a real 2x but 600 is the
-production value). cylinder==gaussian speed. The legacy segment is fast only because it is the
-approximate proton-only path (the thing lead #2 fixed).
-
 ## STAGE 3 COMPLETE: pool-backed differentiable tune wired + proven end-to-end
 `cc0pi_tune_adonis.py main()` now defaults to the POOL engine (env `CC0PI_POOL=1`, `CC0PI_N`,
 `CC0PI_NREP`; legacy via `CC0PI_POOL=0`) — `_build`/`_hist` = `build_replica_pool`/`model_hist_pool`.
 Proof run (NQE=NRES=10000, NREP=2, T2K dpt): replica bank built, 400-iter Adam fit converged via
 autodiff through `pool_fsi_reweight`, BFP + Hessian produced (s_abs railed at clip 3.0, s_scat 1.00,
 χ²/ndf 1.40). So the pool IS the differentiable blueprint end-to-end. (Railed BFP + Hessian-at-rail are
-tiny-stats artifacts of the proof, NOT meaningful values; a real tune needs more stats — but the pool
-is ~9x the legacy segment per replica, so full-stats banks are expensive: the open perf question.)
+tiny-stats artifacts of the proof, NOT meaningful values; a real tune needs more statistics.)
 The fit itself succeeded; only the final plot line had a leftover legacy `model_hist` ref (fixed).
 
 ## Log

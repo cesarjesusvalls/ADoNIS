@@ -27,8 +27,7 @@ def run():
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
     import scripts.cc0pi_tune_adonis as T        # observable picked by argv[1] there too
-    # POOL differentiable core (single engine).  Pool is ~9x the legacy segment/replica, so use reduced
-    # stats by default (env-tunable), mirroring cc0pi_tune_adonis.main's pool path.
+    # POOL differentiable core (single engine); N is env-tunable, mirroring cc0pi_tune_adonis.main.
     T.NQE = T.NRES = int(os.environ.get("CC0PI_N", "40000"))
     _build, _hist = T.build_replica, T.model_hist
 
