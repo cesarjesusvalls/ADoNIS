@@ -265,22 +265,34 @@ def model_hist_pool(theta, R, M=None):
 def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:6.1f}s] {m}", flush=True)
+    # ENGINE: pool (the new differentiable core, default) vs legacy segment.  The pool is faithful +
+    # differentiable but ~9x the segment per replica, so default to fewer/smaller replicas (env-tunable).
+    global NQE, NRES
+    POOL = os.environ.get("CC0PI_POOL", "1") == "1"
+    if POOL:
+        NQE = NRES = int(os.environ.get("CC0PI_N", "40000"))
+        NREP = int(os.environ.get("CC0PI_NREP", "4"))
+        _build, _hist = build_replica_pool, model_hist_pool
+        log(f"ENGINE=pool (differentiable core)  NQE=NRES={NQE}  NREP={NREP}")
+    else:
+        NREP = int(os.environ.get("CC0PI_NREP", "8"))
+        _build, _hist = build_replica, model_hist
+        log(f"ENGINE=legacy segment  NQE=NRES={NQE}  NREP={NREP}")
     qe, qw, res, rw = build_proposal(); log("proposal sampled")
 
     # ---- precompute the cascade-walk replica bank (the ONLY expensive step) ------------------- #
-    NREP = 8
     bank = []
     for r_i in range(NREP):
-        bank.append(build_replica(jax.random.PRNGKey(50 + r_i), qe, qw, res, rw))
+        bank.append(_build(jax.random.PRNGKey(50 + r_i), qe, qw, res, rw))
         log(f"  replica {r_i+1}/{NREP} walked  ({(time.time()-t0)/(r_i+1):.1f}s/replica)")
 
-    nom = np.mean([np.asarray(model_hist(jnp.array([1.0, 1.0]), R)) for R in bank], axis=0)
+    nom = np.mean([np.asarray(_hist(jnp.array([1.0, 1.0]), R)) for R in bank], axis=0)
     A = float((jnp.asarray(nom) @ COVINV @ DATA) / (jnp.asarray(nom) @ COVINV @ jnp.asarray(nom)))
     r = A * nom - np.asarray(DATA); chi2_nom = float(jnp.asarray(r) @ COVINV @ jnp.asarray(r))
     log(f"NOMINAL chi2/ndf = {chi2_nom/(8-2):.2f}  (A_nom={A:.3f})")
 
     def loss(theta, R1, R2):                       # two-replica unbiased chi^2 (independent walks)
-        r1 = A * model_hist(theta, R1) - DATA; r2 = A * model_hist(theta, R2) - DATA
+        r1 = A * _hist(theta, R1) - DATA; r2 = A * _hist(theta, R2) - DATA
         return r1 @ COVINV @ r2
     vg = jax.jit(jax.value_and_grad(loss))
     l0, g0 = vg(jnp.array([1.0, 1.0]), bank[0], bank[1]); log(f"loss(nominal)={float(l0):.2f} grad={np.asarray(g0)}")
@@ -301,7 +313,7 @@ def main():
     log(f"loop done in {time.time()-t_loop:.1f}s ({(time.time()-t_loop)/NITERS*1e3:.0f} ms/it)")
 
     def chi2_1(theta, R):
-        r = A * model_hist(theta, R) - DATA; return r @ COVINV @ r
+        r = A * _hist(theta, R) - DATA; return r @ COVINV @ r
     chi2_bf = float(np.mean([float(chi2_1(theta, R)) for R in bank]))
     H = np.mean([np.asarray(jax.hessian(chi2_1)(theta, R)) for R in bank], axis=0)
     V = 2.0 * np.linalg.inv(H); sig = np.sqrt(np.diag(V)); corr = V[0, 1] / (sig[0] * sig[1])
@@ -318,7 +330,7 @@ def main():
     YL = (r"d$\sigma$/d$\delta p_T$ [$10^{-38}$cm$^2$/(GeV/c)/nuc]" if OBS == "dpt"
           else r"d$\sigma$/d$\delta\alpha_T$ [$10^{-38}$cm$^2$/rad/nuc]")
     FIG = f"paper_figures/cc0pi_tune_adonis{'' if OBS == 'dpt' else '_dat'}.png"
-    mb = A * np.mean([np.asarray(model_hist(jnp.asarray(bfp), R)) for R in bank], axis=0)
+    mb = A * np.mean([np.asarray(_hist(jnp.asarray(bfp), R)) for R in bank], axis=0)
     fig, ax = plt.subplots(1, 2, figsize=(12, 4.3))
     ax[0].errorbar(ctr, np.asarray(DATA), yerr=D_ERR, fmt="o", color="k", capsize=3, label="T2K data")
     xed = EDGES / (1000.0 if OBS == "dpt" else 1.0)

@@ -75,6 +75,16 @@ per-step compaction, NOT my records which add ~0; max_steps 600 vs 260 is a real
 production value). cylinder==gaussian speed. The legacy segment is fast only because it is the
 approximate proton-only path (the thing lead #2 fixed).
 
+## STAGE 3 COMPLETE: pool-backed differentiable tune wired + proven end-to-end
+`cc0pi_tune_adonis.py main()` now defaults to the POOL engine (env `CC0PI_POOL=1`, `CC0PI_N`,
+`CC0PI_NREP`; legacy via `CC0PI_POOL=0`) — `_build`/`_hist` = `build_replica_pool`/`model_hist_pool`.
+Proof run (NQE=NRES=10000, NREP=2, T2K dpt): replica bank built, 400-iter Adam fit converged via
+autodiff through `pool_fsi_reweight`, BFP + Hessian produced (s_abs railed at clip 3.0, s_scat 1.00,
+χ²/ndf 1.40). So the pool IS the differentiable blueprint end-to-end. (Railed BFP + Hessian-at-rail are
+tiny-stats artifacts of the proof, NOT meaningful values; a real tune needs more stats — but the pool
+is ~9x the legacy segment per replica, so full-stats banks are expensive: the open perf question.)
+The fit itself succeeded; only the final plot line had a leftover legacy `model_hist` ref (fixed).
+
 ## Log
 - Baseline: `tests/test_cascade_reweight_records.py` + `tests/test_cascade_pool.py` → 8 passed (pre-work).
 - **Stage 1 done** (`scripts/_pool_rec_check.py`, C RES 15814 ev, caps (Kp,Kn)=(32,256)):
