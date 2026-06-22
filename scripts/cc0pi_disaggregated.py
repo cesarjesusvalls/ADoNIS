@@ -18,16 +18,15 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 import adonis.xsec.dcc_current as dcc
 dcc.BATCH_INTERP = "spline"
 from adonis.xsec import qe_xsec, res_xsec
-from adonis.core.event import EventRecord
-from adonis.fsi.cascade_discrete import DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig
-from adonis.analysis.ma_records import build_qe_ma_records, build_res_ma_records
+from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
+from adonis.fsi.pool_fsi import run_fsi
 from scripts.h_cc0pi import generate_H
 
 MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
 _MODE = sys.argv[1] if len(sys.argv) > 1 else "cylinder"        # "cylinder" (T2K) or "gaussian"
 _CYL = _MODE != "gaussian"
 _OUT = "data/oracle/cc0pi_disaggregated.npz" if _CYL else "data/oracle/cc0pi_disaggregated_gaussian.npz"
-_CFG = lambda **k: DiscreteCascadeConfig(cylinder=_CYL, step=0.04, max_steps=325, **k)
+_CFG = lambda **k: DiscreteCascadeConfig(cylinder=_CYL, step=0.04, max_steps=600, engine="pool", **k)
 NQE, NRES, NH, NSEED = 200000, 200000, 2000, 4   # H contributes 0 CC0pi (free p can't absorb) -> token NH
 
 
@@ -52,30 +51,16 @@ def _obs(knu, kmu, pstr, lead, w, recs=None):
     return out
 
 
-def _ev(knu, kmu, pstr, ppi, pN, w, pid_pi, pid_Ni=2112):
-    m = len(w)
-    pid_Ni = np.full(m, pid_Ni, np.int32) if np.ndim(pid_Ni) == 0 else np.asarray(pid_Ni, np.int32)
-    return EventRecord(k=jnp.asarray(knu), kp=jnp.asarray(kmu), p_struck=jnp.asarray(pstr),
-                       p_pi=jnp.asarray(ppi), p_N=jnp.asarray(pN), w=jnp.asarray(w),
-                       channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.asarray(pid_pi, jnp.int32),
-                       pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.asarray(pid_Ni),
-                       W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
-
-
 def qe_C(n, seed, fsi):
     r = qe_xsec.sample_importance(n, seed=seed)
     knu = np.asarray(r["k_nu"]); kmu = np.asarray(r["k_mu"]); pstr = np.asarray(r["p_struck"])
     pout = np.asarray(r["p_out"]); w = np.asarray(r["w"]) / n
     if fsi:
-        ev = _ev(knu, kmu, pstr, np.zeros_like(knu), pout, w, np.zeros(len(w)))
-        nf = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf.apply(None, ev, key=jax.random.PRNGKey(seed + 7))
-        lead = np.asarray(ev.p_N)
-        ma = build_qe_ma_records(knu, kmu, pstr, pout)
-        recs = {f"{k}": v for k, v in zip(("ma_a", "ma_b", "ma_c", "ma_q2"), ma)}
-        (h1, a1, n1), (h2, a2, n2), ko = nf.last_srec
-        recs.update(s1_hh=np.asarray(h1), s1_a=np.asarray(a1), s1_ns=np.asarray(n1),
-                    s2_hh=np.asarray(h2), s2_a=np.asarray(a2), s2_ns=np.asarray(n2), has_ko=np.asarray(ko))
-        return _obs(knu, kmu, pstr, lead, w, recs=recs)
+        m = len(w)
+        out = run_fsi(jnp.zeros((m, 4)), jnp.asarray(pout), jnp.zeros(m, jnp.int32),
+                      jnp.full(m, 2112, jnp.int32), jnp.full(m, 2212, jnp.int32),
+                      _CFG(seed=2), jax.random.PRNGKey(seed + 7), channel="qe")
+        return _obs(knu, kmu, pstr, np.asarray(out["lead_prot"]), w)
     return _obs(knu, kmu, pstr, pout, w)                          # bare recoil proton
 
 
@@ -86,23 +71,13 @@ def res_C(n, seed, fsi):
     ipid = np.asarray(e["ipid"])                                 # struck nucleon: 2112 n / 2212 p (per channel)
     if not fsi:
         return _obs(knu, kmu, pstr, pN, w * 0.0)                 # pion survives -> no CC0pi
-    ev = _ev(knu, kmu, pstr, ppi, pN, w, ppid, pid_Ni=ipid)
-    pion = DiscreteCascadeFSI(_CFG(seed=1)); ev = pion.apply(None, ev, key=jax.random.PRNGKey(seed + 11))
-    absorbed = np.asarray(pion.last_absorbed); abs_p = np.asarray(pion.last_abs_proton)
-    nf2 = DiscreteNucleonFSI(_CFG(seed=2)); ev = nf2.apply(None, ev, key=jax.random.PRNGKey(seed + 13))
-    pNf = np.asarray(ev.p_N); mom_p = np.linalg.norm(pNf[:, 1:], axis=1) * (np.asarray(ev.pid_N) == 2212)
-    mom_a = np.linalg.norm(abs_p[:, 1:], axis=1)
-    lead = np.where((mom_a > mom_p)[:, None], abs_p, pNf)
-    has_p = (mom_a > 1) | (np.asarray(ev.pid_N) == 2212)
-    ma = build_res_ma_records(knu, kmu, pstr, pN, ppi, ipid, ppid)
-    recs = {f"{k}": v for k, v in zip(("ma_a", "ma_b", "ma_c", "ma_q2"), ma)}
-    bc, sa, ss, si, nh = pion.last_brec
-    recs.update(b_bc=np.asarray(bc), b_sa=np.asarray(sa), b_ss=np.asarray(ss),
-                b_si=np.asarray(si), b_nh=np.asarray(nh))
-    (h1, a1, n1), (h2, a2, n2), ko = nf2.last_srec
-    recs.update(s1_hh=np.asarray(h1), s1_a=np.asarray(a1), s1_ns=np.asarray(n1),
-                s2_hh=np.asarray(h2), s2_a=np.asarray(a2), s2_ns=np.asarray(n2), has_ko=np.asarray(ko))
-    return _obs(knu, kmu, pstr, lead, w * (absorbed & has_p), recs=recs)
+    m = len(w)
+    out = run_fsi(jnp.asarray(ppi), jnp.asarray(pN), jnp.asarray(ppid, jnp.int32),
+                  jnp.asarray(ipid, jnp.int32), jnp.full(m, 2212, jnp.int32),
+                  _CFG(seed=1), jax.random.PRNGKey(seed + 11), channel="res")
+    absorbed = np.asarray(out["pterm"]["pid"] == 0)              # primary pion absorbed -> CC0pi
+    lead = np.asarray(out["lead_prot"]); has_p = np.linalg.norm(lead[:, 1:], axis=1) > 1
+    return _obs(knu, kmu, pstr, lead, w * (absorbed & has_p))
 
 
 def res_H(n, seed, fsi):

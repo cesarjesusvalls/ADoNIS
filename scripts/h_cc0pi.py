@@ -17,11 +17,11 @@ from adonis.xsec.flux import T2KFlux, M_MU, M_P
 from adonis.xsec.res_xsec import _sample_3body, _sample_3body_dispatch, _pi_kin_mass, M_PIP, SPIN_AVG
 from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON
-from adonis.core.event import EventRecord
-from adonis.fsi.cascade_discrete import DiscreteCascadeFSI, DiscreteNucleonFSI, DiscreteCascadeConfig
+from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
+from adonis.fsi.pool_fsi import run_fsi
 
 MU_LO = 250.0; COSMU = -0.6; P_LO, P_HI = 450.0, 1000.0; COSP = 0.4
-_CFG = lambda **k: DiscreteCascadeConfig(cylinder=True, step=0.04, max_steps=325, **k)
+_CFG = lambda **k: DiscreteCascadeConfig(cylinder=False, step=0.04, max_steps=600, engine="pool", **k)
 
 
 def generate_H(n, seed=0):
@@ -66,22 +66,15 @@ if __name__ == "__main__":
     knu, kmu, pN, pPi, w = generate_H(n, seed=0)
     print(f"H (free p) nu_mu RES p->p pi+ :  sigma = {w.sum():.4e} nb  ({int((w>0).sum())} events w>0)")
     m = len(w)
-    # pion cascade (NOTE: DiscreteCascadeFSI propagates through a 12C config -- the H proton is
-    # treated as embedded in carbon; a strictly free H would not absorb.  See report.)
-    ev = EventRecord(k=jnp.asarray(knu), kp=jnp.asarray(kmu), p_struck=jnp.zeros((m, 4)),
-                     p_pi=jnp.asarray(pPi), p_N=jnp.asarray(pN), w=jnp.asarray(w),
-                     channel=jnp.zeros(m, jnp.int32), pid_pi=jnp.full((m,), 211, jnp.int32),
-                     pid_N=jnp.full((m,), 2212, jnp.int32), pid_Ni=jnp.full((m,), 2212, jnp.int32),
-                     W=jnp.zeros(m), Q2_adj=jnp.zeros(m))
-    pion = DiscreteCascadeFSI(_CFG(seed=1))
-    ev = pion.apply(None, ev, key=jax.random.PRNGKey(7))
-    absorbed = np.asarray(pion.last_absorbed); abs_p = np.asarray(pion.last_abs_proton)
-    ev = DiscreteNucleonFSI(_CFG(seed=2)).apply(None, ev, key=jax.random.PRNGKey(13))
-    mu = np.asarray(ev.kp); pNf = np.asarray(ev.p_N)
-    mom_prim = np.linalg.norm(pNf[:, 1:], axis=1) * (np.asarray(ev.pid_N) == 2212)
-    mom_abs = np.linalg.norm(abs_p[:, 1:], axis=1)
-    lead = np.where((mom_abs > mom_prim)[:, None], abs_p, pNf)
-    has_p = (mom_abs > 1) | (np.asarray(ev.pid_N) == 2212)
+    # joint pool cascade (NOTE: the H proton is treated as embedded in 12C -- the same carbon-config
+    # cascade the legacy chain ran; a strictly free H would not absorb.  See report.)  The pool
+    # re-cascades both pion-absorption nucleons, so lead_prot already is the leading escaped proton.
+    out = run_fsi(jnp.asarray(pPi), jnp.asarray(pN), jnp.full(m, 211, jnp.int32),
+                  jnp.full(m, 2212, jnp.int32), jnp.full(m, 2212, jnp.int32),
+                  _CFG(seed=1), jax.random.PRNGKey(7), channel="res")
+    absorbed = np.asarray(out["pterm"]["pid"] == 0)              # primary pi+ absorbed -> CC0pi
+    lead = np.asarray(out["lead_prot"]); mu = kmu                # FSI leaves the lepton untouched
+    has_p = np.linalg.norm(lead[:, 1:], axis=1) > 1
     wcc = w * (absorbed & has_p)
     dpt, dat, Q2, ww = _cc0pi_obs(knu, mu, lead, wcc)
     print(f"  H CC0pi-Np events: {len(ww)}   sigma_CC0pi(H) = {ww.sum():.4e} nb")
