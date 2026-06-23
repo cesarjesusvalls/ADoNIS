@@ -116,3 +116,53 @@ verified correct.  Held as an open, well-bounded discrepancy (NOT a declared roo
 ## Artifacts
 - ADoNIS dump: /tmp/ado_cascade_debug_C.npz ; ACHILLES: /tmp/ach_fatepion_C_gauss.fate
 - scripts/cascade_debug_dump.py (full-pool momentum-bracketed dump) + scripts/cascade_debug_compare.py (chi2/pull)
+
+## CASCADE-VERTEX MATRIX (new co-equal diagnostic; supersedes the ad-hoc fate dumps)
+Per the user, ADoNIS-vs-ACHILLES fidelity is now gauged by TWO primary diagnostics in agreement:
+the cross-section matrix (gen_cc_matrix) AND a **cascade-vertex matrix** built to the same standard.
+
+Definition: for every PRIMARY cascade particle (RES pi + RES recoil nucleon + QE proton), record its
+FIRST interaction at NOMINAL -> one schema record `inc_pid, inc_p[MeV], channel, nprod, prod_pid[3],
+prod_p[3], w, proc(0=QE/1=RES)`.  Channels: pion {0 transmit,1 elastic,2 charge-ex,3 absorption,
+4 conversion}; nucleon {0 transmit,1 elastic NN->NN,2 inelastic NN->NNpi}.  Transmit (escaped without
+interacting) = channel 0 -> the per-incident-type interaction-FRACTION denominator.
+Compared per (proc x incident type x channel): channel fraction vs inc_p (chi2/pull, primary metric) +
+per-channel product |p| spectrum, per produced type.  Weighting is apples-to-apples: ADoNIS by the
+importance weight w; ACHILLES by the physical per-event weight (`VTX w=..`), so both estimate the same
+flux-averaged conditional cascade fate.  Pipeline (reusable, material-driven):
+  - ADoNIS  : scripts/gen_cascade_vertex.py [C|Ar]  (real _pion_step/_nucleon_step, single-pass to 1st
+              interaction) -> cascade_vertex_<mat>_ado.npz
+  - ACHILLES: achilles:vertex (Cascade.cc VERTEXDUMP, gated ACHILLES_VERTEXDUMP) via
+              scripts/gen_ach_vertex.py -> cascade_vertex_<mat>_ach.txt
+  - compare : scripts/cascade_vertex_matrix.py -> <mat>_matrix.log + <mat>_fractions.png
+
+Bit-exactness gate PASSED: feeding the ADoNIS npz back as a synthetic ACHILLES txt gives ratio=1.000,
+pull=0, chi2/ndf=0 in every cell (parser+weighting+matrix correct).
+
+### ResonanceMode:Decay -- NN->NDelta->Npi is ONE vertex on BOTH sides (NOT a divergence)
+Investigating whether ADoNIS's one-step NN->NDelta->NNpi (cascade_discrete.py:283-284, samples pD then
+immediately _split2 -> N+pi) diverges from ACHILLES (which has a propagating-Delta DeltaInteraction model
+with NDelta->NN re-absorption that would destroy the pion): our run cards
+(`_oracle_out/run_T2K_{C,Ar}_fate_gauss.yml`) use `NucleonNucleon {Mode:GiBUU, ResonanceMode:Decay}` with
+NO DeltaInteraction.  Under ResonanceMode:Decay, NucleonNucleon::GenerateMomentum (NucleonNucleon.cc:158-
+174) decays the Delta AT THE VERTEX and returns {N,N,pi} in one step -- the Delta never propagates, so
+DeltaInteractions.cc (NDelta->NN etc.) is INACTIVE.  => ADoNIS correctly mirrors ACHILLES; the
+"ADoNIS can't re-absorb the Delta -> over-produces pi+" hypothesis is REFUTED for our config.
+
+### Audit of gen_cascade_vertex.py (apples-to-apples)
+- FIXED: run_pions classified channels off the pre-Pauli-block `bcode` (chose_abs/chose_conv) -> counted
+  Pauli-blocked candidates as vertices.  A blocked candidate is NOT a vertex (the pion keeps propagating,
+  as ACHILLES).  Now keys off the ACTUAL post-block is_abs/is_conv + nsc-increment.  Effect: pi+ transmit
+  0.44->0.51, elastic 0.33->0.23.  (run_nucleons already used post-block do/pi_alive.)
+- FLAGGED: the pool keeps the primary nucleon's charge through an inelastic step
+  (cascade_full.py chg_2=where(is_pi,chp,chg)) -> leading recorded as incident charge; the matrix will
+  surface any p/n mismatch vs ACHILLES.  Possible pool issue, recorded faithfully (not patched).
+- ACHILLES VTX emits per-event physical weight + nprim (QE=1 vs MEC=2 disambiguation for the proc=0
+  bucket) so the QE comparison stays pure-QE.
+
+### First real comparison (LOW STATS smoke: ADoNIS 4k/seed x1 vs ACHILLES 10k events)
+All channels chi2/ndf 0.45-1.85 -- no gross tension.  Notably the QE-inelastic cell (the cc1pi_QE
+created-pi+ target, -4.6sigma in the XSEC matrix) is only chi2/ndf=1.84 at the first-interaction VERTEX
+level -> hint the cc1pi_QE tension may live DOWNSTREAM of the primary vertex (created-pion fate /
+multi-step), not in the primary NN->NNpi rate.  HELD as a hint pending the full-stats run
+(ADoNIS 80k x6, ACHILLES 500k -> /tmp/cascade_vertex_C_{ado.npz,ach.txt}).
