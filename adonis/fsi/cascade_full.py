@@ -455,7 +455,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
     return pterm, nterms, sofl + oofl, created, fsi_rec
 
 
-def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0,
+def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=16, max_gen=6, sabs=1.0, sscat=1.0,
                       channel="res", rec_caps=None, log_cap=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,

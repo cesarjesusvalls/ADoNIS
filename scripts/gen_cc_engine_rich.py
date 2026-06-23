@@ -22,7 +22,7 @@ CFG = DiscreteCascadeConfig(step=0.04, max_steps=260, seed=1, nn_inelastic=True)
 # capacity buffers (env-overridable to shrink): P = BFS width, MAX_GEN = cascade depth, MPROT = stored
 # protons.  _N_RECOIL (recoils/scatter) is set in cascade_discrete via ADONIS_N_RECOIL.  Defaults =
 # the validated generous values; shrink only after the validation closure (ACH/ADO + chi2 unchanged).
-P_BUF = int(os.environ.get("ADONIS_P", "12"))
+P_BUF = int(os.environ.get("ADONIS_P", "16"))   # 16: P=12 left ~0.5% pool overflow on Ar (Cat-3 cap test)
 MAX_GEN = int(os.environ.get("ADONIS_MAX_GEN", "6"))
 MPROT = int(os.environ.get("ADONIS_MPROT", "6"))             # top-M proton terminals stored per event
 TAG = os.environ.get("ADONIS_TAG", "")                       # e.g. "_s" for the shrunk-buffer bank

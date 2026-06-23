@@ -43,7 +43,7 @@ def proton_candidates(nterms, mprot):
     return P4[g2, idx], ORG[g2, idx].astype(np.int64), GN[g2, idx].astype(np.int64)
 
 
-def run_fsi(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, channel="res", P=12, max_gen=6, rec_caps=None):
+def run_fsi(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, channel="res", P=16, max_gen=6, rec_caps=None):
     """Run the pool cascade and return the common per-event FSI outputs as a dict:
       pterm   : primary-pion terminal (RES: pid 0=absorbed, -1=converted, else surviving-pi pid; QE: 0)
       nterms  : list of per-generation nucleon-terminal batches (escaped protons live here)

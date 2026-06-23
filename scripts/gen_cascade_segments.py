@@ -20,7 +20,7 @@ SEEDS = int(sys.argv[3]) if len(sys.argv) > 3 else 6
 OUT = sys.argv[4] if len(sys.argv) > 4 else f"/tmp/cascade_segments_{MAT}_ado.npz"
 MAXSTEPS = int(sys.argv[5]) if len(sys.argv) > 5 else 1000
 P_BUF = int(sys.argv[6]) if len(sys.argv) > 6 else 16
-LCAP = int(sys.argv[7]) if len(sys.argv) > 7 else 64
+LCAP = int(sys.argv[7]) if len(sys.argv) > 7 else 48   # segment-logger cap; Ar max seen 32 (1.5x margin)
 os.environ.setdefault("ADONIS_N_RECOIL", "8")
 
 import numpy as np, jax, jax.numpy as jnp
