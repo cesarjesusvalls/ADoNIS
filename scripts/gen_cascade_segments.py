@@ -91,6 +91,18 @@ def convert(log, counts, proc, w):
                 gen=gen[m], track_id=tid[m], parent_id=log["parent_id"][m])
 
 
+def _seed_path(sd):
+    """Per-seed output file: '<stem>_seed<NN>.npz' (OUT may be a dir or a '*.npz' stem).  Each file is
+    SELF-CONTAINED (one seed's segments, RAW per-event weights -- the matrix loader globs whatever seed
+    files exist and divides w by the count present, so partial overnight results are usable as-is)."""
+    if OUT.endswith("/") or os.path.isdir(OUT):
+        d = OUT.rstrip("/"); stem = os.path.join(d, f"cascade_segments_{MAT}_ado")
+    else:
+        stem = OUT[:-4] if OUT.endswith(".npz") else OUT
+    os.makedirs(os.path.dirname(stem) or ".", exist_ok=True)
+    return f"{stem}_seed{sd:02d}.npz"
+
+
 def main():
     tg = resolve_targets(MAT)[0][0]
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
@@ -98,21 +110,11 @@ def main():
     cfg = build_cfg(tg, ms)
     sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
     print(f"[cfg] {MAT} radius={radius:.2f} max_steps={ms} P={P_BUF} Lcap={LCAP} SEEDS={SEEDS} n/seed={NPS}", flush=True)
-    acc = {k: [] for k in ("inc_pid", "inc_p", "channel", "nprod", "prod_pid", "prod_p", "w", "proc",
-                           "is_first", "gen", "track_id", "parent_id")}
-    ofl_tot = [0]
-
-    def add(D):
-        for k in acc:
-            acc[k].append(D[k])
-
-    def checkpoint(ns):
-        Dall = {k: np.concatenate(acc[k]) for k in acc}
-        Dall["w"] = Dall["w"] / ns
-        np.savez(OUT, material=MAT, seeds_done=ns, log_overflow=ofl_tot[0], **Dall)
-        print(f"  [checkpoint] wrote {OUT} after {ns}/{SEEDS} seed(s)  (segments={len(Dall['w'])}, logofl={ofl_tot[0]})", flush=True)
+    keys = ("inc_pid", "inc_p", "channel", "nprod", "prod_pid", "prod_p", "w", "proc",
+            "is_first", "gen", "track_id", "parent_id")
 
     for sd in range(SEEDS):
+        acc = {k: [] for k in keys}; ofl_seed = 0     # per-seed accumulation -> one self-contained file
         e = res_xsec.generate(NPS, seed=sd, return_events=True, sf_n=sf_n, sf_p=sf_p,
                               n_neutron=tg.A - tg.Z, n_proton=tg.Z)["events"]
         rw = np.asarray(e["w"]); rs = rw > 0
@@ -121,22 +123,29 @@ def main():
         q = qe_xsec.sample_importance(NPS, seed=sd, sf=sf_n, n_neutron=tg.A - tg.Z)
         qN = np.asarray(q["p_out"]); qw = np.asarray(q["w"]) / NPS; qNpid = np.full(len(qw), 2212)
         nrc = (len(rw) + CHUNK - 1) // CHUNK
+
+        def add(D):
+            for k in keys:
+                acc[k].append(D[k])
+
         for ci, c0 in enumerate(range(0, len(rw), CHUNK)):
             sl = slice(c0, c0 + CHUNK)
             log, counts, ofl = run_logged("res", jnp.asarray(ppi[sl]), jnp.asarray(pN[sl]),
                                           jnp.asarray(Npid[sl], jnp.int32), ipid[sl], cfg,
                                           jax.random.PRNGKey(31 + sd), pid_pi=ppid[sl])
-            add(convert(log, counts, 1, rw[sl])); ofl_tot[0] += ofl
+            add(convert(log, counts, 1, rw[sl])); ofl_seed += ofl
             print(f"    seed {sd+1}/{SEEDS} RES chunk {ci+1}/{nrc} (+{len(rw[sl])} events, logofl+{ofl})", flush=True)
         for ci, c0 in enumerate(range(0, len(qw), CHUNK)):
             sl = slice(c0, c0 + CHUNK)
             log, counts, ofl = run_logged("qe", None, jnp.asarray(qN[sl]),
                                           jnp.asarray(qNpid[sl], jnp.int32), None, cfg, jax.random.PRNGKey(33 + sd))
-            add(convert(log, counts, 0, qw[sl])); ofl_tot[0] += ofl
+            add(convert(log, counts, 0, qw[sl])); ofl_seed += ofl
             print(f"    seed {sd+1}/{SEEDS} QE  chunk {ci+1}/{(len(qw)+CHUNK-1)//CHUNK} (+{len(qw[sl])} events, logofl+{ofl})", flush=True)
-        print(f"  seed {sd+1}/{SEEDS} done", flush=True)
-        checkpoint(sd + 1)
-    print(f"\nwrote {OUT}  (final, {SEEDS} seeds, log_overflow={ofl_tot[0]})", flush=True)
+        Dall = {k: np.concatenate(acc[k]) for k in keys}        # RAW w (NOT divided by seeds): per-seed file
+        path = _seed_path(sd)
+        np.savez(path, material=MAT, seed=sd, n_per_seed=NPS, log_overflow=ofl_seed, **Dall)
+        print(f"  seed {sd+1}/{SEEDS} done -> wrote {path}  (segments={len(Dall['w'])}, logofl={ofl_seed})", flush=True)
+    print(f"\nall {SEEDS} seeds written as per-seed files ({_seed_path(0)} ...)", flush=True)
 
 
 if __name__ == "__main__":

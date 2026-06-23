@@ -38,11 +38,39 @@ def chans(pid):
 
 
 # ---------- loaders -> common record dict of arrays (one row per cascade SEGMENT) ----------
+def _ado_files(path):
+    """Resolve `path` to the list of per-seed ADoNIS npz files (gen_cascade_segments writes
+    '<stem>_seed<NN>.npz').  Accepts: a directory (glob inside), a literal file, or a stem (glob
+    '<stem>_seed*.npz').  Lets the matrix run on WHATEVER seeds are ready."""
+    import glob
+    if os.path.isdir(path):
+        files = sorted(glob.glob(os.path.join(path, "*_seed*.npz")))
+    elif os.path.isfile(path):
+        files = [path]
+    else:
+        stem = path[:-4] if path.endswith(".npz") else path
+        files = sorted(glob.glob(f"{stem}_seed*.npz"))
+    if not files:
+        raise FileNotFoundError(f"no ADoNIS segment files for '{path}'")
+    return files
+
+
 def load_ado(path):
-    d = np.load(path, allow_pickle=True)
-    return dict(w=d["w"], proc=d["proc"], is_first=d["is_first"].astype(bool), inc_pid=d["inc_pid"],
-                inc_p=d["inc_p"], channel=d["channel"], prod_pid=d["prod_pid"], prod_p=d["prod_p"],
-                nprod=d["nprod"])
+    files = _ado_files(path)
+    keys = ("w", "proc", "is_first", "inc_pid", "inc_p", "channel", "prod_pid", "prod_p", "nprod")
+    parts = {k: [] for k in keys}
+    per_seed = "seed" in np.load(files[0], allow_pickle=True)     # per-seed (raw w) vs legacy cumulative
+    for f in files:
+        d = np.load(f, allow_pickle=True)
+        for k in keys:
+            parts[k].append(d[k])
+    out = {k: np.concatenate(parts[k]) for k in keys}
+    out["is_first"] = out["is_first"].astype(bool)
+    if per_seed:                                                 # raw weights -> average over seeds present
+        out["w"] = out["w"] / len(files)
+    print(f"  [load_ado] {len(files)} {'per-seed' if per_seed else 'legacy'} file(s): "
+          f"{[os.path.basename(f) for f in files]}")
+    return out
 
 
 _VTX = re.compile(r"VTX w=(\S+) proc=(\d+) is_primary=(\d+) is_first=(\d+) inc_pid=(-?\d+) inc_p=(\S+) channel=(\d+) nprod=(\d+)(.*)")
