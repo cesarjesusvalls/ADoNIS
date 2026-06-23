@@ -183,27 +183,76 @@ def _spec_chi2(A, mA, B, mB, tp, PB):
     return float(d[use].sum()), int(use.sum())
 
 
+_COLLABEL = {0: "transmit", 1: "elastic", 2: "cex/inel", 3: "absorp", 4: "convert"}
+# incident-type rows, in a fixed display order (proc, pid)
+_ROWS = [(0, 2212), (0, 2112), (1, 211), (1, 111), (1, -211), (1, 2212), (1, 2112)]
+
+
+def fig_chi2_matrix(rows, out):
+    """The MATRIX view: a chi2/ndf heatmap, rows = (proc, incident type), cols = channel.  White ~1,
+    red >2 (tension), grey = empty.  Each cell annotated 'chi2/ndf (ndf)'.  Analog of the xsec matrix."""
+    import matplotlib.colors as mcolors
+    d = {(p, pid, c): (chi2 / max(ndf, 1), ndf) for (p, pid, c, _cn, chi2, ndf) in rows}
+    rlabels = [f"{PROC[p]} {PNAME[pid]}" for (p, pid) in _ROWS]
+    cols = [0, 1, 2, 3, 4]
+    M = np.full((len(_ROWS), len(cols)), np.nan)
+    for i, (p, pid) in enumerate(_ROWS):
+        for j, c in enumerate(cols):
+            if (p, pid, c) in d:
+                M[i, j] = d[(p, pid, c)][0]
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    cmap = plt.cm.RdYlGn_r.copy(); cmap.set_bad("0.85")
+    im = ax.imshow(M, cmap=cmap, vmin=0, vmax=3.0, aspect="auto")
+    ax.set_xticks(range(len(cols))); ax.set_xticklabels([_COLLABEL[c] for c in cols])
+    ax.set_yticks(range(len(_ROWS))); ax.set_yticklabels(rlabels)
+    ax.set_title(f"Cascade-vertex matrix  chi2/ndf  ({MAT}, {'PRIMARIES' if PRIMARIES else 'ALL SEGMENTS'})")
+    for i in range(len(_ROWS)):
+        for j, c in enumerate(cols):
+            if not np.isnan(M[i, j]):
+                v, ndf = d[(_ROWS[i][0], _ROWS[i][1], c)]
+                ax.text(j, i, f"{v:.2f}\n({ndf})", ha="center", va="center", fontsize=8,
+                        color="white" if v > 2.0 else "black")
+    plt.colorbar(im, ax=ax, label="chi2/ndf"); fig.tight_layout(); fig.savefig(out, dpi=120); plt.close(fig)
+
+
 def fig_fractions(A, B, out):
-    fig, axes = plt.subplots(2, 5, figsize=(22, 9)); axes = axes.ravel()
-    panels = [(0, 2212), (1, 211), (1, 111), (1, -211), (1, 2212),
-              (1, 2112), (0, 2112), (0, 211), (0, 111), (0, -211)]
+    """Per incident-type: TOP = channel fractions vs |p| (ACH solid / ADO dash), BOTTOM = ratio ADO/ACH
+    per channel (+-10% guides) with the per-channel chi2/ndf in the legend.  (xsec-matrix overlay+ratio.)"""
     ctr = 0.5 * (ED[:-1] + ED[1:])
-    for ax, (proc, pid) in zip(axes, panels):
+    ncol = len(_ROWS)
+    fig, axes = plt.subplots(2, ncol, figsize=(3.4 * ncol, 7.2), sharex=True,
+                             gridspec_kw=dict(height_ratios=[2.3, 1]))
+    for col, (proc, pid) in enumerate(_ROWS):
+        at, ar = axes[0, col], axes[1, col]
         mA = sel(A, proc, pid); mB = sel(B, proc, pid)
         if A["w"][mA].sum() <= 0 and B["w"][mB].sum() <= 0:
-            ax.set_visible(False); continue
-        CH = chans(pid)
-        for c, cname in CH.items():
-            fA = []; fB = []
-            for lo, hi in zip(ED[:-1], ED[1:]):
-                fa, _, na = wfrac(A["w"], mA & (A["inc_p"] >= lo) & (A["inc_p"] < hi), A["channel"] == c)
-                fb, _, nb = wfrac(B["w"], mB & (B["inc_p"] >= lo) & (B["inc_p"] < hi), B["channel"] == c)
-                fA.append(fa if na >= 20 else np.nan); fB.append(fb if nb >= 20 else np.nan)
-            l, = ax.plot(ctr, fA, "-", lw=1.6, label=f"{cname}")
-            ax.plot(ctr, fB, "--", lw=1.6, color=l.get_color())
-        ax.set_title(f"{PROC[proc]} {PNAME[pid]}  (solid ACH / dash ADO)", fontsize=10)
-        ax.set_xlabel("incident |p| [MeV]"); ax.set_ylabel("channel fraction"); ax.set_ylim(0, 1)
-        ax.legend(fontsize=7, ncol=2); ax.grid(alpha=0.3)
+            at.set_visible(False); ar.set_visible(False); continue
+        for c, cname in chans(pid).items():
+            fA = np.full(len(ctr), np.nan); fB = np.full(len(ctr), np.nan); chi2 = 0.0; ndf = 0
+            for k, (lo, hi) in enumerate(zip(ED[:-1], ED[1:])):
+                fa, ea, na = wfrac(A["w"], mA & (A["inc_p"] >= lo) & (A["inc_p"] < hi), A["channel"] == c)
+                fb, eb, nb = wfrac(B["w"], mB & (B["inc_p"] >= lo) & (B["inc_p"] < hi), B["channel"] == c)
+                if na >= 20:
+                    fA[k] = fa
+                if nb >= 20:
+                    fB[k] = fb
+                if na >= 20 and nb >= 20 and (fa > 1e-4 or fb > 1e-4):
+                    chi2 += (fa - fb) ** 2 / (ea ** 2 + eb ** 2 + 1e-12); ndf += 1
+            if ndf == 0:
+                continue
+            l, = at.plot(ctr, fA, "-", lw=1.5)
+            at.plot(ctr, fB, "--", lw=1.5, color=l.get_color())
+            with np.errstate(invalid="ignore", divide="ignore"):
+                ar.plot(ctr, fA / fB, "-", lw=1.3, color=l.get_color(),
+                        label=f"{cname} {chi2/max(ndf,1):.1f}")
+        at.set_title(f"{PROC[proc]} {PNAME[pid]}", fontsize=10); at.set_ylim(0, 1); at.grid(alpha=0.3)
+        if col == 0:
+            at.set_ylabel("channel fraction\n(solid ACH / dash ADO)")
+            ar.set_ylabel("ADO/ACH")
+        ar.axhline(1, color="k", lw=0.7); ar.axhline(1.1, color="grey", ls=":"); ar.axhline(0.9, color="grey", ls=":")
+        ar.set_ylim(0.6, 1.4); ar.grid(alpha=0.3); ar.set_xlabel("|p| [MeV]")
+        ar.legend(fontsize=6, title="ch: chi2/ndf", title_fontsize=6, ncol=1, loc="lower left")
+    fig.suptitle(f"Cascade-vertex matrix  ({MAT}, {'PRIMARIES' if PRIMARIES else 'ALL SEGMENTS'})  solid ACH / dash ADO", y=1.0)
     fig.tight_layout(); fig.savefig(out, dpi=110); plt.close(fig)
 
 
@@ -223,8 +272,9 @@ def main():
     txt = "\n".join(log)
     print(txt)
     open(f"{OUTP}_matrix.log", "w").write(txt)
+    fig_chi2_matrix(rows, f"{OUTP}_chi2matrix.png")
     fig_fractions(A, B, f"{OUTP}_fractions.png")
-    print(f"\nwrote {OUTP}_matrix.log  and  {OUTP}_fractions.png")
+    print(f"\nwrote {OUTP}_matrix.log , {OUTP}_chi2matrix.png , {OUTP}_fractions.png")
 
 
 if __name__ == "__main__":
