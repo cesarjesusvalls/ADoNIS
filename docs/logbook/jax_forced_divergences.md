@@ -56,14 +56,19 @@ Accuracy: validated? = has it been quantitatively checked vs ACHILLES across the
 - ADoNIS: SpectralImportanceSampler draws (|p|,E_rm) ~ |p|^2 S(p,E) via trapezoid CDFs on FINE grids
   (~0.25 MeV E / ~1 MeV |p|) built with the SF's OWN cubic-p/linear-E Polint, + linear inverse-CDF.
 - ACHILLES: flat draw + per-point Polint S weighting (unbiased to |p|^2 S) -- same target distribution.
-- **Accuracy validated? YES.** `scripts/test_spectral_sampler.py` compares the sampler's drawn |p| and
-  E_rm marginals to the TRUE |p|^2 S (the SF's own Polint table = ACHILLES's target).  RESULT (C,
-  N=3e5): shape chi2/ndf = 1.32 (|p|) and 1.00 (E_rm) -> consistent with UNBIASED; the removal-energy
-  PEAK region (the original concern) max|ratio-1| = 5.8% with no systematic trend (scattered, low-stat
-  bins; tails up to ~20% are pure Poisson at this N).  So the fine-grid + Polint rebuild (the in-code
-  fix) WORKS -- the coarse-grid bias is removed; no action needed.  (Mild |p| chi2/ndf 1.32 -> a
-  higher-stat recheck would confirm, but the per-event python searchsorted loop in sample() OOMs at
-  N=4e6, so 3e5 was used.)
+- **Accuracy validated? YES (after two flawed test iterations -- see lesson).** Final test:
+  `scripts/test_spectral_sampler.py` (C, N=4e6, chunked) -- PEAK-RESOLVED 0.5 MeV E bins (the shell peak
+  is at 17.5 MeV, FWHM ~6 MeV) + a 2D/CONDITIONAL check (E_rm shape in |p| slices + <E_rm>(|p|), the
+  per-p e_cdf being the suspect).  RESULT: peak bin sampled/true = **1.001**; |p| marginal chi2/ndf
+  **0.85**; E_rm|p conditional chi2/ndf **1.0-6.4** (the 2 high-stat slices ~6, inflated by 4e6 stats);
+  <E_rm>(|p|) within **3.3 MeV** over a 28-288 MeV range.  E_rm marginal chi2/ndf 14 at 4e6 is consistent
+  with ~1-2% scatter dominated by the low-stat tail + first edge bin (visible in the plot), NOT a peak or
+  correlation bias.  So the fine-grid+Polint rebuild WORKS; no significant bias; no action.
+  **LESSON (process):** the FIRST test used 80 uniform bins (~5 MeV) -- coarser than the ~6 MeV peak ->
+  falsely "OK" (chi2~1).  The SECOND (fine bins) had a TRUE-CURVE aliasing BUG (summing a fine density
+  into bins with a >=/< mask -> variable # of fine points/bin -> +-13% ripple) -> falsely "6% peak
+  deficit, chi2=305".  Fixed with exact cumulative-interp integration.  Peak-resolving binning AND an
+  alias-free reference are both mandatory for any narrow-feature accuracy test.
 
 ---
 
