@@ -113,7 +113,9 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         # refilled (persistent-refill engine); bg=None uses the closed-over default (legacy callers).
         npos, nmom, nisp = (npos0, nmom0, nisp0) if bg is None else bg
         n, M = stack["alive"].shape
-        keys = jax.random.split(key, M)
+        # `key` is the PER-EVENT step key (n,2) = fold_in(fold_in(base, evt_id), nstep) built by
+        # run_cascade_pool; fold by slot index m -> a unique per-(event,step,slot) key.  This makes a
+        # refilled event draw identical randoms regardless of which slot/global-step runs it.
 
         def slot(consumed, m):
             p4 = stack["p4"][:, m]; pos = stack["pos"][:, m]; fz = stack["fz"][:, m]
@@ -121,7 +123,9 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             sp = stack["species"][:, m]
             is_N = (sp == NUCLEON) & al; is_pi = (sp == PION) & al
             d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
-            kN, kP = jax.random.split(keys[m])
+            sk_m = jax.vmap(lambda k: jax.random.fold_in(k, m))(key)        # per-event slot key (n,2)
+            _kk = jax.vmap(lambda k: jax.random.split(k))(sk_m)            # (n,2,2)
+            kN, kP = _kk[:, 0], _kk[:, 1]                                  # per-event nucleon/pion keys (n,2)
             # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
             (p4n, posn, _dn, fzn, alnN), escN, _rc, _do, koN, pinN, consumedN, nstat = _nucleon_step(
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
@@ -347,13 +351,17 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     wait0 = empty_batch(n, max(Q, 1))                                # FIFO queue; dummy (n,1) all-dead when Q=0
 
     def cond(st):                                                    # run while any active OR any waiting
-        return (st[0] < max_steps) & (jnp.any(st[1]["alive"]) | jnp.any(st[-1]["alive"]))
+        return (st[0] < max_steps) & (jnp.any(st[1]["alive"]) | jnp.any(st[12]["alive"]))
 
     def body(st):
-        i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, wait = st
-        # pass the step index ONLY on the logging path (track_id assignment); keeps the 3-arg stepper
-        # contract for every existing (non-logging) caller, incl. custom test steppers.
-        kk = jax.random.fold_in(key, i)
+        i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, wait, evt_id, nstep = st
+        # PER-EVENT step key (n,2) = fold_in(fold_in(base, evt_id), nstep): an event's random stream
+        # depends only on its own id + its own step counter, so a refilled event (different slot/global
+        # step) draws identical randoms.  At n_w=N_total / refill-off, evt_id=arange(n) and nstep=i for
+        # all events -> the degenerate lock-step case.
+        kk = jax.vmap(lambda e, s: jax.random.fold_in(jax.random.fold_in(key, e), s))(evt_id, nstep)
+        # pass the step index ONLY on the logging path (track_id assignment); keeps the (stack,key,state)
+        # stepper contract for every existing (non-logging) caller, incl. custom test steppers.
         if bg is not None:                                            # refill path: explicit per-slot background
             _step = stepper(stk, kk, state, i, bg=bg) if do_log else stepper(stk, kk, state, bg=bg)
         else:                                                        # legacy: stepper uses its default bg
@@ -392,11 +400,15 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
             newwait = wait
         return (i + jnp.int32(1), newstk, state2, out2,
                 sofl + so.astype(sofl.dtype), oofl + oo.astype(oofl.dtype), prim, rb, rofl,
-                log, wptr, logofl, newwait)
+                log, wptr, logofl, newwait, evt_id, nstep + jnp.int32(1))
 
+    evt_id0 = jnp.arange(n, dtype=jnp.int32)                          # no-refill: slot row == event id
+    nstep0 = jnp.zeros(n, jnp.int32)                                 # per-event step counter
     init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0),
-               jnp.full(n, FATE_NONE, jnp.int32), rec0, jnp.int32(0), log0, wptr0, logofl0, wait0)
-    _, stack, _, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, _wait = jax.lax.while_loop(cond, body, init_st)
+               jnp.full(n, FATE_NONE, jnp.int32), rec0, jnp.int32(0), log0, wptr0, logofl0, wait0,
+               evt_id0, nstep0)
+    (_, stack, _, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, _wait,
+     _evt, _ns) = jax.lax.while_loop(cond, body, init_st)
     if do_log:
         return out, sofl, oofl, prim, (log, wptr, logofl)
     if with_rec:

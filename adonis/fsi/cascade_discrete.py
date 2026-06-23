@@ -182,6 +182,27 @@ def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
     return npos, nmom, nisp
 
 
+# --- per-event RNG (persistent-refill engine) -------------------------------------------------------
+# The step physics is keyed PER EVENT so a refilled event draws the SAME randoms regardless of which
+# working-set slot / global step processes it (docs/logbook/cascade_persistent_refill_plan.md).  `key`
+# into _nucleon_step/_pion_step is therefore an (n,2) array (one PRNG key per event), not a shared (2,)
+# key.  These helpers vmap the per-event draws; distributions are unchanged (each event gets an
+# independent stream), only WHICH draws each event sees differs from the old shared-key scheme.
+def _ev_split(keys, k):
+    """Per-event split: keys (n,2) -> (n,k,2)."""
+    return jax.vmap(lambda key: jax.random.split(key, k))(keys)
+
+
+def _ev_uniform(keys, shape=()):
+    """Per-event uniform: keys (n,2) -> (n,*shape)."""
+    return jax.vmap(lambda key: jax.random.uniform(key, shape))(keys)
+
+
+def _ev_fold_uniform(keys, data, shape=()):
+    """Per-event fold_in(data) then uniform: keys (n,2) -> (n,*shape)."""
+    return jax.vmap(lambda key: jax.random.uniform(jax.random.fold_in(key, data), shape))(keys)
+
+
 def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
                   rgrid, rhoP, rhoN, radius, cfg, key):
     """ONE step of the NUCLEON cascade for one particle per event (n,) -- the per-step physics of
@@ -219,8 +240,8 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     sig = sig_el + sig_in
     # Gaussian interaction probability (the single, differentiable model)
     prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
-    sk, ku, ks = jax.random.split(key, 3)
-    passes = in_slab & (jax.random.uniform(ku, (n, A)) < prob)
+    _ks3 = _ev_split(key, 3); sk, ku, ks = _ks3[:, 0], _ks3[:, 1], _ks3[:, 2]   # per-event keys (n,2)
+    passes = in_slab & (_ev_uniform(ku, (A,)) < prob)
     big = jnp.where(passes, perp2, jnp.inf)
     j = jnp.argmin(big, axis=1)
     has_hit = jnp.isfinite(big[ar, j]) & alive & can_int
@@ -247,20 +268,20 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
         p_o = _two_body_cm_scatter(p_lead, pN_i, M_N, k)
         p_r = (p_lead + pN_i) - p_o
         return p_o, (jnp.linalg.norm(p_o[1:]) < kf_out) | (jnp.linalg.norm(p_r[1:]) < kf_rec)
-    p_out, blocked = jax.vmap(scat_one)(p4, pN_j, kf_lead, kf_j, jax.random.split(ks, n))
+    p_out, blocked = jax.vmap(scat_one)(p4, pN_j, kf_lead, kf_j, ks)   # ks already (n,2) = per-event keys
     if not cfg.pauli:
         blocked = blocked & False
     sig_in_j = sig_in[ar, j]; sig_el_j = sig_el[ar, j]
-    u_br = jax.random.uniform(jax.random.fold_in(sk, 101), (n,))
+    u_br = _ev_fold_uniform(sk, 101)
     chose_inel = has_hit & (u_br < sig_in_j / jnp.clip(sig_el_j + sig_in_j, 1e-12, None))
     Pj = p4 + pN_j
     rs_j = jnp.sqrt(jnp.clip(Pj[:, 0] ** 2 - jnp.sum(Pj[:, 1:] ** 2, axis=1), (2 * M_N) ** 2, None))
-    u_m = jax.random.uniform(jax.random.fold_in(sk, 102), (n,))
+    u_m = _ev_fold_uniform(sk, 102)
     m_d = jnp.clip(nni.sample_delta_mass(rs_j / 1000.0, u_m) * 1000.0, M_N + 135.0, rs_j - M_N - 1.0)
-    cth1 = 2 * jax.random.uniform(jax.random.fold_in(sk, 103), (n,)) - 1.0
-    phi1 = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(sk, 104), (n,))
-    cth2 = 2 * jax.random.uniform(jax.random.fold_in(sk, 105), (n,)) - 1.0
-    phi2 = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(sk, 106), (n,))
+    cth1 = 2 * _ev_fold_uniform(sk, 103) - 1.0
+    phi1 = 2 * jnp.pi * _ev_fold_uniform(sk, 104)
+    cth2 = 2 * _ev_fold_uniform(sk, 105) - 1.0
+    phi2 = 2 * jnp.pi * _ev_fold_uniform(sk, 106)
 
     def _split2(P4, mA, mB, cth_, phi_):
         ss = jnp.clip(P4[:, 0] ** 2 - jnp.sum(P4[:, 1:] ** 2, axis=1), (mA + mB) ** 2 * 1.0001, None)
@@ -283,8 +304,8 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     pN1, pD = _split2(Pj, jnp.full((n,), M_N), m_d, cth1, phi1)
     pN2, _pPiX = _split2(pD, jnp.full((n,), M_N), jnp.full((n,), 138.04), cth2, phi2)
     q_pair = isp.astype(jnp.int32) + nisp[ar, j].astype(jnp.int32)
-    u107 = jax.random.uniform(jax.random.fold_in(sk, 107), (n,))
-    u108 = jax.random.uniform(jax.random.fold_in(sk, 108), (n,))
+    u107 = _ev_fold_uniform(sk, 107)
+    u108 = _ev_fold_uniform(sk, 108)
     dch = jnp.where(q_pair == 2, jnp.where(u107 < 0.75, 2, 1),
             jnp.where(q_pair == 1, jnp.where(u107 < 0.5, 1, 0),
                                    jnp.where(u107 < 0.25, 0, -1)))
@@ -409,8 +430,9 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     _sfm = jnp.clip(sig * MB_TO_FM2, 1e-12, None)
     # Gaussian interaction probability (the single, differentiable model)
     prob = jnp.where(cand, jnp.exp(-jnp.pi * perp2 / _sfm), 0.0)
-    sk, ku, kc, kf, ka, kab, knp = jax.random.split(key, 7)
-    passes = cand & (jax.random.uniform(ku, (n, A)) < prob)
+    _ks7 = _ev_split(key, 7)            # per-event keys (n,2) each
+    sk, ku, kc, kf, ka, kab, knp = (_ks7[:, i] for i in range(7))
+    passes = cand & (_ev_uniform(ku, (A,)) < prob)
     metric = jnp.where(passes, perp2, jnp.inf)
     j = jnp.argmin(metric, axis=1)
     has_hit = jnp.isfinite(metric[ar, j]) & alive
@@ -420,7 +442,7 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     kf_n_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoN))
     p_abs = sa_j / jnp.clip(sig_j, 1e-12, None)
     p_conv = si_j / jnp.clip(sig_j, 1e-12, None)
-    u_br = jax.random.uniform(kc, (n,))
+    u_br = _ev_uniform(kc)
     chose_abs = has_hit & (u_br < p_abs)
     chose_conv = has_hit & ~chose_abs & (u_br < p_abs + p_conv)
     # ----- absorption final state (isospin partition; per-species Pauli) -----
@@ -436,7 +458,7 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     avail = jnp.where(PARTabs == 1, has_p[:, None], jnp.where(PARTabs == 0, has_n[:, None], False))
     Wm = jnp.where(avail, Wabs, 0.0); wtot = jnp.sum(Wm, axis=1, keepdims=True)
     Wm = Wm / jnp.clip(wtot, 1e-12, None)
-    u_np = jax.random.uniform(knp, (n,))
+    u_np = _ev_uniform(knp)
     nprot_out = jnp.clip(jnp.sum((u_np[:, None] > jnp.cumsum(Wm, axis=1)).astype(jnp.int32), axis=1), 0, 2)
     has_mode = wtot[:, 0] > 0
     part_is_p = PARTabs[ar, nprot_out] == 1
@@ -470,25 +492,25 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
         # true charges, NOT proton-only slots (zeroing neutrons dropped secondary proton knockouts).
         return pa, pb, A_is_p.astype(jnp.int32), B_is_p.astype(jnp.int32), blocked
     abs_pa, abs_pb, abs_qa, abs_qb, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out,
-                                                         kfPA, kfNA, kfPB, kfNB, jax.random.split(kab, n))
+                                                         kfPA, kfNA, kfPB, kfNB, kab)   # kab (n,2) per-event
     if not cfg.pauli:
         abs_blocked = abs_blocked & False
     is_abs = chose_abs & ~abs_blocked & has_mode
     # ----- scatter: out-pion charge, DCC angle, per-species Pauli recoil -----
     sig_io_j = sig_io.reshape(n, A, 3)[ar, j]
     probs = sig_io_j / jnp.clip(jnp.sum(sig_io_j, axis=1, keepdims=True), 1e-12, None)
-    u = jax.random.uniform(kf, (n, 1))
+    u = _ev_uniform(kf, (1,))
     out_ch = jnp.clip(jnp.sum((u > jnp.cumsum(probs, axis=1)).astype(jnp.int32), axis=1), 0, 2).astype(jnp.int32)
     nuc_idx = jnp.where(nisp[ar, j], 0, 1)
     chan_idx = ch * 6 + nuc_idx * 3 + out_ch
-    cos_cm = cascade_mb.jax_sample_cos_cm(W_j, jax.random.uniform(ka, (n,)), chan_idx)
+    cos_cm = cascade_mb.jax_sample_cos_cm(W_j, _ev_uniform(ka), chan_idx)
     kf_rec_pi = jnp.where((struck_p + out_ch - ch) == 1, kf_p_j, kf_n_j)
 
     def scat_one(p_pi_i, pN_i, out_i, kf_i, cc, k):
         p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k, cos_cm=cc)
         p_rec = (p_pi_i + pN_i) - p_out
         return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
-    p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_rec_pi, cos_cm, jax.random.split(sk, n))
+    p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_rec_pi, cos_cm, sk)   # sk (n,2) per-event
     if not cfg.pauli:
         blocked = blocked & False
     # ----- conversion (piN -> etaN'): emit the N' baryon (eta neutral -> q_bary = q_pi + q_struck) -----
@@ -500,8 +522,8 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     rscv = jnp.sqrt(jnp.clip(scv, (M_N + _M_ETA) ** 2, None))
     EN = (scv + M_N ** 2 - _M_ETA ** 2) / (2.0 * rscv)
     pst = jnp.sqrt(jnp.clip(EN ** 2 - M_N ** 2, 0.0, None))
-    ccv = 2.0 * jax.random.uniform(jax.random.fold_in(ka, 211), (n,)) - 1.0
-    scv_ = jnp.sqrt(jnp.clip(1 - ccv ** 2, 0.0, None)); phcv = 2 * jnp.pi * jax.random.uniform(jax.random.fold_in(ka, 212), (n,))
+    ccv = 2.0 * _ev_fold_uniform(ka, 211) - 1.0
+    scv_ = jnp.sqrt(jnp.clip(1 - ccv ** 2, 0.0, None)); phcv = 2 * jnp.pi * _ev_fold_uniform(ka, 212)
     dcv = jnp.stack([scv_ * jnp.cos(phcv), scv_ * jnp.sin(phcv), ccv], axis=1)
     beta = Pcv[:, 1:] / Pcv[:, [0]]; b2 = jnp.sum(beta ** 2, axis=1); gcv = 1 / jnp.sqrt(jnp.clip(1 - b2, 1e-12, None))
     Ncm = jnp.concatenate([EN[:, None], pst[:, None] * dcv], axis=1)
