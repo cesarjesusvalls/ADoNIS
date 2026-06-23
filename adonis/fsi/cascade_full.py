@@ -104,11 +104,14 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
     a pion slot -> (up to 2 absorption/recoil N, 0 pion).  Returns stepper(stack, key, consumed) ->
     (stack2, terminal (n,M) bool [escaped final-state particles], spawn ParticleBatch (n,3M), consumed)."""
     from adonis.fsi.cascade_discrete import _nucleon_step, _pion_step, _load_density
-    npos, nmom, nisp = su["npos"], su["nmom"], su["nisp"]
+    npos0, nmom0, nisp0 = su["npos"], su["nmom"], su["nisp"]   # default background; per-call `bg` overrides it
     rgrid, rhoP, rhoN, radius = _load_density(cfg.nucleus, cfg.density_n)
     _dead = lambda n: (jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, jnp.int32), jnp.zeros(n, bool))
 
-    def stepper(stack, key, consumed, step=0):
+    def stepper(stack, key, consumed, step=0, bg=None):
+        # bg=(npos,nmom,nisp) per-call -> lets run_cascade_pool swap the background when an event slot is
+        # refilled (persistent-refill engine); bg=None uses the closed-over default (legacy callers).
+        npos, nmom, nisp = (npos0, nmom0, nisp0) if bg is None else bg
         n, M = stack["alive"].shape
         keys = jax.random.split(key, M)
 
@@ -297,7 +300,7 @@ _LOG_F = ("incp", "cont_p", "n1_p", "n2_p", "pio_p")
 
 
 def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_origin=-999,
-                     rec_caps=None, log_cap=None):
+                     rec_caps=None, log_cap=None, bg=None):
     """POOLED engine loop (docs/logbook/cascade_pool_engine.md): ONE fixed-size (n, M) particle stack
     stepped once per step; the in/out reconcile (pool_reconcile) runs INSIDE the step, vs the BFS's
     per-generation compact across max_gen separate full-max_steps passes (~10-24x dead-slot waste).
@@ -336,8 +339,11 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl = st
         # pass the step index ONLY on the logging path (track_id assignment); keeps the 3-arg stepper
         # contract for every existing (non-logging) caller, incl. custom test steppers.
-        _step = (stepper(stk, jax.random.fold_in(key, i), state, i) if do_log
-                 else stepper(stk, jax.random.fold_in(key, i), state))
+        kk = jax.random.fold_in(key, i)
+        if bg is not None:                                            # refill path: explicit per-slot background
+            _step = stepper(stk, kk, state, i, bg=bg) if do_log else stepper(stk, kk, state, bg=bg)
+        else:                                                        # legacy: stepper uses its default bg
+            _step = stepper(stk, kk, state, i) if do_log else stepper(stk, kk, state)
         stk2, terminal, spawn, state2 = _step[:4]
         extra = _step[4] if len(_step) >= 5 else None
         term_batch = {**stk2, "alive": terminal}
