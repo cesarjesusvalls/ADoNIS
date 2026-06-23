@@ -117,9 +117,15 @@ def _build_tables(n_s=240, n_m=160, s_lo=None, s_hi=4.0):
     if "sig" in _CACHE:
         return
     s_lo = s_lo or (2 * MN_HEAVY + MPI_HEAVY + 1e-4)
-    S = np.linspace(s_lo, s_hi, n_s)
-    sig = np.zeros(n_s)
-    icdf = np.zeros((n_s, 65))
+    # NON-UNIFORM sqrts grid: DENSE near threshold (the sigma turn-on is steep -> a uniform ~8 MeV grid
+    # gave +36% from linear-interp overshoot, cf. scripts/test_sigma_nn_ndelta.py) then coarse above the
+    # cascade-relevant region.  The per-point mass/cos integral is ALREADY exact vs ACHILLES (validated
+    # direct), so n_m/ncos are unchanged -- only the table density near threshold is the fix.
+    s_knee = min(2.30, s_hi)
+    S = np.unique(np.concatenate([np.linspace(s_lo, s_knee, 4 * n_s),
+                                  np.linspace(s_knee, s_hi, n_s)]))
+    sig = np.zeros(len(S))                                       # len(S) != n_s (non-uniform grid)
+    icdf = np.zeros((len(S), 65))
     ugrid = np.linspace(0, 1, 65)
     for i, rs in enumerate(S):
         m_lo = MN_HEAVY + MPI_HEAVY

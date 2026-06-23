@@ -42,8 +42,15 @@ Accuracy: validated? = has it been quantitatively checked vs ACHILLES across the
   channel is the live residual — QE p chi2/ndf 3.3, RES p 2.5, neutrons clean (momentum-sampling, not
   proton-specific); the worst pulls cluster near threshold ([[res-norm-deficit-is-pion-mass]] is a
   separate, fixed issue). HELD AS HYPOTHESIS.
-- **Accuracy validated?** Test built: `scripts/test_sigma_nn_ndelta.py` (ACHILLES_SIGMADUMP dump of
-  `SigmaNN2NDelta(sqrts,1GeV,Delta++)` vs ADoNIS base table, ratio vs sqrts). RESULT: PENDING (rebuild).
+- **Accuracy validated? YES — FIXED.** `scripts/test_sigma_nn_ndelta.py` (ACHILLES_SIGMADUMP vs ADoNIS
+  base table) showed the per-point mass/cos integral is ALREADY exact (direct integral == ACHILLES to
+  1.0000); the entire +36% near threshold was the **sqrts-table LINEAR INTERP** across the steep turn-on
+  at ~8 MeV spacing.  FIX: non-uniform sqrts grid, dense near threshold (4*n_s over [s_lo,2.30], cf.
+  nn_inelastic._build_tables).  RESULT: threshold band [2.016,2.10) 1.358->1.0002 (max 0.17%); whole
+  cascade-relevant range (threshold->3.0 GeV) now <=0.71%.  RESIDUAL: 3-4 GeV tail still ~4-8% low (a
+  slow-converging per-point integral) but OUT OF CASCADE RANGE (sqrts>3 needs nucleon |p|>3.5 GeV, never
+  reached) -> harmless, not fixed.  n_m/ncos unchanged.  TODO: re-confirm the cascade NN->NNpi matrix
+  cell closes after regenerating the segment bank with the new table.
 
 ### 1.3 [R] Spectral-function importance CDF (adonis/xsec/spectral.py ~139-173)
 - ADoNIS: trapezoid CDF on fixed ~0.25 MeV (E) / ~1 MeV (|p|) grids + linear inverse-CDF sampling.
