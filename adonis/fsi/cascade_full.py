@@ -243,7 +243,7 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
     return stepper
 
 
-def pool_reconcile(stack, terminal, spawn, M):
+def pool_reconcile(stack, terminal, spawn, M, wait=None, Q=0):
     """The POOLED engine's per-step in/out (docs/logbook/cascade_pool_engine.md): drop the slots that
     terminated this step (escape/absorb/convert), KEEP the survivors, INSERT the particles created this
     step, and re-pack to the fixed width M -- counting any that don't fit as overflow.  This is exactly
@@ -251,11 +251,23 @@ def pool_reconcile(stack, terminal, spawn, M):
       stack    : ParticleBatch (n, M)   -- the current stack (post-step state)
       terminal : (n, M) bool            -- slots that reached a terminal this step
       spawn    : ParticleBatch (n, K)   -- particles created this step (alive mask = which are real)
-      M        : int                    -- fixed stack width
-    Returns (new_stack (n, M), overflow (scalar))."""
+      M        : int                    -- fixed active-stack width
+      wait     : ParticleBatch (n, Q) or None -- the FIFO waiting buffer (particles that didn't fit in M)
+      Q        : int                    -- waiting-buffer width (0 = no queue; legacy drop-on-overflow)
+    With Q>0 the combined survivors+wait+spawn are packed into M active + Q waiting (drain order: survivors
+    keep their slots, then the waiting buffer re-enters before brand-new spawns); only > M+Q is dropped.
+    This ADDS previously-dropped particles (correctness) without changing the active ordering when Q=0.
+    Returns (new_stack (n, M), new_wait (n, Q) or None, overflow (scalar))."""
     stack = {**stack, "alive": stack["alive"] & ~terminal}
+    if Q > 0 and wait is not None:
+        combined = {k: jnp.concatenate([stack[k], wait[k], spawn[k]], axis=1) for k in stack}
+        full, ndrop = compact(combined, M + Q)                    # pack to M+Q (position order, FIFO-ish)
+        active = {k: v[:, :M] for k, v in full.items()}
+        new_wait = {k: v[:, M:M + Q] for k, v in full.items()}
+        return active, new_wait, ndrop
     combined = {k: jnp.concatenate([stack[k], spawn[k]], axis=1) for k in stack}
-    return compact(combined, M)
+    active, ndrop = compact(combined, M)                          # Q=0: identical to the legacy reconcile
+    return active, None, ndrop
 
 
 def _rec_scatter(bufs, cnt, mask, vals, cap):
@@ -300,7 +312,7 @@ _LOG_F = ("incp", "cont_p", "n1_p", "n2_p", "pio_p")
 
 
 def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_origin=-999,
-                     rec_caps=None, log_cap=None, bg=None):
+                     rec_caps=None, log_cap=None, bg=None, q_cap=0):
     """POOLED engine loop (docs/logbook/cascade_pool_engine.md): ONE fixed-size (n, M) particle stack
     stepped once per step; the in/out reconcile (pool_reconcile) runs INSIDE the step, vs the BFS's
     per-generation compact across max_gen separate full-max_steps passes (~10-24x dead-slot waste).
@@ -331,12 +343,14 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     log0 = {**{k: jnp.zeros((n, L), jnp.int32) for k in _LOG_I},
             **{k: jnp.zeros((n, L), jnp.float32) for k in _LOG_F}}
     wptr0 = jnp.zeros(n, jnp.int32); logofl0 = jnp.int32(0)
+    Q = int(q_cap) if q_cap and q_cap > 0 else 0                     # particle waiting-buffer width (0 = legacy drop)
+    wait0 = empty_batch(n, max(Q, 1))                                # FIFO queue; dummy (n,1) all-dead when Q=0
 
-    def cond(st):
-        return (st[0] < max_steps) & jnp.any(st[1]["alive"])
+    def cond(st):                                                    # run while any active OR any waiting
+        return (st[0] < max_steps) & (jnp.any(st[1]["alive"]) | jnp.any(st[-1]["alive"]))
 
     def body(st):
-        i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl = st
+        i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, wait = st
         # pass the step index ONLY on the logging path (track_id assignment); keeps the 3-arg stepper
         # contract for every existing (non-logging) caller, incl. custom test steppers.
         kk = jax.random.fold_in(key, i)
@@ -371,14 +385,18 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
             for k in _LOG_I + _LOG_F:
                 log[k] = log[k].at[ar[:, None], tgt].set(seg[k].astype(log[k].dtype), mode="drop")
             wptr = wptr + evi.sum(axis=1).astype(wptr.dtype)
-        newstk, so = pool_reconcile(stk2, terminal, spawn, M)
+        if Q > 0:                                                    # particle waiting-queue: keep overflow
+            newstk, newwait, so = pool_reconcile(stk2, terminal, spawn, M, wait, Q)
+        else:                                                        # legacy: drop overflow (wait stays dummy)
+            newstk, _nw, so = pool_reconcile(stk2, terminal, spawn, M)
+            newwait = wait
         return (i + jnp.int32(1), newstk, state2, out2,
                 sofl + so.astype(sofl.dtype), oofl + oo.astype(oofl.dtype), prim, rb, rofl,
-                log, wptr, logofl)
+                log, wptr, logofl, newwait)
 
     init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0),
-               jnp.full(n, FATE_NONE, jnp.int32), rec0, jnp.int32(0), log0, wptr0, logofl0)
-    _, stack, _, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl = jax.lax.while_loop(cond, body, init_st)
+               jnp.full(n, FATE_NONE, jnp.int32), rec0, jnp.int32(0), log0, wptr0, logofl0, wait0)
+    _, stack, _, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, _wait = jax.lax.while_loop(cond, body, init_st)
     if do_log:
         return out, sofl, oofl, prim, (log, wptr, logofl)
     if with_rec:

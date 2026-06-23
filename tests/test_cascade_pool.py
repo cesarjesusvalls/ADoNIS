@@ -24,7 +24,7 @@ def test_reconcile_drop_keep_insert():
     stack = _batch(1, M, [[10, 20, 30, 0]], [[True, True, True, False]])
     terminal = jnp.asarray([[False, True, False, False]])
     spawn = _batch(1, 2, [[50, 60]], [[True, True]])
-    new, ofl = pool_reconcile(stack, terminal, spawn, M)
+    new, _, ofl = pool_reconcile(stack, terminal, spawn, M)
     tags = set(np.asarray(new["p4"][0, :, 0])[np.asarray(new["alive"][0])].tolist())
     assert int(ofl) == 0
     assert tags == {10, 30, 50, 60}, tags          # dropped 20, kept 10/30, inserted 50/60
@@ -36,7 +36,7 @@ def test_reconcile_overflow():
     stack = _batch(1, M, [[10, 20, 30, 40]], [[True, True, True, True]])
     terminal = jnp.zeros((1, M), bool)
     spawn = _batch(1, 2, [[50, 60]], [[True, True]])
-    new, ofl = pool_reconcile(stack, terminal, spawn, M)
+    new, _, ofl = pool_reconcile(stack, terminal, spawn, M)
     assert int(ofl) == 2
     assert int(new["alive"].sum()) == 4            # packed full
 
