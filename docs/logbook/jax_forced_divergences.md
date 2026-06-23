@@ -52,11 +52,18 @@ Accuracy: validated? = has it been quantitatively checked vs ACHILLES across the
   reached) -> harmless, not fixed.  n_m/ncos unchanged.  TODO: re-confirm the cascade NN->NNpi matrix
   cell closes after regenerating the segment bank with the new table.
 
-### 1.3 [R] Spectral-function importance CDF (adonis/xsec/spectral.py ~139-173)
-- ADoNIS: trapezoid CDF on fixed ~0.25 MeV (E) / ~1 MeV (|p|) grids + linear inverse-CDF sampling.
-- ACHILLES: flat draw over the coarse grid weighted by cubic Polint of S(p,E) — no precomputed CDF.
-- Regime: sharp removal-energy peak (~15 MeV) + low-|p|; comment already flags a peak under-sampling bias.
-- **Accuracy validated?** NO — needs a (p,E) marginal comparison vs ACHILLES.
+### 1.3 [V] Spectral-function importance CDF (adonis/xsec/spectral.py ~139-189)  **TESTED — OK**
+- ADoNIS: SpectralImportanceSampler draws (|p|,E_rm) ~ |p|^2 S(p,E) via trapezoid CDFs on FINE grids
+  (~0.25 MeV E / ~1 MeV |p|) built with the SF's OWN cubic-p/linear-E Polint, + linear inverse-CDF.
+- ACHILLES: flat draw + per-point Polint S weighting (unbiased to |p|^2 S) -- same target distribution.
+- **Accuracy validated? YES.** `scripts/test_spectral_sampler.py` compares the sampler's drawn |p| and
+  E_rm marginals to the TRUE |p|^2 S (the SF's own Polint table = ACHILLES's target).  RESULT (C,
+  N=3e5): shape chi2/ndf = 1.32 (|p|) and 1.00 (E_rm) -> consistent with UNBIASED; the removal-energy
+  PEAK region (the original concern) max|ratio-1| = 5.8% with no systematic trend (scattered, low-stat
+  bins; tails up to ~20% are pure Poisson at this N).  So the fine-grid + Polint rebuild (the in-code
+  fix) WORKS -- the coarse-grid bias is removed; no action needed.  (Mild |p| chi2/ndf 1.32 -> a
+  higher-stat recheck would confirm, but the per-event python searchsorted loop in sample() OOMs at
+  N=4e6, so 3e5 was used.)
 
 ---
 
@@ -83,7 +90,7 @@ Accuracy: validated? = has it been quantitatively checked vs ACHILLES across the
   TODO: quantify the bilinear W-tail deviation explicitly (dsigma/dW bilinear-vs-spline) so the
   magnitude is on record.
 
-### 2.4 [R] SF inverse-CDF linear interp (spectral.py ~177-189) — see 1.3 (same mechanism).
+### 2.4 [V] SF inverse-CDF linear interp (spectral.py ~177-189) — see 1.3.  TESTED OK (same test).
 
 (Faithful, NOT divergences — recorded so they're not re-flagged: spectral Polint order [V],
 flux histogram interp, vegas 3-point Adapt smoothing — all match ACHILLES.)
@@ -120,20 +127,32 @@ counters stay 0 on the physics sample (esp. _KSLAB and pool M for Ar).
 - **Accuracy validated?** Indirectly via the cascade transparency / matrix agreement; no dedicated
   Gaussian-vs-cylinder closure.
 
-### 4.2 [R] Straight-line propagation vs ACHILLES potential-curved trajectory (cascade_discrete ~330)
-- ADoNIS marches `pos += step*dhat` straight between interactions; ACHILLES integrates through the mean
-  field. Regime: low-energy hadrons deep in the nucleus. Severity likely low (most cascades high-E).
-- **Accuracy validated?** NO.
+### 4.2 [V] Straight-line propagation vs potential-curved trajectory  **NOT A DIVERGENCE — CLOSED**
+- ADoNIS marches `pos += step*dhat` straight between interactions.  ACHILLES `Cascade::Propagate` only
+  integrates through the mean field WHEN `m_potential_prop` is true (symplectic `integrators[idx].Step`);
+  otherwise it is straight-line (`kickNuc->Propagate(timeStep)`).
+- **VERIFIED:** our run card sets **`PotentialProp: False`** (run_T2K_{C,Ar}_fate_gauss.yml) -> ACHILLES
+  cascade transport is straight-line, IDENTICAL to ADoNIS.  The agent's `[R]` "curves through a
+  potential" claim was wrong for our config.  No divergence; nothing to fix.  (Re-check only if a card
+  ever sets PotentialProp: True.)
 
 (Faithful, NOT divergences: Delta->Npi phase-space `_split2`, hard-cut Pauli blocking, spline rho(r)/kF.)
 
 ---
 
-## Action order
-1. **1.1** — run `scripts/test_sigma_nn_ndelta.py`; if ADoNIS deviates near threshold, refine the
-   integration (more cos/mass points or adaptive; finer sqrts table) until <=1% across the range, then
-   re-check the cascade-segment matrix NN->NNpi cell. (Pure accuracy; brings ADoNIS *closer* to ACHILLES.)
-2. **3.x caps** — high-A/high-E overflow stress test (all counters 0).
-3. **2.2** — confirm production forward gen uses `BATCH_INTERP="spline"`.
-4. **1.3 / 2.4** — SF (p,E) marginal vs ACHILLES.
-5. Re-read the [R] items to promote them to [V] (the agent inventory is a starting point, not verified).
+## Status summary
+- **1.1 nn_inelastic** — FIXED (sigma <=0.7% in range); cascade-level NN->NNpi re-validation pending the
+  seed-1 segment run with the new table.
+- **2.2 DCC bilinear** — FIXED (default->spline; warnings at all origins; RES confirmed spline).
+- **1.3 / 2.4 spectral sampler** — TESTED OK (chi2/ndf ~1; peak region 5.8%, no bias).
+- **4.1 Gaussian prob** — accepted (deliberate, differentiable engine).
+- **4.2 straight-line** — NOT A DIVERGENCE (PotentialProp: False -> ACHILLES also straight-line).
+
+## Remaining action order
+1. **1.1 cascade-level** — re-check the cascade-segment matrix NN->NNpi cell after regenerating the
+   segment bank with the fixed sigma table (run in progress).
+2. **3.x caps** — high-A/high-E overflow stress test (confirm every counter stays 0 on the physics
+   sample, esp. _KSLAB and pool M for Ar).  ONLY remaining untested divergence.
+3. **2.2 follow-up** — quantify the bilinear W-tail magnitude on record; the non-blueprint bilinear
+   users (inclusive_1pi, sigma_enu) are handled in a separate session.
+4. Re-read any lingering [R] items to promote to [V].
