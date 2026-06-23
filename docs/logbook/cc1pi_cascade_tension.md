@@ -62,6 +62,39 @@ exact sigma source must be confirmed in code.)
   SCATTER MULTIPLICITY / reaction fraction (ADoNIS nsc vs ACHILLES status).  [ADoNIS pion nsc added to
   cascade_debug_dump for this test.]  Alternative still open: pi0 re-conversion asymmetry.
 
+## Refinement 2: scatter-multiplicity ruled out; narrowed to per-scatter charge outcome (NOT root-caused)
+- **Reaction/transmission rate MATCHES** ACHILLES per bracket (ADoNIS transmitted 0.525 vs ACHILLES
+  status==1 0.521; e.g. Delta-region 0.316 vs 0.316).  So pions interact equally often -> NOT a
+  multiplicity/scatter-rate issue.  Mean scatter count among escaped-scatterers ~1.33.
+- Combined with absorption matching, the SCATTER total sigma matches too.  Reduced to: among
+  non-absorption reactions (scatters), ACHILLES converts pi+ -> pi0 ~72%, ADoNIS ~31%.
+- **ADoNIS event-cex is 99% PRIMARY charge-exchange** (0.0855 of 0.0864); secondary-pi0 production
+  (primary absorbed + NN->NDelta->Npi0) is negligible (0.0009).  <npi0>/event = 0.084.
+- ADoNIS per-(escaped-scattered) cex = 0.316 -> implied per-single-scatter cex ~0.25 (ABOVE the naive
+  sigma-weighted neutron expectation 0.17 -> ADoNIS is NOT over-selecting protons).
+- **Verified CORRECT/faithful in ADoNIS** (none is the bug): channel table is the FULL piN isospin set
+  (pi0 HAS elastic channels pi0p->pi0p / pi0n->pi0n, lines 26/28); sigma(pi+p)/sigma(pi+n)=2.9 and
+  cex/elastic on neutron ~2 both MATCH piN data; selection algorithm == ACHILLES Cascade::Interacted
+  (nearest-first first-passer); charge counting (no mislabel); reaction rate; absorption; buffers (0/0).
+- **OPEN PUZZLE (not resolved):** ACHILLES ~72% cex-among-scatters is hard to reconcile with piN isospin
+  (pi+p has NO cex; even 50% neutron x 100% cex gives 0.50).  So either (a) a subtlety in the ACHILLES
+  FATE_FS cex definition I'm parsing, or (b) ACHILLES's in-medium piN charge outcome genuinely differs
+  from the isospin-pure ANL-Osaka table ADoNIS uses.  The decisive measurement -- ACHILLES sigma(pi+p)
+  vs sigma(pi+n) -- is BLOCKED: GETXSEC dumps total sigma + nucleon pid but NOT the incoming pion charge,
+  so the p/n ratio (1.62 mixed) is contaminated by pi-/pi0 (sigma(pi-n)~sigma(pi+p)).
+
+## STATUS: tension precisely LOCALIZED, not root-caused
+The CC1pi cascade tension is the pion CHARGE-EXCHANGE yield (ADoNIS too low by ~2.4x at event level);
+absorption, reaction rate, proton leg, channel sigmas-vs-data, selection algorithm, and buffers are all
+verified correct.  Held as an open, well-bounded discrepancy (NOT a declared root cause).
+
+## Recommended next steps (need user direction; any cascade-physics change must be discussed per CLAUDE.md)
+1. Add an incoming-pion-charge tag to ACHILLES GETXSEC (1-line) -> cleanly measure ACHILLES sigma(pi+p)
+   vs sigma(pi+n) and compare to ADoNIS 2.9 (tests the species-sigma-split / proton-over-selection).
+2. Instrument per-scatter (struck species + in/out pion charge) on BOTH sides for a direct
+   cex-per-scatter comparison (ADoNIS: expose nisp[j]+out_ch from _pion_step; ACHILLES: FinalizeMomentum).
+3. Re-derive the ACHILLES FATE_FS-based cex definition to rule out a parsing/bookkeeping subtlety.
+
 ## Artifacts
 - ADoNIS dump: /tmp/ado_cascade_debug_C.npz ; ACHILLES: /tmp/ach_fatepion_C_gauss.fate
 - scripts/cascade_debug_dump.py (full-pool momentum-bracketed dump) + scripts/cascade_debug_compare.py (chi2/pull)
