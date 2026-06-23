@@ -23,16 +23,19 @@ definitions, a `generate.py` consistency-check/banner, configs, and diagnostic s
 - [ ] After removal: `grep -rn "_N_RECOIL|_MAX_SEG|_K_BR|_K_SLAB_REC|max_gen|BFS" adonis/ scripts/` clean.
 
 ## Cat-3 fixed-buffer caps (audit jax_forced_divergences.md §3)
-- [ ] **M_out** (out-buffer, escaped finals) is HARDCODED 24 in `_cascade_pool` (lines ~417,422).  The
-      ~0.5% Ar overflow at P=12 combined sofl(stack)+oofl(out); for Ar the out-buffer likely dominates.
-      Disentangle (scripts/test_cascade_buffers.py, running) -> if oofl: make M_out a param + bump for Ar.
+- [x] **M_out** (out-buffer, escaped finals, hardcoded 24): DISENTANGLED (test_cascade_buffers.py, Ar) ->
+      oofl=0 at M_out=24 even with P=16, i.e. the out-buffer NEVER overflows (Ar knockouts mostly
+      reabsorb/capture, escaped finals stay <=24).  The ~0.5% Ar overflow was ALL pool STACK (sofl), and
+      **P=16 fixes it: sofl 0.66% -> 0.01%**.  No M_out bump needed.  (Corrected my earlier wrong guess
+      that M_out dominates -- measured, not assumed.)
 - [ ] **max_steps** — particles still alive when the step loop ends are dropped SILENTLY (no counter).
       Check Ar (~1000 steps): instrument an alive-at-end count or compare out vs a 2x-max_steps run.
 - [ ] **`_KSLAB=3`** (fast_xsec K) — run scripts/test_kslab_ab.py (fast_xsec True=K3 vs False=all nucleons,
       Ar); if channel fractions differ >1%, bump K or default fast_xsec=False.
 - [x] log_cap: safe (Ar max 32 segments/event; default lowered 64->48, 1.5x margin).
-- [ ] Commit the P=12->16 (cascade_nucleus/run_fsi/gen_cc_engine_rich) + log_cap 64->48 default changes
-      once the disentangle/P-scan confirms the right P (and whether M_out also needs bumping).
+- [x] P=12->16 (cascade_nucleus/run_fsi/gen_cc_engine_rich) + log_cap 64->48 defaults committed (ade96f6)
+      and P=16 validated (Ar sofl 0.66%->0.01%; M_out=24 fine).  Residual 0.01% (1 event) -> P=20 only if
+      a true-zero is wanted; 0.01% is negligible (one slow particle, one rare event).
 
 ## Audit follow-ups (docs/logbook/jax_forced_divergences.md)
 - [ ] bilinear amplitude interp still ACTIVE in NON-blueprint paths (inclusive_1pi.py:27,
