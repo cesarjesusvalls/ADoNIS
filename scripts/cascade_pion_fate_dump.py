@@ -1,6 +1,6 @@
 """Single-pass primary-PION fate dump for the ADoNIS cascade -- the pion analog of
 scripts/cascade_fate_dump.py (which does p/n).  Take the pre-FSI primary RES pions, seed the nucleus
-EXACTLY as the production cascade (setup_carbon), propagate each pion ONCE by iterating the validated
+EXACTLY as the production cascade (setup_nucleus), propagate each pion ONCE by iterating the validated
 `_pion_step` (the same per-step physics the pooled production engine runs), and classify its fate +
 record initial |p|, so it can be compared per-momentum-bin against an ACHILLES achilles:fatedump.
 
@@ -21,7 +21,7 @@ np.seterr(all="ignore")
 from adonis.workflow.materials import resolve_targets
 from adonis.xsec import res_xsec
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _pion_step, _load_density
-from adonis.fsi.cascade_full import setup_carbon
+from adonis.fsi.cascade_full import setup_nucleus
 from adonis.xsec.spectral import SpectralFunction
 import adonis.xsec.flux as flux
 
@@ -46,7 +46,7 @@ ppid = jnp.asarray(np.asarray(e["ppid"])[sel].astype(np.int32))
 ipid = jnp.asarray(np.asarray(e["ipid"])[sel].astype(np.int32))
 m = int(sel.sum())
 
-su = setup_carbon(ppi, ppid, ipid, cfg, jax.random.PRNGKey(11))
+su = setup_nucleus(ppi, ppid, ipid, cfg, jax.random.PRNGKey(11))
 npos, nmom, nisp = su["npos"], su["nmom"], su["nisp"]
 rgrid, rhoP, rhoN, radius = _load_density(tg.density_p, tg.density_n)
 keys = jax.random.split(jax.random.PRNGKey(99), max_steps)

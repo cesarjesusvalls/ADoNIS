@@ -1,6 +1,6 @@
 """Pool-vs-BFS QE nucleon-elastic avalanche multiplicity check.
 
-Runs the SAME QE primary bank through (a) the BFS nucleon cascade (cascade_carbon engine=bfs) and
+Runs the SAME QE primary bank through (a) the BFS nucleon cascade (cascade_nucleus engine=bfs) and
 (b) the pooled engine (make_pool_stepper + run_cascade_pool) on the gen-0 QE stack, and compares
 proton(>250 MeV)/event.  Pool is NOT bit-identical to bfs (true step-order consumption) so we expect
 ratio ~1.0, not exact.  nn_inelastic toggled via argv[1] (default False = pure elastic avalanche)."""
@@ -34,7 +34,7 @@ print(f"[gen] {m} live QE events", flush=True)
 
 # ---- BFS ----
 key = jax.random.PRNGKey(11)
-pterm, nterms, ofl, created = CF.cascade_carbon(
+pterm, nterms, ofl, created = CF.cascade_nucleus(
     pN, pN, ppid, ipid.astype(jnp.int32), Npid.astype(jnp.int32), cfg, key,
     P=M, max_gen=6, channel="qe")
 bfs_n = np.zeros(m)
@@ -46,7 +46,7 @@ for g in nterms:
 print(f"[BFS]  proton(>250)/ev = {bfs_n.mean():.4f}  overflow={int(ofl)}", flush=True)
 
 # ---- POOL ----
-su = CF.setup_carbon(pN, ppid, ipid.astype(jnp.int32), cfg, key)
+su = CF.setup_nucleus(pN, ppid, ipid.astype(jnp.int32), cfg, key)
 g0 = CF.empty_batch(m, 1)
 g0["alive"] = jnp.ones((m, 1), bool)
 g0["species"] = jnp.full((m, 1), CF.NUCLEON, jnp.int32)

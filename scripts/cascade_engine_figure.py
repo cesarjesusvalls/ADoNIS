@@ -59,7 +59,7 @@ def engine_signal():
         knu, kmu, pstr = a["k_nu"], a["k_mu"], a["p_struck"]
         ppi = jnp.asarray(a["p_pi"]); pN = jnp.asarray(a["p_N"]); w = a["w"]
         ppid = jnp.asarray(a["ppid"], jnp.int32); ipid = jnp.asarray(a["ipid"], jnp.int32); Npid = jnp.asarray(a["Npid"], jnp.int32)
-        pterm, nterms, ofl, created = CF.cascade_carbon(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11), P=12, max_gen=MG)
+        pterm, nterms, ofl, created = CF.cascade_nucleus(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11), P=12, max_gen=MG)
         n = len(w); ar = np.arange(n)
         # signal pion: combine the primary pion with the NN-created pion (created-pion-rescue).
         # exactly-one-pi+ AND no-other-meson over {primary, created}; conv (-1 = eta/K) counts as other meson.

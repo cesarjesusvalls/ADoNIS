@@ -28,7 +28,7 @@ m = len(a["w"]); st(f"primary done: {m} QE events -> cascading in {NCHUNK} chunk
 def one_chunk(sl, key):
     g = lambda k: jnp.asarray(a[k][sl])
     p_pi_dummy = jnp.zeros((int((sl.stop or m) - (sl.start or 0)), 4))
-    pterm, nterms, ofl, created = CF.cascade_carbon(
+    pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi_dummy, g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
         g("Npid").astype(jnp.int32), CFG, key, P=10, max_gen=3, channel="qe")
     p4s = []

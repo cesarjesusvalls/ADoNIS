@@ -46,7 +46,7 @@ def one(seed):
     a = gen_events(seed)
     n = len(a["w"]); ar = np.arange(n)
     p_pi_in = jnp.asarray(a["p_pi"]) if "p_pi" in a else jnp.asarray(a["p_N"])   # qe: dummy (ignored)
-    pterm, nterms, ofl, created = CF.cascade_carbon(
+    pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
         jnp.asarray(a["Npid"], jnp.int32), CFG, jax.random.PRNGKey(seed + 11), P=P_BUF, max_gen=MAX_GEN, channel=CHAN)
     # top-M proton terminals across all nucleon generations (regardless of window) + PROVENANCE

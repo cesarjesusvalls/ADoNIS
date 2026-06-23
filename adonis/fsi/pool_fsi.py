@@ -1,6 +1,6 @@
 """Shared pool-FSI helper: the SINGLE entry point consumers use to run the (Gaussian, differentiable)
 pool cascade and pull the common quantities, replacing the retired two-stage DiscreteCascadeFSI +
-DiscreteNucleonFSI `.apply` chain.  The pool runs the pion + nucleon cascade JOINTLY (cascade_carbon),
+DiscreteNucleonFSI `.apply` chain.  The pool runs the pion + nucleon cascade JOINTLY (cascade_nucleus),
 so there is one call, one joint kind-1 FSI record, and one `pool_fsi_reweight`.
 
 Usage:
@@ -13,7 +13,7 @@ Usage:
 """
 import numpy as np
 import jax.numpy as jnp
-from adonis.fsi.cascade_full import cascade_carbon, pool_fsi_reweight, NUCLEON  # noqa: F401
+from adonis.fsi.cascade_full import cascade_nucleus, pool_fsi_reweight, NUCLEON  # noqa: F401
 
 
 def lead_proton(nt):
@@ -52,7 +52,7 @@ def run_fsi(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, channel="res", P=12, max_
       lead_prot: leading escaped proton (n,4)
       rec     : joint kind-1 FSI record (None unless rec_caps set) -> feed pool_fsi_reweight
     Engine is always the pool (cfg.engine defaults to 'pool')."""
-    res = cascade_carbon(p_pi, p_N, jnp.asarray(pid_pi, jnp.int32), jnp.asarray(pid_Ni, jnp.int32),
+    res = cascade_nucleus(p_pi, p_N, jnp.asarray(pid_pi, jnp.int32), jnp.asarray(pid_Ni, jnp.int32),
                          jnp.asarray(Npid, jnp.int32), cfg, key, P=P, max_gen=max_gen,
                          channel=channel, rec_caps=rec_caps)
     pterm, nterms, ofl, created = res[:4]

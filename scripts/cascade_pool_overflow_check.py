@@ -22,7 +22,7 @@ cfg = DiscreteCascadeConfig(step=0.04, max_steps=683, seed=1, nn_inelastic=True,
                             pauli=True, early_exit=True, nucleus=tg.density_p,
                             density_n=tg.density_n, configs=tg.configs, engine="pool")
 pN = jnp.asarray(a["p_N"]); ipid = jnp.asarray(a["ipid"]); Npid = jnp.asarray(a["Npid"])
-su = CF.setup_carbon(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
+su = CF.setup_nucleus(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
 g0 = CF.empty_batch(m, 1)
 g0["alive"] = jnp.ones((m, 1), bool); g0["species"] = jnp.full((m, 1), CF.NUCLEON, jnp.int32)
 g0["charge"] = (Npid == 2212).astype(jnp.int32)[:, None]; g0["p4"] = pN[:, None, :]

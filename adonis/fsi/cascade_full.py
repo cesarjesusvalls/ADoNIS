@@ -35,9 +35,9 @@ _ORIG_PRIM_PI = 2          # pool origin tag for the RES PRIMARY pion (0=RES rec
 _TRACK_OFFSET = 1000       # daughter track_ids start here (> any primary track_id); see make_pool_stepper
 
 
-def setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key):
-    """Sample the carbon background + struck vertex EXACTLY as DiscreteCascadeFSI.apply, so the engine's
-    primary-pion segment reproduces the production chain bit-for-bit.  Returns the nucleus + pion init."""
+def setup_nucleus(p_pi, pid_pi, pid_Ni, cfg, key):
+    """Sample the nucleus background + struck vertex (material from cfg) EXACTLY as DiscreteCascadeFSI.apply,
+    so the engine's primary-pion segment reproduces the production chain bit-for-bit.  Returns nucleus + pion init."""
     kn, kv, kp = jax.random.split(key, 3)
     n = p_pi.shape[0]
     npos, nmom, nisp = sample_nucleons(kn, n, cfg)
@@ -334,7 +334,10 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
 
     def body(st):
         i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl = st
-        _step = stepper(stk, jax.random.fold_in(key, i), state, i)   # 4- or 5-tuple (rec|seg optional)
+        # pass the step index ONLY on the logging path (track_id assignment); keeps the 3-arg stepper
+        # contract for every existing (non-logging) caller, incl. custom test steppers.
+        _step = (stepper(stk, jax.random.fold_in(key, i), state, i) if do_log
+                 else stepper(stk, jax.random.fold_in(key, i), state))
         stk2, terminal, spawn, state2 = _step[:4]
         extra = _step[4] if len(_step) >= 5 else None
         term_batch = {**stk2, "alive": terminal}
@@ -378,7 +381,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
 
 
 def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, log_cap=None):
-    """POOLED-engine realization of cascade_carbon (QE + RES), mapping the flat (n,M_out) terminal
+    """POOLED-engine realization of cascade_nucleus (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
     log_cap=L: run the SAME cascade with the in-engine SEGMENT logger on (with_seg stepper +
     run_cascade_pool log_cap) and return (log, counts, log_overflow) directly -- the single entry point
@@ -452,7 +455,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
     return pterm, nterms, sofl + oofl, created, fsi_rec
 
 
-def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0,
+def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0,
                       channel="res", rec_caps=None, log_cap=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
@@ -465,7 +468,7 @@ def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, s
     log_cap=L: run the SAME cascade with the in-engine SEGMENT logger and return (log, counts, overflow)
     -- the single entry point for the cascade-vertex/segment matrix (no duplicated cascade).
     Returns (pterm, nucleon_terminals_per_gen, overflow, created[, fsi_record]) | (log, counts, overflow)."""
-    su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
+    su = setup_nucleus(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
     _kpi, knuc, _kpi2 = jax.random.split(su["kp"], 3)     # knuc drives the pool (RNG stream preserved)
     # POOLED engine (the single cascade core): ONE fixed-size stack stepped once/step, in/out reconcile

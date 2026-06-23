@@ -29,7 +29,7 @@ def run(engine):
                                 pauli=True, early_exit=True, nucleus=tg.density_p,
                                 density_n=tg.density_n, configs=tg.configs, engine=engine)
     def go():
-        out = CF.cascade_carbon(pN, pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32),
+        out = CF.cascade_nucleus(pN, pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32),
                                    Npid.astype(jnp.int32), cfg, jax.random.PRNGKey(11),
                                    P=P, max_gen=6, channel="qe")
         jax.block_until_ready(out[1][0]["p4"]); return out

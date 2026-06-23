@@ -8,7 +8,7 @@ proton 3-body generator (pi+ always survives; no FSI).  QE contributes nothing (
 Selection/observables mirror scripts/extract_t2k_cc1pi_tki.py exactly (tight windows, theta<70deg;
 NUISANCE hydrogen prescription: flat delta_alphaT throw, carbon-mass p_N formula for all events).
 
-FSI runs through the single Gaussian POOL cascade (cascade_carbon): pion + recoil + ALL knockout
+FSI runs through the single Gaussian POOL cascade (cascade_nucleus): pion + recoil + ALL knockout
 generations are tracked jointly, so the leading proton is the highest-momentum IN-WINDOW proton among
 the unified pool candidate set prot[] (every escaped proton terminal across generations, origin-tagged:
 0=RES/QE nucleon chain, 1=pion-knockout, 2=primary pion).  This supersedes the old approximate

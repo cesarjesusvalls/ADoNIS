@@ -1,7 +1,7 @@
 """FULL-pool-cascade debug dump for the CC1pi tension study (ADoNIS side).
 
 Unlike the single-pass scripts/cascade_pion_fate_dump.py (primary pion alone, no daughter re-cascade),
-this runs the COMPLETE pooled cascade (the exact engine the matrix uses: setup_carbon + make_pool_stepper
+this runs the COMPLETE pooled cascade (the exact engine the matrix uses: setup_nucleus + make_pool_stepper
 + run_cascade_pool, RES gen-0 = primary pion + recoil nucleon) on a large C RES sample and records, PER
 EVENT, everything needed to localize the CC1pi ADoNIS-vs-ACHILLES tension in INITIAL-pion-|p| brackets:
 
@@ -36,7 +36,7 @@ from adonis.xsec import res_xsec
 from adonis.xsec.spectral import SpectralFunction
 import adonis.xsec.flux as flux; flux.BEAM_MODE = "is"
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _load_density
-from adonis.fsi.cascade_full import (setup_carbon, empty_batch, make_pool_stepper, run_cascade_pool,
+from adonis.fsi.cascade_full import (setup_nucleus, empty_batch, make_pool_stepper, run_cascade_pool,
                                       PION, NUCLEON, _ORIG_PRIM_PI, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT)
 
 # CC1pi+Np tight signal windows (== cc1pi_fig_tki)
@@ -61,7 +61,7 @@ def build_cfg():
 def run_pool_chunk(p_pi, p_N, ppid, ipid, Npid, cfg, key):
     """Replicate _cascade_pool's RES path verbatim, but return the FULL escaped-terminal batch `out`
     (with species+charge) + overflow, so we can count final-state pions by charge."""
-    su = setup_carbon(p_pi, ppid.astype(jnp.int32), ipid.astype(jnp.int32), cfg, key)
+    su = setup_nucleus(p_pi, ppid.astype(jnp.int32), ipid.astype(jnp.int32), cfg, key)
     n = p_pi.shape[0]
     _kpi, knuc, _kpi2 = jax.random.split(su["kp"], 3)
     g0 = empty_batch(n, 2)

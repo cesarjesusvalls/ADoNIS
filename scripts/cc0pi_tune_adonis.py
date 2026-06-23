@@ -85,7 +85,7 @@ def build_ma_records(qe, res):
 
 
 # ============================================================================================== #
-# POOL-BACKED blueprint (the differentiable core): ONE joint cascade per channel (cascade_carbon,
+# POOL-BACKED blueprint (the differentiable core): ONE joint cascade per channel (cascade_nucleus,
 # engine="pool"), emitting the joint kind-1 FSI record reweighted by pool_fsi_reweight.  The walk is
 # theta-independent and the knobs enter only through the kind-1 reweight; the single validated+fixed
 # pool engine underneath (re-cascades both absorption nucleons, charge-resolved sigma, etc.).
@@ -109,19 +109,19 @@ def _lead_proton_pool(nt):
 
 
 def build_replica(kcasc, qe, qw, res, rw):
-    """Walk one replica: one cascade_carbon pool run per channel -> leading proton (for the
+    """Walk one replica: one cascade_nucleus pool run per channel -> leading proton (for the
     theta-independent dpt/keep/idx) + the joint kind-1 FSI record (theta enters via pool_fsi_reweight).
     CC0pi-RES = primary pion absorbed (pterm pid==0)."""
     kq, kr = jax.random.split(kcasc, 2); j = jnp.asarray; edges = j(EDGES)
     nq = len(qe["w"]); nr = len(res["w"])                       # actual event counts (RES generate != NRES)
     # QE: struck neutron -> proton through the pool (no pion); record carries only nucleon scatters.
-    _pt, ntq, oflq, _c, recq = _CF.cascade_carbon(
+    _pt, ntq, oflq, _c, recq = _CF.cascade_nucleus(
         jnp.zeros((nq, 4)), j(qe["p_out"]), jnp.zeros(nq, jnp.int32), jnp.full(nq, 2112, jnp.int32),
         jnp.full(nq, 2212, jnp.int32), POOLCFG(seed=2), kq, P=_P_BUF, max_gen=_MGEN, channel="qe", rec_caps=REC_CAPS)
     q_lead = _lead_proton_pool(ntq[0])
     q_dpt = _obs(j(qe["k_mu"]), q_lead); q_keep = _sel(j(qe["k_mu"]), q_lead)
     # RES: primary pion + recoil through the pool (joint pion+nucleon record).
-    ptr, ntr, oflr, _c2, recr = _CF.cascade_carbon(
+    ptr, ntr, oflr, _c2, recr = _CF.cascade_nucleus(
         j(res["p_pi"]), j(res["p_N"]), j(res["ppid"]).astype(jnp.int32), j(res["ipid"]).astype(jnp.int32),
         jnp.full(nr, 2212, jnp.int32), POOLCFG(seed=1), kr, P=_P_BUF, max_gen=_MGEN, channel="res", rec_caps=REC_CAPS)
     r_lead = _lead_proton_pool(ntr[0])

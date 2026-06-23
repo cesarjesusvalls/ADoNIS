@@ -1,4 +1,4 @@
-"""Stage 3a: cascade_carbon(rec_caps=...) returns the joint per-event FSI record; nominal==1; the
+"""Stage 3a: cascade_nucleus(rec_caps=...) returns the joint per-event FSI record; nominal==1; the
 4-tuple default is unchanged."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,11 +21,11 @@ cfg = DiscreteCascadeConfig(step=0.04, max_steps=600, seed=1, nn_inelastic=True,
                             configs=tg.configs, engine="pool")
 key = jax.random.PRNGKey(11)
 # 4-tuple default unchanged
-r4 = CF.cascade_carbon(g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
+r4 = CF.cascade_nucleus(g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
                           g("Npid").astype(jnp.int32), cfg, key, P=P, max_gen=MG, channel="res")
 print(f"[4-tuple default] len={len(r4)}  (expect 4)")
 # 5-tuple with record
-r5 = CF.cascade_carbon(g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
+r5 = CF.cascade_nucleus(g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
                           g("Npid").astype(jnp.int32), cfg, key, P=P, max_gen=MG, channel="res",
                           rec_caps=(32, 256))
 pterm, nterms, ofl, created, rec = r5

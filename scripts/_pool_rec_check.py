@@ -20,7 +20,7 @@ ppid = jnp.asarray(a["ppid"][s]); ipid = jnp.asarray(a["ipid"][s]); Npid = jnp.a
 cfg = DiscreteCascadeConfig(step=0.04, max_steps=MS, seed=1, nn_inelastic=True,
                             pauli=True, early_exit=True, nucleus=tg.density_p,
                             density_n=tg.density_n, configs=tg.configs, engine="pool")
-su = CF.setup_carbon(pPi, ppid.astype(jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
+su = CF.setup_nucleus(pPi, ppid.astype(jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
 _, knuc, _ = jax.random.split(su["kp"], 3)
 print(f"[gen] {m} live RES events", flush=True)
 

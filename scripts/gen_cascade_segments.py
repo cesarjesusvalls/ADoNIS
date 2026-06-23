@@ -31,7 +31,7 @@ import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec.spectral import SpectralFunction
 import adonis.xsec.flux as flux; flux.BEAM_MODE = "is"
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _load_density
-from adonis.fsi.cascade_full import cascade_carbon
+from adonis.fsi.cascade_full import cascade_nucleus
 CHUNK = 12000
 
 
@@ -41,7 +41,7 @@ def build_cfg(tg, ms):
 
 
 def run_logged(channel, p_pi, p_N, Npid, ipid, cfg, key, pid_pi=None):
-    """Run a chunk through THE production cascade (cascade_carbon) with the in-engine logger on -- the
+    """Run a chunk through THE production cascade (cascade_nucleus) with the in-engine logger on -- the
     SAME entry point the cross-section forward generation uses, just log_cap=L.  No duplicated cascade.
     Returns the (n,L) log dict + per-event segment counts + overflow."""
     n = p_N.shape[0]
@@ -49,7 +49,7 @@ def run_logged(channel, p_pi, p_N, Npid, ipid, cfg, key, pid_pi=None):
         p_pi = jnp.zeros((n, 4)); pid_pi = jnp.zeros(n, jnp.int32); pid_Ni = jnp.full(n, 2112, jnp.int32)
     else:                                                            # RES: primary pion + recoil nucleon
         pid_pi = jnp.asarray(pid_pi, jnp.int32); pid_Ni = jnp.asarray(ipid, jnp.int32)
-    log, counts, logofl = cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, jnp.asarray(Npid, jnp.int32),
+    log, counts, logofl = cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, jnp.asarray(Npid, jnp.int32),
                                          cfg, key, P=P_BUF, channel=channel, log_cap=LCAP)
     return {k: np.asarray(v) for k, v in log.items()}, np.asarray(counts), int(logofl)
 

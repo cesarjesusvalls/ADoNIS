@@ -28,7 +28,7 @@ m = len(a["w"]); st(f"primary done: {m} RES events -> cascading in {NCHUNK} chun
 
 def one_chunk(sl, key):
     g = lambda k: jnp.asarray(a[k][sl])
-    pterm, nterms, ofl, created = CF.cascade_carbon(
+    pterm, nterms, ofl, created = CF.cascade_nucleus(
         g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
         g("Npid").astype(jnp.int32), CFG, key, P=10, max_gen=3, channel="res")
     p4s = []

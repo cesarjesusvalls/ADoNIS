@@ -24,7 +24,7 @@ np.seterr(all="ignore")
 from adonis.workflow.materials import resolve_targets
 from adonis.workflow.generate import gen_events
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _nucleon_step, _load_density
-from adonis.fsi.cascade_full import setup_carbon
+from adonis.fsi.cascade_full import setup_nucleus
 from adonis.xsec.spectral import SpectralFunction
 import adonis.xsec.flux as flux
 from adonis.fsi import oset_xsec as ox
@@ -52,7 +52,7 @@ w = np.asarray(a["w"]); sel = w > 0
 pN = jnp.asarray(a["p_N"][sel]); ipid = jnp.asarray(a["ipid"][sel]); m = int(sel.sum()); w = w[sel]
 is_p = jnp.full(m, species == "proton")
 
-su = setup_carbon(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
+su = setup_nucleus(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
 # POOL single-pass: iterate _nucleon_step on the PRIMARY ALONE -- spawns (knockouts/created pion) are
 # NOT inserted, so the primary shares the consumed mask with nothing (faithful isolated single-pass in
 # the pool's per-step physics).  We still RECORD the spawns it WOULD emit (knockout counts, made_pi).

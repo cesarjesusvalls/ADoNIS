@@ -31,7 +31,7 @@ import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec.spectral import SpectralFunction
 import adonis.xsec.flux as flux; flux.BEAM_MODE = "is"
 from adonis.fsi.cascade_discrete import (DiscreteCascadeConfig, _load_density, _pion_step, _nucleon_step)
-from adonis.fsi.cascade_full import setup_carbon
+from adonis.fsi.cascade_full import setup_nucleus
 from adonis.fsi.cascade_real import _CH_PID                       # charge idx (0:+,1:0,2:-) -> pion pid
 
 CHUNK = 20000
@@ -184,14 +184,14 @@ def main():
         nrc = (len(rw) + CHUNK - 1) // CHUNK
         for ci, c0 in enumerate(range(0, len(rw), CHUNK)):
             sl = slice(c0, c0 + CHUNK)
-            su = setup_carbon(ppi[sl], jnp.asarray(ppid[sl], jnp.int32), jnp.asarray(ipid[sl], jnp.int32), cfg, jax.random.PRNGKey(11 + sd))
+            su = setup_nucleus(ppi[sl], jnp.asarray(ppid[sl], jnp.int32), jnp.asarray(ipid[sl], jnp.int32), cfg, jax.random.PRNGKey(11 + sd))
             add(run_pions(ppi[sl], ppid[sl], ipid[sl], cfg, su, rgrid, rhoP, rhoN, rad, jax.random.PRNGKey(31 + sd)), rw[sl], 1)
-            suN = setup_carbon(pN[sl], jnp.zeros(len(Npid[sl]), jnp.int32), jnp.asarray(ipid[sl], jnp.int32), cfg, jax.random.PRNGKey(12 + sd))
+            suN = setup_nucleus(pN[sl], jnp.zeros(len(Npid[sl]), jnp.int32), jnp.asarray(ipid[sl], jnp.int32), cfg, jax.random.PRNGKey(12 + sd))
             add(run_nucleons(pN[sl], Npid[sl], ipid[sl], cfg, suN, rgrid, rhoP, rhoN, rad, jax.random.PRNGKey(32 + sd)), rw[sl], 1)
             print(f"    seed {sd+1}/{SEEDS} RES chunk {ci+1}/{nrc} (+{len(rw[sl])} pi +{len(rw[sl])} N)", flush=True)
         for ci, c0 in enumerate(range(0, len(qw), CHUNK)):
             sl = slice(c0, c0 + CHUNK)
-            suQ = setup_carbon(qN[sl], jnp.zeros(len(qNpid[sl]), jnp.int32), jnp.full(len(qNpid[sl]), 2112, jnp.int32), cfg, jax.random.PRNGKey(13 + sd))
+            suQ = setup_nucleus(qN[sl], jnp.zeros(len(qNpid[sl]), jnp.int32), jnp.full(len(qNpid[sl]), 2112, jnp.int32), cfg, jax.random.PRNGKey(13 + sd))
             add(run_nucleons(qN[sl], qNpid[sl], np.full(len(qNpid[sl]), 2112), cfg, suQ, rgrid, rhoP, rhoN, rad, jax.random.PRNGKey(33 + sd)), qw[sl], 0)
             print(f"    seed {sd+1}/{SEEDS} QE  chunk {ci+1}/{(len(qw)+CHUNK-1)//CHUNK} (+{len(qw[sl])} N)", flush=True)
         print(f"  seed {sd+1}/{SEEDS} done", flush=True)

@@ -2,7 +2,7 @@
 
 Per-event logic is lifted VERBATIM from scripts/gen_cc_engine_rich.py so banks stay bit-identical:
 RES via res_xsec.generate / QE via qe_xsec.sample_importance (w/=N), the faithful BFS cascade
-(cascade_full.cascade_carbon, internal seed=1, key PRNGKey(seed+11)), top-M proton terminals with
+(cascade_full.cascade_nucleus, internal seed=1, key PRNGKey(seed+11)), top-M proton terminals with
 provenance, per-seed checkpoint, weight normalized by the ACTUAL seeds banked.
 
 `_N_RECOIL` is read from ADONIS_N_RECOIL at cascade_discrete import time, so the driver
@@ -71,7 +71,7 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
         return _prefsi_record(channel, a), None, 0
     nn = len(a["w"]); ar = np.arange(nn)
     p_pi_in = jnp.asarray(a["p_pi"]) if "p_pi" in a else jnp.asarray(a["p_N"])
-    pterm, nterms, ofl, created = CF.cascade_carbon(
+    pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
         jnp.asarray(a["Npid"], jnp.int32), cfg_cascade, jax.random.PRNGKey(seed + 11),
         P=cas.P, max_gen=cas.max_gen, channel=channel)

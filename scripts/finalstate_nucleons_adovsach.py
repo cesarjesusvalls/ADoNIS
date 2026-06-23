@@ -1,6 +1,6 @@
 """ALL final-state nucleons (not just primaries) ADoNIS vs ACHILLES, carbon, protons & neutrons in
 SEPARATE plots.  ACHILLES: every status==1 nucleon in the QE+RES fate hepmc (with per-event weight).
-ADoNIS: every final-state proton/neutron from the FULL cascade (cascade_carbon) over QE+RES, summed
+ADoNIS: every final-state proton/neutron from the FULL cascade (cascade_nucleus) over QE+RES, summed
 with the absolute per-event weights so the QE:RES mix matches.  Momentum spectra, normalized, + ratio."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -50,7 +50,7 @@ for ch in ("qe", "res"):
     a = gen_events(ch, NEV, 0, sf_n=sf_n, sf_p=sf_p, n_neutron=tg.A - tg.Z, n_proton=tg.Z)
     w = np.asarray(a["w"]); s = w > 0; m = int(s.sum()); w = w[s]
     p_pi = jnp.asarray(a["p_pi"][s]) if "p_pi" in a else jnp.asarray(a["p_N"][s])
-    pterm, nterms, ofl, created = CF.cascade_carbon(
+    pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi, jnp.asarray(a["p_N"][s]), jnp.asarray(a["ppid"][s], jnp.int32),
         jnp.asarray(a["ipid"][s], jnp.int32), jnp.asarray(a["Npid"][s], jnp.int32),
         cfg, jax.random.PRNGKey(11), P=12, max_gen=6, channel=ch)

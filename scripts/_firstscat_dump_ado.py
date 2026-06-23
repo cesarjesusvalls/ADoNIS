@@ -9,7 +9,7 @@ np.seterr(all="ignore")
 from adonis.workflow.materials import resolve_targets
 from adonis.workflow.generate import gen_events
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _nucleon_step, _load_density
-from adonis.fsi.cascade_full import setup_carbon
+from adonis.fsi.cascade_full import setup_nucleus
 from adonis.xsec.spectral import SpectralFunction
 from adonis.fsi import oset_xsec as ox
 import adonis.xsec.flux as flux; flux.BEAM_MODE = "is"
@@ -21,7 +21,7 @@ sf_n = SpectralFunction(tg.spectral_n)
 a = gen_events("qe", 40000, 0, sf_n=sf_n, n_neutron=tg.A - tg.Z, n_proton=tg.Z)
 w = np.asarray(a["w"]); s = w > 0; m = int(s.sum()); w = w[s]
 pN = jnp.asarray(a["p_N"][s]); ipid = jnp.asarray(a["ipid"][s])
-su = setup_carbon(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
+su = setup_nucleus(pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), cfg, jax.random.PRNGKey(11))
 rgrid, rhoP, rhoN, radius = _load_density(tg.density_p, tg.density_n)
 keys = jax.random.split(jax.random.PRNGKey(99), MS)
 p4 = pN; pos = su["pos0"]; d3 = p4[:, 1:]
