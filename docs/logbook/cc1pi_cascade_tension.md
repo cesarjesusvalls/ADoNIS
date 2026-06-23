@@ -3,6 +3,24 @@
 Goal: localize the CC1pi ADoNIS-vs-ACHILLES matrix tension in the cascade, in detailed initial-pion-|p|
 brackets, significance-weighted (chi2/pull, NOT ratio).
 
+## !!! CORRECTION / RETRACTION (supersedes everything below) !!!
+The "pion charge-exchange ~2.4x too low" trend reported below was a **comparison-script bug, NOT a
+physics divergence**.  `cascade_debug_compare.py` set the per-bracket momentum from ANY pion FATE line
+(`pidin in {211,111,-211}`); RES also produces pi0/pi- PRIMARIES (which charge-exchange readily), so those
+events were folded into the "ACHILLES" sample and compared against ADoNIS's pi+-ONLY dump -> a spurious
+cex excess on the ACHILLES side -> fake cex deficit on ADoNIS.
+**Fix:** bracket ACHILLES by a pi+ primary only (`pidin==211`), matching the ADoNIS dump.
+**Corrected result (apples-to-apples, pi+ primary both sides):** the cascade pion fate MATCHES ACHILLES:
+survived-pi+ chi2/ndf=1.86, charge-exchange chi2/ndf=1.22, absorbed chi2/ndf=2.47 (pulls within ~+-2sigma).
+Integrated multiplicities are identical: ADoNIS/ACHILLES <npip>=0.712/0.711, <npi0>=0.083/0.084,
+<npim>=0.006/0.007, absorption 0.205/0.205.  **There is NO pion charge-exchange divergence.**
+Scripts (compare/plot/complementarity) fixed to pi+-primary bracketing.  Corrected figure:
+paper_figures/cc1pi_cascade_fate_corrected.png.  Lesson: a "divergence with ACHILLES" must first be
+checked against the comparison code itself (apples-to-apples) before being read as physics --
+exactly the validation-not-diagnostic discipline.
+
+## --- ORIGINAL (WRONG) ANALYSIS BELOW, kept for the record; superseded by the correction above ---
+
 ## Method
 - ADoNIS: FULL pooled cascade (scripts/cascade_debug_dump.py) on C RES, ~555k pi+ events, LARGE buffers
   P=16, M_out=48, N_RECOIL=8, max_steps=1000 (march 40 fm).  **overflow stack=0 out=0 throughout** — buffers

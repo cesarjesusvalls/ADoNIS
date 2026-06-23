@@ -31,12 +31,15 @@ cur_pion_pin = None
 for ln in open(ach_path):
     mF = rxF.match(ln)
     if mF:
-        if int(mF[1]) in _PIPIDS:
-            cur_pion_pin = float(mF[2])          # primary pion initial |p| (last pion FATE in the event)
+        # APPLES-TO-APPLES: bracket ONLY by a pi+ PRIMARY (pidin==211), matching the ADoNIS pi+ dump.
+        # RES also makes pi0/pi- primaries (which charge-exchange readily); folding them in against an
+        # ADoNIS pi+-only sample manufactured a spurious cex deficit -- the original (wrong) trend.
+        if int(mF[1]) == 211:
+            cur_pion_pin = float(mF[2])
         continue
     mFS = rxFS.match(ln)
     if mFS:
-        if cur_pion_pin is not None:             # RES event (had a primary pion)
+        if cur_pion_pin is not None:             # RES event with a pi+ primary
             npip, npi0, npim = int(mFS[3]), int(mFS[4]), int(mFS[5])
             ach_pin.append(cur_pion_pin)
             ach_surv.append(npip >= 1)

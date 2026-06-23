@@ -19,7 +19,7 @@ apin, asurv, acex, aabs = [], [], [], []; cur = None
 for ln in open(ach_path):
     m = rxF.match(ln)
     if m:
-        if int(m[1]) in _PI: cur = float(m[2])
+        if int(m[1]) == 211: cur = float(m[2])   # pi+ PRIMARY only (apples-to-apples vs ADoNIS pi+ dump)
         continue
     m = rxFS.match(ln)
     if m and cur is not None:
