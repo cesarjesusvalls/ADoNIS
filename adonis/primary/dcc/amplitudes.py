@@ -86,9 +86,13 @@ class DCCAmplitudes:
         return vec, isv, axial
 
     def amplitudes_bilinear(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
-        """Batched (N,) BILINEAR amplitude interpolation -- ~3.5x faster / lighter than the
-        spline (used for closures/fits where the ~0.3% spline-vs-bilinear difference cancels
-        between data and model). Returns vec, isv, axial each (N, n_idx, n_pw), knobs applied."""
+        """Batched (N,) BILINEAR amplitude interpolation -- ~3.5x faster / lighter than the spline.
+        WARNING -- NOT W-FAITHFUL.  The often-quoted "~0.3%" is only the flux-INTEGRATED xsec
+        difference; the dsigma/dW SHAPE (esp. the high-W tail) deviates from the ACHILLES spline by
+        WELL OVER 1%.  bilinear must NEVER be used for a W-differential or any reported result -- use it
+        ONLY with explicit awareness of its detrimental effect on W faithfulness (e.g. a closure/fit
+        where it provably cancels between data and model).
+        Returns vec, isv, axial each (N, n_idx, n_pw), knobs applied."""
         gw, gq = self.W, self.Q2
         nw, nq = gw.shape[0], gq.shape[0]
         iw = jnp.clip(jnp.searchsorted(gw, W) - 1, 0, nw - 2)
@@ -108,8 +112,10 @@ class DCCAmplitudes:
         return vec, isv, axial
 
     def amplitudes_bilinear_np(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
-        """NumPy batched BILINEAR interp -- fastest path (~0.3% vs spline), for the forward
-        diagnostic where that difference is negligible vs the deficit under study."""
+        """NumPy batched BILINEAR interp -- fastest path.  WARNING: NOT W-FAITHFUL -- the "~0.3%" is the
+        flux-INTEGRATED xsec only; the dsigma/dW shape (high-W tail) deviates >1% from the spline.  NEVER
+        for a W-differential / reported number -- explicit-awareness diagnostics only.  See
+        amplitudes_bilinear."""
         if not hasattr(self, "_Wnp"):
             self._Wnp = np.asarray(self.W); self._Q2np = np.asarray(self.Q2)
             self._vecnp = np.asarray(self.vec); self._isvnp = np.asarray(self.isv)

@@ -74,8 +74,14 @@ Accuracy: validated? = has it been quantitatively checked vs ACHILLES across the
 - **FIX (this audit):** flipped the module default to "spline"; bilinear is now opt-in for fast
   diagnostics only.  gen_res_events.py default also -> "spline".  Comments corrected to state the W-tail
   danger, not the misleading 0.3%.
-- **Accuracy validated?** Default now faithful.  TODO: quantify the bilinear W-tail deviation explicitly
-  (dsigma/dW bilinear-vs-spline) so the magnitude is on record.
+- **Accuracy validated?** Default now faithful.  All bilinear origin docstrings (amplitudes.py
+  amplitudes_bilinear{,_np}, structure.py, channel.py weight_from_sample, params.py, dcc_current.py)
+  now carry the explicit "NOT W-faithful; >1% dsigma/dW tail; never use without explicit awareness"
+  warning.  **OPEN — bilinear is still ACTIVELY used in these paths (verify each is a closure where it
+  cancels, else switch to spline):** adonis/nuclear/inclusive_1pi.py:27 (HadronStructure spline=False),
+  adonis/primary/dcc/sigma_enu.py:204,249 (use_spline=False) + :347 (GenConfig spline=False default).
+  TODO: quantify the bilinear W-tail deviation explicitly (dsigma/dW bilinear-vs-spline) so the
+  magnitude is on record.
 
 ### 2.4 [R] SF inverse-CDF linear interp (spectral.py ~177-189) — see 1.3 (same mechanism).
 

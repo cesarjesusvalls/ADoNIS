@@ -46,6 +46,7 @@ class GenConfig:
     m_pi: float = M_PI                # final-state pion mass [MeV]
     m_N: float = MQE                  # final-state nucleon mass [MeV]
     m_lep: float = 0.0                # outgoing charged-lepton mass [MeV] (0=massless e/nu_e; muon=105.658)
-    spline: bool = True               # amplitude interp fidelity: True=FMM spline, False=bilinear
+    spline: bool = True               # amp interp: True=FMM spline (faithful, DEFAULT). False=bilinear:
+                                      # NOT W-faithful (>1% dsigma/dW tail) -- explicit-awareness only
     n_theta: int = 16                 # angular-quadrature grid (for the integrated reference)
     n_phi: int = 16

@@ -50,8 +50,9 @@ _NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron 
 # Amplitude(W,Q2) interpolation.  DEFAULT = "spline" (bit-faithful to ACHILLES interpolate_amp) -- the
 # SAFE default; every reported result must use it.  "bilinear" is ~45x faster but a KNOWN OFFENDER vs W:
 # although the flux-integrated xsec differs only ~0.3%, the dsigma/dW SHAPE (esp. the high-W tail)
-# deviates WELL BEYOND 1%.  Opt into "bilinear" ONLY for a fast diagnostic where the W-shape is
-# irrelevant; NEVER for a physics number.
+# deviates WELL BEYOND 1%.  bilinear must NEVER be used unless with EXPLICIT AWARENESS of its
+# detrimental effect on W faithfulness (e.g. a closure/fit where it provably cancels) -- never for a
+# reported number.
 BATCH_INTERP = "spline"
 # Diagnostic override for the AMPLITUDE-INTERNAL pion mass (build_zmtx: qc, pion-pole facpp).
 # None -> use the per-channel hPID mass.  Used to determine which m_pi ACHILLES uses in the amplitude.

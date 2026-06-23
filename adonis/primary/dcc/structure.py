@@ -75,8 +75,10 @@ class HadronStructure:
 
     def __init__(self, amp: DCCAmplitudes | None = None, channels=CC_CHANNELS,
                  n_theta=12, n_phi=12, subsample_w=1, spline=True):
-        # spline=True: ACHILLES-faithful FMM cubic interp (~0.3% vs bilinear, slower +
-        # heavier memory). spline=False: fast bilinear, for high-statistics studies.
+        # spline=True (DEFAULT): ACHILLES-faithful FMM cubic interp.  spline=False = bilinear: NOT
+        # W-FAITHFUL -- the "~0.3%" is the flux-integrated xsec only; the dsigma/dW shape (high-W tail)
+        # deviates >1%.  NEVER use bilinear for a reported result -- only with explicit awareness of its
+        # detrimental effect on W faithfulness (e.g. a closure where it provably cancels).
         self.spline = spline
         t = load_cached()
         self.amp = amp or DCCAmplitudes(t)
