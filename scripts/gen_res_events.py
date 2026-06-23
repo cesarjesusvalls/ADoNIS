@@ -10,7 +10,7 @@ from adonis.xsec import res_xsec as M
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 1_000_000
 out = sys.argv[2] if len(sys.argv) > 2 else "scripts/res_events_1M.npz"
-dcc.BATCH_INTERP = sys.argv[3] if len(sys.argv) > 3 else "bilinear"   # "spline" = bit-faithful to ACHILLES
+dcc.BATCH_INTERP = sys.argv[3] if len(sys.argv) > 3 else "spline"   # spline = faithful (default); "bilinear" = fast diagnostic only (W-shape offender)
 print(f"generating {N:,} RES events  (interp={dcc.BATCH_INTERP}) -> {out}", flush=True)
 nchunks = 25; chunk = max(N // nchunks, 1)
 cols = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w")}

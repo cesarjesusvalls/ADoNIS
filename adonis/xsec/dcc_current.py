@@ -47,9 +47,12 @@ _W_LO = 1076.957; _W_HI = 2000.0; _Q2_HI = 5.0e6
 _FRESV = C.Vud * C.ee / (C.sw * np.sqrt(2.0) * 2.0)          # |hadronic CC coupling|
 _NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron mass via conventions
 
-# Forward-generator amplitude interpolation: "bilinear" (~45x faster, ~0.3% vs spline) for the
-# fast diagnostic loop; set to "spline" for a bit-faithful-to-ACHILLES final number.
-BATCH_INTERP = "bilinear"
+# Amplitude(W,Q2) interpolation.  DEFAULT = "spline" (bit-faithful to ACHILLES interpolate_amp) -- the
+# SAFE default; every reported result must use it.  "bilinear" is ~45x faster but a KNOWN OFFENDER vs W:
+# although the flux-integrated xsec differs only ~0.3%, the dsigma/dW SHAPE (esp. the high-W tail)
+# deviates WELL BEYOND 1%.  Opt into "bilinear" ONLY for a fast diagnostic where the W-shape is
+# irrelevant; NEVER for a physics number.
+BATCH_INTERP = "spline"
 # Diagnostic override for the AMPLITUDE-INTERNAL pion mass (build_zmtx: qc, pion-pole facpp).
 # None -> use the per-channel hPID mass.  Used to determine which m_pi ACHILLES uses in the amplitude.
 AMP_MPI_OVERRIDE = None
@@ -225,8 +228,8 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     Q2 = np.sum(qsh[:, 1:] ** 2, axis=1) - qsh[:, 0] ** 2
     dfun, off = setdfun_batch(xz_q, _JMAX)
     bleg = legendre_ylm_batch(_LMAX, xz_pin)                                  # (N, L+1, 2L+1)
-    # interp switch: "bilinear" (~45x faster, ~0.3% vs spline -- forward diagnostic default)
-    # or "spline" (bit-matches ACHILLES interpolate_amp) -- set dcc_current.BATCH_INTERP.
+    # interp switch (default "spline" = bit-matches ACHILLES interpolate_amp).  "bilinear" is a fast
+    # diagnostic ONLY -- ~0.3% on the integral but a known W-SHAPE offender (>1% in the high-W tail).
     if BATCH_INTERP == "spline":
         vec, isv, axial = _AMP.amplitudes_spline_np(wcm, Q2, DCCKnobs())
     else:

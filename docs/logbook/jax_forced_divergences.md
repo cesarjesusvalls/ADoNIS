@@ -55,11 +55,20 @@ Accuracy: validated? = has it been quantitatively checked vs ACHILLES across the
 
 ## CATEGORY 2 — precomputed table + interpolation (vs on-the-fly / higher-order)
 
-### 2.2 [R] DCC amplitude interp: bilinear vs spline (adonis/xsec/dcc_current.py ~50, ~228)
-- `BATCH_INTERP`: default **"bilinear"** (~45x faster) vs **"spline"** (bit-faithful). ~0.3% RMS per the
-  in-file comment. The matrix/segment generators set `dcc.BATCH_INTERP="spline"`, so those are faithful;
-  **production forward gen must also use "spline"** or it inherits the 0.3%.
-- **Accuracy validated?** Partially (0.3% RMS quoted in-code); confirm production path uses spline.
+### 2.2 [V] DCC amplitude interp: bilinear vs spline (adonis/xsec/dcc_current.py:55, :233)  **DANGEROUS DEFAULT — FIXED**
+- `BATCH_INTERP` "bilinear" (~45x faster) vs "spline" (bit-faithful to ACHILLES interpolate_amp).
+- **The "~0.3%" is the FLUX-INTEGRATED xsec difference and is MISLEADING**: bilinear is a known
+  offender vs W — the dsigma/dW SHAPE, esp. the high-W tail, deviates **well beyond 1%**. So bilinear is
+  unusable for any W-differential / pion-kinematics result even though the total looks fine.
+- The module default WAS "bilinear" (a silent footgun: any script that forgot the override got it).
+  generate.py (production) + all matrix/tune/figure generators DID set "spline" -> the banks we used are
+  spline.  EXCEPTION found: scripts/gen_res_events.py defaulted to bilinear (dev script, output
+  scripts/res_events_1M.npz, not a committed bank).
+- **FIX (this audit):** flipped the module default to "spline"; bilinear is now opt-in for fast
+  diagnostics only.  gen_res_events.py default also -> "spline".  Comments corrected to state the W-tail
+  danger, not the misleading 0.3%.
+- **Accuracy validated?** Default now faithful.  TODO: quantify the bilinear W-tail deviation explicitly
+  (dsigma/dW bilinear-vs-spline) so the magnitude is on record.
 
 ### 2.4 [R] SF inverse-CDF linear interp (spectral.py ~177-189) — see 1.3 (same mechanism).
 
