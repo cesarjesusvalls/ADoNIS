@@ -377,9 +377,12 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     return out, sofl, oofl, prim
 
 
-def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None):
+def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, log_cap=None):
     """POOLED-engine realization of cascade_carbon (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
+    log_cap=L: run the SAME cascade with the in-engine SEGMENT logger on (with_seg stepper +
+    run_cascade_pool log_cap) and return (log, counts, log_overflow) directly -- the single entry point
+    for the cascade-vertex/segment matrix (gen_cascade_segments), so there is NO duplicated cascade.
       QE : gen-0 stack = the struck->proton (1 NUCLEON slot); pterm = QE "none"; created = leading
            surviving pion.
       RES: gen-0 stack = the PRIMARY pion (PION slot, origin-tagged) + the RES recoil nucleon; the pion's
@@ -393,6 +396,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None):
         g0["species"] = jnp.full((n, 1), NUCLEON, jnp.int32)
         g0["charge"] = (Npid == 2212).astype(jnp.int32)[:, None]
         g0["p4"] = p_N[:, None, :]; g0["pos"] = su["pos0"][:, None, :]
+        g0["track_id"] = jnp.zeros((n, 1), jnp.int32)                  # primary id (inert unless logging)
         prim_origin = -999
     else:                                                              # RES: primary pion + recoil nucleon
         g0 = empty_batch(n, 2)
@@ -402,7 +406,14 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None):
         g0["p4"] = jnp.stack([p_pi, p_N], axis=1)
         g0["pos"] = jnp.broadcast_to(su["pos0"][:, None, :], (n, 2, 3))
         g0["origin"] = jnp.array([_ORIG_PRIM_PI, 0], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
+        g0["track_id"] = jnp.array([0, 1], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)  # pion=0, recoil=1
         prim_origin = _ORIG_PRIM_PI
+    if log_cap is not None:                                            # SEGMENT-LOGGER path: same cascade, logger on
+        stepper = make_pool_stepper(su, cfg, with_seg=True)
+        _o, _so, _oo, _pf, logtuple = run_cascade_pool(
+            g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps, M_out=24,
+            prim_origin=prim_origin, log_cap=log_cap)
+        return logtuple                                               # (log dict, counts (n,), log_overflow)
     stepper = make_pool_stepper(su, cfg, with_rec=rec_caps is not None)
     _rc = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps,
                            M_out=24, prim_origin=prim_origin, rec_caps=rec_caps)
@@ -442,7 +453,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None):
 
 
 def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, sabs=1.0, sscat=1.0,
-                      channel="res", rec_caps=None):
+                      channel="res", rec_caps=None, log_cap=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
                    pion knockouts}; pterm = the surviving pion.
@@ -451,7 +462,9 @@ def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, s
     meson veto (no surviving pion for CC0pi / exactly one pi+ for CC1pi) is handled uniformly.
     rec_caps=(Kp,Kn) (pool only): also return the joint per-event kind-1 FSI reweight record as a 5th
     element (for pool_fsi_reweight / the differentiable blueprint).  Default None -> 4-tuple as before.
-    Returns (pterm, nucleon_terminals_per_gen, overflow, created[, fsi_record])."""
+    log_cap=L: run the SAME cascade with the in-engine SEGMENT logger and return (log, counts, overflow)
+    -- the single entry point for the cascade-vertex/segment matrix (no duplicated cascade).
+    Returns (pterm, nucleon_terminals_per_gen, overflow, created[, fsi_record]) | (log, counts, overflow)."""
     su = setup_carbon(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
     _kpi, knuc, _kpi2 = jax.random.split(su["kp"], 3)     # knuc drives the pool (RNG stream preserved)
@@ -459,5 +472,7 @@ def cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=12, max_gen=6, s
     # inside the step.  Faithful: true step-order consumption + ALL created pions propagated from their
     # creation point; for RES the primary pion is a gen-0 PION stack slot whose own scatter-recoils/
     # knockouts spawn natively.  Validated vs ACHILLES (docs/logbook/cascade_pool_engine.md).
+    if log_cap is not None:
+        return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, log_cap=log_cap)
     res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps)
     return res5 if rec_caps is not None else res5[:4]

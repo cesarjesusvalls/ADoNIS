@@ -31,8 +31,7 @@ import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec.spectral import SpectralFunction
 import adonis.xsec.flux as flux; flux.BEAM_MODE = "is"
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _load_density
-from adonis.fsi.cascade_full import (setup_carbon, make_pool_stepper, run_cascade_pool, empty_batch,
-                                     NUCLEON, PION, _ORIG_PRIM_PI)
+from adonis.fsi.cascade_full import cascade_carbon
 CHUNK = 12000
 
 
@@ -42,33 +41,16 @@ def build_cfg(tg, ms):
 
 
 def run_logged(channel, p_pi, p_N, Npid, ipid, cfg, key, pid_pi=None):
-    """Run a chunk through the REAL logged pool; return the (n,L) log dict + per-event segment counts."""
+    """Run a chunk through THE production cascade (cascade_carbon) with the in-engine logger on -- the
+    SAME entry point the cross-section forward generation uses, just log_cap=L.  No duplicated cascade.
+    Returns the (n,L) log dict + per-event segment counts + overflow."""
     n = p_N.shape[0]
-    if channel == "qe":
-        su = setup_carbon(jnp.zeros((n, 4)), jnp.zeros(n, jnp.int32), jnp.full(n, 2112, jnp.int32), cfg, key)
-        g0 = empty_batch(n, 1)
-        g0["alive"] = jnp.ones((n, 1), bool)
-        g0["species"] = jnp.full((n, 1), NUCLEON, jnp.int32)
-        g0["charge"] = (Npid == 2212).astype(jnp.int32)[:, None]
-        g0["p4"] = p_N[:, None, :]; g0["pos"] = su["pos0"][:, None, :]
-        g0["track_id"] = jnp.zeros((n, 1), jnp.int32); g0["gen"] = jnp.zeros((n, 1), jnp.int32)
-        prim_origin = -999
+    if channel == "qe":                                              # QE proton: no primary pion, struck n
+        p_pi = jnp.zeros((n, 4)); pid_pi = jnp.zeros(n, jnp.int32); pid_Ni = jnp.full(n, 2112, jnp.int32)
     else:                                                            # RES: primary pion + recoil nucleon
-        su = setup_carbon(p_pi, jnp.asarray(pid_pi, jnp.int32), jnp.asarray(ipid, jnp.int32), cfg, key)
-        g0 = empty_batch(n, 2)
-        g0["alive"] = jnp.ones((n, 2), bool)
-        g0["species"] = jnp.array([PION, NUCLEON], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
-        g0["charge"] = jnp.stack([su["ch0"], (Npid == 2212).astype(jnp.int32)], axis=1)
-        g0["p4"] = jnp.stack([p_pi, p_N], axis=1)
-        g0["pos"] = jnp.broadcast_to(su["pos0"][:, None, :], (n, 2, 3))
-        g0["origin"] = jnp.array([_ORIG_PRIM_PI, 0], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
-        g0["track_id"] = jnp.array([0, 1], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
-        g0["gen"] = jnp.zeros((n, 2), jnp.int32)
-        prim_origin = _ORIG_PRIM_PI
-    stepper = make_pool_stepper(su, cfg, with_seg=True)
-    _o, _so, _oo, _pf, (log, counts, logofl) = run_cascade_pool(
-        g0, stepper, jax.random.fold_in(key, 1), su["consumed0"], M=P_BUF, max_steps=cfg.max_steps,
-        M_out=24, prim_origin=prim_origin, log_cap=LCAP)
+        pid_pi = jnp.asarray(pid_pi, jnp.int32); pid_Ni = jnp.asarray(ipid, jnp.int32)
+    log, counts, logofl = cascade_carbon(p_pi, p_N, pid_pi, pid_Ni, jnp.asarray(Npid, jnp.int32),
+                                         cfg, key, P=P_BUF, channel=channel, log_cap=LCAP)
     return {k: np.asarray(v) for k, v in log.items()}, np.asarray(counts), int(logofl)
 
 
