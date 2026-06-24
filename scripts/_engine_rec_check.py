@@ -11,7 +11,7 @@ from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
 from adonis.fsi import cascade_full as CF
 from adonis.xsec.spectral import SpectralFunction
 
-tg = resolve_targets("C")[0][0]; P = 12; MG = 6
+tg = resolve_targets("C")[0][0]; P = 12
 sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
 a = gen_events("res", 5000, 0, sf_n=sf_n, sf_p=sf_p, n_neutron=tg.A - tg.Z, n_proton=tg.Z)
 w = np.asarray(a["w"]); s = w > 0; m = int(s.sum())
@@ -22,11 +22,11 @@ cfg = DiscreteCascadeConfig(step=0.04, max_steps=600, seed=1, nn_inelastic=True,
 key = jax.random.PRNGKey(11)
 # 4-tuple default unchanged
 r4 = CF.cascade_nucleus(g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
-                          g("Npid").astype(jnp.int32), cfg, key, P=P, max_gen=MG, channel="res")
+                          g("Npid").astype(jnp.int32), cfg, key, P=P, channel="res")
 print(f"[4-tuple default] len={len(r4)}  (expect 4)")
 # 5-tuple with record
 r5 = CF.cascade_nucleus(g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
-                          g("Npid").astype(jnp.int32), cfg, key, P=P, max_gen=MG, channel="res",
+                          g("Npid").astype(jnp.int32), cfg, key, P=P, channel="res",
                           rec_caps=(32, 256))
 pterm, nterms, ofl, created, rec = r5
 print(f"[5-tuple with rec] len={len(r5)}  rec keys={sorted(rec.keys())}")

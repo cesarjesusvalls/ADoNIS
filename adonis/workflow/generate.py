@@ -5,10 +5,8 @@ RES via res_xsec.generate / QE via qe_xsec.sample_importance (w/=N), the faithfu
 (cascade_full.cascade_nucleus, internal seed=1, key PRNGKey(seed+11)), top-M proton terminals with
 provenance, per-seed checkpoint, weight normalized by the ACTUAL seeds banked.
 
-`_N_RECOIL` is read from ADONIS_N_RECOIL at cascade_discrete import time, so the driver
-(scripts/adonis_generate.py) MUST set that env from cfg.cascade.n_recoil BEFORE importing this module;
-we assert consistency here.  Material: only a carbon cascade target is engine-generatable (free-H is a
-separate primary bank, not wired); resolve_targets enforces the supported set.
+Material: only a carbon cascade target is engine-generatable (free-H is a separate primary bank, not
+wired); resolve_targets enforces the supported set.
 """
 from __future__ import annotations
 import os
@@ -18,7 +16,7 @@ import jax.numpy as jnp
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import res_xsec
 from adonis.xsec.spectral import SpectralFunction
-from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _N_RECOIL
+from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
 from adonis.fsi.cascade_real import _load_density
 import adonis.fsi.cascade_full as CF
 import adonis.fsi.tracking as TK
@@ -74,7 +72,7 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
         jnp.asarray(a["Npid"], jnp.int32), cfg_cascade, jax.random.PRNGKey(seed + 11),
-        P=cas.P, max_gen=cas.max_gen, channel=channel)
+        P=cas.P, channel=channel)
     p4s, orgs, gns = [], [], []
     for g in nterms:
         sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])
@@ -94,7 +92,7 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
                w=a["w"], ipid=a["ipid"].astype(np.int64), Npid=a["Npid"].astype(np.int64))
     truth = None
     if track:
-        truth = TK.finalize(nterms, cfg=TK.TrackerConfig(track=True, max_tracks=cas.P * cas.max_gen + 1))
+        truth = TK.finalize(nterms, cfg=TK.TrackerConfig(track=True))   # max_tracks: TrackerConfig default (64)
     return rec, truth, int(ofl)
 
 
@@ -103,9 +101,6 @@ def run_channel(channel, gc, target):
     target = the resolved NuclearTarget (carbon/argon/...): its density_p/density_n/configs go into the
     cascade config and its spectral_n/spectral_p into the primary generators (single source of truth)."""
     cas = gc.cascade
-    if _N_RECOIL != cas.n_recoil:
-        raise RuntimeError(f"_N_RECOIL={_N_RECOIL} != cascade.n_recoil={cas.n_recoil}: set "
-                           f"ADONIS_N_RECOIL before importing adonis.workflow.generate (driver does this).")
     # Nucleus-aware cascade length: a nucleon must be able to traverse the FULL nucleus (diameter =
     # 2*radius, the rho<1e-6 escape cutoff) plus margin for scattered paths, else slow nucleons get
     # truncated mid-flight ("alive inside" -> spurious soft final state instead of escape/capture).  The
@@ -117,7 +112,6 @@ def run_channel(channel, gc, target):
     print(f"[cascade] nucleus radius={_radius:.2f} fm -> max_steps={_ms} (floor {cas.max_steps})", flush=True)
     cfg_cascade = DiscreteCascadeConfig(step=cas.step, max_steps=_ms,
                                         seed=1, nn_inelastic=cas.nn_inelastic,
-                                        engine=getattr(cas, "engine", "pool"),
                                         nucleus=target.density_p, density_n=target.density_n,
                                         configs=target.configs)
     sf_n = SpectralFunction(target.spectral_n); sf_p = SpectralFunction(target.spectral_p)
@@ -153,7 +147,7 @@ def run_channel(channel, gc, target):
     parts, truths = [], []
     print(f"[{channel}] target={target.symbol}{target.A} Z={target.Z} N={n_neutron} "
           f"dens=({target.density_p},{target.density_n}) cfg={target.configs}", flush=True)
-    print(f"[{channel}] {'PRE-FSI (no cascade)' if not gc.fsi else 'buffers: P=%d max_gen=%d N_RECOIL=%d MPROT=%d' % (cas.P, cas.max_gen, _N_RECOIL, cas.mprot)} "
+    print(f"[{channel}] {'PRE-FSI (no cascade)' if not gc.fsi else 'buffers: P=%d MPROT=%d' % (cas.P, cas.mprot)} "
           f"track={gc.tracking.enabled} -> {out}", flush=True)
     for k in range(gc.n_seeds):
         sd = gc.seed0 + k

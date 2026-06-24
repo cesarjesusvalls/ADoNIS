@@ -30,7 +30,7 @@ def one_chunk(sl, key):
     p_pi_dummy = jnp.zeros((int((sl.stop or m) - (sl.start or 0)), 4))
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi_dummy, g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
-        g("Npid").astype(jnp.int32), CFG, key, P=10, max_gen=3, channel="qe")
+        g("Npid").astype(jnp.int32), CFG, key, P=10, channel="qe")
     p4s = []
     for gg in nterms:
         sp = np.asarray(gg["species"]); pid = np.asarray(gg["pid"]); p4 = np.asarray(gg["p4"]); al = np.asarray(gg["alive"])

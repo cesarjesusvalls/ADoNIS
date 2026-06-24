@@ -53,7 +53,7 @@ for ch in ("qe", "res"):
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi, jnp.asarray(a["p_N"][s]), jnp.asarray(a["ppid"][s], jnp.int32),
         jnp.asarray(a["ipid"][s], jnp.int32), jnp.asarray(a["Npid"][s], jnp.int32),
-        cfg, jax.random.PRNGKey(11), P=12, max_gen=6, channel=ch)
+        cfg, jax.random.PRNGKey(11), P=12, channel=ch)
     for g in nterms:
         sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])
         mom = np.linalg.norm(p4[:, :, 1:], axis=2)

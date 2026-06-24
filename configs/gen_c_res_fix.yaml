@@ -3,8 +3,7 @@ material: C
 n_per_seed: 30000
 n_seeds: 5
 channels: [res]
-cascade: {P: 10, max_gen: 3, n_recoil: 2, step: 0.04, max_steps: 600,
-          nn_inelastic: true, mprot: 4, engine: pool}
+cascade: {P: 10, step: 0.04, max_steps: 600, nn_inelastic: true, mprot: 4}
 tracking: {enabled: false, steps: false}
 out_dir: data/oracle
 tag: _cfix

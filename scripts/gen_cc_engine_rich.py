@@ -19,11 +19,9 @@ CHAN = sys.argv[1] if len(sys.argv) > 1 else "res"
 NRES = int(sys.argv[2]) if len(sys.argv) > 2 else 30000
 NSEED = int(sys.argv[3]) if len(sys.argv) > 3 else 56
 CFG = DiscreteCascadeConfig(step=0.04, max_steps=260, seed=1, nn_inelastic=True)
-# capacity buffers (env-overridable to shrink): P = BFS width, MAX_GEN = cascade depth, MPROT = stored
-# protons.  _N_RECOIL (recoils/scatter) is set in cascade_discrete via ADONIS_N_RECOIL.  Defaults =
+# capacity buffers (env-overridable to shrink): P = pool width, MPROT = stored protons.  Defaults =
 # the validated generous values; shrink only after the validation closure (ACH/ADO + chi2 unchanged).
 P_BUF = int(os.environ.get("ADONIS_P", "16"))   # 16: P=12 left ~0.5% pool overflow on Ar (Cat-3 cap test)
-MAX_GEN = int(os.environ.get("ADONIS_MAX_GEN", "6"))
 MPROT = int(os.environ.get("ADONIS_MPROT", "6"))             # top-M proton terminals stored per event
 TAG = os.environ.get("ADONIS_TAG", "")                       # e.g. "_s" for the shrunk-buffer bank
 OUT = "data/oracle/t2k_%s_engine_rich%s.npz" % ("cc1pi" if CHAN == "res" else "cc0pi", TAG)
@@ -48,7 +46,7 @@ def one(seed):
     p_pi_in = jnp.asarray(a["p_pi"]) if "p_pi" in a else jnp.asarray(a["p_N"])   # qe: dummy (ignored)
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
-        jnp.asarray(a["Npid"], jnp.int32), CFG, jax.random.PRNGKey(seed + 11), P=P_BUF, max_gen=MAX_GEN, channel=CHAN)
+        jnp.asarray(a["Npid"], jnp.int32), CFG, jax.random.PRNGKey(seed + 11), P=P_BUF, channel=CHAN)
     # top-M proton terminals across all nucleon generations (regardless of window) + PROVENANCE
     p4s, orgs, gns = [], [], []
     for g in nterms:
@@ -72,8 +70,7 @@ def one(seed):
 
 
 def main():
-    from adonis.fsi.cascade_discrete import _N_RECOIL
-    print(f"[{CHAN}] buffers: P={P_BUF} max_gen={MAX_GEN} N_RECOIL={_N_RECOIL} MPROT={MPROT}  -> {OUT}", flush=True)
+    print(f"[{CHAN}] buffers: P={P_BUF} MPROT={MPROT}  -> {OUT}", flush=True)
     parts = []
     t0 = time.time()
     for sd in range(NSEED):

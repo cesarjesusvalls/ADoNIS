@@ -32,7 +32,7 @@ def topo(engine):
                                 density_n=tg.density_n, configs=tg.configs, engine=engine)
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         pN, pN, jnp.zeros(m, jnp.int32), ipid.astype(jnp.int32), Npid.astype(jnp.int32),
-        cfg, jax.random.PRNGKey(11), P=P, max_gen=6, channel="qe")
+        cfg, jax.random.PRNGKey(11), P=P, channel="qe")
     npr = np.zeros(m)
     for g in nterms:
         sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])

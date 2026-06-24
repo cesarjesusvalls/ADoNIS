@@ -32,7 +32,7 @@ def run(engine, MS):
                                 density_n=tg.density_n, configs=tg.configs, engine=engine)
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         pPi, pN, ppid.astype(jnp.int32), ipid.astype(jnp.int32), Npid.astype(jnp.int32),
-        cfg, jax.random.PRNGKey(11), P=P, max_gen=6, channel="res")
+        cfg, jax.random.PRNGKey(11), P=P, channel="res")
     pp = np.asarray(pterm["pid"]); cp = np.asarray(created["pid"])
     # CC1pi proxy: exactly one pi+ across {primary, created}, no other meson
     PIP, OTHER = 211, (111, -211, -1)

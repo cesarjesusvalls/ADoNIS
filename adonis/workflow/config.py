@@ -42,15 +42,11 @@ def _coerce(cls, d):
 # ----------------------------------------------------------------------------- generation
 @dataclass
 class CascadeHyperparams:
-    P: int = 12                 # BFS particle-buffer width
-    max_gen: int = 6            # cascade generations
-    n_recoil: int = 4           # top-K proton recoils per scatter (-> ADONIS_N_RECOIL)
+    P: int = 12                 # pool particle-buffer width
     step: float = 0.04          # Glauber step [fm]
     max_steps: int = 260
     nn_inelastic: bool = True
     mprot: int = 6              # top-M proton terminals stored per event (-> ADONIS_MPROT)
-    engine: str = "pool"        # cascade engine: "pool" -- the single validated core (per-step-reconciled
-                                # stack, QE+RES); the only supported value (BFS/legacy paths removed)
 
 
 @dataclass

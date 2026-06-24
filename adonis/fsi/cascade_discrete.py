@@ -19,7 +19,6 @@ weight, so d/d(knob) E[obs] is exact and the sampled final state is preserved.
 from __future__ import annotations
 
 import gzip
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,18 +82,6 @@ def _load_qmc_configs(nmax=36000, name="QMC_configs.out.gz"):
 _KSLAB = 3                   # # of nearest in-slab nucleons whose cross sections are evaluated per step
                              # (fast_xsec).  sigma for non-in-slab nucleons is never used (prob is masked
                              # to in_slab); >=K in one 0.04 fm slab is ~never, so this is bit-exact.
-_MAX_SEG = 12                # interaction-driven kernel: max interaction ATTEMPTS per particle.  Measured
-                             # pion tail over 622k cascades: max=11, P(>11)=0.  A particle still
-                             # propagating after _MAX_SEG segments is force-escaped (logged, not silent).
-_K_BR = 16                   # compressed-record slots for the pion branch reweight (hits/event <= _MAX_SEG
-                             # measured; nh in the records lets callers verify no overflow).
-_K_SLAB_REC = 48             # compressed-record slots for the nucleon sigma_scatter reweight (steps with
-                             # an in-slab candidate; ns in the records verifies no overflow).
-_N_RECOIL = int(os.environ.get("ADONIS_N_RECOIL", "4"))   # top-K proton recoils tracked per particle (was
-                             # 1, leading-only).  The LEADING (max-momentum) slot reproduces the old single
-                             # best_rec bit-exactly -> production (which uses only the leading) is unaffected;
-                             # the full top-K is exposed for the faithful multi-particle cascade engine
-                             # (cascade_full).  Env-overridable (ADONIS_N_RECOIL) to shrink the spawn buffer.
 
 
 def pion_branch_reweight(brec, sabs, sscat):

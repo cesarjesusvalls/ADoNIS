@@ -36,7 +36,7 @@ print(f"[gen] {m} live QE events", flush=True)
 key = jax.random.PRNGKey(11)
 pterm, nterms, ofl, created = CF.cascade_nucleus(
     pN, pN, ppid, ipid.astype(jnp.int32), Npid.astype(jnp.int32), cfg, key,
-    P=M, max_gen=6, channel="qe")
+    P=M, channel="qe")
 bfs_n = np.zeros(m)
 for g in nterms:
     sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])

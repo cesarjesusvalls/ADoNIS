@@ -30,7 +30,7 @@ def one_chunk(sl, key):
     g = lambda k: jnp.asarray(a[k][sl])
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         g("p_pi"), g("p_N"), g("ppid").astype(jnp.int32), g("ipid").astype(jnp.int32),
-        g("Npid").astype(jnp.int32), CFG, key, P=10, max_gen=3, channel="res")
+        g("Npid").astype(jnp.int32), CFG, key, P=10, channel="res")
     p4s = []
     for gg in nterms:
         sp = np.asarray(gg["species"]); pid = np.asarray(gg["pid"]); p4 = np.asarray(gg["p4"]); al = np.asarray(gg["alive"])

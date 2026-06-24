@@ -38,7 +38,7 @@ class TrackerConfig:
     """Toggle the tracker.  Both default OFF -> production path untouched / bit-exact."""
     track: bool = False            # record the per-track summary (TrackBank)
     track_steps: bool = False      # also record the per-step trajectory (StepTrace) -- viz, small N
-    max_tracks: int = 64           # fixed # of track slots per event (>= P*max_gen + gen0; overflow logged)
+    max_tracks: int = 64           # fixed # of track slots per event (overflow logged)
     max_steps: int = 260           # fixed trajectory length (= cfg.max_steps)
 
     @property

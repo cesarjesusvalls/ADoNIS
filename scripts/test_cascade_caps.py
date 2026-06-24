@@ -5,7 +5,7 @@ T2K flux, and reports for each counter-equipped cap both the overflow counter AN
 DISTRIBUTION vs the cap (so the MARGIN is visible even at 0 overflow):
   * pool stack width M=P (+ out-buffer M_out) -> ofl = sofl+oofl ; swept over P
   * log_cap L -> segments/event distribution (counts) vs L
-  * record caps Kp,Kn (with_rec) -> pion-hits/event, nucleon-steps/event vs _K_BR / _K_SLAB_REC
+  * record caps Kp,Kn (with_rec) -> pion-hits/event, nucleon-steps/event vs the passed Kp,Kn
 NOTE: _KSLAB (nearest in-slab nucleons) has NO counter (top_k silently drops the 4th+); it needs a
 1-line candidate-count export -> done separately in a git worktree, not here.
 
@@ -24,7 +24,7 @@ from adonis.xsec import res_xsec, qe_xsec
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec.spectral import SpectralFunction
 import adonis.xsec.flux as flux; flux.BEAM_MODE = "is"
-from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _load_density, _K_BR, _K_SLAB_REC, _KSLAB
+from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _load_density, _KSLAB
 from adonis.fsi.cascade_full import cascade_nucleus
 LCAP = 128                                                        # generous, to MEASURE the true counts tail
 
@@ -48,7 +48,7 @@ def main():
     cfg, radius = cfg_for(tg)
     sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
     print(f"[Cat-3 caps] {MAT} A={tg.A} radius={radius:.2f} max_steps={cfg.max_steps} N={N}")
-    print(f"  production caps: pool P (swept), log_cap=64, _KSLAB={_KSLAB}, _K_BR={_K_BR}, _K_SLAB_REC={_K_SLAB_REC}")
+    print(f"  production caps: pool P (swept), log_cap=64, _KSLAB={_KSLAB}")
 
     all_counts = []                                              # segments/event (vs log_cap)
     ofl_by_P = {8: 0, 12: 0}                                      # production P=12 + one lower for margin
