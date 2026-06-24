@@ -577,6 +577,10 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
         out, sofl, oofl, prim_fate = _rc; fsi_rec = None
     sp = out["species"]; chg = out["charge"]; al = out["alive"]; p4o = out["p4"]
     nterms = [dict(species=sp, pid=jnp.where((sp == NUCLEON) & (chg == 1), 2212, 2112),
+                   charge=chg,                                       # raw charge idx: nucleon isospin
+                                                                    # (1=p) | pion charge (0:+,1:0,2:-).
+                                                                    # ADDITIVE -- pid unchanged (golden-safe);
+                                                                    # lets consumers count pions by charge.
                    p4=p4o, alive=al, origin=out["origin"], gen=out["gen"])]
     is_surv_pi = (sp == PION) & al                                     # escaped pions (output is escape-only)
     if channel == "qe":

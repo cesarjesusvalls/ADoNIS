@@ -83,13 +83,25 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
     P4 = np.concatenate(p4s, axis=1); ORG = np.concatenate(orgs, axis=1); GN = np.concatenate(gns, axis=1)
     mom = np.linalg.norm(P4[:, :, 1:], axis=2)
     idx = np.argsort(-mom, axis=1)[:, :cas.mprot]; g2 = ar[:, None]
+    # FULL final-state multiplicity per event from the engine's escaped-finals buffer (species+charge,
+    # M_out=24 cap): protons/neutrons/pi+- /pi0.  Nucleon charge 1=p,0=n ; pion charge 0=pi+,1=pi0,2=pi-.
+    # REQUIRE |p|>0: recaptured nucleons (slow particle set to REST by _nucleon_step recap -> absorbed into
+    # the residual nucleus, NOT ejected) are written to the buffer with zero momentum; excluding them makes
+    # the multiplicity the true EJECTED final state (matches ACHILLES, which does not emit rest nucleons).
+    g0 = nterms[0]; spN = np.asarray(g0["species"]); chN = np.asarray(g0["charge"]); alN = np.asarray(g0["alive"])
+    alN = alN & (np.linalg.norm(np.asarray(g0["p4"])[:, :, 1:], axis=2) > 0.0)
+    mult = dict(n_p=((spN == CF.NUCLEON) & (chN == 1) & alN).sum(1).astype(np.int64),
+                n_n=((spN == CF.NUCLEON) & (chN == 0) & alN).sum(1).astype(np.int64),
+                n_pip=((spN == CF.PION) & (chN == 0) & alN).sum(1).astype(np.int64),
+                n_pi0=((spN == CF.PION) & (chN == 1) & alN).sum(1).astype(np.int64),
+                n_pim=((spN == CF.PION) & (chN == 2) & alN).sum(1).astype(np.int64))
     rec = dict(mu=a["k_mu"], nu=a["k_nu"], struck=a["p_struck"], pid_Ni=a["ipid"].astype(np.int64),
                pi_post=np.asarray(pterm["p4"]), pid_pi=np.asarray(pterm["pid"]).astype(np.int64),
                pi_nsc=np.asarray(pterm["nsc"]).astype(np.int64),
                cr_p4=np.asarray(created["p4"]), cr_pid=np.where(np.asarray(created["alive"]),
                                                                np.asarray(created["pid"]), 0).astype(np.int64),
                prot=P4[g2, idx], prot_origin=ORG[g2, idx].astype(np.int64), prot_gen=GN[g2, idx].astype(np.int64),
-               w=a["w"], ipid=a["ipid"].astype(np.int64), Npid=a["Npid"].astype(np.int64))
+               w=a["w"], ipid=a["ipid"].astype(np.int64), Npid=a["Npid"].astype(np.int64), **mult)
     truth = None
     if track:
         truth = TK.finalize(nterms, cfg=TK.TrackerConfig(track=True))   # max_tracks: TrackerConfig default (64)
