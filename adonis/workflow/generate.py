@@ -52,12 +52,18 @@ def _prefsi_record(channel, a):
     pi4 = np.asarray(a["p_pi"]) if "p_pi" in a else np.zeros((nn, 4))
     pid_pi = np.asarray(a["ppid"]) if channel == "res" else np.zeros(nn, np.int64)
     z = np.zeros(nn)
+    # PRE-FSI multiplicity (same fields as the FSI record, from the primary products): exactly the single
+    # primary nucleon (proton if Npid==2212, else a neutron) + the RES pion (none for QE).  This is the
+    # no-cascade baseline the FSI multiplicity spreads out from; matches ACHILLES no-FSI.
+    mult = dict(n_p=is_p.astype(np.int64), n_n=(Npid == 2112).astype(np.int64),
+                n_pip=(pid_pi == 211).astype(np.int64), n_pi0=(pid_pi == 111).astype(np.int64),
+                n_pim=(pid_pi == -211).astype(np.int64))
     return dict(mu=a["k_mu"], nu=a["k_nu"], struck=a["p_struck"], pid_Ni=np.asarray(a["ipid"]).astype(np.int64),
                 pi_post=pi4, pid_pi=pid_pi.astype(np.int64), pi_nsc=z.astype(np.int64),
                 cr_p4=np.zeros((nn, 4)), cr_pid=np.zeros(nn, np.int64),
                 prot=prot, prot_origin=np.where(is_p, 0, -1)[:, None].astype(np.int64),
-                prot_gen=np.zeros((nn, 1), np.int64),
-                w=np.asarray(a["w"]), ipid=np.asarray(a["ipid"]).astype(np.int64), Npid=Npid.astype(np.int64))
+                prot_gen=np.zeros((nn, 1), np.int64), neut=np.zeros((nn, 1, 4)),   # no ejected neutrons pre-FSI
+                w=np.asarray(a["w"]), ipid=np.asarray(a["ipid"]).astype(np.int64), Npid=Npid.astype(np.int64), **mult)
 
 
 def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n=None, sf_p=None,
@@ -73,16 +79,21 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
         jnp.asarray(a["Npid"], jnp.int32), cfg_cascade, jax.random.PRNGKey(seed + 11),
         P=cas.P, channel=channel, n_w=n_w)
-    p4s, orgs, gns = [], [], []
+    p4s, orgs, gns, n4s = [], [], [], []
     for g in nterms:
         sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])
         good = (sp == CF.NUCLEON) & (pid == 2212) & al
         p4s.append(np.where(good[:, :, None], p4, 0.0))
         orgs.append(np.where(good, np.asarray(g["origin"]), -1))
         gns.append(np.where(good, np.asarray(g["gen"]), -1))
+        good_n = (sp == CF.NUCLEON) & (pid == 2112) & al & (np.linalg.norm(p4[:, :, 1:], axis=2) > 0.0)
+        n4s.append(np.where(good_n[:, :, None], p4, 0.0))           # ejected neutrons (|p|>0; no recaptured rest)
     P4 = np.concatenate(p4s, axis=1); ORG = np.concatenate(orgs, axis=1); GN = np.concatenate(gns, axis=1)
+    N4 = np.concatenate(n4s, axis=1)
     mom = np.linalg.norm(P4[:, :, 1:], axis=2)
     idx = np.argsort(-mom, axis=1)[:, :cas.mprot]; g2 = ar[:, None]
+    nmomn = np.linalg.norm(N4[:, :, 1:], axis=2)
+    nidx = np.argsort(-nmomn, axis=1)[:, :cas.mprot]               # top-mprot ejected neutrons by |p|
     # FULL final-state multiplicity per event from the engine's escaped-finals buffer (species+charge,
     # M_out=24 cap): protons/neutrons/pi+- /pi0.  Nucleon charge 1=p,0=n ; pion charge 0=pi+,1=pi0,2=pi-.
     # REQUIRE |p|>0: recaptured nucleons (slow particle set to REST by _nucleon_step recap -> absorbed into
@@ -101,6 +112,7 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
                cr_p4=np.asarray(created["p4"]), cr_pid=np.where(np.asarray(created["alive"]),
                                                                np.asarray(created["pid"]), 0).astype(np.int64),
                prot=P4[g2, idx], prot_origin=ORG[g2, idx].astype(np.int64), prot_gen=GN[g2, idx].astype(np.int64),
+               neut=N4[g2, nidx],
                w=a["w"], ipid=a["ipid"].astype(np.int64), Npid=a["Npid"].astype(np.int64), **mult)
     truth = None
     if track:

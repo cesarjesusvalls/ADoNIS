@@ -21,7 +21,8 @@ def hist_with_errors(values, weights, edges):
 
 
 def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
-                     ratio_ylim=(0.5, 1.6), ado_label="ENGINE", ref_label="ACHILLES", data=None):
+                     ratio_ylim=(0.5, 1.6), ado_label="ENGINE", ref_label="ACHILLES", data=None,
+                     logy=False):
     """Render one observable into top axis a0 (dsigma/dx) + bottom a1 (ACH/ADO ratio).
     ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado)."""
     bw = np.diff(edges); ctr = 0.5 * (edges[1:] + edges[:-1])
@@ -34,7 +35,14 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     if data is not None:
         a0.errorbar(data["ctr"], data["val"], yerr=data["err"], fmt="o", color="k", ms=3,
                     capsize=2, lw=0.9, label="data")
-    a0.set_title(label, fontsize=9); a0.set_ylim(bottom=0)
+    a0.set_title(label, fontsize=9)
+    if logy:
+        a0.set_yscale("log")
+        pos = np.concatenate([da[da > 0], dd[dd > 0]])
+        if pos.size:
+            a0.set_ylim(0.5 * pos.min(), 2.0 * pos.max())
+    else:
+        a0.set_ylim(bottom=0)
     m = (da > 0) & (dd > 0)
     chi2 = float(np.sum((da[m] - dd[m]) ** 2 / (ea[m] ** 2 + ed[m] ** 2))); ndf = int(m.sum())
     with np.errstate(divide="ignore", invalid="ignore"):

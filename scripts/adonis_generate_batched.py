@@ -42,11 +42,15 @@ def main():
     ap.add_argument("--events-per-batch", type=int, default=100000)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--P", type=int, default=2)
+    ap.add_argument("--no-fsi", action="store_true")      # PRE-FSI banks (no cascade); tag -> _nofsi
     a = ap.parse_args()
     gc = load_gen_config(a.config); K = a.workers; nper = a.events_per_batch // K
+    if a.no_fsi:
+        gc.tag = gc.tag + "_nofsi"                        # separate bank family from the FSI batches
     vegas_on = getattr(gc, "vegas", None) is not None and gc.vegas.enabled
+    extra = ["--no-fsi"] if a.no_fsi else []
     print(f"[batched] config={a.config} channels={gc.channels} n_batches={a.n_batches} "
-          f"events/batch={a.events_per_batch} workers={K} ({nper}/worker) P={a.P}", flush=True)
+          f"events/batch={a.events_per_batch} workers={K} ({nper}/worker) P={a.P} fsi={not a.no_fsi}", flush=True)
 
     for channel in gc.channels:
         chanout = _CHAN_OUT[channel]
@@ -75,7 +79,7 @@ def main():
                 procs.append(subprocess.Popen(
                     [PY, "-u", GEN, a.config, "--n-seeds", "1", "--n-per-seed", str(nper),
                      "--seed0", str(seed), "--tag", tag, "--P", str(a.P), "--n-w", "0",
-                     "--vegas-cache", cache],
+                     "--vegas-cache", cache] + extra,
                     stdout=open(f"/tmp/shard_{chanout}_b{b:02d}_w{w}.log", "w"), stderr=subprocess.STDOUT))
             rcs = [p.wait() for p in procs]
             shard_paths = [bankpath(gc.out_dir, chanout, t) for t in shard_tags]

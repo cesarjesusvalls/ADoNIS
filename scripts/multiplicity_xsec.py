@@ -15,11 +15,16 @@ import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 from adonis.workflow.plotting import chi2_ratio_panel, hist_with_errors
 
+import glob
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/multiplicity_xsec_C.png"
+MODE = os.environ.get("MODE", "fsi").lower()                           # fsi | nofsi
 MU_WIN = [250.0, 7000.0]; COS70 = float(np.cos(np.deg2rad(70.0)))      # matrix muon acceptance
-ADO_QE = "data/oracle/t2k_cc0pi_engine_rich_cv5_batch02.npz"
-ADO_RES = "data/oracle/t2k_cc1pi_engine_rich_cv5_batch02.npz"
-ACH = "data/oracle/t2k_cc1pi_rich_ach_FSI_proc.npz"
+_suf = "_nofsi" if MODE == "nofsi" else ""
+ADO_DIR = os.environ.get("ADO_DIR", "data/oracle")                     # ADoNIS bank dir override
+ADO_QE = sorted(glob.glob(f"{ADO_DIR}/t2k_cc0pi_engine_rich_cv5{_suf}_batch*.npz"))   # merge ALL QE batches
+ADO_RES = sorted(glob.glob(f"{ADO_DIR}/t2k_cc1pi_engine_rich_cv5{_suf}_batch*.npz"))
+ACH = os.environ.get("ACH_BANK",                                       # ACHILLES proc bank override
+                     f"data/oracle/t2k_cc1pi_rich_ach_{'nofsi' if MODE == 'nofsi' else 'FSI'}_proc.npz")
 # (label, ado bank field, achilles -> count)
 SPECIES = ["N(p)", "N(n)", "N(pi+)", "N(pi0)", "N(pi-)"]
 ADO_FIELD = {"N(p)": "n_p", "N(n)": "n_n", "N(pi+)": "n_pip", "N(pi0)": "n_pi0", "N(pi-)": "n_pim"}
@@ -30,10 +35,21 @@ def mu_mask(mu):
     return (p > MU_WIN[0]) & (p < MU_WIN[1]) & (cz > COS70)
 
 
-def ado(path):
-    b = dict(np.load(path, allow_pickle=True))
-    m = mu_mask(b["mu"]) & (b["w"] > 0)
-    return {lab: b[ADO_FIELD[lab]][m] for lab in SPECIES}, b["w"][m]
+def ado(paths):
+    """Merge >=1 homogeneous batches: concatenate events, divide w by n_batches so sum(w) stays sigma
+    (each batch's w already sums to sigma; the merge is an average of independent dsigma estimates)."""
+    if isinstance(paths, str):
+        paths = [paths]
+    paths = [p for p in paths if "n_p" in np.load(p, allow_pickle=True).files]   # skip pre-mult banks
+    print(f"  merging {len(paths)} batch(es): {[os.path.basename(p) for p in paths]}", flush=True)
+    nb = len(paths); cnt = {lab: [] for lab in SPECIES}; ws = []
+    for p in paths:
+        b = dict(np.load(p, allow_pickle=True))
+        m = mu_mask(b["mu"]) & (b["w"] > 0)
+        for lab in SPECIES:
+            cnt[lab].append(b[ADO_FIELD[lab]][m])
+        ws.append(b["w"][m])
+    return {lab: np.concatenate(cnt[lab]) for lab in SPECIES}, np.concatenate(ws) / nb
 
 
 def ach(procs):
@@ -42,8 +58,12 @@ def ach(procs):
     w = d["w"][sel] * float(d["weight_to_nb"])
     pp4 = d["prot_p4"][sel]; pip = d["pi_pid"][sel]
     n_p = (np.linalg.norm(pp4[:, :, 1:], axis=2) > 1e-6).sum(1)
-    return {"N(p)": n_p, "N(pi+)": (pip == 211).sum(1), "N(pi0)": (pip == 111).sum(1),
-            "N(pi-)": (pip == -211).sum(1)}, w
+    out = {"N(p)": n_p, "N(pi+)": (pip == 211).sum(1), "N(pi0)": (pip == 111).sum(1),
+           "N(pi-)": (pip == -211).sum(1)}
+    if "neut_p4" in d:                                          # neutrons now stored (extract_cc1pi_rich)
+        np4 = d["neut_p4"][sel]
+        out["N(n)"] = (np.linalg.norm(np4[:, :, 1:], axis=2) > 1e-6).sum(1)
+    return out, w
 
 
 def dsig(counts, w, nmax=6):
@@ -56,33 +76,33 @@ def dsig(counts, w, nmax=6):
 
 def main():
     print("loading banks ...", flush=True)
-    aQ, wQ = ado(ADO_QE); aR, wR = ado(ADO_RES)
-    hQ, hwQ = ach([200]); hR, hwR = ach([401, 402])
+    aQ, wQ = ado(ADO_QE)                                       # QE only (RES parked until QE is clean)
+    hQ, hwQ = ach([200])
     nmax = 6; edges = np.arange(nmax + 2.0); ctr = 0.5 * (edges[1:] + edges[:-1])   # bin k = [k,k+1)
     # top dsigma/dN + bottom ACH/ADO ratio per species, exactly like the cross-section matrix panels
-    fig, axes = plt.subplots(4, 5, figsize=(23, 11), height_ratios=[3, 1, 3, 1])
-    for (chan, A, wa, H, wh, r0, r1) in [("QE", aQ, wQ, hQ, hwQ, 0, 1), ("RES", aR, wR, hR, hwR, 2, 3)]:
-        for c, lab in enumerate(SPECIES):
-            a0, a1 = axes[r0, c], axes[r1, c]
-            if lab in H:
-                chi2_ratio_panel(a0, a1, edges, {"values": H[lab], "w": wh}, {"values": A[lab], "w": wa},
-                                 label=f"{chan}: {lab}", ado_label="ADoNIS", ref_label="ACHILLES")
-            else:                                            # neutrons: ADoNIS only (ACHILLES bank has none)
-                dd, ed = hist_with_errors(A[lab], wa, edges)
-                a0.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=3, capsize=2, lw=0.9, label="ADoNIS")
-                a0.set_title(f"{chan}: {lab}", fontsize=9); a0.set_ylim(bottom=0)
-                a1.axhline(1.0, ls="--", color="green", lw=0.7); a1.set_ylim(0.5, 1.6)
-                a1.text(0.5, 0.4, "no ACHILLES n", transform=a1.transAxes, ha="center", fontsize=8, color="r")
-                a1.set_xlabel(f"{chan}: {lab}", fontsize=8)
-    axes[0, 0].set_ylabel("QE  dσ/dN [nb]"); axes[2, 0].set_ylabel("RES  dσ/dN [nb]")
-    axes[1, 0].set_ylabel("ACH/ADO"); axes[3, 0].set_ylabel("ACH/ADO"); axes[0, 0].legend(fontsize=8)
-    fig.suptitle("dσ vs final-state multiplicity (C, muon-acceptance CC-inclusive): ADoNIS vs ACHILLES (+ ACH/ADO ratio)")
+    fig, axes = plt.subplots(2, 5, figsize=(23, 6), height_ratios=[3, 1], sharex="col")
+    for c, lab in enumerate(SPECIES):
+        a0, a1 = axes[0, c], axes[1, c]
+        a0.set_xlim(edges[0], edges[-1])                        # top + ratio share this range (sharex)
+        if lab in hQ:
+            chi2_ratio_panel(a0, a1, edges, {"values": hQ[lab], "w": hwQ}, {"values": aQ[lab], "w": wQ},
+                             label=f"QE: {lab}", ado_label="ADoNIS", ref_label="ACHILLES", logy=True)
+        else:                                                  # (only if ACHILLES bank lacks this species)
+            dd, ed = hist_with_errors(aQ[lab], wQ, edges)
+            a0.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=3, capsize=2, lw=0.9, label="ADoNIS")
+            a0.set_title(f"QE: {lab}", fontsize=9); a0.set_ylim(bottom=0)
+            a1.axhline(1.0, ls="--", color="green", lw=0.7); a1.set_ylim(0.5, 1.6)
+            a1.text(0.5, 0.4, "no ACHILLES", transform=a1.transAxes, ha="center", fontsize=8, color="r")
+            a1.set_xlabel(f"QE: {lab}", fontsize=8)
+    axes[0, 0].set_ylabel("QE  dσ/dN [nb]"); axes[1, 0].set_ylabel("ACH/ADO"); axes[0, 0].legend(fontsize=8)
+    nb = len([p for p in ADO_QE if "n_p" in np.load(p, allow_pickle=True).files])
+    fig.suptitle(f"QE dσ vs final-state multiplicity (C, muon-acceptance CC-inclusive; {nb} batches; "
+                 f"{'NO FSI' if MODE == 'nofsi' else 'FSI'}): ADoNIS vs ACHILLES")
     fig.tight_layout(); fig.savefig(OUT, dpi=110); print(f"wrote {OUT}", flush=True)
-    for chan, A, wa, H, wh in [("QE", aQ, wQ, hQ, hwQ), ("RES", aR, wR, hR, hwR)]:
-        print(f"--- {chan}: total sigma ADoNIS={wa.sum():.4e}  ACHILLES={wh.sum():.4e}  ACH/ADO={wh.sum()/wa.sum():.3f}", flush=True)
-        for lab in SPECIES:
-            a, ae = dsig(A[lab], wa, nmax); hh = dsig(H[lab], wh, nmax)[0] if lab in H else None
-            print(f"  {lab:7s} ado N0..3: {a[:4]}" + (f"   ach: {hh[:4]}" if hh is not None else "  (ado-only)"), flush=True)
+    print(f"--- QE: total sigma ADoNIS={wQ.sum():.4e}  ACHILLES={hwQ.sum():.4e}  ACH/ADO={hwQ.sum()/wQ.sum():.3f}", flush=True)
+    for lab in SPECIES:
+        a, ae = dsig(aQ[lab], wQ, nmax); hh = dsig(hQ[lab], hwQ, nmax)[0] if lab in hQ else None
+        print(f"  {lab:7s} ado N0..3: {a[:4]}" + (f"   ach: {hh[:4]}" if hh is not None else "  (ado-only)"), flush=True)
 
 
 if __name__ == "__main__":

@@ -611,7 +611,8 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
 
 
 def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=16, sabs=1.0, sscat=1.0,
-                      channel="res", rec_caps=None, log_cap=None, n_w=None, q_cap=None, per_event_cap=None):
+                      channel="res", rec_caps=None, log_cap=None, n_w=None, q_cap=None, per_event_cap=None,
+                      su_external=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
                    pion knockouts}; pterm = the surviving pion.
@@ -628,7 +629,10 @@ def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=16, sabs=1.0, s
       q_cap : None -> _DEFAULT_QCAP (keep overflow particles, sofl->0);  0 -> legacy drop-on-overflow.
       per_event_cap: None -> cfg.max_steps (per-slot step cap in the refill path).
     Returns (pterm, nucleon_terminals_per_gen, overflow, created[, fsi_record]) | (log, counts, overflow)."""
-    su = setup_nucleus(p_pi, pid_pi, pid_Ni, cfg, key)
+    # su_external (ablation harness): run on an EXTERNALLY supplied nucleus (e.g. ACHILLES's exact per-event
+    # background + struck vertex) instead of sampling our own -- isolates transport from input generation.
+    # Must provide npos,nmom,nisp,pos0,consumed0,ch0,kp (same keys setup_nucleus returns).
+    su = setup_nucleus(p_pi, pid_pi, pid_Ni, cfg, key) if su_external is None else su_external
     n = p_pi.shape[0]
     _kpi, knuc, _kpi2 = jax.random.split(su["kp"], 3)     # knuc drives the pool (RNG stream preserved)
     # Resolve engine defaults: refill ON (n_w window) + waiting-queue ON (q_cap) for ALL consumers.

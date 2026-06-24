@@ -20,8 +20,10 @@ if __name__ == "__main__":
     ap.add_argument("--P", type=int, default=None)
     ap.add_argument("--n-w", type=int, default=None)      # cascade refill working set (0 = full-batch)
     ap.add_argument("--vegas-cache", type=str, default=None)
+    ap.add_argument("--no-fsi", action="store_true")      # PRE-FSI bank (primary products, no cascade)
     a = ap.parse_args()
     gc = load_gen_config(a.config)
+    if a.no_fsi:                 gc.fsi = False
     if a.n_per_seed is not None: gc.n_per_seed = a.n_per_seed
     if a.n_seeds is not None:    gc.n_seeds = a.n_seeds
     if a.seed0 is not None:      gc.seed0 = a.seed0
