@@ -112,6 +112,8 @@ def neff(w):
 def run_cell(material, channel, contrib, pcat, mode="fsi"):
     mats = MATERIALS_NOFSI if mode == "nofsi" else MATERIALS
     res_bank, qe_bank, ref = mats[material]
+    res_bank = os.environ.get("ADONIS_RES_BANK", res_bank)   # override the ADoNIS banks (e.g. new _batchNN
+    qe_bank = os.environ.get("ADONIS_QE_BANK", qe_bank)      # banks) without editing the MATERIALS table
     if mode == "nofsi" and (not os.path.exists(res_bank) or not os.path.exists(qe_bank) or not os.path.exists(ref)):
         return dict(cell=f"{channel}_{contrib}_{pcat}_{material}", ok=False, err="bank/ref missing")
     sigd, obs = signal_block(channel, contrib, pcat)
