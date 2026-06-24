@@ -80,6 +80,26 @@ Run 1 seed (C) through the new engine via `gen_cascade_segments` + `cascade_vert
 existing ACHILLES segment dump; confirm the matrix is unchanged (≤ the Stage-2 kept-particle delta) — i.e.
 no physics moved.  Also: `cc0pi_tune` smoke (reweight path) + a forward `adonis_generate` smoke.
 
+## Status (2026-06-24)
+- **Stage 0/1/2** committed (golden `be75d63`, bg-as-arg `e9ade9f`, particle waiting-queue Q `f4fe822`).
+- **Stage 3a** (per-event RNG re-key, `4e52f0d`): `_nucleon_step`/`_pion_step` draw per-event (key→(n,2))
+  via `_ev_split/_ev_uniform/_ev_fold_uniform`; `make_pool_stepper` folds a per-(event,step,slot) key;
+  `run_cascade_pool` step_key=fold_in(fold_in(base,evt_id),nstep).  Stream changed (distributions
+  identical) → golden re-baselined.  Gates: pool tests 3/3; determinism recompute==golden (70 arrays,0);
+  old-vs-new aggregates consistent.  **User decision: GLOBAL re-key (no dual path), re-validate pipeline.**
+- **Stage 3b** (refill core): `run_cascade_pool` factored into a shared `_apply_step`; NO-REFILL path
+  (pending=None) bit-exact to pre-refill (gate: 70 arrays,0 differ).  REFILL path (pending+n_w): working
+  set of n_w slots fed from a pending pool of N_total events; finished/cap-hit slots flush per-event
+  accumulators (out/prim/rec/log/wptr) to global (N_total,…) buffers at evt_id and refill from a cursor.
+  Overflow stays a global scalar.  `per_event_cap` replaces global max_steps.  Wired through
+  `_cascade_pool`/`cascade_nucleus` via `n_w=`.  Gates: toy bookkeeping (n_w=N bit-exact, n_w=8 same
+  per-event counts) PASS; physics gate `_engine_refill_check` (MODE A n_w=N bit-exact / MODE B n_w=200
+  physics-exact, provenance labels track_id/parent_id differ by slot offset — physics-inert) [running].
+- **Why refill speeds up:** the lock-step loop ran `while i<max_steps & any(alive)` across ALL events, so
+  one long-lived particle made every event step to max_steps.  Refill lets finished events vacate; the
+  (W,M) tensor stays small and fully live.  (Single-process timing study deferred until 3b validated.)
+- **Stage 4** (multi-worker shard) not started.
+
 ## Risks / notes
 - Differentiability: the reweight `rec` flush-on-completion into `(N_total,…)` must stay a pure scatter
   (no data-dependent shape) -> keep `evt_id` scatter with `mode='drop'`, like the segment logger.

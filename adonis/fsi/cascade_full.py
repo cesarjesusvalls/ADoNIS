@@ -235,8 +235,17 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             pgen = stack["gen"][:, pslot]; ptid = stack["track_id"][:, pslot]
             spawn["gen"] = pgen + 1
             spawn["parent_id"] = ptid
-            tid = (_TRACK_OFFSET + (step * M + pslot) * 3 + chan_off).astype(jnp.int32)
-            spawn["track_id"] = jnp.broadcast_to(tid[None, :], (n, 3 * M))
+            # track_id unique per (step,slot,channel).  `step` is a SCALAR global step (lock-step) or a
+            # PER-EVENT (n,) nstep (refill).  At n_w=N_total the per-event nstep is all == the global step,
+            # so the per-event form reproduces the scalar broadcast bit-for-bit; for n_w<N_total the ids
+            # differ by the slot/step offset (a physics-inert label -- parent<->child links stay intact).
+            sa = jnp.asarray(step)
+            if sa.ndim == 0:
+                tid = (_TRACK_OFFSET + (step * M + pslot) * 3 + chan_off).astype(jnp.int32)
+                spawn["track_id"] = jnp.broadcast_to(tid[None, :], (n, 3 * M))
+            else:
+                tid = (_TRACK_OFFSET + (sa[:, None] * M + pslot[None, :]) * 3 + chan_off[None, :]).astype(jnp.int32)
+                spawn["track_id"] = tid
         out = (stack2, terminal, spawn, consumed)
         if with_rec:
             out = out + (rec,)
@@ -315,57 +324,54 @@ _LOG_I = ("chan", "inc_pid", "parent_id", "gen", "track_id", "cont_pid", "n1_pid
 _LOG_F = ("incp", "cont_p", "n1_p", "n2_p", "pio_p")
 
 
+def _take_rows(d, idx):
+    """Gather rows (leading axis) of a pytree-of-arrays dict at integer index `idx`."""
+    return {k: v[idx] for k, v in d.items()}
+
+
 def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_origin=-999,
-                     rec_caps=None, log_cap=None, bg=None, q_cap=0):
-    """POOLED engine loop (docs/logbook/cascade_pool_engine.md): ONE fixed-size (n, M) particle stack
-    stepped once per step; the in/out reconcile (pool_reconcile) runs INSIDE the step, vs the BFS's
-    per-generation compact across max_gen separate full-max_steps passes (~10-24x dead-slot waste).
-      stepper(stack, key, state) -> (stack2 (n,M), terminal (n,M) bool, spawn (n,K), state2[, rec|seg])
-        advances every live slot ONE step and returns: the post-step stack, the newly-terminal flag, the
-        particles created this step (spawn ParticleBatch), the threaded step state (e.g. the consumed
-        mask), and an optional 5th per-slot dict: kind-1 FSI record (rec_caps) OR segment fields (log_cap).
-    Escaped terminals (the cascade FINAL STATE) are accumulated into a fixed (n, M_out) output batch each
-    step.  `prim_origin` (RES): the origin tag of the PRIMARY pion -- its terminal FATE (escape/absorb/
-    convert) is latched per event; -999 (default) never matches -> a no-op for QE/tests.
-    rec_caps=(Kp,Kn): accumulate the per-event kind-1 FSI reweight record (pion hits<=Kp, nucleon steps
-    <=Kn) and return it as a 5th element.
-    log_cap=L: the IN-ENGINE SEGMENT LOGGER -- build `stepper` with with_seg=True; every step the slots
-    that interacted (chan>0) or escaped (terminal) are scatter-appended (jitted, per-event write pointer)
-    into a fixed (n, L) log, giving a complete per-particle cascade history (analog of a G4 stepping
-    logger).  Returned as a 5th element (log dict, counts (n,), overflow).  rec_caps and log_cap are
-    mutually exclusive.
+                     rec_caps=None, log_cap=None, bg=None, q_cap=0,
+                     pending=None, n_w=None, per_event_cap=None):
+    """POOLED engine loop (docs/logbook/cascade_pool_engine.md): ONE fixed-size (W, M) particle stack
+    stepped once per step; the in/out reconcile (pool_reconcile) runs INSIDE the step.
+      stepper(stack, key, state) -> (stack2 (W,M), terminal (W,M) bool, spawn (W,K), state2[, rec|seg])
+    Escaped terminals (the cascade FINAL STATE) accumulate into a fixed (W, M_out) output batch.  RNG is
+    PER EVENT (key folded by evt_id+nstep) so an event is reproducible regardless of slot/step.
+
+    TWO modes share the per-step body `_apply_step` (single source of truth):
+      * NO-REFILL (pending=None, default): the working set IS the n events, run lock-step until all done or
+        `max_steps`.  Bit-identical to the pre-refill engine -- the path every existing caller uses.
+      * REFILL (pending given): the working set holds `n_w` event-slots fed from a PENDING POOL of all
+        N_total events; when a slot's event finishes (no live particle) OR hits its per-event step cap, its
+        accumulators are FLUSHED into global (N_total,...) buffers at its evt_id and the slot is REFILLED
+        from a cursor.  `per_event_cap` replaces the global max_steps.  Removes the lock-step waste (a
+        single long event no longer makes all events step to max_steps) and keeps the (W,M) tensor small.
+        The ONLY behavioural change vs no-refill is none: at n_w=N_total it is bit-exact (gate); at
+        n_w<N_total the per-event outputs are identical (compare by evt_id), only occupancy/wall changes.
+    `prim_origin` (RES): origin tag of the PRIMARY pion -> its terminal fate is latched per event.
+    rec_caps=(Kp,Kn): accumulate the per-event kind-1 FSI reweight record.  log_cap=L: in-engine segment
+    logger.  rec_caps and log_cap are mutually exclusive.
     Returns (out_batch, stack_overflow, out_overflow, prim_fate[, fsi_record | (log, counts, log_overflow)])."""
-    n = init["alive"].shape[0]; ar = jnp.arange(n)
-    stack, _ = compact(init, M)
-    out0 = empty_batch(n, M_out)
     with_rec = rec_caps is not None
     do_log = log_cap is not None
     assert not (with_rec and do_log), "rec_caps and log_cap are mutually exclusive"
     Kp, Kn = rec_caps if with_rec else (1, 1)
-    rec0 = _empty_fsi_record(n, Kp, Kn)
-    L = int(log_cap) if do_log else 1                                # dummy (n,1) buffers when not logging
-    log0 = {**{k: jnp.zeros((n, L), jnp.int32) for k in _LOG_I},
-            **{k: jnp.zeros((n, L), jnp.float32) for k in _LOG_F}}
-    wptr0 = jnp.zeros(n, jnp.int32); logofl0 = jnp.int32(0)
-    Q = int(q_cap) if q_cap and q_cap > 0 else 0                     # particle waiting-buffer width (0 = legacy drop)
-    wait0 = empty_batch(n, max(Q, 1))                                # FIFO queue; dummy (n,1) all-dead when Q=0
+    L = int(log_cap) if do_log else 1                                # dummy (.,1) buffers when not logging
+    Q = int(q_cap) if q_cap and q_cap > 0 else 0                     # particle waiting-buffer width (0 = drop)
+    cap = int(per_event_cap) if per_event_cap else int(max_steps)    # per-event step cap (refill mode)
 
-    def cond(st):                                                    # run while any active OR any waiting
-        return (st[0] < max_steps) & (jnp.any(st[1]["alive"]) | jnp.any(st[12]["alive"]))
+    def _logbuf(W):
+        return {**{k: jnp.zeros((W, L), jnp.int32) for k in _LOG_I},
+                **{k: jnp.zeros((W, L), jnp.float32) for k in _LOG_F}}
 
-    def body(st):
-        i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, wait, evt_id, nstep = st
-        # PER-EVENT step key (n,2) = fold_in(fold_in(base, evt_id), nstep): an event's random stream
-        # depends only on its own id + its own step counter, so a refilled event (different slot/global
-        # step) draws identical randoms.  At n_w=N_total / refill-off, evt_id=arange(n) and nstep=i for
-        # all events -> the degenerate lock-step case.
-        kk = jax.vmap(lambda e, s: jax.random.fold_in(jax.random.fold_in(key, e), s))(evt_id, nstep)
-        # pass the step index ONLY on the logging path (track_id assignment); keeps the (stack,key,state)
-        # stepper contract for every existing (non-logging) caller, incl. custom test steppers.
-        if bg is not None:                                            # refill path: explicit per-slot background
-            _step = stepper(stk, kk, state, i, bg=bg) if do_log else stepper(stk, kk, state, bg=bg)
-        else:                                                        # legacy: stepper uses its default bg
-            _step = stepper(stk, kk, state, i) if do_log else stepper(stk, kk, state)
+    def _apply_step(stk, state, kk, step_i, wait, out, prim, rb, log, wptr, sofl, oofl, rofl, logofl, bg_w, ar):
+        """ONE pooled step on the working set + accumulation (out, prim latch, rec, seg log) + reconcile.
+        Scalars sofl/oofl/rofl/logofl accumulate globally; out/prim/rb/log/wptr are per-slot.  Returns the
+        updated working-set state; identical maths regardless of refill mode."""
+        if bg_w is not None:
+            _step = stepper(stk, kk, state, step_i, bg=bg_w) if do_log else stepper(stk, kk, state, bg=bg_w)
+        else:
+            _step = stepper(stk, kk, state, step_i) if do_log else stepper(stk, kk, state)
         stk2, terminal, spawn, state2 = _step[:4]
         extra = _step[4] if len(_step) >= 5 else None
         term_batch = {**stk2, "alive": terminal}
@@ -373,7 +379,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         isprim = (stk2["origin"] == prim_origin) & (stk2["species"] == PION) & (stk2["fate"] != FATE_NONE)
         anyp = jnp.any(isprim, axis=1); j = jnp.argmax(isprim, axis=1)
         prim = jnp.where(anyp & (prim == FATE_NONE), stk2["fate"][ar, j], prim)
-        if with_rec:                                                  # accumulate kind-1 FSI records
+        if with_rec:
             rec = extra
             (bc, sa, ss, si), nh, op = _rec_scatter(
                 [rb["bc"], rb["sa"], rb["ss"], rb["si"]], rb["nh"], rec["pi_hh"],
@@ -382,7 +388,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
                                            [rec["nu_hh"], rec["nu_a"]], Kn)
             rb = dict(bc=bc, sa=sa, ss=ss, si=si, nh=nh, hh=hh, a=a, ns=ns)
             rofl = (rofl + op + on).astype(rofl.dtype)
-        if do_log:                                                   # scatter-append this step's segments
+        if do_log:
             seg = extra
             ev = (seg["chan"] > 0) | terminal                        # interactions (1-4) + escapes (0)
             evi = ev.astype(jnp.int32)
@@ -390,33 +396,127 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
             tgt0 = wptr[:, None] + off
             logofl = logofl + (ev & (tgt0 >= L)).sum().astype(logofl.dtype)
             tgt = jnp.where(ev & (tgt0 < L), tgt0, L)                # OOB / non-events dropped by mode='drop'
+            log = dict(log)
             for k in _LOG_I + _LOG_F:
                 log[k] = log[k].at[ar[:, None], tgt].set(seg[k].astype(log[k].dtype), mode="drop")
             wptr = wptr + evi.sum(axis=1).astype(wptr.dtype)
         if Q > 0:                                                    # particle waiting-queue: keep overflow
             newstk, newwait, so = pool_reconcile(stk2, terminal, spawn, M, wait, Q)
-        else:                                                        # legacy: drop overflow (wait stays dummy)
+        else:                                                        # drop overflow (wait stays dummy)
             newstk, _nw, so = pool_reconcile(stk2, terminal, spawn, M)
             newwait = wait
-        return (i + jnp.int32(1), newstk, state2, out2,
-                sofl + so.astype(sofl.dtype), oofl + oo.astype(oofl.dtype), prim, rb, rofl,
-                log, wptr, logofl, newwait, evt_id, nstep + jnp.int32(1))
+        sofl = sofl + so.astype(sofl.dtype); oofl = oofl + oo.astype(oofl.dtype)
+        return newstk, state2, newwait, out2, prim, rb, log, wptr, sofl, oofl, rofl, logofl
 
-    evt_id0 = jnp.arange(n, dtype=jnp.int32)                          # no-refill: slot row == event id
-    nstep0 = jnp.zeros(n, jnp.int32)                                 # per-event step counter
-    init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0),
-               jnp.full(n, FATE_NONE, jnp.int32), rec0, jnp.int32(0), log0, wptr0, logofl0, wait0,
-               evt_id0, nstep0)
-    (_, stack, _, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, _wait,
-     _evt, _ns) = jax.lax.while_loop(cond, body, init_st)
+    # ---------------- NO-REFILL: the working set IS the n events (bit-exact to the pre-refill engine) ----
+    if pending is None:
+        n = init["alive"].shape[0]; ar = jnp.arange(n)
+        stack, _ = compact(init, M)
+        out0 = empty_batch(n, M_out); rec0 = _empty_fsi_record(n, Kp, Kn)
+        log0 = _logbuf(n); wptr0 = jnp.zeros(n, jnp.int32); logofl0 = jnp.int32(0)
+        wait0 = empty_batch(n, max(Q, 1)); evt_id0 = jnp.arange(n, dtype=jnp.int32); nstep0 = jnp.zeros(n, jnp.int32)
+
+        def cond(st):
+            return (st[0] < max_steps) & (jnp.any(st[1]["alive"]) | jnp.any(st[12]["alive"]))
+
+        def body(st):
+            i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, wait, evt_id, nstep = st
+            kk = jax.vmap(lambda e, s: jax.random.fold_in(jax.random.fold_in(key, e), s))(evt_id, nstep)
+            (newstk, state2, newwait, out2, prim2, rb2, log2, wptr2, sofl2, oofl2, rofl2, logofl2) = _apply_step(
+                stk, state, kk, i, wait, out, prim, rb, log, wptr, sofl, oofl, rofl, logofl, bg, ar)
+            return (i + jnp.int32(1), newstk, state2, out2, sofl2, oofl2, prim2, rb2, rofl2,
+                    log2, wptr2, logofl2, newwait, evt_id, nstep + jnp.int32(1))
+
+        init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0),
+                   jnp.full(n, FATE_NONE, jnp.int32), rec0, jnp.int32(0), log0, wptr0, logofl0, wait0,
+                   evt_id0, nstep0)
+        (_, stack, _, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, _wait,
+         _evt, _ns) = jax.lax.while_loop(cond, body, init_st)
+        if do_log:
+            return out, sofl, oofl, prim, (log, wptr, logofl)
+        if with_rec:
+            return out, sofl, oofl, prim, (rb, rofl)
+        return out, sofl, oofl, prim
+
+    # ---------------- REFILL: working set of n_w slots fed from the pending pool of N_total events -------
+    Ntot = pending["stack"]["alive"].shape[0]
+    W = min(int(n_w) if n_w else Ntot, Ntot); ar = jnp.arange(W)
+    pstack, _ = compact(pending["stack"], M)                          # all events' g0 compacted to M (N,M)
+    pbg = (pending["npos"], pending["nmom"], pending["nisp"])
+    pcons = pending["consumed0"]
+    # global per-event buffers (filled by flush-on-finish, indexed by evt_id)
+    g_out = empty_batch(Ntot, M_out); g_prim = jnp.full(Ntot, FATE_NONE, jnp.int32)
+    g_rb = _empty_fsi_record(Ntot, Kp, Kn); g_log = _logbuf(Ntot); g_wptr = jnp.zeros(Ntot, jnp.int32)
+    # initial working set = first W events
+    idx0 = jnp.arange(W, dtype=jnp.int32)
+    stk0 = _take_rows(pstack, idx0); cons0 = pcons[idx0]
+    bg0 = (pbg[0][idx0], pbg[1][idx0], pbg[2][idx0])
+    out0 = empty_batch(W, M_out); rb0 = _empty_fsi_record(W, Kp, Kn)
+    log0 = _logbuf(W); wptr0 = jnp.zeros(W, jnp.int32)
+    prim0 = jnp.full(W, FATE_NONE, jnp.int32); wait0 = empty_batch(W, max(Q, 1))
+    cursor0 = jnp.int32(W); evt0 = idx0; nstep0 = jnp.zeros(W, jnp.int32)
+
+    def rcond(st):
+        (cursor, stk, cons, bgw, evt, nstep, wait, out, prim, rb, log, wptr,
+         sofl, oofl, rofl, logofl, go, gp, grb, glog, gwp) = st
+        return (cursor < Ntot) | jnp.any(stk["alive"]) | jnp.any(wait["alive"])
+
+    def rbody(st):
+        (cursor, stk, cons, bgw, evt, nstep, wait, out, prim, rb, log, wptr,
+         sofl, oofl, rofl, logofl, go, gp, grb, glog, gwp) = st
+        kk = jax.vmap(lambda e, s: jax.random.fold_in(jax.random.fold_in(key, e), s))(jnp.maximum(evt, 0), nstep)
+        (newstk, cons2, newwait, out2, prim2, rb2, log2, wptr2, sofl2, oofl2, rofl2, logofl2) = _apply_step(
+            stk, cons, kk, nstep, wait, out, prim, rb, log, wptr, sofl, oofl, rofl, logofl, bgw, ar)
+        nstep2 = nstep + jnp.int32(1)
+        finished = (~(jnp.any(newstk["alive"], axis=1) | jnp.any(newwait["alive"], axis=1))) | (nstep2 >= cap)
+        flush = finished & (evt >= 0)                                 # only real (non-idle) slots flush
+        # FLUSH: scatter per-slot accumulators to the global buffers at evt_id (idle/non-finished -> Ntot, dropped)
+        gi = jnp.where(flush, evt, Ntot)
+        go = {k: go[k].at[gi].set(out2[k], mode="drop") for k in go}
+        gp = gp.at[gi].set(prim2, mode="drop")
+        grb = {k: grb[k].at[gi].set(rb2[k], mode="drop") for k in grb}
+        glog = {k: glog[k].at[gi].set(log2[k], mode="drop") for k in glog}
+        gwp = gwp.at[gi].set(wptr2, mode="drop")
+        # REFILL flushed slots from the cursor (creation order); idle slots (evt<0) are skipped
+        rank = jnp.cumsum(flush.astype(jnp.int32)) - flush.astype(jnp.int32)
+        new_id = (cursor + rank).astype(jnp.int32)
+        take = flush & (new_id < Ntot)                                # this slot gets a fresh event
+        cursor2 = (cursor + jnp.sum(take.astype(jnp.int32))).astype(jnp.int32)
+        gidx = jnp.where(take, new_id, 0)                             # safe gather index
+        rstk = _take_rows(pstack, gidx); rbg = (pbg[0][gidx], pbg[1][gidx], pbg[2][gidx]); rcons = pcons[gidx]
+        def _sel(new, old, mask, md=None):                            # per-slot pick (mask along axis 0)
+            m = mask.reshape((-1,) + (1,) * (old.ndim - 1))
+            return jnp.where(m, new, old)
+        idle = finished & (~take)                                     # finished but no pending left -> go dead
+        stk3 = {k: _sel(rstk[k], newstk[k], take) for k in newstk}
+        stk3["alive"] = jnp.where(idle[:, None], False, stk3["alive"])  # drop any cap-cutoff survivors
+        bg3 = tuple(_sel(rbg[t], bgw[t], take) for t in range(3))
+        cons3 = _sel(rcons, cons2, take)
+        wait3 = {k: _sel(empty_batch(W, max(Q, 1))[k], newwait[k], finished) for k in newwait}   # clear wait on finish
+        # reset per-slot accumulators on EVERY finished slot (taken or now-idle); evt/nstep updated
+        e_out = empty_batch(W, M_out); e_rb = _empty_fsi_record(W, Kp, Kn); e_log = _logbuf(W)
+        out3 = {k: _sel(e_out[k], out2[k], finished) for k in out2}
+        rb3 = {k: _sel(e_rb[k], rb2[k], finished) for k in rb2}
+        log3 = {k: _sel(e_log[k], log2[k], finished) for k in log2}
+        prim3 = jnp.where(finished, FATE_NONE, prim2)
+        wptr3 = jnp.where(finished, 0, wptr2)
+        evt3 = jnp.where(finished, jnp.where(take, new_id, jnp.int32(-1)), evt)
+        nstep3 = jnp.where(finished, jnp.int32(0), nstep2)
+        return (cursor2, stk3, cons3, bg3, evt3, nstep3, wait3, out3, prim3, rb3, log3, wptr3,
+                sofl2, oofl2, rofl2, logofl2, go, gp, grb, glog, gwp)
+
+    init_st = (cursor0, stk0, cons0, bg0, evt0, nstep0, wait0, out0, prim0, rb0, log0, wptr0,
+               jnp.int32(0), jnp.int32(0), jnp.int32(0), jnp.int32(0), g_out, g_prim, g_rb, g_log, g_wptr)
+    out_st = jax.lax.while_loop(rcond, rbody, init_st)
+    (_, _, _, _, _, _, _, _, _, _, _, _, sofl, oofl, rofl, logofl, go, gp, grb, glog, gwp) = out_st
     if do_log:
-        return out, sofl, oofl, prim, (log, wptr, logofl)
+        return go, sofl, oofl, gp, (glog, gwp, logofl)
     if with_rec:
-        return out, sofl, oofl, prim, (rb, rofl)
-    return out, sofl, oofl, prim
+        return go, sofl, oofl, gp, (grb, rofl)
+    return go, sofl, oofl, gp
 
 
-def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, log_cap=None):
+def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, log_cap=None, n_w=None):
     """POOLED-engine realization of cascade_nucleus (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
     log_cap=L: run the SAME cascade with the in-engine SEGMENT logger on (with_seg stepper +
@@ -447,15 +547,19 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
         g0["origin"] = jnp.array([_ORIG_PRIM_PI, 0], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
         g0["track_id"] = jnp.array([0, 1], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)  # pion=0, recoil=1
         prim_origin = _ORIG_PRIM_PI
+    # n_w (refill): when set, run the persistent-refill engine -- a working set of n_w event-slots fed from
+    # the pending pool of all n events (g0 + per-event nucleus background).  n_w=None -> the lock-step path.
+    pend = dict(stack=g0, consumed0=su["consumed0"], npos=su["npos"], nmom=su["nmom"],
+                nisp=su["nisp"]) if n_w is not None else None
     if log_cap is not None:                                            # SEGMENT-LOGGER path: same cascade, logger on
         stepper = make_pool_stepper(su, cfg, with_seg=True)
         _o, _so, _oo, _pf, logtuple = run_cascade_pool(
             g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps, M_out=24,
-            prim_origin=prim_origin, log_cap=log_cap)
+            prim_origin=prim_origin, log_cap=log_cap, pending=pend, n_w=n_w)
         return logtuple                                               # (log dict, counts (n,), log_overflow)
     stepper = make_pool_stepper(su, cfg, with_rec=rec_caps is not None)
     _rc = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps,
-                           M_out=24, prim_origin=prim_origin, rec_caps=rec_caps)
+                           M_out=24, prim_origin=prim_origin, rec_caps=rec_caps, pending=pend, n_w=n_w)
     if rec_caps is not None:
         out, sofl, oofl, prim_fate, (fsi_rec, _rofl) = _rc      # joint per-event kind-1 FSI record
     else:
@@ -492,7 +596,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
 
 
 def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=16, max_gen=6, sabs=1.0, sscat=1.0,
-                      channel="res", rec_caps=None, log_cap=None):
+                      channel="res", rec_caps=None, log_cap=None, n_w=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
                    pion knockouts}; pterm = the surviving pion.
@@ -511,7 +615,9 @@ def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=16, max_gen=6, 
     # inside the step.  Faithful: true step-order consumption + ALL created pions propagated from their
     # creation point; for RES the primary pion is a gen-0 PION stack slot whose own scatter-recoils/
     # knockouts spawn natively.  Validated vs ACHILLES (docs/logbook/cascade_pool_engine.md).
+    # n_w (refill engine): working set of n_w event-slots fed from the pending pool of all n events;
+    # finished events flush to global buffers and free their slot.  n_w=None -> lock-step (bit-exact).
     if log_cap is not None:
-        return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, log_cap=log_cap)
-    res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps)
+        return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, log_cap=log_cap, n_w=n_w)
+    res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps, n_w=n_w)
     return res5 if rec_caps is not None else res5[:4]
