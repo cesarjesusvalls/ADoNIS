@@ -33,6 +33,12 @@ PION, NUCLEON = 0, 1
 FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
 _ORIG_PRIM_PI = 2          # pool origin tag for the RES PRIMARY pion (0=RES recoil/QE chain, 1=pi-knockout)
 _TRACK_OFFSET = 1000       # daughter track_ids start here (> any primary track_id); see make_pool_stepper
+# Engine DEFAULTS (cascade_nucleus): refill + waiting-queue are ON by default so every consumer gets the
+# persistent-refill engine and the keep-overflow-particles correctness (the plan's allowed change).
+_DEFAULT_NW = 2048         # refill working-set width (events in flight).  n_w=None -> min(_DEFAULT_NW, n);
+                           # n_w=0 forces lock-step (the bit-exact reference).  Tuned by the (workers,n_w,P) study.
+_DEFAULT_QCAP = 64         # particle waiting-queue width.  q_cap=None -> this; keeps overflow particles
+                           # (stack overflow sofl -> 0); q_cap=0 disables (legacy drop-on-overflow).
 
 
 def setup_nucleus(p_pi, pid_pi, pid_Ni, cfg, key):
@@ -516,7 +522,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     return go, sofl, oofl, gp
 
 
-def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, log_cap=None, n_w=None):
+def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, log_cap=None,
+                  n_w=0, q_cap=0, per_event_cap=None):
     """POOLED-engine realization of cascade_nucleus (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
     log_cap=L: run the SAME cascade with the in-engine SEGMENT logger on (with_seg stepper +
@@ -547,19 +554,23 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
         g0["origin"] = jnp.array([_ORIG_PRIM_PI, 0], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
         g0["track_id"] = jnp.array([0, 1], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)  # pion=0, recoil=1
         prim_origin = _ORIG_PRIM_PI
-    # n_w (refill): when set, run the persistent-refill engine -- a working set of n_w event-slots fed from
-    # the pending pool of all n events (g0 + per-event nucleus background).  n_w=None -> the lock-step path.
+    # n_w>0 (refill): run the persistent-refill engine -- a working set of n_w event-slots fed from the
+    # pending pool of all n events (g0 + per-event nucleus background).  n_w=0 -> lock-step.  q_cap>0
+    # enables the particle waiting-queue in EITHER path (keeps overflow particles).
     pend = dict(stack=g0, consumed0=su["consumed0"], npos=su["npos"], nmom=su["nmom"],
-                nisp=su["nisp"]) if n_w is not None else None
+                nisp=su["nisp"]) if n_w and n_w > 0 else None
+    nw = n_w if pend is not None else None
     if log_cap is not None:                                            # SEGMENT-LOGGER path: same cascade, logger on
         stepper = make_pool_stepper(su, cfg, with_seg=True)
         _o, _so, _oo, _pf, logtuple = run_cascade_pool(
             g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps, M_out=24,
-            prim_origin=prim_origin, log_cap=log_cap, pending=pend, n_w=n_w)
+            prim_origin=prim_origin, log_cap=log_cap, pending=pend, n_w=nw, q_cap=q_cap,
+            per_event_cap=per_event_cap)
         return logtuple                                               # (log dict, counts (n,), log_overflow)
     stepper = make_pool_stepper(su, cfg, with_rec=rec_caps is not None)
     _rc = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps,
-                           M_out=24, prim_origin=prim_origin, rec_caps=rec_caps, pending=pend, n_w=n_w)
+                           M_out=24, prim_origin=prim_origin, rec_caps=rec_caps, pending=pend, n_w=nw,
+                           q_cap=q_cap, per_event_cap=per_event_cap)
     if rec_caps is not None:
         out, sofl, oofl, prim_fate, (fsi_rec, _rofl) = _rc      # joint per-event kind-1 FSI record
     else:
@@ -596,7 +607,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
 
 
 def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=16, max_gen=6, sabs=1.0, sscat=1.0,
-                      channel="res", rec_caps=None, log_cap=None, n_w=None):
+                      channel="res", rec_caps=None, log_cap=None, n_w=None, q_cap=None, per_event_cap=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
                    pion knockouts}; pterm = the surviving pion.
@@ -607,17 +618,24 @@ def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=16, max_gen=6, 
     element (for pool_fsi_reweight / the differentiable blueprint).  Default None -> 4-tuple as before.
     log_cap=L: run the SAME cascade with the in-engine SEGMENT logger and return (log, counts, overflow)
     -- the single entry point for the cascade-vertex/segment matrix (no duplicated cascade).
+    ENGINE DEFAULTS (refill + waiting-queue ON for every consumer):
+      n_w   : None -> refill with working set min(_DEFAULT_NW, n);  0 -> lock-step (bit-exact reference);
+              int>0 -> refill with min(n_w, n).
+      q_cap : None -> _DEFAULT_QCAP (keep overflow particles, sofl->0);  0 -> legacy drop-on-overflow.
+      per_event_cap: None -> cfg.max_steps (per-slot step cap in the refill path).
     Returns (pterm, nucleon_terminals_per_gen, overflow, created[, fsi_record]) | (log, counts, overflow)."""
     su = setup_nucleus(p_pi, pid_pi, pid_Ni, cfg, key)
     n = p_pi.shape[0]
     _kpi, knuc, _kpi2 = jax.random.split(su["kp"], 3)     # knuc drives the pool (RNG stream preserved)
+    # Resolve engine defaults: refill ON (n_w window) + waiting-queue ON (q_cap) for ALL consumers.
+    nw_eff = 0 if n_w == 0 else (min(_DEFAULT_NW, n) if n_w is None else min(int(n_w), n))
+    q_eff = _DEFAULT_QCAP if q_cap is None else int(q_cap)
     # POOLED engine (the single cascade core): ONE fixed-size stack stepped once/step, in/out reconcile
-    # inside the step.  Faithful: true step-order consumption + ALL created pions propagated from their
-    # creation point; for RES the primary pion is a gen-0 PION stack slot whose own scatter-recoils/
-    # knockouts spawn natively.  Validated vs ACHILLES (docs/logbook/cascade_pool_engine.md).
-    # n_w (refill engine): working set of n_w event-slots fed from the pending pool of all n events;
-    # finished events flush to global buffers and free their slot.  n_w=None -> lock-step (bit-exact).
+    # inside the step; persistent-refill working set + keep-overflow queue by default (n_w=0 -> lock-step).
+    # Validated vs ACHILLES + bit-exact gates (docs/logbook/cascade_persistent_refill_plan.md).
     if log_cap is not None:
-        return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, log_cap=log_cap, n_w=n_w)
-    res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps, n_w=n_w)
+        return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, log_cap=log_cap,
+                             n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
+    res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps,
+                         n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
     return res5 if rec_caps is not None else res5[:4]

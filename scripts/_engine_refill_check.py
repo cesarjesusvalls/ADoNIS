@@ -43,20 +43,17 @@ def main():
     ref = dict(np.load("/tmp/refeng_C.npz"))
     tg = resolve_targets("C")[0][0]
 
-    print(f"=== MODE A: refill n_w=N_total (must be bit-exact on all arrays) ===", flush=True)
-    curA = run_all(None, tg, n_w=10**9)                              # clamped to n per channel -> full set
+    print(f"=== MODE A: PRODUCTION DEFAULT path (n_w=None auto-refill + q_cap=None queue) vs lock-step golden ===", flush=True)
+    curA = run_all(None, tg, n_w=None, q_cap=None)                   # cascade_nucleus defaults
     badA, wA, wkA = compare(ref, curA)
     print(f"  {len(ref)} arrays, {badA} differ.  worst |d|={wA:.3e} ({wkA})")
     print("  MODE A:", "PASS (bit-exact)" if badA == 0 else "FAIL", flush=True)
 
-    print(f"\n=== MODE B: refill n_w={NW_SMALL} (physics bit-exact by evt_id; provenance labels may differ) ===", flush=True)
-    curB = run_all(None, tg, n_w=NW_SMALL)
-    badB, wB, wkB = compare(ref, curB, ignore=LABEL_KEYS)
-    # report the label fields separately (expected to differ for n_w<N_total)
-    lab_diff = [k for k in LABEL_KEYS if np.abs(ref[k].astype(np.int64) - np.asarray(curB[k]).astype(np.int64)).max() > 0]
-    print(f"  physics arrays ({len(ref)-len(LABEL_KEYS)} compared), {badB} differ.  worst |d|={wB:.3e} ({wkB})")
-    print(f"  provenance-label fields that differ (expected): {sorted(lab_diff)}")
-    print("  MODE B:", "PASS (physics bit-exact)" if badB == 0 else "FAIL", flush=True)
+    print(f"\n=== MODE B: small refill n_w={NW_SMALL} + queue ON (real slot reuse) vs lock-step golden ===", flush=True)
+    curB = run_all(None, tg, n_w=NW_SMALL, q_cap=None)
+    badB, wB, wkB = compare(ref, curB)
+    print(f"  {len(ref)} arrays, {badB} differ.  worst |d|={wB:.3e} ({wkB})")
+    print("  MODE B:", "PASS (bit-exact)" if badB == 0 else "FAIL", flush=True)
 
     print("\nRESULT:", "PASS" if (badA == 0 and badB == 0) else "FAIL")
     sys.exit(0 if (badA == 0 and badB == 0) else 1)
