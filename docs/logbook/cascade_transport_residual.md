@@ -314,3 +314,20 @@ toggles through a static `cfg` field or a fresh process.
 `cfg.algo="interaction"` — experimental jump-to-next-interaction kernel (~15× faster), statistically off
 vs step at high pion momentum (+35–60% absorption); a SEPARATE, larger bug. `fast_xsec` (slab-restricted
 σ eval, bit-exact ~1.15×) is on by default in step mode.
+
+## 8. RES pi0 charge-exchange residual (10-seed C matrix, 2026-06-24)
+
+Overnight 10-seed C cascade-vertex/segment matrix (refill engine, 6.65M ADoNIS primaries vs ACHILLES
+/tmp/cascade_segments_C_ach.txt, 530k segs).  Bulk agreement is good: nucleon channels (incident p/n,
+transmit/elastic) chi2/ndf 0.76-0.99; RES p/n all <1.2.  The one persistent residual that GROWS with
+stats (4-seed 2.03 -> 6: 2.46 -> 8: 2.57 -> 10: 2.54) is **RES incident pi0, channel charge-exchange**:
+chi2/ndf = 33.1/13 = 2.54.  Localized to MID-MOMENTUM: ADoNIS UNDER-produces the pi0 charge-ex fraction
+by ~27-36% in 400-800 MeV (400-500 ratio 1.359 pull +3.5; 500-600 1.270; 600-700 1.314; 700-800 1.355),
+while 0-400 MeV agrees (ratios ~1.0).  pi+ charge-ex is milder (1.33), pi- fine (0.50).  The other pi0
+channels are good (transmit 1.74, elastic 0.62, abs 0.37, conv 1.68).
+Pre-existing (the earlier-session "QE/RES secondary-pion charge-ex ~2.1-2.3sigma" note); NOT a Stage-3
+effect -- the refill engine is bit-exact to the pre-refill distributions (per-event RNG + refill gates).
+Lower-priority secondary cells: QE pi+ elastic 2.97 / pi- elastic 3.63 (very low N, not significant),
+QE p inelastic 2.47, QE n elastic 2.14, RES n inelastic 1.84.
+TODO (separate session): localize the pi0 charge-ex deficit to the DCC charge-exchange cross section
+(jax_channel_sigmas_resolved out_ch distribution) vs ACHILLES at W ~ 400-800 MeV pi0 + nucleon.
