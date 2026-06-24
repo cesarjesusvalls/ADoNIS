@@ -148,12 +148,13 @@ class DiscreteCascadeConfig:
     engine: str = "pool"     # cascade structure: "pool" = single per-step-reconciled particle stack
                              # (DEFAULT, validated single core); "bfs" = legacy generation-synchronized; true step-order
                              # consumption; see docs/logbook/cascade_pool_engine.md).  WIP behind switch.
-    recap_ke: float = 0.0    # escaping nucleon with KE < recap_ke [MeV] is RECAPTURED (set to rest).
-                             # DEFAULT 0.0 = NO capture, faithful to ACHILLES: arXiv-2508.19213v2 uses
-                             # straight-line propagation (PotentialProp:False, line 276 + all 23 cards);
-                             # capture is gated on PotentialProp:True (Cascade.cc:181 IsCaptured
-                             # Hamiltonian<=m_N), which the published predictions do NOT use.  The old
-                             # KE<10 cut over-recaptured low-p neutrons (the <137 MeV deficit).
+    recap_ke: float = 10.0   # escaping nucleon with KE < recap_ke [MeV] is RECAPTURED (set to rest).
+                             # FAITHFUL to ACHILLES Cascade::Escaped (src/Achilles/Cascade.cc, called
+                             # every step, UNGATED by PotentialProp): `constexpr double potential = 10.0;
+                             # energy = E - mN - potential; if(|pos|>radius){ KE<10 -> captured }`.  This
+                             # 10 MeV optical-potential capture is SEPARATE from (and always on, unlike)
+                             # the PotentialProp:True Hamiltonian capture.  Mirrors ACHILLES's hard-coded
+                             # 10.0 -> keep in sync with it; set 0.0 only for no-capture ablations.
 
 
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):

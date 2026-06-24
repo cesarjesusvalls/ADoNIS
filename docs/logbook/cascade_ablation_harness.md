@@ -54,14 +54,19 @@ implementation diff invisible to code-reading.
     Cylinder-era output (33G hepmc+banks) deleted; regenerated 1M QE Gaussian both sides.
   - Residuals (≪1% of σ): N(π⁺)=1 QE ADoNIS ~1.5× (FSI NN→NΔ→NNπ rate); neutron dσ/dp >700 MeV low.
   - Harness reusable: `scripts/cascade_ablation.py <dump> C [--no-pauli]`; dump via `ACHILLES_CASCADEDUMP=1`.
-- 2026-06-24: **low-p neutron deficit (first 2 bins, <200 MeV, ADoNIS ~9-30% low) ROOT CAUSE = recapture
-  mismatch.** ADoNIS recaptured escaping nucleons with KE<10 MeV (|p|<137); ACHILLES captures ONLY with
-  PotentialProp:True (Cascade.cc:181 IsCaptured Hamiltonian<=m_N). arXiv-2508.19213v2 (line 276 +
-  footnote) uses STRAIGHT-LINE propagation = PotentialProp:False (all 23 cards + default = False) → NO
-  capture. So the KE<10 recapture was unfaithful. Pipeline proof (identical input, ejected-n |p|<137):
-  ADoNIS recap10=0, recap0=282, ACHILLES=32. Decision A (user): set `recap_ke=0.0` default (added cfg
-  knob in cascade_discrete; golden re-baselined). Closes most of the mean-N(n) deficit (3.2%->0.7% total).
-  SECONDARY residual to chase: with recap0 ADoNIS overshoots <137 (282 vs 32); ACHILLES PotentialProp:False
-  still has a hard ~100 MeV floor (0 neutrons <100) that ADoNIS lacks — NOT capture (it's off), likely
-  spectral-function removal energy / surface Pauli floor. NB: recap_ke=0 is GLOBAL → re-validate other
-  cascade observables (transparency, cc0pi tune, the parked 245 MeV residual) which were tuned at recap=10.
+- 2026-06-24: low-p neutron deficit investigation. **FALSE START then CORRECTED.** First (WRONG)
+  conclusion: keyed off the PotentialProp-GATED Hamiltonian capture (Cascade.cc:181), concluded
+  PotentialProp:False => no capture, set recap_ke=0 (committed ba3d514). **CORRECTION:** ACHILLES has a
+  SECOND capture, `Cascade::Escaped` (Cascade.cc, called every step at L382, **UNGATED** by PotentialProp):
+  `constexpr double potential=10.0; energy=E-mN-10; if(|pos|>radius){ KE<10 -> captured }`. So ACHILLES
+  ALWAYS recaptures KE<10 MeV escaping nucleons -> ADoNIS's original `recap_ke=10` WAS faithful. Reverted
+  to recap_ke=10 (tied to ACHILLES's hard-coded 10.0). The recap=0 "soft-nucleon overshoot" (<137: 282 vs
+  ACH 32) was an ARTIFACT of the wrong change; with recap=10 ADoNIS gives 0 in <137 ≈ ACH's 32 (tiny 0.3%
+  ACH leak, likely surface resonance-decay bypassing Escaped's KE cut). Lesson: an Explore agent reading
+  the FULL escape path caught the ungated Escaped() that I'd missed -> code-read both capture paths.
+- 2026-06-24: k_F evaluation position re-verified (user flagged a past bug). Past fix = c457fb0 (+ 00b2bcf
+  for NN-inelastic): LEADING outgoing Pauli k_F was at the struck nucleon position instead of its own.
+  CURRENT code is correct: leading k_F at |pos| (kf_lead), recoil k_F at struck pos (kf_j) == ACHILLES
+  PauliBlocking(particle.Position()) (leading=particle1.Position, recoil=particle2.Position). Same place.
+- REAL remaining QE neutron residuals (with faithful recap=10, Gaussian): 137-200 MeV softness +
+  >700 MeV fast-tail deficit (recap-independent; survive identical-input ablation -> transport, small).
