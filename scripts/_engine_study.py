@@ -6,7 +6,7 @@ cores).  Pair with _engine_workers.sh for the worker-count axis.
 
 Run: python -u scripts/_engine_study.py [Ngrid e.g. 2000,8000,32000] [Pgrid e.g. 8,16,24] [channel res|qe]
 """
-import sys, os, time
+import sys, os, time, threading, contextlib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("ADONIS_N_RECOIL", "8")
 import numpy as np, jax, jax.numpy as jnp
@@ -23,6 +23,22 @@ NG = [int(x) for x in sys.argv[1].split(",")] if len(sys.argv) > 1 else [2000, 8
 PG = [int(x) for x in sys.argv[2].split(",")] if len(sys.argv) > 2 else [8, 16, 24]
 CH = sys.argv[3] if len(sys.argv) > 3 else "res"
 KEY = jax.random.PRNGKey(20240623)
+
+
+@contextlib.contextmanager
+def ticker(label, every=15):
+    """Heartbeat thread: prints '<label> ... <s>s elapsed' every `every` seconds so the opaque XLA
+    compile shows live progress even when a cell takes longer than expected."""
+    t0 = time.time(); stop = threading.Event()
+
+    def run():
+        while not stop.wait(every):
+            print(f"    ... {label}: {time.time()-t0:.0f}s elapsed", flush=True)
+    th = threading.Thread(target=run, daemon=True); th.start()
+    try:
+        yield
+    finally:
+        stop.set(); th.join(timeout=1)
 
 
 def main():
@@ -48,12 +64,17 @@ def main():
     navail = pN.shape[0]
     print(f"[study] C {CH}  max_steps={ms}  available={navail}  cores={os.cpu_count()}", flush=True)
     print(f"{'P':>4} {'N':>8} {'run(s)':>9} {'ev/s':>10} {'ofl%':>7}", flush=True)
-    for P in PG:
-        for N in NG:
+    cells = [(P, N) for P in PG for N in NG]
+    for ci, (P, N) in enumerate(cells):
+        if True:
             n = min(N, navail)
             args = (ppi[:n], pN[:n], ppid[:n], ipid[:n], Npid[:n])
-            r = cascade_nucleus(*args, cfg, KEY, P=P, channel=CH)   # compile+run
-            jax.block_until_ready(r[0]["p4"])
+            tc = time.time()
+            print(f"  [{ci+1}/{len(cells)}] compiling P={P} N={n} ...", flush=True)
+            with ticker(f"cell {ci+1}/{len(cells)} P={P} N={n} compiling"):
+                r = cascade_nucleus(*args, cfg, KEY, P=P, channel=CH)   # compile+run
+                jax.block_until_ready(r[0]["p4"])
+            print(f"  [{ci+1}/{len(cells)}] compile+run {time.time()-tc:.1f}s; timing pure run ...", flush=True)
             t0 = time.time()
             r = cascade_nucleus(*args, cfg, KEY, P=P, channel=CH)   # pure run
             jax.block_until_ready(r[0]["p4"]); dt = time.time() - t0

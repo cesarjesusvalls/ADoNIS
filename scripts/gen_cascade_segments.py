@@ -22,6 +22,12 @@ MAXSTEPS = int(sys.argv[5]) if len(sys.argv) > 5 else 1000
 P_BUF = int(sys.argv[6]) if len(sys.argv) > 6 else 16
 LCAP = int(sys.argv[7]) if len(sys.argv) > 7 else 48   # segment-logger cap; Ar max seen 32 (1.5x margin)
 os.environ.setdefault("ADONIS_N_RECOIL", "8")
+# refill engine working-set width (n_w); persistent-refill is bit-exact to lock-step, ~1.3x faster
+# single-process (smaller (n_w,M) tensor vacates finished events).  None -> lock-step.
+N_W = (None if os.environ.get("ADONIS_NW", "1024") in ("", "none", "0") else int(os.environ.get("ADONIS_NW", "1024")))
+# seed sharding for multi-worker overnight: ADONIS_SEED_LIST="0,1" -> this process does only those seeds
+# (each writes its own per-seed file into the shared dir); unset -> seeds range(SEEDS).
+_SEED_LIST = os.environ.get("ADONIS_SEED_LIST")
 
 import numpy as np, jax, jax.numpy as jnp
 np.seterr(all="ignore")
@@ -50,7 +56,7 @@ def run_logged(channel, p_pi, p_N, Npid, ipid, cfg, key, pid_pi=None):
     else:                                                            # RES: primary pion + recoil nucleon
         pid_pi = jnp.asarray(pid_pi, jnp.int32); pid_Ni = jnp.asarray(ipid, jnp.int32)
     log, counts, logofl = cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, jnp.asarray(Npid, jnp.int32),
-                                         cfg, key, P=P_BUF, channel=channel, log_cap=LCAP)
+                                         cfg, key, P=P_BUF, channel=channel, log_cap=LCAP, n_w=N_W)
     return {k: np.asarray(v) for k, v in log.items()}, np.asarray(counts), int(logofl)
 
 
@@ -109,11 +115,13 @@ def main():
     ms = max(MAXSTEPS, int(np.ceil(3.0 * radius / 0.04)))
     cfg = build_cfg(tg, ms)
     sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
-    print(f"[cfg] {MAT} radius={radius:.2f} max_steps={ms} P={P_BUF} Lcap={LCAP} SEEDS={SEEDS} n/seed={NPS}", flush=True)
+    seed_iter = [int(x) for x in _SEED_LIST.split(",")] if _SEED_LIST else list(range(SEEDS))
+    print(f"[cfg] {MAT} radius={radius:.2f} max_steps={ms} P={P_BUF} Lcap={LCAP} n_w={N_W} "
+          f"seeds={seed_iter} n/seed={NPS}", flush=True)
     keys = ("inc_pid", "inc_p", "channel", "nprod", "prod_pid", "prod_p", "w", "proc",
             "is_first", "gen", "track_id", "parent_id")
 
-    for sd in range(SEEDS):
+    for sd in seed_iter:
         acc = {k: [] for k in keys}; ofl_seed = 0     # per-seed accumulation -> one self-contained file
         e = res_xsec.generate(NPS, seed=sd, return_events=True, sf_n=sf_n, sf_p=sf_p,
                               n_neutron=tg.A - tg.Z, n_proton=tg.Z)["events"]
