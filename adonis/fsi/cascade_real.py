@@ -100,21 +100,24 @@ def _kf_local(rho_species):
 class RealCascadeConfig:
     nucleus: str = "c12_density.txt"      # proton density file (data/nuclear/)
     density_n: str = "c12_density.txt"    # neutron density file (= nucleus for N=Z nuclei, e.g. C)
-    step: float = 0.08          # fm per transport step (ACHILLES uses 0.04 adaptive; 0.08 ok for pions)
+    step: float = 0.04          # fm per transport step (matches ACHILLES card Step: 0.04)
     max_steps: int = 220        # 2*R/step margin
     seed: int = 0
 
 
-def _two_body_cm_scatter(p_pi, p_N, m_out_pi, key, cos_cm=None):
-    """Elastic/charge-exchange piN -> pi'N' two-body kinematics; cos(theta_cm) is supplied
+def _two_body_cm_scatter(p_pi, p_N, m_out_pi, key, cos_cm=None, m_recoil=None):
+    """Elastic/charge-exchange piN -> pi'N' (or NN -> N'N') two-body kinematics; cos(theta_cm) is supplied
     (from the DCC angular distribution -- ACHILLES MesonBaryonInteraction::GenerateMomentum
     samples the partial-wave angular CDF, NOT isotropic) or isotropic if cos_cm is None.
-    Returns the outgoing pion 4-momentum (E,px,py,pz) in the lab.  theta_cm is measured from
-    the incoming pion CM direction (Poincare z-axis), matching ACHILLES."""
+    Returns the OUTGOING (m_out_pi) 4-momentum (E,px,py,pz) in the lab.  theta_cm is measured from
+    the incoming-particle CM direction (Poincare z-axis), matching ACHILLES.
+    m_recoil = the recoil particle's mass (default avg M_N); pass the PHYSICAL per-species nucleon mass
+    so the 2->2 final-state masses match ACHILLES GenerateMomentum (ma/mb physical)."""
     P = p_pi + p_N                                  # total 4-momentum (lab)
     s = P[0] ** 2 - jnp.sum(P[1:] ** 2)
     sqrts = jnp.sqrt(jnp.clip(s, 1e-6, None))
-    m1, m2 = m_out_pi, M_N
+    m1 = m_out_pi
+    m2 = M_N if m_recoil is None else m_recoil
     E1 = (sqrts / 2.0) * (1.0 + (m1 ** 2 - m2 ** 2) / s)
     lam = jnp.sqrt(jnp.clip((s - m1 ** 2 - m2 ** 2) ** 2 - 4 * m1 ** 2 * m2 ** 2, 0.0, None))
     pf = lam / (2.0 * sqrts)

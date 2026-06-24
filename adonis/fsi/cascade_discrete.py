@@ -39,7 +39,8 @@ from adonis.fsi import nn_inelastic as nni                  # NN -> N Delta -> N
 # the old geometric nearest-partner pick that biased proton multiplicity for neutron-rich targets.
 _ABS_W_NP, _ABS_PART_NP = _abs_kernel_tables()      # (6,3) numpy constants
 
-M_N = ox.M_N
+M_N = ox.M_N                                          # average nucleon mass (Constant::mN = (mp+mn)/2)
+from adonis.constants import mp as _MP_PHYS, mn as _MN_PHYS   # PHYSICAL per-species (ACHILLES particle 4-vec E)
 _M_ETA = 548.0                # eta mass [MeV] (ACHILLES Constants mEta) for the piN->etaN' conversion baryon (#5)
 HBARC = ox.HBARC
 _CFG = {}
@@ -171,7 +172,8 @@ def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
     kf = _kf_local(jnp.where(nisp, _rho_species(r, rgrid, rhoP), _rho_species(r, rgrid, rhoN)))
     d = jax.random.normal(kd, (n, A, 3)); d = d / jnp.linalg.norm(d, axis=2, keepdims=True)
     pm = kf * jax.random.uniform(km, (n, A)) ** (1.0 / 3.0)
-    p3 = d * pm[:, :, None]; E = jnp.sqrt(M_N ** 2 + pm ** 2)
+    m_sp = jnp.where(nisp, _MP_PHYS, _MN_PHYS)               # PHYSICAL per-species (ACHILLES Nucleus.cc:145)
+    p3 = d * pm[:, :, None]; E = jnp.sqrt(m_sp ** 2 + pm ** 2)
     nmom = jnp.concatenate([E[:, :, None], p3], axis=2)
     return npos, nmom, nisp
 
@@ -211,7 +213,13 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     n, A = nisp.shape; ar = jnp.arange(n)
     outward = jnp.sum(pos * dhat, axis=1) > 0
     escaping = (jnp.linalg.norm(pos, axis=1) > radius) & outward
-    recap = escaping & ((p4[:, 0] - M_N) < cfg.recap_ke)
+    # ACHILLES Cascade::Escaped (every step, ungated): captured if E - mN_avg - 10 < 0.  CRITICAL mass
+    # convention: E uses the PHYSICAL per-species mass (the escaping particle's 4-vec; neutron E with
+    # mn=939.565), while the subtracted threshold uses the AVERAGE mN (Constant::mN=938.919).  ADoNIS
+    # nucleon p4[:,0] carries avg M_N, so recompute E from |p| with the physical species mass; using avg
+    # for E too over-captured neutrons in |p| in (132.9, 137.4) MeV -> the <137 MeV first-bin deficit.
+    _e_phys = jnp.sqrt(jnp.where(isp, _MP_PHYS, _MN_PHYS) ** 2 + jnp.sum(p4[:, 1:] ** 2, axis=1))
+    recap = escaping & ((_e_phys - M_N) < cfg.recap_ke)
     p4 = jnp.where(recap[:, None], jnp.array([M_N, 0.0, 0.0, 0.0]), p4)
     alive = alive & ~escaping
     beta = jnp.linalg.norm(p4[:, 1:], axis=1) / jnp.clip(p4[:, 0], 1e-9, None)
@@ -258,11 +266,16 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     kf_lead = jnp.where(isp, _kf_local(_rho_species(_r_lead, rgrid, rhoP)),
                         _kf_local(_rho_species(_r_lead, rgrid, rhoN)))
 
-    def scat_one(p_lead, pN_i, kf_out, kf_rec, k):
-        p_o = _two_body_cm_scatter(p_lead, pN_i, M_N, k)
+    # 2->2 final-state masses PHYSICAL per-species (ACHILLES GenerateMomentum ma/mb): elastic -> leading
+    # keeps its species (isp), recoil keeps the struck species (nisp[j]).
+    m_lead_phys = jnp.where(isp, _MP_PHYS, _MN_PHYS)
+    m_struck_phys = jnp.where(nisp[ar, j], _MP_PHYS, _MN_PHYS)
+
+    def scat_one(p_lead, pN_i, kf_out, kf_rec, m1, m2, k):
+        p_o = _two_body_cm_scatter(p_lead, pN_i, m1, k, m_recoil=m2)
         p_r = (p_lead + pN_i) - p_o
         return p_o, (jnp.linalg.norm(p_o[1:]) < kf_out) | (jnp.linalg.norm(p_r[1:]) < kf_rec)
-    p_out, blocked = jax.vmap(scat_one)(p4, pN_j, kf_lead, kf_j, ks)   # ks already (n,2) = per-event keys
+    p_out, blocked = jax.vmap(scat_one)(p4, pN_j, kf_lead, kf_j, m_lead_phys, m_struck_phys, ks)
     if not cfg.pauli:
         blocked = blocked & False
     sig_in_j = sig_in[ar, j]; sig_el_j = sig_el[ar, j]
@@ -276,6 +289,21 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     phi1 = 2 * jnp.pi * _ev_fold_uniform(sk, 104)
     cth2 = 2 * _ev_fold_uniform(sk, 105) - 1.0
     phi2 = 2 * jnp.pi * _ev_fold_uniform(sk, 106)
+    # Channel charges computed BEFORE the splits so the NN->N Delta-> N N pi products carry PHYSICAL
+    # per-species/charge masses (ACHILLES decays the Delta via DecayHandler -> ParticleInfo masses).
+    # Fold keys 107/108 are order-independent, so this move is bit-neutral vs the draw sequence.
+    q_pair = isp.astype(jnp.int32) + nisp[ar, j].astype(jnp.int32)
+    u107 = _ev_fold_uniform(sk, 107)
+    u108 = _ev_fold_uniform(sk, 108)
+    dch = jnp.where(q_pair == 2, jnp.where(u107 < 0.75, 2, 1),
+            jnp.where(q_pair == 1, jnp.where(u107 < 0.5, 1, 0),
+                                   jnp.where(u107 < 0.25, 0, -1)))
+    pi_q = jnp.where(dch == 2, 1,
+            jnp.where(dch == 1, jnp.where(u108 < 1.0 / 3.0, 1, 0),
+            jnp.where(dch == 0, jnp.where(u108 < 2.0 / 3.0, 0, -1), -1)))
+    _mN1 = jnp.where((q_pair - dch) == 1, _MP_PHYS, _MN_PHYS)   # nucleon recoiling against the Delta
+    _mN2 = jnp.where((dch - pi_q) == 1, _MP_PHYS, _MN_PHYS)     # nucleon from the Delta decay
+    _mpi_dec = _CH_MASS[(1 - pi_q)]                             # pion from the Delta decay (per-charge phys)
 
     def _split2(P4, mA, mB, cth_, phi_):
         ss = jnp.clip(P4[:, 0] ** 2 - jnp.sum(P4[:, 1:] ** 2, axis=1), (mA + mB) ** 2 * 1.0001, None)
@@ -295,17 +323,8 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
             return jnp.concatenate([E[:, None], p3], axis=1)
         return lab(pa), lab(pb)
 
-    pN1, pD = _split2(Pj, jnp.full((n,), M_N), m_d, cth1, phi1)
-    pN2, _pPiX = _split2(pD, jnp.full((n,), M_N), jnp.full((n,), 138.04), cth2, phi2)
-    q_pair = isp.astype(jnp.int32) + nisp[ar, j].astype(jnp.int32)
-    u107 = _ev_fold_uniform(sk, 107)
-    u108 = _ev_fold_uniform(sk, 108)
-    dch = jnp.where(q_pair == 2, jnp.where(u107 < 0.75, 2, 1),
-            jnp.where(q_pair == 1, jnp.where(u107 < 0.5, 1, 0),
-                                   jnp.where(u107 < 0.25, 0, -1)))
-    pi_q = jnp.where(dch == 2, 1,
-            jnp.where(dch == 1, jnp.where(u108 < 1.0 / 3.0, 1, 0),
-            jnp.where(dch == 0, jnp.where(u108 < 2.0 / 3.0, 0, -1), -1)))
+    pN1, pD = _split2(Pj, _mN1, m_d, cth1, phi1)
+    pN2, _pPiX = _split2(pD, _mN2, _mpi_dec, cth2, phi2)
     # Pauli-block the two inelastic outgoing nucleons per species; the LEADING one (faster -> continues
     # from |pos|) is blocked at the LEADING's position (like the elastic kf_lead), the other (knockout at
     # the struck vertex) at the struck k_F -- same position fix as the elastic channel.
@@ -498,13 +517,15 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     nuc_idx = jnp.where(nisp[ar, j], 0, 1)
     chan_idx = ch * 6 + nuc_idx * 3 + out_ch
     cos_cm = cascade_mb.jax_sample_cos_cm(W_j, _ev_uniform(ka), chan_idx)
-    kf_rec_pi = jnp.where((struck_p + out_ch - ch) == 1, kf_p_j, kf_n_j)
+    _rec_is_p = (struck_p + out_ch - ch) == 1                  # recoil nucleon charge (charge-exchange)
+    kf_rec_pi = jnp.where(_rec_is_p, kf_p_j, kf_n_j)
+    m_rec_pi = jnp.where(_rec_is_p, _MP_PHYS, _MN_PHYS)        # recoil nucleon mass PHYSICAL per-species
 
-    def scat_one(p_pi_i, pN_i, out_i, kf_i, cc, k):
-        p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k, cos_cm=cc)
+    def scat_one(p_pi_i, pN_i, out_i, kf_i, mrec, cc, k):
+        p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k, cos_cm=cc, m_recoil=mrec)
         p_rec = (p_pi_i + pN_i) - p_out
         return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
-    p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_rec_pi, cos_cm, sk)   # sk (n,2) per-event
+    p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_rec_pi, m_rec_pi, cos_cm, sk)   # sk (n,2) per-event
     if not cfg.pauli:
         blocked = blocked & False
     # ----- conversion (piN -> etaN'): emit the N' baryon (eta neutral -> q_bary = q_pi + q_struck) -----

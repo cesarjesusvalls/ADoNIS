@@ -56,3 +56,8 @@ definitions, a `generate.py` consistency-check/banner, configs, and diagnostic s
 - [x] SF importance sampler validated (peak-resolved + correlation, after fixing a test aliasing bug).
 - [x] 4.2 straight-line: NOT a divergence (PotentialProp:False -> ACHILLES also straight-line).
 - [x] cascade_carbon/setup_carbon -> cascade_nucleus/setup_nucleus rename.
+- [~] **Cascade STEP divergence (legacy real cascade only)**: `RealCascadeConfig.step` default FIXED
+      0.08 -> **0.04** (matches ACHILLES card `Step: 0.04`); misleading comment removed. STILL PENDING:
+      `scripts/adonis_cascade_transparency.py:46` sets **0.05** explicitly (max_steps from 0.05) -> change
+      to 0.04 + re-validate the pi+ transparency oracle. PRODUCTION pool cascade (cc0pi/cc1pi,
+      DiscreteCascadeConfig) already used 0.04 (configs/gen_*.yaml), so QE/RES unaffected.
