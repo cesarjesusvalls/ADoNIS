@@ -54,3 +54,14 @@ implementation diff invisible to code-reading.
     Cylinder-era output (33G hepmc+banks) deleted; regenerated 1M QE Gaussian both sides.
   - Residuals (≪1% of σ): N(π⁺)=1 QE ADoNIS ~1.5× (FSI NN→NΔ→NNπ rate); neutron dσ/dp >700 MeV low.
   - Harness reusable: `scripts/cascade_ablation.py <dump> C [--no-pauli]`; dump via `ACHILLES_CASCADEDUMP=1`.
+- 2026-06-24: **low-p neutron deficit (first 2 bins, <200 MeV, ADoNIS ~9-30% low) ROOT CAUSE = recapture
+  mismatch.** ADoNIS recaptured escaping nucleons with KE<10 MeV (|p|<137); ACHILLES captures ONLY with
+  PotentialProp:True (Cascade.cc:181 IsCaptured Hamiltonian<=m_N). arXiv-2508.19213v2 (line 276 +
+  footnote) uses STRAIGHT-LINE propagation = PotentialProp:False (all 23 cards + default = False) → NO
+  capture. So the KE<10 recapture was unfaithful. Pipeline proof (identical input, ejected-n |p|<137):
+  ADoNIS recap10=0, recap0=282, ACHILLES=32. Decision A (user): set `recap_ke=0.0` default (added cfg
+  knob in cascade_discrete; golden re-baselined). Closes most of the mean-N(n) deficit (3.2%->0.7% total).
+  SECONDARY residual to chase: with recap0 ADoNIS overshoots <137 (282 vs 32); ACHILLES PotentialProp:False
+  still has a hard ~100 MeV floor (0 neutrons <100) that ADoNIS lacks — NOT capture (it's off), likely
+  spectral-function removal energy / surface Pauli floor. NB: recap_ke=0 is GLOBAL → re-validate other
+  cascade observables (transparency, cc0pi tune, the parked 245 MeV residual) which were tuned at recap=10.

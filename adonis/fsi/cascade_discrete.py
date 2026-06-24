@@ -148,6 +148,12 @@ class DiscreteCascadeConfig:
     engine: str = "pool"     # cascade structure: "pool" = single per-step-reconciled particle stack
                              # (DEFAULT, validated single core); "bfs" = legacy generation-synchronized; true step-order
                              # consumption; see docs/logbook/cascade_pool_engine.md).  WIP behind switch.
+    recap_ke: float = 0.0    # escaping nucleon with KE < recap_ke [MeV] is RECAPTURED (set to rest).
+                             # DEFAULT 0.0 = NO capture, faithful to ACHILLES: arXiv-2508.19213v2 uses
+                             # straight-line propagation (PotentialProp:False, line 276 + all 23 cards);
+                             # capture is gated on PotentialProp:True (Cascade.cc:181 IsCaptured
+                             # Hamiltonian<=m_N), which the published predictions do NOT use.  The old
+                             # KE<10 cut over-recaptured low-p neutrons (the <137 MeV deficit).
 
 
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
@@ -204,7 +210,7 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     n, A = nisp.shape; ar = jnp.arange(n)
     outward = jnp.sum(pos * dhat, axis=1) > 0
     escaping = (jnp.linalg.norm(pos, axis=1) > radius) & outward
-    recap = escaping & ((p4[:, 0] - M_N) < 10.0)
+    recap = escaping & ((p4[:, 0] - M_N) < cfg.recap_ke)
     p4 = jnp.where(recap[:, None], jnp.array([M_N, 0.0, 0.0, 0.0]), p4)
     alive = alive & ~escaping
     beta = jnp.linalg.norm(p4[:, 1:], axis=1) / jnp.clip(p4[:, 0], 1e-9, None)
