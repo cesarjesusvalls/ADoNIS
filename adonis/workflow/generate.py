@@ -61,7 +61,7 @@ def _prefsi_record(channel, a):
 
 
 def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n=None, sf_p=None,
-                 n_neutron=6, n_proton=6, grid=None):
+                 n_neutron=6, n_proton=6, grid=None, n_w=None):
     """One seed -> (record dict, truth dict|None, overflow).  Verbatim gen_cc_engine_rich.one (fsi=True);
     fsi=False returns the PRE-FSI primary record (no cascade)."""
     a = gen_events(channel, n, seed, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton, grid=grid)
@@ -72,7 +72,7 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
         jnp.asarray(a["Npid"], jnp.int32), cfg_cascade, jax.random.PRNGKey(seed + 11),
-        P=cas.P, channel=channel)
+        P=cas.P, channel=channel, n_w=n_w)
     p4s, orgs, gns = [], [], []
     for g in nterms:
         sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])
@@ -96,8 +96,9 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
     return rec, truth, int(ofl)
 
 
-def run_channel(channel, gc, target):
+def run_channel(channel, gc, target, n_w=None):
     """Generate one channel's bank (+ optional truth sidecar); per-seed checkpoint.  Returns out path.
+    n_w forwards to the cascade refill engine (None=engine default; 0=full-batch lock-step).
     target = the resolved NuclearTarget (carbon/argon/...): its density_p/density_n/configs go into the
     cascade config and its spectral_n/spectral_p into the primary generators (single source of truth)."""
     cas = gc.cascade
@@ -153,7 +154,7 @@ def run_channel(channel, gc, target):
         sd = gc.seed0 + k
         rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled,
                                        gc.fsi, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton,
-                                       grid=grid)
+                                       grid=grid, n_w=n_w)
         parts.append(rec)
         bank = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
         bank["w"] = bank["w"] / len(parts)               # normalize by ACTUAL seeds banked
@@ -166,8 +167,9 @@ def run_channel(channel, gc, target):
     return out
 
 
-def run_generation(gc):
-    """Drive generation from a GenConfig.  Engine generates the carbon cascade target only."""
+def run_generation(gc, n_w=None):
+    """Drive generation from a GenConfig.  Engine generates the carbon cascade target only.
+    n_w forwards to the cascade refill engine (None=engine default; 0=full-batch lock-step)."""
     if gc.tracking.steps:
         raise NotImplementedError("per-step trajectory storage is not supported by the pool engine "
                                   "(it was a BFS-only capability); use the MC-truth track tree "
@@ -179,4 +181,4 @@ def run_generation(gc):
             f"engine generation supports a SINGLE cascade target; material {gc.material!r} resolved to "
             f"{[t.symbol for t,_ in targets]} (free-H is a separate primary bank, not wired).")
     target = cascade_targets[0]                       # carbon, argon, ... -- any registered nucleus
-    return {ch: run_channel(ch, gc, target) for ch in gc.channels}
+    return {ch: run_channel(ch, gc, target, n_w=n_w) for ch in gc.channels}
