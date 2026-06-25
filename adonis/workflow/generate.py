@@ -9,7 +9,7 @@ Material: only a carbon cascade target is engine-generatable (free-H is a separa
 wired); resolve_targets enforces the supported set.
 """
 from __future__ import annotations
-import os
+import os, time
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -177,9 +177,11 @@ def run_channel(channel, gc, target, n_w=None):
           f"track={gc.tracking.enabled} -> {out}", flush=True)
     for k in range(gc.n_seeds):
         sd = gc.seed0 + k
+        _t_seed = time.time()
         rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled,
                                        gc.fsi, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton,
                                        grid=grid, n_w=n_w)
+        _dt = time.time() - _t_seed                       # seed wall time (seed 0 includes JIT compile)
         parts.append(rec)
         bank = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
         bank["w"] = bank["w"] / len(parts)               # normalize by ACTUAL seeds banked
@@ -188,7 +190,8 @@ def run_channel(channel, gc, target, n_w=None):
             truths.append(truth)
             tb = {key: np.concatenate([t[key] for t in truths]) for key in truths[0]}
             np.savez(truth_out, **tb)
-        print(f"  [{channel}] seed {k+1}/{gc.n_seeds}  banked {len(bank['w'])} ev  overflow {ofl}", flush=True)
+        print(f"  [{channel}] seed {k+1}/{gc.n_seeds}  banked {len(bank['w'])} ev  overflow {ofl}  "
+              f"({_dt:.1f}s{' incl JIT' if k == 0 else ''})", flush=True)
     return out
 
 
