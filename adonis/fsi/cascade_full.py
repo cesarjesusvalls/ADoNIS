@@ -68,7 +68,9 @@ def empty_batch(n, P):
                 track_id=jnp.zeros((n, P), jnp.int32),                # MC-truth: unique id (tracking.py)
                 parent_id=jnp.full((n, P), -1, jnp.int32),            # MC-truth: spawning track (-1 = primary)
                 pkey=jnp.zeros((n, P, 2), jnp.uint32),                # P-INVARIANT per-particle RNG key (lineage-derived)
-                lstep=jnp.zeros((n, P), jnp.int32))                   # per-particle local step counter (RNG fold)
+                lstep=jnp.zeros((n, P), jnp.int32),                   # per-particle local step counter (RNG fold + cap)
+                gtime=jnp.zeros((n, P), jnp.int32))                   # ABSOLUTE cascade time (= global step at P>=occ);
+                                                                       # processing priority -> P-invariant claim order
 
 
 def _take(b, idx):
@@ -79,19 +81,29 @@ def _take(b, idx):
                 w=b["w"][ar, idx], fate=b["fate"][ar, idx])
 
 
-def compact(b, P_out):
-    """Compact live particles of a (n, M) batch to the front of a (n, P_out) buffer (BFS refill /
-    overflow handling).  Returns (compacted_batch, n_overflow) where n_overflow counts live particles
-    that did not fit in P_out (dropped, never silently)."""
+def compact(b, P_out, sort_priority=False):
+    """Compact live particles of a (n, M) batch to the front of a (n, P_out) buffer.  Returns
+    (compacted_batch, n_overflow); overflow = live particles that did not fit in P_out (dropped, never
+    silently).  sort_priority=False -> position order (cumsum).  sort_priority=True -> pack the ACTIVE
+    cascade stack in P-INVARIANT (lstep, sid) order (sid = pkey[...,0]); processing in this order makes
+    shared-state (consumed) claims land in particle-time order at ANY stack width P -> P-invariant."""
     alive = b["alive"]; n, M = alive.shape
-    # stable rank of each live particle within its event (0-based); dead get a large rank
-    rank = jnp.cumsum(alive.astype(jnp.int32), axis=1) - 1
+    if not sort_priority:
+        # stable rank of each live particle within its event (0-based); dead get a large rank
+        rank = jnp.cumsum(alive.astype(jnp.int32), axis=1) - 1
+    else:
+        # lexsort keys (LAST = primary): alive-first, then ABSOLUTE TIME gtime asc, then sid (pkey0,pkey1)
+        # asc.  gtime (not per-particle lstep) is the cascade-synchronized order so daughters act with
+        # their cohort, not ahead of it.  Integer keys -> no float-precision dependence; full pkey tiebreak
+        # -> no position fallback.  rank = inverse permutation of the sorted order.
+        order = jnp.lexsort((b["pkey"][:, :, 1], b["pkey"][:, :, 0], b["gtime"], (~alive).astype(jnp.int32)), axis=-1)
+        rank = jnp.argsort(order, axis=-1)
     rank = jnp.where(alive, rank, M + P_out)                      # dead -> out of range
     n_overflow = jnp.sum((alive & (rank >= P_out)).astype(jnp.int32))
     out = empty_batch(n, P_out)
     ar = jnp.broadcast_to(jnp.arange(n)[:, None], (n, M))
     dst = jnp.where(rank < P_out, rank, P_out)                    # P_out = scratch drop slot (will be sliced off)
-    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id", "nsc", "lstep"):
+    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id", "nsc", "lstep", "gtime"):
         if k not in b:                                            # optional (e.g. BFS kernel spawns omit nsc)
             continue
         out[k] = jnp.zeros((n, P_out + 1), b[k].dtype).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
@@ -165,6 +177,11 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             nsc_2 = jnp.where(is_pi, nscp, nsc)                       # only the pion updates nsc
             chg_2 = jnp.where(is_pi, chp, chg)                        # pion charge oscillates
             al_2 = jnp.where(is_N, alnN, jnp.where(is_pi, alnP, al))
+            # PER-PARTICLE step cap (P-INVARIANT runaway guard): drop a particle once IT has taken
+            # cfg.max_steps of its OWN steps (lstep), independent of the global step count -> no
+            # P-dependent global-cap truncation.  Capped = dropped (not a final state), as the old
+            # global cap left mid-flight particles.
+            al_2 = al_2 & ((lstep_m + 1) < cfg.max_steps)
             term = (is_N & escN) | (is_pi & escP)                    # escaped = final-state (collected)
             # per-slot fate (for the primary-pion latch in run_cascade_pool; output stays escape-only):
             # nucleon/pion escape -> ESCAPE, pion absorbed -> ABSORB, pion converted -> CONVERT.
@@ -218,7 +235,8 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         p4s, poss, fzs, nscs, chgs, als, terms, fates = new
         stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "nsc": T(nscs),
                   "charge": T(chgs), "alive": T(als), "fate": T(fates),
-                  "lstep": stack["lstep"] + stack["alive"].astype(jnp.int32)}   # +1 per processed (alive) step
+                  "lstep": stack["lstep"] + stack["alive"].astype(jnp.int32),   # +1 per processed (alive) step
+                  "gtime": stack["gtime"] + stack["alive"].astype(jnp.int32)}   # absolute time advances in lockstep
         terminal = T(terms)
         if with_rec:                                                 # per-slot (n,M) kind-1 record this step
             rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss", "pi_si", "nu_m", "nu_hh", "nu_a")
@@ -249,7 +267,8 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         _pls = stack["lstep"][:, _pslot]                            # (n,3M) parent local step at spawn
         _dk = lambda pk, c, ls: jax.random.fold_in(jax.random.fold_in(pk, c), ls)
         spawn["pkey"] = jax.vmap(jax.vmap(_dk))(_ppk, jnp.broadcast_to(_chan, (n, 3 * M)), _pls)
-        spawn["lstep"] = jnp.zeros((n, 3 * M), jnp.int32)
+        spawn["lstep"] = jnp.zeros((n, 3 * M), jnp.int32)            # daughter's own step count starts at 0
+        spawn["gtime"] = stack["gtime"][:, _pslot] + 1              # but acts at the NEXT absolute time (cohort-synced)
         if with_seg:                                                 # G4-like provenance (physics-inert):
             # daughter gen = parent gen + 1; parent_id = parent track_id; track_id unique per (step,slot,
             # channel) so it never collides across a particle's repeated interactions.  origin is NOT
@@ -298,12 +317,12 @@ def pool_reconcile(stack, terminal, spawn, M, wait=None, Q=0):
     stack = {**stack, "alive": stack["alive"] & ~terminal}
     if Q > 0 and wait is not None:
         combined = {k: jnp.concatenate([stack[k], wait[k], spawn[k]], axis=1) for k in stack}
-        full, ndrop = compact(combined, M + Q)                    # pack to M+Q (position order, FIFO-ish)
-        active = {k: v[:, :M] for k, v in full.items()}
-        new_wait = {k: v[:, M:M + Q] for k, v in full.items()}
+        full, ndrop = compact(combined, M + Q, sort_priority=True)  # pack to M+Q in (lstep,sid) order
+        active = {k: v[:, :M] for k, v in full.items()}            # the M highest-priority -> processed next
+        new_wait = {k: v[:, M:M + Q] for k, v in full.items()}     # the rest wait (re-enter by priority)
         return active, new_wait, ndrop
     combined = {k: jnp.concatenate([stack[k], spawn[k]], axis=1) for k in stack}
-    active, ndrop = compact(combined, M)                          # Q=0: identical to the legacy reconcile
+    active, ndrop = compact(combined, M, sort_priority=True)      # Q=0: keep the M highest-priority
     return active, None, ndrop
 
 
@@ -439,18 +458,22 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         # not be dropped -- else the engine is not P-invariant (the initial compact silently discarded the
         # 2nd primary at small M).  Mirror pool_reconcile: pack init into M active + Q waiting.
         if Q > 0:
-            _full, _ = compact(init, M + Q)
+            _full, _ = compact(init, M + Q, sort_priority=True)
             stack = {k: v[:, :M] for k, v in _full.items()}
             wait0 = {k: v[:, M:M + Q] for k, v in _full.items()}
         else:
-            stack, _ = compact(init, M)
+            stack, _ = compact(init, M, sort_priority=True)
             wait0 = empty_batch(n, max(Q, 1))
         out0 = empty_batch(n, M_out); rec0 = _empty_fsi_record(n, Kp, Kn)
         log0 = _logbuf(n); wptr0 = jnp.zeros(n, jnp.int32); logofl0 = jnp.int32(0)
         evt_id0 = jnp.arange(n, dtype=jnp.int32); nstep0 = jnp.zeros(n, jnp.int32)
 
+        # The per-particle step cap (stepper) guarantees every particle terminates within max_steps of ITS
+        # OWN steps, so the loop ends via 'no particle alive' (early-exit) at ANY P.  The global counter is
+        # only a non-binding safety backstop sized for full serialization (P=1: ~occupancy x max_steps).
+        _gcap = max_steps * (M + max(Q, 1))
         def cond(st):
-            return (st[0] < max_steps) & (jnp.any(st[1]["alive"]) | jnp.any(st[12]["alive"]))
+            return (st[0] < _gcap) & (jnp.any(st[1]["alive"]) | jnp.any(st[12]["alive"]))
 
         def body(st):
             i, stk, state, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, wait, evt_id, nstep = st
