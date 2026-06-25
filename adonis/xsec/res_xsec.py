@@ -504,19 +504,21 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
     flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     out = {}; sig = 0.0
     ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
+    nch = len(CHANNELS); m = max(1, n // nch)          # n = TOTAL draws across channels; m per channel
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
         Npid = 2212 if mNf == M_P else 2112
-        s = _sample_channel(n, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp, grid=grid,
+        s = _sample_channel(m, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp, grid=grid,
                             defensive=defensive)  # mpi0 like ACHILLES
         w = _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton)
-        sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc
+        sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc   # E[w] over m draws -- unbiased, just noisier
         if return_events:
             keep = w > 0
             ev["k_nu"].append(s["k_nu"][keep]); ev["k_mu"].append(s["k_mu"][keep])
             ev["p_struck"].append(s["p_struck"][keep]); ev["p_N"].append(s["p_N"][keep])
             ev["p_pi"].append(s["p_pi"][keep])
-            # weight per event so that sum(w_event) over the sampled set = sigma_channel
-            ev["w"].append(w[keep] / n)
+            # weight per event so that sum(w_event) over the sampled set = sigma_channel (divide by the
+            # PER-CHANNEL draw count m, not n)
+            ev["w"].append(w[keep] / m)
             ev["ppid"].append(np.full(keep.sum(), ppid)); ev["Npid"].append(np.full(keep.sum(), Npid))
             ev["ipid"].append(np.full(keep.sum(), ipid))   # struck (initial) nucleon: 2112 n / 2212 p
     out["sigma"] = sig
