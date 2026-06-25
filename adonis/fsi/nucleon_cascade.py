@@ -26,11 +26,14 @@ M_N = ox.M_N
 M_N_GEV = M_N / 1000.0
 
 
-def nn_elastic_sigma(sqrts_mev, same_iso):
+def nn_elastic_sigma(sqrts_mev, same_iso, mn_gev=M_N_GEV):
     """NN elastic cross section [mb] (ACHILLES NNElastic, GiBUU).  sqrts in MeV; `same_iso`
-    True for pp/nn, False for np.  Piecewise in p_lab [GeV]."""
+    True for pp/nn, False for np.  Piecewise in p_lab [GeV].  `mn_gev` is the PER-PAIR average mass
+    (mp+mp)/2 for pp, (mn+mn)/2 for nn, (mp+mn)/2 for pn -- ACHILLES NNElastic.cc:184 uses the actual
+    pair mass in threshold/plab and the low-plab mn/threshold terms (default = global avg for callers
+    that do not resolve the pair)."""
     sqrts = sqrts_mev / 1000.0                       # GeV
-    mn = M_N_GEV
+    mn = mn_gev
     thr = sqrts ** 2 - 4.0 * mn ** 2
     plab = jnp.where(thr > 0, sqrts / (2.0 * mn) * jnp.sqrt(jnp.clip(thr, 0.0, None)), 0.0)
     thr_safe = jnp.clip(thr, 1e-6, None)

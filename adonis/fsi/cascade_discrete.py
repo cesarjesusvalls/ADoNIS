@@ -233,7 +233,11 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     s = Pp[:, :, 0] ** 2 - jnp.sum(Pp[:, :, 1:] ** 2, axis=2)
     sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
     same_iso = isp[:, None] == nisp
-    sig_el = jnp.clip(nn_elastic_sigma(sqrts, same_iso), 0.0, None)
+    # ACHILLES NNElastic.cc:184 uses the PER-PAIR average physical mass (mp for pp, mn for nn, avg for
+    # pn) in threshold/plab + the low-plab mn/threshold terms -- not the global average.
+    _m_pair_gev = 0.5 * (jnp.where(isp, _MP_PHYS, _MN_PHYS)[:, None]
+                         + jnp.where(nisp, _MP_PHYS, _MN_PHYS)) / 1000.0
+    sig_el = jnp.clip(nn_elastic_sigma(sqrts, same_iso, _m_pair_gev), 0.0, None)
     if cfg.nn_inelastic:
         pcm = jnp.sqrt(jnp.clip(s / 4.0 - M_N ** 2, 1e-6, None)) / 1000.0
         sig_in = jnp.clip(nni.sigma_nn_ndelta(sqrts / 1000.0, pcm, same_iso), 0.0, None)

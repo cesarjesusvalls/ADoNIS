@@ -47,6 +47,7 @@ import jax.numpy as jnp
 
 from adonis.fsi import oset_xsec as ox
 from adonis.fsi.mb import cascade_mb
+from adonis.constants import mp as _MP_PHYS, mn as _MN_PHYS
 
 HBARC = ox.HBARC
 M_N = ox.M_N
@@ -149,13 +150,14 @@ def _boost(p4, beta):
     return jnp.concatenate([E[None], vec])
 
 
-def _sample_fermi_nucleon(kf, key):
-    """Draw a nucleon 3-momentum uniformly in the Fermi sphere |p|<kf, on-shell."""
+def _sample_fermi_nucleon(kf, key, mass=M_N):
+    """Draw a nucleon 3-momentum uniformly in the Fermi sphere |p|<kf, on-shell.  `mass` is the
+    PHYSICAL per-species nucleon mass (ACHILLES uses ParticleInfo(PID).Mass()); default = global avg."""
     kdir, kmag = jax.random.split(key)
     d = jax.random.normal(kdir, (3,)); d = d / jnp.linalg.norm(d)
     pmag = kf * jax.random.uniform(kmag) ** (1.0 / 3.0)
     p3 = d * pmag
-    E = jnp.sqrt(M_N ** 2 + pmag ** 2)
+    E = jnp.sqrt(mass ** 2 + pmag ** 2)
     return jnp.concatenate([E[None], p3])
 
 
@@ -200,7 +202,12 @@ def _propagate_scan(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protf
         kf = _kf_local(rho_p)
 
         kN, step_key = jax.random.split(step_key)
-        p_N = jax.vmap(_sample_fermi_nucleon)(kf, jax.random.split(kN, n))
+        # struck-nucleon species ~ local proton fraction (rho_p/rho_tot); PHYSICAL per-species mass
+        # (ACHILLES samples the background nucleon with ParticleInfo(PID).Mass(), not the global avg).
+        kspec, kN = jax.random.split(kN)
+        bg_is_p = jax.random.uniform(kspec, (n,)) < (rho_p / jnp.clip(rho_tot, 1e-12, None))
+        m_bg = jnp.where(bg_is_p, _MP_PHYS, _MN_PHYS)
+        p_N = jax.vmap(_sample_fermi_nucleon)(kf, jax.random.split(kN, n), m_bg)
         v_pi = p_pi[:, 1:] / pE[:, None]
         v_N = p_N[:, 1:] / p_N[:, 0:1]
         vrel = jnp.linalg.norm(v_pi - v_N, axis=1)
