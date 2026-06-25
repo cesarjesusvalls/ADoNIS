@@ -435,10 +435,19 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     # ---------------- NO-REFILL: the working set IS the n events (bit-exact to the pre-refill engine) ----
     if pending is None:
         n = init["alive"].shape[0]; ar = jnp.arange(n)
-        stack, _ = compact(init, M)
+        # INITIAL overflow (more primaries than M, e.g. RES pion+recoil at M=1) must go to the wait QUEUE,
+        # not be dropped -- else the engine is not P-invariant (the initial compact silently discarded the
+        # 2nd primary at small M).  Mirror pool_reconcile: pack init into M active + Q waiting.
+        if Q > 0:
+            _full, _ = compact(init, M + Q)
+            stack = {k: v[:, :M] for k, v in _full.items()}
+            wait0 = {k: v[:, M:M + Q] for k, v in _full.items()}
+        else:
+            stack, _ = compact(init, M)
+            wait0 = empty_batch(n, max(Q, 1))
         out0 = empty_batch(n, M_out); rec0 = _empty_fsi_record(n, Kp, Kn)
         log0 = _logbuf(n); wptr0 = jnp.zeros(n, jnp.int32); logofl0 = jnp.int32(0)
-        wait0 = empty_batch(n, max(Q, 1)); evt_id0 = jnp.arange(n, dtype=jnp.int32); nstep0 = jnp.zeros(n, jnp.int32)
+        evt_id0 = jnp.arange(n, dtype=jnp.int32); nstep0 = jnp.zeros(n, jnp.int32)
 
         def cond(st):
             return (st[0] < max_steps) & (jnp.any(st[1]["alive"]) | jnp.any(st[12]["alive"]))
