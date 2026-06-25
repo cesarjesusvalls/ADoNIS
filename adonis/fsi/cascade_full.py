@@ -66,7 +66,9 @@ def empty_batch(n, P):
                 alive=jnp.zeros((n, P), bool), w=jnp.ones((n, P)), fate=jnp.zeros((n, P), jnp.int32),
                 origin=jnp.zeros((n, P), jnp.int32), gen=jnp.zeros((n, P), jnp.int32),
                 track_id=jnp.zeros((n, P), jnp.int32),                # MC-truth: unique id (tracking.py)
-                parent_id=jnp.full((n, P), -1, jnp.int32))            # MC-truth: spawning track (-1 = primary)
+                parent_id=jnp.full((n, P), -1, jnp.int32),            # MC-truth: spawning track (-1 = primary)
+                pkey=jnp.zeros((n, P, 2), jnp.uint32),                # P-INVARIANT per-particle RNG key (lineage-derived)
+                lstep=jnp.zeros((n, P), jnp.int32))                   # per-particle local step counter (RNG fold)
 
 
 def _take(b, idx):
@@ -89,7 +91,7 @@ def compact(b, P_out):
     out = empty_batch(n, P_out)
     ar = jnp.broadcast_to(jnp.arange(n)[:, None], (n, M))
     dst = jnp.where(rank < P_out, rank, P_out)                    # P_out = scratch drop slot (will be sliced off)
-    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id", "nsc"):
+    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id", "nsc", "lstep"):
         if k not in b:                                            # optional (e.g. BFS kernel spawns omit nsc)
             continue
         out[k] = jnp.zeros((n, P_out + 1), b[k].dtype).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
@@ -98,6 +100,8 @@ def compact(b, P_out):
     out["alive"] = jnp.zeros((n, P_out + 1), bool).at[ar, dst].set(b["alive"], mode="drop")[:, :P_out]
     out["p4"] = jnp.zeros((n, P_out + 1, 4)).at[ar, dst].set(b["p4"], mode="drop")[:, :P_out]
     out["pos"] = jnp.zeros((n, P_out + 1, 3)).at[ar, dst].set(b["pos"], mode="drop")[:, :P_out]
+    if "pkey" in b:                                              # P-invariant per-particle RNG key (n,P,2)
+        out["pkey"] = jnp.zeros((n, P_out + 1, 2), b["pkey"].dtype).at[ar, dst].set(b["pkey"], mode="drop")[:, :P_out]
     return out, n_overflow
 
 
@@ -129,9 +133,13 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             sp = stack["species"][:, m]
             is_N = (sp == NUCLEON) & al; is_pi = (sp == PION) & al
             d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
-            sk_m = jax.vmap(lambda k: jax.random.fold_in(k, m))(key)        # per-event slot key (n,2)
-            _kk = jax.vmap(lambda k: jax.random.split(k))(sk_m)            # (n,2,2)
-            kN, kP = _kk[:, 0], _kk[:, 1]                                  # per-event nucleon/pion keys (n,2)
+            # P-INVARIANT RNG: key by the particle's OWN lineage key (pkey) + its OWN local step count
+            # (lstep), NOT by slot index m or the global nstep.  A particle thus draws identical randoms
+            # whether it is processed in-stack or after the wait queue, at any stack width P.
+            pkey_m = stack["pkey"][:, m]; lstep_m = stack["lstep"][:, m]
+            step_key = jax.vmap(lambda pk, ls: jax.random.fold_in(pk, ls))(pkey_m, lstep_m)   # (n,2)
+            _kk = jax.vmap(lambda k: jax.random.split(k))(step_key)        # (n,2,2)
+            kN, kP = _kk[:, 0], _kk[:, 1]                                  # per-particle nucleon/pion keys (n,2)
             # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
             (p4n, posn, _dn, fzn, alnN), escN, _rc, _do, koN, pinN, consumedN, nstat = _nucleon_step(
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
@@ -209,7 +217,8 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         T = lambda x: jnp.moveaxis(x, 0, 1)                          # (M, n, ...) -> (n, M, ...)
         p4s, poss, fzs, nscs, chgs, als, terms, fates = new
         stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "nsc": T(nscs),
-                  "charge": T(chgs), "alive": T(als), "fate": T(fates)}
+                  "charge": T(chgs), "alive": T(als), "fate": T(fates),
+                  "lstep": stack["lstep"] + stack["alive"].astype(jnp.int32)}   # +1 per processed (alive) step
         terminal = T(terms)
         if with_rec:                                                 # per-slot (n,M) kind-1 record this step
             rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss", "pi_si", "nu_m", "nu_hh", "nu_a")
@@ -232,6 +241,15 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         spawn["pos"] = jnp.concatenate([npos_, ppos], axis=1)
         spawn["fz"] = jnp.concatenate([nfz, pfz], axis=1)
         spawn["alive"] = jnp.concatenate([nal, pal], axis=1)
+        # P-INVARIANT daughter RNG key (PHYSICS, not just provenance): derive from the PARENT's lineage
+        # key + the daughter channel + the parent's local step at spawn -> unique & order/P-independent.
+        _pslot = jnp.tile(jnp.arange(M), 3)                          # (3M,) parent slot per spawn col
+        _chan = jnp.repeat(jnp.arange(3), M)                         # 0=nuc1, 1=nuc2, 2=pion daughter channel
+        _ppk = stack["pkey"][:, _pslot]                             # (n,3M,2) parent lineage key
+        _pls = stack["lstep"][:, _pslot]                            # (n,3M) parent local step at spawn
+        _dk = lambda pk, c, ls: jax.random.fold_in(jax.random.fold_in(pk, c), ls)
+        spawn["pkey"] = jax.vmap(jax.vmap(_dk))(_ppk, jnp.broadcast_to(_chan, (n, 3 * M)), _pls)
+        spawn["lstep"] = jnp.zeros((n, 3 * M), jnp.int32)
         if with_seg:                                                 # G4-like provenance (physics-inert):
             # daughter gen = parent gen + 1; parent_id = parent track_id; track_id unique per (step,slot,
             # channel) so it never collides across a particle's repeated interactions.  origin is NOT
@@ -543,6 +561,8 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
         g0["charge"] = (Npid == 2212).astype(jnp.int32)[:, None]
         g0["p4"] = p_N[:, None, :]; g0["pos"] = su["pos0"][:, None, :]
         g0["track_id"] = jnp.zeros((n, 1), jnp.int32)                  # primary id (inert unless logging)
+        _base = jax.vmap(lambda e: jax.random.fold_in(knuc, e))(jnp.arange(n))   # (n,2) per-event base key
+        g0["pkey"] = jax.vmap(lambda b: jax.random.fold_in(b, 0))(_base)[:, None, :]  # primary idx 0 (n,1,2)
         prim_origin = -999
     else:                                                              # RES: primary pion + recoil nucleon
         g0 = empty_batch(n, 2)
@@ -553,6 +573,9 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
         g0["pos"] = jnp.broadcast_to(su["pos0"][:, None, :], (n, 2, 3))
         g0["origin"] = jnp.array([_ORIG_PRIM_PI, 0], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)
         g0["track_id"] = jnp.array([0, 1], jnp.int32)[None, :] * jnp.ones((n, 1), jnp.int32)  # pion=0, recoil=1
+        _base = jax.vmap(lambda e: jax.random.fold_in(knuc, e))(jnp.arange(n))   # (n,2) per-event base key
+        g0["pkey"] = jnp.stack([jax.vmap(lambda b: jax.random.fold_in(b, 0))(_base),   # pion primary idx 0
+                                jax.vmap(lambda b: jax.random.fold_in(b, 1))(_base)], axis=1)  # recoil idx 1 (n,2,2)
         prim_origin = _ORIG_PRIM_PI
     # n_w>0 (refill): run the persistent-refill engine -- a working set of n_w event-slots fed from the
     # pending pool of all n events (g0 + per-event nucleus background).  n_w=0 -> lock-step.  q_cap>0
