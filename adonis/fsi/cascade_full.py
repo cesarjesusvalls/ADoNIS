@@ -610,7 +610,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
     return pterm, nterms, sofl + oofl, created, fsi_rec
 
 
-def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=16, sabs=1.0, sscat=1.0,
+def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=1, sabs=1.0, sscat=1.0,
                       channel="res", rec_caps=None, log_cap=None, n_w=None, q_cap=None, per_event_cap=None,
                       su_external=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).

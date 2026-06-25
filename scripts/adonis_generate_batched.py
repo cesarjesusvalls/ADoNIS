@@ -38,11 +38,12 @@ def main():
     ap.add_argument("--workers", type=int, default=6)            # persistent worker processes
     ap.add_argument("--seeds-per-worker", type=int, default=1)   # seeds each worker runs in ONE process (JIT once)
     ap.add_argument("--n-per-seed", type=int, default=10000)     # events per seed
-    ap.add_argument("--P", type=int, default=10)
+    ap.add_argument("--P", type=int, default=None)              # None -> inherit config / CascadeHyperparams default
     ap.add_argument("--single-thread", action="store_true")      # 1 XLA/Eigen thread per worker (K workers ~ K cores)
     ap.add_argument("--no-fsi", action="store_true")             # PRE-FSI banks (no cascade); tag -> _nofsi
     a = ap.parse_args()
     gc = load_gen_config(a.config); K, M, N = a.workers, a.seeds_per_worker, a.n_per_seed
+    p_arg = [] if a.P is None else ["--P", str(a.P)]            # pass-through only if explicitly set
     if a.no_fsi:
         gc.tag = gc.tag + "_nofsi"
     vegas_on = getattr(gc, "vegas", None) is not None and gc.vegas.enabled
@@ -52,7 +53,8 @@ def main():
         env["XLA_FLAGS"] = (env.get("XLA_FLAGS", "") + " --xla_cpu_multi_thread_eigen=false").strip()
         env["OMP_NUM_THREADS"] = "1"
     print(f"[batched] config={a.config} channels={gc.channels} workers={K} seeds/worker={M} "
-          f"n/seed={N} -> {K*M*N} events total  P={a.P} single_thread={a.single_thread} fsi={not a.no_fsi}",
+          f"n/seed={N} -> {K*M*N} events total  P={a.P if a.P is not None else 'config-default'} "
+          f"single_thread={a.single_thread} fsi={not a.no_fsi}",
           flush=True)
 
     for channel in gc.channels:
@@ -61,8 +63,8 @@ def main():
         if vegas_on and channel == "res":
             print(f"[batched] {channel}: ensuring VEGAS grid (cache=auto warm-up) ...", flush=True)
             subprocess.run([PY, "-u", GEN, a.config, "--n-seeds", "1", "--n-per-seed", "2000",
-                            "--seed0", "999000", "--tag", "_gridwarm", "--P", str(a.P), "--n-w", "0",
-                            "--vegas-cache", "auto"], check=True, env=env)
+                            "--seed0", "999000", "--tag", "_gridwarm", "--n-w", "0",
+                            "--vegas-cache", "auto"] + p_arg, check=True, env=env)
             gw = bankpath(gc.out_dir, chanout, "_gridwarm")
             if os.path.exists(gw):
                 os.remove(gw)
@@ -81,8 +83,8 @@ def main():
             cache = "load" if (vegas_on and channel == "res") else "auto"
             procs.append(subprocess.Popen(
                 [PY, "-u", GEN, a.config, "--n-seeds", str(M), "--n-per-seed", str(N),
-                 "--seed0", str(seed0), "--tag", tag, "--P", str(a.P), "--n-w", "0",
-                 "--vegas-cache", cache] + extra,
+                 "--seed0", str(seed0), "--tag", tag, "--n-w", "0",
+                 "--vegas-cache", cache] + p_arg + extra,
                 stdout=open(f"/tmp/worker_{chanout}_b{idx:02d}.log", "w"), stderr=subprocess.STDOUT, env=env))
         rcs = [p.wait() for p in procs]
         paths = [bankpath(gc.out_dir, chanout, t) for t in tags]

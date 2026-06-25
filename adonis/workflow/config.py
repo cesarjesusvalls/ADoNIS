@@ -42,7 +42,7 @@ def _coerce(cls, d):
 # ----------------------------------------------------------------------------- generation
 @dataclass
 class CascadeHyperparams:
-    P: int = 12                 # pool particle-buffer width
+    P: int = 1                  # pool particle-buffer width (SINGLE source of truth; configs inherit this)
     step: float = 0.04          # Glauber step [fm]
     max_steps: int = 260
     nn_inelastic: bool = True

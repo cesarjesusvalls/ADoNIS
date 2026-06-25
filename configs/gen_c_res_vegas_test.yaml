@@ -5,7 +5,7 @@ material: C
 n_per_seed: 8000
 n_seeds: 2
 channels: [res]
-cascade: {P: 10, step: 0.04, max_steps: 600, nn_inelastic: true, mprot: 4}
+cascade: {step: 0.04, max_steps: 600, nn_inelastic: true, mprot: 4}
 vegas: {enabled: true, nbins: 50, warmup_iters: 3, warmup_n: 15000}
 tracking: {enabled: false, steps: false}
 out_dir: data/oracle
