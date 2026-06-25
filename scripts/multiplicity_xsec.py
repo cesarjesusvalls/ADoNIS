@@ -21,13 +21,18 @@ MODE = os.environ.get("MODE", "fsi").lower()                           # fsi | n
 MU_WIN = [250.0, 7000.0]; COS70 = float(np.cos(np.deg2rad(70.0)))      # matrix muon acceptance
 _suf = "_nofsi" if MODE == "nofsi" else ""
 ADO_DIR = os.environ.get("ADO_DIR", "data/oracle")                     # ADoNIS bank dir override
-ADO_QE = sorted(glob.glob(f"{ADO_DIR}/t2k_cc0pi_engine_rich_cv5{_suf}_batch*.npz"))   # merge ALL QE batches
-ADO_RES = sorted(glob.glob(f"{ADO_DIR}/t2k_cc1pi_engine_rich_cv5{_suf}_batch*.npz"))
+TAG = os.environ.get("TAG", "cv5")                                     # cv5=C, av5=Ar
+ADO_QE = sorted(glob.glob(f"{ADO_DIR}/t2k_cc0pi_engine_rich_{TAG}{_suf}_batch*.npz"))   # merge ALL QE batches
+ADO_RES = sorted(glob.glob(f"{ADO_DIR}/t2k_cc1pi_engine_rich_{TAG}{_suf}_batch*.npz"))
 ACH = os.environ.get("ACH_BANK",                                       # ACHILLES proc bank override
                      f"data/oracle/t2k_cc1pi_rich_ach_{'nofsi' if MODE == 'nofsi' else 'FSI'}_proc.npz")
 # (label, ado bank field, achilles -> count)
 SPECIES = ["N(p)", "N(n)", "N(pi+)", "N(pi0)", "N(pi-)"]
 ADO_FIELD = {"N(p)": "n_p", "N(n)": "n_n", "N(pi+)": "n_pip", "N(pi0)": "n_pi0", "N(pi-)": "n_pim"}
+CHANNEL = os.environ.get("CHANNEL", "qe").lower()                      # qe | res
+ADO = ADO_QE if CHANNEL == "qe" else ADO_RES
+PROC = [200] if CHANNEL == "qe" else [401, 402]                        # ACHILLES proc: 200=QE, 401/402=RES
+CLABEL = CHANNEL.upper()
 
 
 def mu_mask(mu):
@@ -75,9 +80,9 @@ def dsig(counts, w, nmax=6):
 
 
 def main():
-    print("loading banks ...", flush=True)
-    aQ, wQ = ado(ADO_QE)                                       # QE only (RES parked until QE is clean)
-    hQ, hwQ = ach([200])
+    print(f"loading banks (channel={CLABEL}) ...", flush=True)
+    aQ, wQ = ado(ADO)
+    hQ, hwQ = ach(PROC)
     nmax = 6; edges = np.arange(nmax + 2.0); ctr = 0.5 * (edges[1:] + edges[:-1])   # bin k = [k,k+1)
     # top dsigma/dN + bottom ACH/ADO ratio per species, exactly like the cross-section matrix panels
     fig, axes = plt.subplots(2, 5, figsize=(23, 6), height_ratios=[3, 1], sharex="col")
@@ -86,20 +91,20 @@ def main():
         a0.set_xlim(edges[0], edges[-1])                        # top + ratio share this range (sharex)
         if lab in hQ:
             chi2_ratio_panel(a0, a1, edges, {"values": hQ[lab], "w": hwQ}, {"values": aQ[lab], "w": wQ},
-                             label=f"QE: {lab}", ado_label="ADoNIS", ref_label="ACHILLES", logy=True)
+                             label=f"{CLABEL}: {lab}", ado_label="ADoNIS", ref_label="ACHILLES", logy=True)
         else:                                                  # (only if ACHILLES bank lacks this species)
             dd, ed = hist_with_errors(aQ[lab], wQ, edges)
             a0.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=3, capsize=2, lw=0.9, label="ADoNIS")
-            a0.set_title(f"QE: {lab}", fontsize=9); a0.set_ylim(bottom=0)
+            a0.set_title(f"{CLABEL}: {lab}", fontsize=9); a0.set_ylim(bottom=0)
             a1.axhline(1.0, ls="--", color="green", lw=0.7); a1.set_ylim(0.5, 1.6)
             a1.text(0.5, 0.4, "no ACHILLES", transform=a1.transAxes, ha="center", fontsize=8, color="r")
-            a1.set_xlabel(f"QE: {lab}", fontsize=8)
-    axes[0, 0].set_ylabel("QE  dσ/dN [nb]"); axes[1, 0].set_ylabel("ACH/ADO"); axes[0, 0].legend(fontsize=8)
-    nb = len([p for p in ADO_QE if "n_p" in np.load(p, allow_pickle=True).files])
-    fig.suptitle(f"QE dσ vs final-state multiplicity (C, muon-acceptance CC-inclusive; {nb} batches; "
+            a1.set_xlabel(f"{CLABEL}: {lab}", fontsize=8)
+    axes[0, 0].set_ylabel(f"{CLABEL}  dσ/dN [nb]"); axes[1, 0].set_ylabel("ACH/ADO"); axes[0, 0].legend(fontsize=8)
+    nb = len([p for p in ADO if "n_p" in np.load(p, allow_pickle=True).files])
+    fig.suptitle(f"{CLABEL} dσ vs final-state multiplicity (C, muon-acceptance CC-inclusive; {nb} batches; "
                  f"{'NO FSI' if MODE == 'nofsi' else 'FSI'}): ADoNIS vs ACHILLES")
     fig.tight_layout(); fig.savefig(OUT, dpi=110); print(f"wrote {OUT}", flush=True)
-    print(f"--- QE: total sigma ADoNIS={wQ.sum():.4e}  ACHILLES={hwQ.sum():.4e}  ACH/ADO={hwQ.sum()/wQ.sum():.3f}", flush=True)
+    print(f"--- {CLABEL}: total sigma ADoNIS={wQ.sum():.4e}  ACHILLES={hwQ.sum():.4e}  ACH/ADO={hwQ.sum()/wQ.sum():.3f}", flush=True)
     for lab in SPECIES:
         a, ae = dsig(aQ[lab], wQ, nmax); hh = dsig(hQ[lab], hwQ, nmax)[0] if lab in hQ else None
         print(f"  {lab:7s} ado N0..3: {a[:4]}" + (f"   ach: {hh[:4]}" if hh is not None else "  (ado-only)"), flush=True)

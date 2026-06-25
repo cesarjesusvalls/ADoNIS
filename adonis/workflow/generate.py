@@ -47,8 +47,9 @@ def _prefsi_record(channel, a):
     The recoil proton is the single primary nucleon (zeroed where it is a neutron, e.g. n->n pi+, so
     it is not counted as a proton); the primary pion is the RES pion (none for QE); no created pion."""
     nn = len(a["w"])
-    Npid = np.asarray(a["Npid"]); is_p = (Npid == 2212)
+    Npid = np.asarray(a["Npid"]); is_p = (Npid == 2212); is_n = (Npid == 2112)
     prot = np.where(is_p[:, None], np.asarray(a["p_N"]), 0.0)[:, None, :]          # (nn,1,4)
+    neut = np.where(is_n[:, None], np.asarray(a["p_N"]), 0.0)[:, None, :]          # primary recoil neutron (RES n pi+)
     pi4 = np.asarray(a["p_pi"]) if "p_pi" in a else np.zeros((nn, 4))
     pid_pi = np.asarray(a["ppid"]) if channel == "res" else np.zeros(nn, np.int64)
     z = np.zeros(nn)
@@ -62,7 +63,7 @@ def _prefsi_record(channel, a):
                 pi_post=pi4, pid_pi=pid_pi.astype(np.int64), pi_nsc=z.astype(np.int64),
                 cr_p4=np.zeros((nn, 4)), cr_pid=np.zeros(nn, np.int64),
                 prot=prot, prot_origin=np.where(is_p, 0, -1)[:, None].astype(np.int64),
-                prot_gen=np.zeros((nn, 1), np.int64), neut=np.zeros((nn, 1, 4)),   # no ejected neutrons pre-FSI
+                prot_gen=np.zeros((nn, 1), np.int64), neut=neut,   # primary recoil neutron (RES n pi+)
                 w=np.asarray(a["w"]), ipid=np.asarray(a["ipid"]).astype(np.int64), Npid=Npid.astype(np.int64), **mult)
 
 
