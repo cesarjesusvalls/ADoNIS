@@ -6,7 +6,7 @@ Main:
   RunDecays: False
   Output:
       Format: NuHepMC
-      Name: /out/T2K_C_fate_gauss.hepmc
+      Name: /out/T2K_C_fsi_gauss.hepmc
       Zipped: False
 
 SherpaOptions: !include "data/default/SherpaOptions.yml"
