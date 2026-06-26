@@ -51,6 +51,7 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     a1.axhline(1.0, ls="--", color="green", lw=0.7)
     a1.errorbar(ctr[m], r[m], yerr=re[m], fmt="o", color="C3", ms=3, capsize=2, lw=0.8)
     a1.set_ylim(*ratio_ylim); a1.set_xlabel(label, fontsize=8)
+    a0.set_xlim(edges[0], edges[-1])           # clamp to bin edges (sharex -> a1 too): no "floating" margin
     a1.text(0.04, 0.83, f"{chi2/max(ndf,1):.1f}", transform=a1.transAxes, fontsize=9)
     ach_ado = float(np.sum(da * bw) / max(np.sum(dd * bw), 1e-30))
     return dict(chi2=chi2, ndf=ndf, ach_ado=ach_ado)

@@ -1,9 +1,0 @@
-name: t2k_ar_qe_5seedG
-material: Ar
-n_per_seed: 30000
-n_seeds: 5
-channels: [qe]
-cascade: {step: 0.04, max_steps: 600, nn_inelastic: true, mprot: 4}
-tracking: {enabled: false, steps: false}
-out_dir: data/oracle
-tag: _ar5seedG
