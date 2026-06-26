@@ -1,0 +1,9 @@
+name: t2k_c_qe_ts1M
+material: C
+n_per_seed: 24000
+n_seeds: 1
+channels: [qe]
+cascade: {step: 0.04, nn_inelastic: true, time_step: true, mprot: 4}
+tracking: {enabled: false, steps: false}
+out_dir: data/oracle
+tag: _ts1M

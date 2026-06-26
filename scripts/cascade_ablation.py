@@ -17,9 +17,9 @@ from adonis.data.oracle.parse_cascadedump import parse_cascadedump, to_arrays
 
 def build_cfg(target, pauli=True):
     tg = resolve_targets(target)[0][0]
-    _, _, _, r = _load_density(tg.density_p, tg.density_n)
-    ms = max(600, int(np.ceil(3.0 * r / 0.04)))
-    return DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=pauli,
+    ts = os.environ.get("TIMESTEP", "0") == "1"      # 1 = ACHILLES-step-matching (adaptive time-sync)
+    return DiscreteCascadeConfig(step=0.04, path_budget_R=3.0, seed=1, nn_inelastic=True, pauli=pauli,
+                                 time_step=ts,
                                  nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
 
 
@@ -113,6 +113,14 @@ def main():
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     from adonis.workflow.plotting import chi2_ratio_panel
     edges = np.linspace(0.0, 1500.0, 31)
+    _ha, _ = np.histogram(ado_neutp, edges); _hh, _ = np.histogram(ach_neutp, edges)
+    print("\n  per-bin ejected-neutron |p| (UNWEIGHTED counts, paired input):", flush=True)
+    print(f"  {'|p| bin':12s} {'ADO':>8s} {'ACH':>8s} {'ACH/ADO':>8s} {'pull':>7s}", flush=True)
+    for i in range(len(edges) - 1):
+        if _ha[i] + _hh[i] == 0:
+            continue
+        pull = (_hh[i] - _ha[i]) / np.sqrt(_hh[i] + _ha[i] + 1e-9)        # Poisson, paired
+        print(f"  {edges[i]:5.0f}-{edges[i+1]:<5.0f} {_ha[i]:>8d} {_hh[i]:>8d} {_hh[i]/max(_ha[i],1):>8.3f} {pull:>+7.1f}", flush=True)
     fig, (a0, a1) = plt.subplots(2, 1, figsize=(8, 6), height_ratios=[3, 1], sharex=True)
     chi2_ratio_panel(a0, a1, edges, {"values": ach_neutp, "w": np.ones_like(ach_neutp)},
                      {"values": ado_neutp, "w": np.ones_like(ado_neutp)},

@@ -23,13 +23,15 @@ PS = [int(x) for x in os.environ.get("PS", "1,2,4,12").split(",")]
 REF_P = max(PS)
 
 
+TIMESTEP = os.environ.get("TIMESTEP", "0") == "1"            # ACHILLES-like time-sync (beta*step) stepping
+
+
 def build_cfg():
     tg = resolve_targets("C")[0][0]
-    _, _, _, r = _load_density(tg.density_p, tg.density_n)
-    ms = max(600, int(np.ceil(3.0 * r / 0.04)))
-    ms = max(ms, int(os.environ.get("MAXSTEPS", "0")))        # override to test step-cap truncation at small P
-    return DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True,
-                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
+    kw = {"max_steps": int(os.environ["MAXSTEPS"])} if os.environ.get("MAXSTEPS") else {}  # default 100k ceiling
+    return DiscreteCascadeConfig(step=0.04, path_budget_R=3.0, seed=1, nn_inelastic=True,
+                                 time_step=TIMESTEP,
+                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs, **kw)
 
 
 def mult(nterms):
