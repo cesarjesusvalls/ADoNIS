@@ -26,7 +26,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
 
 OUT_DIR = "output/achilles"
 ORACLE = "ghcr.io/cesarjesusvalls/achilles:oracle"
@@ -57,24 +56,19 @@ def _docker_cmd(card_in_out, image, native, entrypoint, out_abs):
 
 
 def _write_card(card_path, out_dir, suffix, overrides):
-    """Copy the run card into out_dir (the /out mount) with optional scan overrides + a unique output name."""
-    d = yaml.safe_load(_strip_includes(Path(card_path).read_text()))   # parse for override; keep raw for run
+    """Copy the run card into out_dir (the /out mount) with optional scan overrides.  The output hepmc keeps
+    the card's ORIGINAL Output Name (so consumers find e.g. inclusive_ee_C_qe.hepmc), with `suffix` appended
+    only for scan points / seeds so they don't clobber each other."""
     raw = Path(card_path).read_text()
-    name = Path(card_path).stem + suffix
-    # rewrite the Output hepmc name so scan points / seeds don't clobber each other
-    base_hepmc = _output_name(raw)
-    new_hepmc = f"/out/{name}.hepmc"
+    base_hepmc = _output_name(raw)                                 # e.g. /out/inclusive_ee_C_qe.hepmc
+    hepmc_stem = Path(base_hepmc).name[: -len(".hepmc")]           # inclusive_ee_C_qe
+    new_hepmc = f"/out/{hepmc_stem}{suffix}.hepmc"
     raw = raw.replace(base_hepmc, new_hepmc)
     for key, val in overrides.items():
         raw = _override(raw, key, val)
-    dst = Path(out_dir) / f"{name}.yml"
-    dst.write_text(raw)
-    return dst.name, new_hepmc.split("/")[-1]
-
-
-def _strip_includes(text):
-    return "\n".join(("#" + ln if ln.lstrip().startswith("!include") or "!include" in ln else ln)
-                     for ln in text.splitlines())
+    card_name = Path(card_path).stem + suffix + ".yml"            # templated card file (keeps run_ prefix)
+    (Path(out_dir) / card_name).write_text(raw)
+    return card_name, new_hepmc.split("/")[-1]
 
 
 def _output_name(raw):
