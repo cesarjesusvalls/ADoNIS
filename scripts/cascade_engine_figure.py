@@ -16,7 +16,7 @@ from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
 import adonis.fsi.cascade_full as CF
 import scripts.cc1pi_fig_tki as F            # observables() (single source)
 import scripts.cc1pi_signal as S
-from adonis.data.oracle.normalization import hepmc_norm
+from analysis.utils.hepmc import hepmc_norm
 
 NRES = int(sys.argv[1]) if len(sys.argv) > 1 else 30000
 NSEED = int(sys.argv[2]) if len(sys.argv) > 2 else 4

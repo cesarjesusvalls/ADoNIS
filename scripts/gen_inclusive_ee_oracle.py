@@ -17,7 +17,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from adonis.data.oracle.parse_hepmc import parse_events
+from analysis.utils.hepmc import parse_events
 
 E0 = 2222.0
 MODES = {

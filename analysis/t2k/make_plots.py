@@ -47,15 +47,15 @@ def _ado_glob(flux, mat, chan, tag, suf):
 # ACHILLES ref filenames/location pending the separate ACHILLES-output naming cleanup.
 MATERIALS = {
     "C":  ("output/adonis/t2k_C_cc1pi.npz", "output/adonis/t2k_C_cc0pi.npz",
-           "data/oracle/t2k_cc1pi_rich_ach_FSI_proc.npz"),
+           "output/achilles/t2k_cc1pi_rich_ach_FSI_proc.npz"),
     "Ar": ("output/adonis/t2k_Ar_cc1pi.npz", "output/adonis/t2k_Ar_cc0pi.npz",
-           "data/oracle/t2k_cc1pi_rich_ach_FSI_Ar_proc.npz"),
+           "output/achilles/t2k_cc1pi_rich_ach_FSI_Ar_proc.npz"),
 }
 MATERIALS_NOFSI = {
     "C":  ("output/adonis/t2k_C_cc1pi_nofsi.npz", "output/adonis/t2k_C_cc0pi_nofsi.npz",
-           "data/oracle/t2k_cc1pi_rich_ach_C_nofsi.npz"),
+           "output/achilles/t2k_cc1pi_rich_ach_C_nofsi.npz"),
     "Ar": ("output/adonis/t2k_Ar_cc1pi_nofsi.npz", "output/adonis/t2k_Ar_cc0pi_nofsi.npz",
-           "data/oracle/t2k_cc1pi_rich_ach_nofsi_Ar.npz"),
+           "output/achilles/t2k_cc1pi_rich_ach_nofsi_Ar.npz"),
 }
 REF_PROC = {"qe": [200], "res": [401, 402], "both": None}
 _TKI = [("pn", "$p_N$", [0, 120, 240, 600, 1500]),
@@ -217,7 +217,7 @@ def block_multiplicity(mat, mode, flux, tag):
     for channel in ("qe", "res"):
         chan = "cc0pi" if channel == "qe" else "cc1pi"
         ado_paths = _ado_glob(flux, mat, chan, tag, suf)
-        ach_path = os.environ.get("ACH_BANK", f"data/oracle/t2k_cc1pi_rich_ach_{'nofsi' if mode == 'nofsi' else 'FSI'}_proc.npz")
+        ach_path = os.environ.get("ACH_BANK", f"output/achilles/t2k_cc1pi_rich_ach_{'nofsi' if mode == 'nofsi' else 'FSI'}_proc.npz")
         procs = [200] if channel == "qe" else [401, 402]
         clabel = channel.upper()
         if not ado_paths:
@@ -253,7 +253,7 @@ def block_nucleon_momentum(mat, mode, flux, tag):
     suf = "_nofsi" if mode == "nofsi" else ""
     edges = np.linspace(0.0, 2000.0, 41)
     ado_paths = _ado_glob(flux, mat, "cc0pi", tag, suf)
-    ach_path = os.environ.get("ACH_BANK", f"data/oracle/t2k_cc1pi_rich_ach_{'nofsi' if mode == 'nofsi' else 'FSI'}_proc.npz")
+    ach_path = os.environ.get("ACH_BANK", f"output/achilles/t2k_cc1pi_rich_ach_{'nofsi' if mode == 'nofsi' else 'FSI'}_proc.npz")
     if not ado_paths:
         print(f"[nucleon-momentum] no ADoNIS QE banks ({flux}_{mat}_cc0pi{tag}{suf}_batch*) -- skip", flush=True)
         return
@@ -295,7 +295,7 @@ def block_cc1pi_stv(nres, recompute):
     from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
     from adonis.fsi.pool_fsi import run_fsi, proton_candidates
     from adonis.workflow.free_proton import generate_H
-    from adonis.data.oracle.normalization import weight_to_nb_of
+    from analysis.utils.hepmc import weight_to_nb_of
 
     NH, NSEED, MPROT = 50000, 4, 6
     MU_LO, MU_HI = 250.0, 7000.0; PI_LO, PI_HI = 150.0, 1200.0; P_LO, P_HI = 450.0, 1200.0
@@ -371,7 +371,7 @@ def block_cc1pi_stv(nres, recompute):
         ado = {k: np.concatenate([acc[c][k] for c in acc]) for k in ("dptt", "pn", "dalphat", "w")}
         os.makedirs(ADO_DIR_DEFAULT, exist_ok=True); np.savez(bp, **ado)
 
-    ach_path = os.environ.get("ACH_CC1PI", "data/oracle/t2k_cc1pi_tki_achilles.npz")
+    ach_path = os.environ.get("ACH_CC1PI", "output/achilles/t2k_cc1pi_tki_achilles.npz")
     if not os.path.exists(ach_path):
         print(f"[cc1pi-stv] ACHILLES ref {ach_path} missing -- skip (set ACH_CC1PI)", flush=True); return
     ach = np.load(ach_path); ach_w = np.asarray(ach["w"]) * weight_to_nb_of(ach)
@@ -437,7 +437,7 @@ def main(argv=None):
     ap.add_argument("--recompute", action="store_true", help="cc1pi-stv: ignore the cached blueprint")
     a = ap.parse_args(argv)
     blocks = (a.matrix, a.multiplicity, a.nucleon_momentum, a.cc1pi_stv)
-    do_all = not any(blocks)                                  # no block flag -> run them all
+    do_all = not any(blocks) and not a.pdf                    # no block flag -> all; --pdf alone -> bundle only
     mats = ["C", "Ar"] if a.material == "all" else [a.material]
     if a.matrix or do_all:
         block_matrix(a.material, a.mode)

@@ -21,7 +21,7 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 import jax
 jax.config.update("jax_enable_x64", True)
-from adonis.data.oracle.parse_hepmc import parse_events
+from analysis.utils.hepmc import parse_events
 from adonis.core.event import EventRecord
 from adonis import observables as obs
 from adonis.primary.dcc.channel import sample_final_state, weight_from_sample, assemble_event

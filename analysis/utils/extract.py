@@ -1,7 +1,7 @@
 """Generic ACHILLES hepmc -> observable bank extractor (reused across experiments).
 
 Consolidates the per-channel extractors into ONE dispatch.  The hepmc parse + absolute-norm
-boilerplate (adonis.data.oracle.parse_hepmc / .normalization) is shared; each channel keeps its own
+boilerplate (analysis.utils.hepmc) is shared; each channel keeps its own
 selection + observable logic verbatim.  cc0pi cuts are parametrized by --experiment (T2K | MINERvA).
 
 Usage:
@@ -15,8 +15,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root (analysis/utils/ -> .)
-from adonis.data.oracle.parse_hepmc import parse_events
-from adonis.data.oracle.normalization import hepmc_norm
+from analysis.utils.hepmc import parse_events
+from analysis.utils.hepmc import hepmc_norm
 
 MU, NU_MU, PIP, PROT, NEUT = 13, 14, 211, 2212, 2112
 PIONS = {111, 211, -211}

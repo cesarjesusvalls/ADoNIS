@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
-from adonis.data.oracle.normalization import weight_to_nb_of
+from analysis.utils.hepmc import weight_to_nb_of
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 # optional tuned overlay: --theta SABS SSCAT MA  (reweights the stored walk/M_A records --

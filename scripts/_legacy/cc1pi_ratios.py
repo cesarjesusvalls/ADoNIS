@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 import scripts.cc1pi_fig_tki as F            # factorized res_C / res_H, selection, observables
-from adonis.data.oracle.normalization import weight_to_nb_of
+from analysis.utils.hepmc import weight_to_nb_of
 
 NRES = int(sys.argv[1]) if len(sys.argv) > 1 else 120000
 NSEED = int(sys.argv[2]) if len(sys.argv) > 2 else 4

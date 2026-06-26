@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from adonis.data.oracle.finalstate import (ORACLE_EDGES as EDGES, new_accumulator,
+from analysis.utils.finalstate import (ORACLE_EDGES as EDGES, new_accumulator,
                                            accumulate_hepmc, save_oracle)  # noqa: E402
 
 # Local ACHILLES checkout/build (for the high-statistics oracle). Override with

@@ -19,7 +19,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
-from adonis.data.oracle.parse_hepmc import parse_events
+from analysis.utils.hepmc import parse_events
 from adonis.core.event import EventRecord
 from adonis.fsi.cascade import ToyCascadeFSI, CascadeConfig
 from adonis.params import PhysicsParams

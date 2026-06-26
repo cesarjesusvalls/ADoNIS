@@ -12,7 +12,7 @@ import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import sys
 
-from adonis.data.oracle.finalstate import new_accumulator, accumulate_hepmc, save_oracle
+from analysis.utils.finalstate import new_accumulator, accumulate_hepmc, save_oracle
 
 if len(sys.argv) < 3:
     sys.exit("usage: oracle_from_hepmc.py OUT.npz HEPMC [HEPMC ...]")
