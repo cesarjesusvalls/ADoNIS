@@ -170,8 +170,10 @@ class SpectralFunction(NuclearModel):
         key = jax.random.PRNGKey(0) if key is None else key
         p_vec, E_rm = self.sample_nucleon(key, n)
         pmag = np.sort(np.linalg.norm(np.asarray(p_vec), axis=1))
-        # KS distance between the empirical |p| CDF and the table's inverse-CDF target
-        F_tab = np.interp(pmag, np.asarray(self.table.mom), np.asarray(self.sampler.p_cdf))
+        # KS distance between the empirical |p| CDF and the table's inverse-CDF target.  Interpolate on
+        # the SAMPLER's own momentum grid (self.sampler.mom), which is what p_cdf is defined on -- not the
+        # coarse table grid (self.table.mom), whose length differs (would raise in np.interp).
+        F_tab = np.interp(pmag, np.asarray(self.sampler.mom), np.asarray(self.sampler.p_cdf))
         F_emp = np.arange(1, n + 1) / n
         ks = float(np.max(np.abs(F_emp - F_tab)))
         passed = ks <= ks_max

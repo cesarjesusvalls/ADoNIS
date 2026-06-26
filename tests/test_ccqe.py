@@ -7,8 +7,15 @@ dsigma/dM_A closure. The ACHILLES QE oracle bridge lands with test_ccqe_sigma_or
 """
 import numpy as np
 import jax
+import pytest
+from pathlib import Path
 
 from adonis.primary.qe.llewellyn_smith import ccqe_sigma, ccqe_sigma_vs_enu
+
+# the ACHILLES CCQE oracle CSV was removed in the repo cleanup (regenerable via the docker oracle path).
+_ccqe_oracle_skip = pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[1] / "data" / "oracle" / "freenucleon_ccqe_sigma.csv").exists(),
+    reason="freenucleon_ccqe_sigma.csv oracle absent (regenerate via the docker oracle path)")
 
 
 def test_ccqe_plateau_scale():
@@ -36,6 +43,7 @@ def test_ccqe_rises_and_plateaus():
     assert fr[-1] < fr[0], fr                        # flattening at high E
 
 
+@_ccqe_oracle_skip
 def test_ccqe_sigma_oracle():
     """B1 oracle: free-nucleon CCQE sigma(E_nu) vs ACHILLES QE_Spectral_Func, ABSOLUTE
     (both in nb from first principles -- no bridging constant). model/ACHILLES within ~3%."""

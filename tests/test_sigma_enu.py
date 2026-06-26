@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import jax
+import pytest
 
 from adonis.core.params import PhysicsParams, ChainConfig
 from adonis.nuclear.free import FreeNucleon
@@ -21,6 +22,10 @@ from adonis.primary.dcc.sigma_enu import (sigma_vs_enu, sigma_vs_enu_nb, sigma_c
 N = 8_000 if os.environ.get("ADONIS_CI_FAST") else 40_000
 N_ORACLE = 100_000 if os.environ.get("ADONIS_CI_FAST") else 150_000
 _CSV = Path(__file__).resolve().parent.parent / "data" / "oracle"
+# the freenucleon σ(E) oracle CSVs were removed in the repo cleanup (regenerable via the docker oracle
+# path); the oracle-comparison tests skip when they're absent.
+_oracle_skip = pytest.mark.skipif(not (_CSV / "freenucleon_numu_sigma.csv").exists(),
+                                  reason="freenucleon σ(E) oracle CSVs absent (regenerate via the docker oracle path)")
 
 
 def test_sigma_closure_dMA():
@@ -54,6 +59,7 @@ def test_sigma_rises_and_plateaus():
     assert fr[-1] < fr[0], fr
 
 
+@_oracle_skip
 def test_freenucleon_sigma_oracle():
     """A3.4 oracle: σ(E_ν) for all 3 CC channels vs ACHILLES on stationary nucleons
     (1H + 1N), bridged by a single universal constant. Tight residual + c-spread."""
@@ -67,6 +73,7 @@ def test_freenucleon_sigma_oracle():
 M_MU = 105.658
 
 
+@_oracle_skip
 def test_freenucleon_sigma_oracle_muon():
     """A3.3 oracle: the SAME vs ACHILLES with the muon mass (ν_μ → μ⁻). Validates that
     the muon-mass kinematics (|p'| in both the lepton momentum and the leptonic
@@ -86,6 +93,7 @@ def test_physical_absolute_scale():
     assert 0.5 < sigma_ppi_cm2 < 1.0, sigma_ppi_cm2
 
 
+@_oracle_skip
 def test_muon_electron_constant_consistency():
     """The model→ACHILLES bridging constant is the SAME for ν_e (massless) and ν_μ
     (massive) — they share the CC coupling, so the muon mass must be purely kinematic.
@@ -123,6 +131,7 @@ def test_em_proton_channel_ratio():
     assert 0.85 < ratio < 0.98, (ratio, sc)
 
 
+@_oracle_skip
 def test_em_sigma_oracle():
     """A1 oracle: EM σ(E_e) in the [10,90] acceptance vs ACHILLES (electron on 1H+1N),
     ALL FOUR channels, single-constant bridge. The neutron π0/π- split is now correct
@@ -164,6 +173,7 @@ def test_nc_proton_channel_ratio():
     assert 1.55 < ratio < 1.80, (ratio, sc)
 
 
+@_oracle_skip
 def test_nc_sigma_oracle():
     """A2 oracle: NC σ(E_ν) vs ACHILLES (nu on 1H+1N), all 4 channels, single-constant
     bridge. The neutron π0/π- split is correct without the EM phase (NC isign=+1)."""

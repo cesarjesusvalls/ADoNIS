@@ -27,6 +27,8 @@ _DIR = Path(__file__).resolve().parents[1] / "data" / "oracle"
 _CSV_COS = _DIR / "exclusive_evnu_c12_cos.csv"
 _CSV_W = _DIR / "exclusive_evnu_c12_W.csv"
 pytestmark = pytest.mark.skipif(not _CSV_COS.exists(), reason="exclusive e/nu oracle CSVs not present")
+if not (_CSV_COS.exists() and _CSV_W.exists()):          # the loadtxt below runs at import -> skip at COLLECTION
+    pytest.skip("exclusive e/nu oracle CSVs absent (regenerate via the docker oracle path)", allow_module_level=True)
 N = 8_000 if os.environ.get("ADONIS_CI_FAST") else 40_000
 COS_BINS, COS_RNG = 16, (-1.0, 1.0)
 W_BINS, W_RNG = 20, (1080.0, 1700.0)
