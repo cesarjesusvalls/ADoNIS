@@ -4,3 +4,4 @@ numpy
 matplotlib
 PyYAML>=6.0
 tqdm
+pytest>=7
