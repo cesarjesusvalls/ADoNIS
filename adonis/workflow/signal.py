@@ -8,8 +8,8 @@ ONE `select_signal(bank, sd)` reproduces every inline ADoNIS selection in the sc
 So a channel is just: apply select_signal with the channel's sd to each ADoNIS input bank and merge.
 
 The ADoNIS side targets the rich engine schema (pid_pi, cr_pid, pi_post, cr_p4, prot, struck, mu, nu, w);
-it must NOT use cc1pi_signal.ado_select (older schema).  The ACHILLES reference uses its own rich
-schema: select_reference reuses cc1pi_signal.ach_select for CC1pi and mirrors the CC0pi rich selection.
+it targets the rich engine schema directly (not an older flat schema).  The ACHILLES reference uses its
+own rich schema: select_reference -> _ach_cc1pi for CC1pi and mirrors the CC0pi rich selection.
 """
 from __future__ import annotations
 import numpy as np
@@ -115,11 +115,42 @@ def select_signal(bank, sd, carbon_only=True):
 
 # ----------------------------------------------------------------------------- ACHILLES reference
 def _sd_to_legacy(sd):
-    """Map a SignalDef -> the cc1pi_signal.DEFAULT-style dict that ach_select consumes (CC1pi)."""
+    """Map a SignalDef -> the DEFAULT-style dict that _ach_cc1pi consumes (CC1pi)."""
     return dict(mu_win=sd.mu_win, pi_win=sd.pi_win, p_win=sd.p_win, cth=sd.cth, fsi=True,
                 proton_source="native+knockout", count_recoil_neutron=sd.count_recoil_neutron,
                 require_proton=sd.require_proton, proton_count=sd.proton_count, pion_id=sd.pion_id,
                 target=sd.target, W_conv=sd.W_conv)
+
+
+def _ach_cc1pi(b, sd):
+    """CC1pi+ selection on the ACHILLES rich bank (STV obs via O); ported from cc1pi_signal.ach_select
+    so the package no longer imports a script.  `sd` is the _sd_to_legacy dict; returns obs (w unscaled)."""
+    n = len(b["w"]); M = b["prot_p4"].shape[1]
+    if sd.get("pion_id") == "anypi":                                  # any surviving pion (absorption-only)
+        pi = b["pi_p4"][:, 0]; pion_ok = (np.isin(b["pi_pid"], list(_PIONS)).sum(1) >= 1)
+    else:                                                            # exactly one pi+ and no other meson
+        pip_is = (b["pi_pid"] == 211); n_pip = pip_is.sum(1)
+        pi = b["pi_p4"][np.arange(n), np.argmax(pip_is, axis=1)]
+        pion_ok = (n_pip == 1) & (b["n_other_meson"] == 0)
+    pacc = np.stack([_acc(b["prot_p4"][:, i], sd["p_win"], sd["cth"]) for i in range(M)], axis=1)
+    nprot = pacc.sum(1); pc = sd.get("proton_count")
+    if pc in ("eq0", "eq1", "eq2"):
+        p_req = (nprot == int(pc[-1]))
+    else:
+        p_req = (nprot >= 1) if sd.get("require_proton", True) else np.ones(n, bool)
+    lead = b["prot_p4"][np.arange(n), np.argmax(O.mom(b["prot_p4"].reshape(-1, 4)).reshape(n, M) * pacc, axis=1)]
+    pstr_p = O.mom(b["struck"])
+    tgt = {"carbon": pstr_p > 1.0, "hydrogen": pstr_p <= 1.0, "CH": np.ones(n, bool)}[sd["target"]]
+    mask = (pion_ok & p_req & (b["w"] > 0) & tgt
+            & _acc(b["mu"], sd["mu_win"], sd["cth"]) & _acc(pi, sd["pi_win"], sd["cth"]))
+    is_h = ~(pstr_p > 1.0); s = mask
+    if pc == "eq0":                                                  # CC1pi 0-proton: pion+muon obs
+        mu = b["mu"][s]; W, Q2 = O.vertex_W_Q2(b["nu"][s], mu, b["struck"][s]); mo = O.muon_obs(mu, b["nu"][s])
+        return dict(W=W, Q2=Q2, pi_p=O.mom(pi[s]), p_mu=mo["p_mu"], cos_mu=mo["cos_mu"], w=b["w"][s])
+    dptt, pn, dat, dpt = O.tki(b["mu"][s], pi[s], lead[s], is_h[s], 0)
+    W, Q2 = O.vertex_W_Q2(b["nu"][s], b["mu"][s], b["struck"][s])
+    return dict(dptt=dptt, pn=pn, dalphat=dat, dpt=dpt, pi_p=O.mom(pi[s]), lp_p=O.mom(lead[s]),
+                W=W, Q2=Q2, w=b["w"][s], chan=np.asarray(b["struck_pid"])[s])
 
 
 def _ach_cc0pi(b, sd, weight_to_nb, carbon_only=True):
@@ -165,6 +196,5 @@ def select_reference(bank, sd, carbon_only=True):
                              "re-extract with scripts/extract_cc1pi_rich.py")
         n = len(b["w"]); m = np.isin(b["proc"], list(sd.ref_proc))
         b = {k: (v[m] if hasattr(v, "shape") and v.shape[:1] == (n,) else v) for k, v in b.items()}
-    import scripts.cc1pi_signal as S
-    H = S.ach_select(b, _sd_to_legacy(sd)); H["w"] = H["w"] * wnb
+    H = _ach_cc1pi(b, _sd_to_legacy(sd)); H["w"] = H["w"] * wnb
     return H
