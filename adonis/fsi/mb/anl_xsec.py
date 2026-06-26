@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import jax.numpy as jnp
 
-from adonis.paths import achilles_data_root
+from adonis.io import achilles_data_root
 from adonis.primary.dcc.form_factors import M_PI_GEV  # GeV; we work in MeV here
 
 from adonis.constants import mpip as M_PI, mp as M_N  # charged pion / proton [MeV]

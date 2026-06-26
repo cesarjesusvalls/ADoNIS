@@ -9,7 +9,7 @@ modest; the full high-statistics comparison lives in scripts/validate_final_stat
 import os
 import jax
 
-from adonis import GenConfig, DCCSinglePion
+from adonis import ChainConfig, DCCSinglePion
 from adonis.nuclear.spectral import SpectralFunction
 from adonis.flux.mono import Monochromatic
 from adonis.fsi.none import NoFSI
@@ -19,7 +19,7 @@ N_ORACLE = 120_000 if os.environ.get("ADONIS_CI_FAST") else 300_000
 
 
 def _channel():
-    return DCCSinglePion(GenConfig(spline=False))
+    return DCCSinglePion(ChainConfig(spline=False))
 
 
 # -- closure (standalone differentiability) ----------------------------------- #

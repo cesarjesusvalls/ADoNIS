@@ -24,7 +24,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.paths import achilles_data_root
+from adonis.io import achilles_data_root
 from adonis.xsec.spectral import _neville_batch          # the validated ACHILLES Polint (Neville)
 
 SF_DIR = achilles_data_root() / "Spectral_Functions"

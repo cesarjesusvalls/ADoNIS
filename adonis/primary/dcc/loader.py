@@ -34,7 +34,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from adonis.paths import achilles_data_root
+from adonis.io import achilles_data_root
 
 DEFAULT_PATH = str(achilles_data_root() / "dcc_EW.dat")
 PW_LABELS = ["s11", "s31", "p11", "p13", "p31", "p33", "d13", "d15",

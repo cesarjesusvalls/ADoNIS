@@ -20,7 +20,7 @@ import jax
 import jax.numpy as jnp
 
 from adonis.primary.dcc.loader import load_cached, PW_LABELS
-from adonis.params import PhysicsParams, DCCKnobs    # DCCKnobs is an alias of PhysicsParams
+from adonis.core.params import PhysicsParams, DCCKnobs    # DCCKnobs is an alias of PhysicsParams
 
 
 class DCCAmplitudes:

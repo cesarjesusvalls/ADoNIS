@@ -13,7 +13,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 from adonis.fsi.none import NoFSI
 from adonis.core.event import EventRecord
 

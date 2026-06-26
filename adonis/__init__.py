@@ -6,13 +6,13 @@ the kind-1 sample/reweight contract, with tunable physics parameters centralised
 `PhysicsParams`.
 
 Top-level convenience API:
-    from adonis import PhysicsParams, GenConfig, Generator, DCCSinglePion, NoFSI
+    from adonis import PhysicsParams, ChainConfig, Generator, DCCSinglePion, NoFSI
     from adonis import SpectralFunction, Monochromatic
     from adonis import observables, fit
 """
 __version__ = "0.1.0"
 
-from adonis.params import PhysicsParams, GenConfig, DCCKnobs          # noqa: F401
+from adonis.core.params import PhysicsParams, ChainConfig, DCCKnobs          # noqa: F401
 from adonis.core.chain import Generator                              # noqa: F401
 from adonis.primary.dcc.channel import DCCSinglePion                 # noqa: F401
 from adonis.fsi.none import NoFSI                                    # noqa: F401

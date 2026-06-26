@@ -15,7 +15,7 @@ import jax.numpy as jnp
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 from adonis.core.event import EventRecord
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 from adonis.fsi.cascade import ToyCascadeFSI, CascadeConfig
 from adonis.fsi.mb.oset import absorption_rate_shape
 ROOT = Path(__file__).resolve().parents[1]

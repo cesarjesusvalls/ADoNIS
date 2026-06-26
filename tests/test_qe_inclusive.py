@@ -21,7 +21,7 @@ def test_qe_peak_and_fermi_width():
 
 
 import pytest
-from adonis.paths import achilles_data_root
+from adonis.io import achilles_data_root
 _PKE40 = achilles_data_root() / "Spectral_Functions" / "pke40p_tot.data"
 
 

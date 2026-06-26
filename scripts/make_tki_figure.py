@@ -15,14 +15,14 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
-from adonis import GenConfig, DCCSinglePion, PhysicsParams, observables as obs
+from adonis import ChainConfig, DCCSinglePion, PhysicsParams, observables as obs
 from adonis.primary.dcc.channel import assemble_event
 from adonis.fsi.cascade import ToyCascadeFSI, CascadeConfig
 from adonis.signal import CC1Pi, CC0Pi
 ROOT = Path(__file__).resolve().parents[1]
 
 N = int(os.environ.get("ADONIS_TKI_N", 60_000))
-ch = DCCSinglePion(GenConfig(spline=False))
+ch = DCCSinglePion(ChainConfig(spline=False))
 fsi = ToyCascadeFSI(CascadeConfig(seed=4))
 params = PhysicsParams(fsi_sigma_scatter=0.35, fsi_sigma_abs=0.22)
 

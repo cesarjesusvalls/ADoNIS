@@ -8,7 +8,7 @@ self-validates the parser + the partial-wave sum against the physical piN cross 
 import numpy as np
 import pytest
 
-from adonis.paths import achilles_data_root
+from adonis.io import achilles_data_root
 from adonis.fsi.mb.anl_xsec import pip_p_total
 
 _ANL = achilles_data_root() / "MesonBaryonAmplitudes" / "ANL" / "ANL_0-0.dat"
@@ -79,7 +79,7 @@ def test_eta_klambda_production():
     channel peaks at the N(1535) (~1535 MeV) which sits at the eta-N threshold; K Lambda turns
     on above its higher threshold."""
     import numpy as np
-    from adonis.paths import achilles_data_root
+    from adonis.io import achilles_data_root
     import pytest
     if not (achilles_data_root() / "MesonBaryonAmplitudes" / "ANL" / "ANL_0-1.dat").exists():
         pytest.skip("ANL_0-1 (etaN) amplitudes not present")

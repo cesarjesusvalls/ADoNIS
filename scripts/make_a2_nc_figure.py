@@ -21,7 +21,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 from adonis.primary.dcc.sigma_enu import nc_sigma_channels_at
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -18,7 +18,7 @@ import pytest
 
 from adonis.core.event import EventRecord
 from adonis.fsi.cascade import ToyCascadeFSI, CascadeConfig
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 
 _CSV = Path(__file__).resolve().parents[1] / "data" / "oracle" / "cascade_effect_nue_c12.csv"
 pytestmark = pytest.mark.skipif(not _CSV.exists(), reason="cascade-effect oracle CSV not present")

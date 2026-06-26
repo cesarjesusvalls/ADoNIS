@@ -18,7 +18,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis import GenConfig, DCCSinglePion, PhysicsParams
+from adonis import ChainConfig, DCCSinglePion, PhysicsParams
 from adonis.core.autodiff import Adam
 from adonis.fsi.cascade import ToyCascadeFSI, CascadeConfig
 from adonis.fsi.toy.kernel import to_positive, from_positive
@@ -64,7 +64,7 @@ FAST = bool(_os.environ.get("ADONIS_CI_FAST"))
 N = 8_000 if FAST else 24_000
 ITERS = 100 if FAST else 200
 
-cfg = GenConfig(spline=False)
+cfg = ChainConfig(spline=False)
 ch = DCCSinglePion(cfg)
 fsi = ToyCascadeFSI(CascadeConfig(seed=3))
 

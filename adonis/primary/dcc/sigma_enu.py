@@ -33,7 +33,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.params import GenConfig, DCCKnobs
+from adonis.core.params import ChainConfig, DCCKnobs
 from adonis.primary.dcc.channel import DCCSinglePion
 from adonis.nuclear.free import FreeNucleon
 
@@ -78,7 +78,7 @@ def _channel_sigma_terms(ch, knobs, S, V):
         S["prefac"][:, None] * (4.0 * jnp.pi) * S["mult"][None, :] * LWc) * V
 
 
-def sigma_channels_at(knobs, key, e_nu, n, cfg=GenConfig(spline=False),
+def sigma_channels_at(knobs, key, e_nu, n, cfg=ChainConfig(spline=False),
                       nuclear=None, m_lep=0.0, chunk=None):
     """Per-channel σ (n_ch,) and total σ at a single beam energy `e_nu` [MeV].
 
@@ -106,7 +106,7 @@ def sigma_channels_at(knobs, key, e_nu, n, cfg=GenConfig(spline=False),
     return jnp.sum(sigma_c), sigma_c
 
 
-def sigma_vs_enu(knobs, key, energies, n=60_000, cfg=GenConfig(spline=False),
+def sigma_vs_enu(knobs, key, energies, n=60_000, cfg=ChainConfig(spline=False),
                  nuclear=None, m_lep=0.0):
     """σ(E_ν) scan. `energies` [MeV] iterable. Returns
     (sigma_total[E], sigma_per_channel[E, n_ch]) as numpy arrays (relative units)."""
@@ -157,7 +157,7 @@ def freenucleon_sigma_oracle(csv=None, key=None, n=120_000, knobs=None,
          "c_spread_std": float(cells.std()), "c": c, "n_cells": int(ach.size)})
 
 
-def sigma_vs_enu_nb(knobs, key, energies, n=60_000, cfg=GenConfig(spline=False),
+def sigma_vs_enu_nb(knobs, key, energies, n=60_000, cfg=ChainConfig(spline=False),
                     nuclear=None, m_lep=0.0):
     """σ(E_ν) in **physical nb** (= relative σ × SIGMA_UNIT_NB). Returns
     (sigma_total[E], sigma_per_channel[E, n_ch]). Multiply by `CM2_1E38_PER_NB` for
@@ -344,7 +344,7 @@ def em_sigma_oracle(csv=None, key=None, n=120_000, knobs=None, rel_max=0.06,
 
 
 def dsigma_dMA_closure(key=None, e_nu=1500.0, n=40_000, eps=2e-3, tol=1e-3,
-                       cfg=GenConfig(spline=False), nuclear=None, m_lep=0.0):
+                       cfg=ChainConfig(spline=False), nuclear=None, m_lep=0.0):
     """Closure: d(total σ)/dM_A, autodiff vs central finite difference at fixed key.
 
     The proposal is sampled ONCE and reweighted at M_A ± eps, so this is the exact

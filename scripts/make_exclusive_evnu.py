@@ -26,7 +26,7 @@ from adonis.core.event import EventRecord
 from adonis import observables as obs
 from adonis.primary.dcc.channel import sample_final_state, weight_from_sample, assemble_event
 from adonis.primary.dcc.structure import HadronStructure, CC_CHANNELS, EM_CHANNELS
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 from adonis.core.validation import chi2_ndf
 ROOT = Path(__file__).resolve().parents[1]
 PI_PIDS = {111, 211, -211}

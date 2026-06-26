@@ -7,7 +7,7 @@ cross sections.
 import numpy as np
 import pytest
 
-from adonis.paths import achilles_data_root
+from adonis.io import achilles_data_root
 from adonis.fsi.mb import cascade_mb as cm
 
 _ANL = achilles_data_root() / "MesonBaryonAmplitudes" / "ANL" / "ANL_0-0.dat"

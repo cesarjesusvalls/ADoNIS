@@ -16,7 +16,7 @@ import jax.numpy as jnp
 
 from adonis.nuclear.spectral import load_spectral
 from adonis.primary.dcc.structure import HadronStructure, EM_CHANNELS
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 
 from adonis.constants import mN as M_N, alpha as ALPHA  # Constant::mN, precise
 _HS = {}

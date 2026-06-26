@@ -202,7 +202,7 @@ def fold_final_state(knobs: DCCKnobs, key, n=200000, hs: HadronStructure | None 
 #  DCCSinglePion -- the Channel object (sample / weight / event_record contract)
 # --------------------------------------------------------------------------- #
 from adonis.core.process import Channel              # noqa: E402
-from adonis.params import GenConfig                  # noqa: E402
+from adonis.core.params import ChainConfig                  # noqa: E402
 from adonis.flux.mono import Monochromatic           # noqa: E402
 from adonis.nuclear.spectral import SpectralFunction  # noqa: E402
 
@@ -216,7 +216,7 @@ class DCCSinglePion(Channel):
                      "cut", "prefac", "Lmn", "Kfac", "mult",
                      "k_lab", "kp_lab", "p_pi", "p_N", "p_struck")
 
-    def __init__(self, cfg: GenConfig = GenConfig(), hs: HadronStructure | None = None,
+    def __init__(self, cfg: ChainConfig = ChainConfig(), hs: HadronStructure | None = None,
                  flux=None, nuclear=None):
         self.cfg = cfg
         self.hs = hs or HadronStructure(n_theta=cfg.n_theta, n_phi=cfg.n_phi, spline=cfg.spline)

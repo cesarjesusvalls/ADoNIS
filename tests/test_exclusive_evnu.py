@@ -19,7 +19,7 @@ import pytest
 
 from adonis.primary.dcc.channel import sample_final_state, weight_from_sample, assemble_event
 from adonis.primary.dcc.structure import HadronStructure, CC_CHANNELS, EM_CHANNELS
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 from adonis import observables as obs
 from adonis.core.validation import chi2_ndf
 

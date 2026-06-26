@@ -33,7 +33,7 @@ import jax.numpy as jnp
 from adonis.fsi.base import FSIModel
 from adonis.fsi.toy.component_c_r1 import _distance_to_boundary, _deflect, hg_sample_cos
 from adonis.core.validation import check_gradient, GradCheck, TestResult
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 
 M_PI = 139.57  # MeV; put the degraded pion back on-shell after energy loss
 

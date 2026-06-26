@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import jax
 
-from adonis.params import PhysicsParams, GenConfig
+from adonis.core.params import PhysicsParams, ChainConfig
 from adonis.nuclear.free import FreeNucleon
 from adonis.primary.dcc.sigma_enu import (sigma_vs_enu, sigma_vs_enu_nb, sigma_channels_at,
                                           dsigma_dMA_closure, freenucleon_sigma_oracle,
@@ -141,7 +141,7 @@ def test_em_sigma_oracle():
 def test_nc_closure_dMA():
     """NC differentiability: d(total NC σ)/dM_A, autodiff == FD (NC keeps the axial)."""
     import jax.numpy as jnp
-    from adonis.params import DCCKnobs
+    from adonis.core.params import DCCKnobs
     from adonis.primary.dcc.sigma_enu import nc_sigma_channels_at
     from adonis.core.validation import grad_closure
     key = jax.random.PRNGKey(0)

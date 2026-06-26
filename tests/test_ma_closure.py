@@ -10,11 +10,11 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis import GenConfig, DCCSinglePion, PhysicsParams, observables as obs
+from adonis import ChainConfig, DCCSinglePion, PhysicsParams, observables as obs
 from adonis.core.event import EventRecord
 from adonis.analysis.fit import fit_scalar
 
-cfg = GenConfig(spline=False)
+cfg = ChainConfig(spline=False)
 ch = DCCSinglePion(cfg)
 N = 20_000 if _os.environ.get("ADONIS_CI_FAST") else 40_000
 MA_TRUE, MA_INIT = 1.20, 0.90

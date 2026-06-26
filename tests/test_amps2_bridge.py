@@ -18,7 +18,7 @@ from adonis.xsec.dcc_current import exclusive_amps2_batch, _NORM
 from adonis.xsec import constants as C
 from adonis.primary.dcc.channel import sample_final_state, weight_from_sample
 from adonis.primary.dcc.structure import HadronStructure
-from adonis.params import DCCKnobs
+from adonis.core.params import DCCKnobs
 from adonis.nuclear.free import FreeNucleon
 
 

@@ -22,7 +22,7 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 from analysis.utils.hepmc import parse_events
 from adonis.core.event import EventRecord
 from adonis.fsi.cascade import ToyCascadeFSI, CascadeConfig
-from adonis.params import PhysicsParams
+from adonis.core.params import PhysicsParams
 ROOT = Path(__file__).resolve().parents[1]
 PI_PIDS = {111, 211, -211}
 

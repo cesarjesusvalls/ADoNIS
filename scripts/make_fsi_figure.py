@@ -16,12 +16,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from adonis import GenConfig, DCCSinglePion, PhysicsParams
+from adonis import ChainConfig, DCCSinglePion, PhysicsParams
 from adonis.primary.dcc.channel import assemble_event
 from adonis.fsi.cascade import ToyCascadeFSI, CascadeConfig
 
 N = int(os.environ.get("ADONIS_FSI_N", 60_000))
-ch = DCCSinglePion(GenConfig(spline=False))
+ch = DCCSinglePion(ChainConfig(spline=False))
 fsi = ToyCascadeFSI(CascadeConfig(seed=5))
 params = PhysicsParams(fsi_sigma_scatter=0.35, fsi_sigma_abs=0.22)
 

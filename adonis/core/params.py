@@ -5,7 +5,7 @@ gradient information.  It is a `typing.NamedTuple`, so JAX automatically registe
 pytree (its fields are the leaves) -- `jax.grad`/`jax.jvp` flow through it cleanly, and
 `fit` can differentiate w.r.t. any subset.  Keep ONLY differentiable knobs here.
 
-`GenConfig` holds the STATIC (non-differentiated) configuration of a generation run -- the
+`ChainConfig` holds the STATIC (non-differentiated) configuration of a generation run -- the
 nuclear-input file, beam energy, sampling ranges, interpolation fidelity, masses.  It is a
 frozen dataclass (hashable, usable as a default / cache key).
 
@@ -36,7 +36,7 @@ DCCKnobs = PhysicsParams
 
 
 @dataclass(frozen=True)
-class GenConfig:
+class ChainConfig:
     """Static configuration of a generation run (not differentiated)."""
     sf: str = "pke12p_tot.data"       # spectral-function table (nuclear model input)
     e_nu: float = 1500.0              # monochromatic neutrino energy [MeV]
