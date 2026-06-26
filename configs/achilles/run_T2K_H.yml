@@ -1,0 +1,79 @@
+# ACHILLES T2K free-HYDROGEN contribution: nu_mu CC RES single-pion on a FREE PROTON (Name: 1H,
+# p -> p pi+), T2K flux, Cascade OFF (free nucleon).  Combine with run_T2K_C_fsi_gauss to form the
+# CH target reference for the T2K CC1pi+Np STV figure (paper fig8); mirrors ADoNIS cc1pi-stv res_H.
+Main:
+  NEvents: 100000
+  HardCuts: false
+  EventCuts: false
+  DoRotate: false
+  RunDecays: False
+  Output:
+      Format: NuHepMC
+      Name: /out/T2K_H.hepmc
+      Zipped: False
+
+SherpaOptions: !include "data/default/SherpaOptions.yml"
+
+Processes:
+  - Leptons: [14, [13]]
+
+Beams:
+  - Beam:
+      PID: 14
+      Beam Params:
+        Type: Spectrum
+        Histogram: flux/T2K_nu.dat
+
+Cascade:
+  Run: False
+  Interactions:
+    - Name: NucleonNucleon
+      Options:
+        Mode: GiBUU
+        ResonanceMode: Decay
+        ExpSup: 0.0
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+
+NuclearModels:
+ - NuclearModel:
+    Model: FortranModel
+    Name: RES_Spectral_Func
+    ConfigFile: data/info_C12_pke.data
+    FormFactorFile: "FormFactors.yml"
+    Ward: None
+
+Nuclei:
+  - Nucleus:
+      Name: 1H
+      Binding: 0.0
+      Fermi Momentum: 225
+      Density:
+        ProtonFile: data/densities/c12.prova.txt
+        NeutronFile: data/densities/c12.prova.txt
+        FilePotential: data/realOP_12C_EDAI.dat
+        Function: configuration
+        Configs: data/configurations/QMC_configs.out.gz
+      FermiGas:
+        Type: Local
+        Correlated: False
+        SRCfraction: 0.2
+        LambdaSRC: 2.75
+        Params: []
+      Potential:
+        Name: Schroedinger
+        r0: 0.16
+        Mode: 3
+
+Options: !include "data/default/OptionDefaults.yml"
+
+Cache:
+  Save: False
+  Load: False
+
+Backend:
+  Name: Default
+  Options: []

@@ -1,0 +1,103 @@
+# NOTE: Ar cascade density block adapted from the 12C cascade card -- VERIFY the rho_Ar density
+#       file format matches the achilles:cascade single-File expectation before production.
+# ACHILLES cascade pi+ on 40Ar reaction/absorption cross section (paper Fig c12_ar40_validation, right).
+# achilles:cascade image (CrossSection mode). KickMomentum is the pi+ |p| -- the sigma(p_pi) curve is
+# a SCAN over KickMomentum (runner overrides). radius=10 fm beam disk -> absolute mb normalization.
+#   docker run --rm -v "$PWD/output/achilles:/out" --entrypoint /achilles/bin/cascade \
+#     achilles:fullcascade /out/run_cascade_pip_C.yml
+Initialize:
+  seed: 123456789
+
+Nucleus:
+  Name: 40Ar
+  Binding: 8.6
+  Fermi Momentum: 250
+  Density:
+    File: data/densities/rho_Ar_p.txt
+    FilePotential: data/realOP_12C_EDAI.dat
+    Function: configuration
+    Configs: data/configurations/AR40_configs_RMF_achilles.out.gz
+  FermiGas:
+    Type: Local
+    Params: []
+  Potential: 
+    Name: Schroedinger
+    r0: 0.16
+    Mode: 3
+
+Cascade:
+  Mode: CrossSection
+  Interactions: 
+    - Name: GeantInteraction
+      Options:
+        GeantData: data/GeantData.hdf5
+    - Name: MesonBaryonInteraction
+      Options:
+      # We currently don't have interactions with strange baryons in the initial state
+      # Therefore, we set their cross sections to zero by hand
+    - Name: ConstantInteraction
+      Options:
+        InitialStates:
+          - Incoming: [3112, 2112]
+            Outgoing: 
+              - Outgoing: [3112, 2112]
+                CrossSection: 0
+          - Incoming: [3112, 2212]
+            Outgoing: 
+              - Outgoing: [3212, 2112]
+                CrossSection: 0
+          - Incoming: [321, 2212]
+            Outgoing: 
+              - Outgoing: [321, 2212]
+                CrossSection: 0
+          - Incoming: [321, 2112]
+            Outgoing: 
+              - Outgoing: [321, 2112]
+                CrossSection: 0
+          - Incoming: [3122, 2212]
+            Outgoing: 
+              - Outgoing: [3122, 2212]
+                CrossSection: 0
+          - Incoming: [3122, 2112]
+            Outgoing: 
+              - Outgoing: [3122, 2112]
+                CrossSection: 0
+          - Incoming: [3212, 2212]
+            Outgoing: 
+              - Outgoing: [3212, 2212]
+                CrossSection: 0
+          - Incoming: [3212, 2112]
+            Outgoing: 
+              - Outgoing: [3212, 2112]
+                CrossSection: 0
+          - Incoming: [3222, 2112]
+            Outgoing: 
+              - Outgoing: [3222, 2112]
+                CrossSection: 0
+          - Incoming: [3222, 2212]
+            Outgoing: 
+              - Outgoing: [3222, 2212]
+                CrossSection: 0
+          - Incoming: [311, 2112]
+            Outgoing: 
+              - Outgoing: [311, 2112]
+                CrossSection: 0
+          - Incoming: [311, 2212]
+            Outgoing: 
+              - Outgoing: [311, 2212]
+                CrossSection: 0
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+  Params:
+    radius: 10
+
+KickMomentum: [1500, 1500]
+NEvents: 4000
+PID: 211
+
+Output:
+  Format: NuHepMC
+  Name: /out/cascade_pip_Ar.hepmc
