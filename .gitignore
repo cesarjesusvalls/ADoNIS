@@ -15,9 +15,11 @@ __pycache__/
 # DCC parse cache
 *.npz
 
-# ACHILLES inputs (amplitudes / spectral functions / dcc) -- large, not tracked
+# ACHILLES event output
 *.hepmc
-data/achilles/
+# all inputs/data live locally, not in the repo (experiment releases via nuisance, ACHILLES
+# inputs fetched, densities/oracle regenerable) -- see data/README or docs
+data/
 # run products (regenerable): output/achilles = ACHILLES, output/adonis = ADoNIS banks + caches
 output/
 _paper_release/
