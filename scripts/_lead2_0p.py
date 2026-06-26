@@ -7,7 +7,7 @@ import os, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
-RB = "data/oracle/t2k_cc1pi_engine_rich_lead2.npz"
+RB = "data/oracle/t2k_cc1pi_lead2.npz"
 REF = "data/oracle/t2k_cc1pi_rich_ach_FSI_proc.npz"
 
 def absorbed_sample(bank, ref=False):

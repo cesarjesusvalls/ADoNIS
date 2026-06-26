@@ -118,7 +118,7 @@ Loop `while jnp.any(alive)` (global `max_steps` cap):
   nn_inelastic, post-JIT run-only): **bfs 94.53 ms/ev -> pool 33.76 ms/ev = 2.8x faster.**  Confirms
   the dead-slot elimination beats the dual-body 2x-eval cost.
 - **S5 vs ACHILLES (QE CC0pi Ar) DONE.**  Generated a 5-seed pool QE Ar bank
-  (`configs/gen_ar_pool_qe.yaml` -> `t2k_cc0pi_engine_rich_arpool.npz`, M=16, ms683) and ran the CC0pi
+  (`configs/gen_ar_pool_qe.yaml` -> `t2k_cc0pi_arpool.npz`, M=16, ms683) and ran the CC0pi
   analysis vs the ACHILLES Ar reference (`configs/ana_cc0pi_arpool_nopcut.yaml`, pool QE + BFS
   RES-absorbed; only the QE engine differs from `ana_cc0pi_ar_nopcut`).
     sigma ACH/ADO: **BFS 1.020 -> POOL 1.014** (toward 1.000).  chi2/ndf (POOL vs BFS):

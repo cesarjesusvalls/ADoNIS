@@ -67,7 +67,7 @@ def report(name, A, H, VARS):
 def main():
     # CC1pi
     import scripts.cc1pi_engine_plot as P, scripts.cc1pi_signal as S
-    P.BANK = "data/oracle/t2k_cc1pi_engine_rich.npz"        # module read sys.argv at import; pin the bank
+    P.BANK = "data/oracle/t2k_cc1pi.npz"        # module read sys.argv at import; pin the bank
     A_res = P.engine_signal(P.BANK); A_qe = P.qe_created_signal()
     A1 = {k: np.concatenate([A_res[k], A_qe[k]]) for k in A_res}
     ach = dict(np.load("data/oracle/t2k_cc1pi_rich_ach_FSI.npz"))
@@ -75,8 +75,8 @@ def main():
     report("CC1pi (RES + QE-created-pi)", A1, H1, P.VARS)
     # CC0pi
     import scripts.cc0pi_engine_combined as C
-    qe = C._select_engine("data/oracle/t2k_cc0pi_engine_rich.npz")
-    res = C._select_engine("data/oracle/t2k_cc1pi_engine_rich.npz")
+    qe = C._select_engine("data/oracle/t2k_cc0pi.npz")
+    res = C._select_engine("data/oracle/t2k_cc1pi.npz")
     A0 = {k: np.concatenate([qe[k], res[k]]) for k in qe}; H0 = C._select_ach()
     report("CC0pi (QE + RES-absorbed)", A0, H0, C.VARS)
     print(f"\nLegend: chi2_ana = analytic-Gaussian (quoted); chi2_boot = with bootstrap errors; "

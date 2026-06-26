@@ -3,7 +3,7 @@
   (2) FULL leading-proton |p| spectrum (bulk + tail) -> global softness vs tail-only?
   (3) mean leading |p| of the 0p(>250) events."""
 import sys, numpy as np
-RB = sys.argv[1] if len(sys.argv) > 1 else "data/oracle/t2k_cc1pi_engine_rich_lead2hi.npz"
+RB = sys.argv[1] if len(sys.argv) > 1 else "data/oracle/t2k_cc1pi_lead2hi.npz"
 REF = "data/oracle/t2k_cc1pi_rich_ach_FSI_proc.npz"
 
 def absorbed(bank, ref=False):

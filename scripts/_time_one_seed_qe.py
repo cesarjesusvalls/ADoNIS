@@ -49,7 +49,7 @@ for c in tqdm(range(NCHUNK), desc="QE cascade chunks (1st ~compile)", file=sys.s
     parts.append(one_chunk(slice(bounds[c], bounds[c + 1]), jax.random.PRNGKey(11 + c)))
 bank = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
 st(f"cascade done ({time.time()-tc:.1f}s for {m} events)")
-out = "data/oracle/t2k_cc0pi_engine_rich_1seed_gauss.npz"; np.savez(out, **bank); st(f"bank saved -> {out}")
+out = "data/oracle/t2k_cc0pi_1seed_gauss.npz"; np.savez(out, **bank); st(f"bank saved -> {out}")
 
 st("building CC0pi QE-only ADoNIS-vs-ACHILLES ratio plot...")
 from adonis.workflow.config import load_analysis_config

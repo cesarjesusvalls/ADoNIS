@@ -18,7 +18,7 @@ from pathlib import Path
 # tables from the public oracle image) or point ACHILLES_DATA at a local ACHILLES
 # `data/` directory.  See docs/CONTAINER.md.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ACHILLES_DATA = str(_REPO_ROOT / "achilles_data")
+DEFAULT_ACHILLES_DATA = str(_REPO_ROOT / "data" / "achilles")
 
 
 def achilles_data_root() -> Path:

@@ -22,12 +22,12 @@ run_to(){  # $1=timeout_sec  rest=command -- portable timeout via watchdog
 say "START overnight regen (fixed sampler).  soft gen-deadline 4.5h, hard cap 5h"
 
 # 1. CLEAN target banks (regenerate fresh with the fixed sampler; incl old biased high-seed tags)
-for b in t2k_cc1pi_engine_rich_cv5 t2k_cc0pi_engine_rich_cv5 \
-         t2k_cc1pi_engine_rich_av5 t2k_cc0pi_engine_rich_av5 \
-         t2k_cc1pi_engine_rich_cv12 t2k_cc0pi_engine_rich_cv30 \
-         t2k_cc1pi_engine_rich_av12 t2k_cc0pi_engine_rich_av30 \
-         t2k_cc1pi_engine_rich_nofsi t2k_cc0pi_engine_rich_nofsi \
-         t2k_cc1pi_engine_rich_ar_nofsi t2k_cc0pi_engine_rich_ar_nofsi; do
+for b in t2k_cc1pi_cv5 t2k_cc0pi_cv5 \
+         t2k_cc1pi_av5 t2k_cc0pi_av5 \
+         t2k_cc1pi_cv12 t2k_cc0pi_cv30 \
+         t2k_cc1pi_av12 t2k_cc0pi_av30 \
+         t2k_cc1pi_nofsi t2k_cc0pi_nofsi \
+         t2k_cc1pi_ar_nofsi t2k_cc0pi_ar_nofsi; do
   rm -f "data/oracle/$b.npz"
 done
 say "cleaned target banks (incl old biased cv12/cv30/av12/av30)"

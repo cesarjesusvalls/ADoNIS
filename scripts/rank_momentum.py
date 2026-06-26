@@ -18,7 +18,7 @@ CH = os.environ.get("CHANNEL", "qe").lower()
 ADO_DIR = os.environ.get("ADO_DIR", "data/oracle"); ACH = os.environ["ACH_BANK"]
 PROC = [200] if CH == "qe" else [401, 402]
 TAG = os.environ.get("TAG", "cv5")                                     # cv5=C pre-fix, cfix=C post-fix, av5=Ar
-ADO_GLOB = f"{ADO_DIR}/t2k_{'cc0pi' if CH=='qe' else 'cc1pi'}_engine_rich_{TAG}_batch*.npz"
+ADO_GLOB = f"{ADO_DIR}/t2k_{'cc0pi' if CH=='qe' else 'cc1pi'}_{TAG}_batch*.npz"
 COS70 = float(np.cos(np.deg2rad(70.0))); NRANK = 4; EDGES = np.linspace(0, 1200, 25)
 
 

@@ -20,10 +20,12 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/multiplicity_xsec_C.png"
 MODE = os.environ.get("MODE", "fsi").lower()                           # fsi | nofsi
 MU_WIN = [250.0, 7000.0]; COS70 = float(np.cos(np.deg2rad(70.0)))      # matrix muon acceptance
 _suf = "_nofsi" if MODE == "nofsi" else ""
-ADO_DIR = os.environ.get("ADO_DIR", "data/oracle")                     # ADoNIS bank dir override
-TAG = os.environ.get("TAG", "cv5")                                     # cv5=C, av5=Ar
-ADO_QE = sorted(glob.glob(f"{ADO_DIR}/t2k_cc0pi_engine_rich_{TAG}{_suf}_batch*.npz"))   # merge ALL QE batches
-ADO_RES = sorted(glob.glob(f"{ADO_DIR}/t2k_cc1pi_engine_rich_{TAG}{_suf}_batch*.npz"))
+ADO_DIR = os.environ.get("ADO_DIR", "output/adonis")                   # ADoNIS bank dir override
+MAT = os.environ.get("MAT", "C")                                       # material in the bank name: C | Ar
+FLUX = os.environ.get("FLUX", "t2k")                                   # flux in the bank name (t2k only today)
+TAG = os.environ.get("TAG", "")                                        # extra variant tag (canonical = empty)
+ADO_QE = sorted(glob.glob(f"{ADO_DIR}/{FLUX}_{MAT}_cc0pi{TAG}{_suf}_batch*.npz"))   # merge ALL QE batches
+ADO_RES = sorted(glob.glob(f"{ADO_DIR}/{FLUX}_{MAT}_cc1pi{TAG}{_suf}_batch*.npz"))
 ACH = os.environ.get("ACH_BANK",                                       # ACHILLES proc bank override
                      f"data/oracle/t2k_cc1pi_rich_ach_{'nofsi' if MODE == 'nofsi' else 'FSI'}_proc.npz")
 # (label, ado bank field, achilles -> count)

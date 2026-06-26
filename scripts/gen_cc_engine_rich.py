@@ -5,7 +5,7 @@ Per event banks everything needed to re-bin ANY signal definition off-line (no r
 Checkpoints after EVERY seed (saves the growing bank) so a long run is robust + the partial is usable.
 
 Usage: python -u scripts/gen_cc_engine_rich.py <res|qe> [NRES=30000] [NSEED=56]
-Output: data/oracle/t2k_{cc1pi|cc0pi}_engine_rich.npz
+Output: data/oracle/t2k_{cc1pi|cc0pi}.npz
 """
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,7 +24,7 @@ CFG = DiscreteCascadeConfig(step=0.04, max_steps=260, seed=1, nn_inelastic=True)
 P_BUF = int(os.environ.get("ADONIS_P", "16"))   # 16: P=12 left ~0.5% pool overflow on Ar (Cat-3 cap test)
 MPROT = int(os.environ.get("ADONIS_MPROT", "6"))             # top-M proton terminals stored per event
 TAG = os.environ.get("ADONIS_TAG", "")                       # e.g. "_s" for the shrunk-buffer bank
-OUT = "data/oracle/t2k_%s_engine_rich%s.npz" % ("cc1pi" if CHAN == "res" else "cc0pi", TAG)
+OUT = "data/oracle/t2k_%s%s.npz" % ("cc1pi" if CHAN == "res" else "cc0pi", TAG)
 
 
 def gen_events(seed):

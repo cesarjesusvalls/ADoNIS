@@ -53,6 +53,6 @@ vs local density) and compare ADoNIS vs ACHILLES on Ar specifically — likely t
 density/⟨path⟩ on the larger nucleus. Do NOT hot-fix; fix at the source if a real difference is found.
 
 ## Artifacts
-- Banks: `t2k_cc{0,1}pi_engine_rich_{c6h,ar6h}.npz` (gitignored).
+- Banks: `t2k_cc{0,1}pi_{c6h,ar6h}.npz` (gitignored).
 - Configs: `gen_{c6h,ar6h}_{qe,res}.yaml`, `ana_cc{0,1}pi_*_{c6h,ar6h}.yaml`.
 - Figures: `paper_figures/cc{0,1}pi_*_{C6H,AR6H}.png`. Runner: `scripts/_run_overnight_c_ar.sh`.

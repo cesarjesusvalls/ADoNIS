@@ -82,6 +82,7 @@ class TrackingConfig:
 
 @dataclass
 class GenConfig:
+    flux: str = "t2k"           # beam flux (bank-name + physics key); only "t2k" wired today (T2KFlux)
     material: str = "C"
     n_per_seed: int = 30000
     n_seeds: int = 56
@@ -89,7 +90,7 @@ class GenConfig:
     cascade: CascadeHyperparams = field(default_factory=CascadeHyperparams)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     vegas: VegasConfig = field(default_factory=VegasConfig)
-    out_dir: str = "data/oracle"
+    out_dir: str = "output/adonis"
     tag: str = ""
     seed0: int = 0
     fsi: bool = True            # False -> PRE-FSI bank (primary interaction products, no cascade)
@@ -98,6 +99,9 @@ class GenConfig:
         bad = set(self.channels) - {"res", "qe"}
         if bad:
             raise ValueError(f"channels: {sorted(bad)} not in {{'res','qe'}}")
+        if self.flux != "t2k":          # only the T2K flux is wired into the xsec generators today
+            raise NotImplementedError(f"flux {self.flux!r} not supported (only 't2k'); "
+                                      "wire it into adonis.xsec.{qe,res}_xsec before using it here")
 
 
 def load_gen_config(path) -> GenConfig:

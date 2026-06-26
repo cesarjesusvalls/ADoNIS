@@ -6,9 +6,9 @@ import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 BANKS = {
-    "QE (cv5)":            ("data/oracle/t2k_cc0pi_engine_rich_cv5.npz", "navy", "-"),
-    "RES Vegas (cv5)":     ("data/oracle/t2k_cc1pi_engine_rich_cv5.npz", "crimson", "-"),
-    "RES resonance (c6h)": ("data/oracle/t2k_cc1pi_engine_rich_c6h.npz", "darkorange", "--"),
+    "QE (cv5)":            ("data/oracle/t2k_cc0pi_cv5.npz", "navy", "-"),
+    "RES Vegas (cv5)":     ("data/oracle/t2k_cc1pi_cv5.npz", "crimson", "-"),
+    "RES resonance (c6h)": ("data/oracle/t2k_cc1pi_c6h.npz", "darkorange", "--"),
 }
 def neffN(w): w = w[w > 0]; return (w.sum()**2 / np.sum(w**2)) / len(w)
 

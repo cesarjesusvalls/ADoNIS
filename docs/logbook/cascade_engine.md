@@ -303,8 +303,8 @@ consumption time-ordering validation; M_A/fit records; transparency + 6% pion ch
 ## OVERNIGHT high-stat reusable RICH banks (running) + offline consumer
 
 - Two long runs from gen_cc_engine_rich.py, parallel, checkpoint every seed (partial always usable):
-  - CC1pi (res) NSEED=50 -> data/oracle/t2k_cc1pi_engine_rich.npz  (~4.4 min/seed -> ~3.7 h)
-  - CC0pi (qe)  NSEED=60 -> data/oracle/t2k_cc0pi_engine_rich.npz  (~5.3 min/seed -> ~5.3 h)
+  - CC1pi (res) NSEED=50 -> data/oracle/t2k_cc1pi.npz  (~4.4 min/seed -> ~3.7 h)
+  - CC0pi (qe)  NSEED=60 -> data/oracle/t2k_cc0pi.npz  (~5.3 min/seed -> ~5.3 h)
   Bank fields (per event): mu,nu,struck,pid_Ni; pi_post+pid_pi+pi_nsc (primary pion post-FSI);
   cr_p4+cr_pid (NN-created pion, 0 if dead); prot(top-6,4)+prot_origin(0=RES/QE-chain|1=pion-KO|-1=empty)
   +prot_gen(BFS depth); w; ipid/Npid.  Any signal definition is then pure re-binning, no rerun.

@@ -1,4 +1,4 @@
-"""Populate ./achilles_data/ with the ACHILLES input tables ADoNIS reads, by
+"""Populate ./data/achilles/ with the ACHILLES input tables ADoNIS reads, by
 copying them out of the public oracle container image.  Run once after cloning:
 
     python scripts/fetch_achilles_data.py
@@ -13,7 +13,7 @@ from pathlib import Path
 
 IMAGE = os.environ.get("ACHILLES_IMAGE", "ghcr.io/cesarjesusvalls/achilles:oracle")
 ROOT = Path(__file__).resolve().parent.parent
-DEST = Path(os.environ.get("ACHILLES_DATA", ROOT / "achilles_data"))
+DEST = Path(os.environ.get("ACHILLES_DATA", ROOT / "data" / "achilles"))
 FILES = ["dcc_EW.dat", "Spectral_Functions/pke12p_tot.data"]
 
 

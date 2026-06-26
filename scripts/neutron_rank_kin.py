@@ -11,7 +11,7 @@ from adonis.workflow.plotting import chi2_ratio_panel
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/neutron_rank_kin.png"
 CH = os.environ.get("CHANNEL", "qe").lower(); TAG = os.environ.get("TAG", "run")
 ACH = os.environ["ACH_BANK"]; PROC = [200] if CH == "qe" else [401, 402]
-GLOB = f"data/oracle/t2k_{'cc0pi' if CH=='qe' else 'cc1pi'}_engine_rich_{TAG}_batch*.npz"
+GLOB = f"data/oracle/t2k_{'cc0pi' if CH=='qe' else 'cc1pi'}_{TAG}_batch*.npz"
 COS70 = float(np.cos(np.deg2rad(70.0))); NR = 4; EDGES = np.linspace(0, 1000, 41)
 
 

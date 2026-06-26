@@ -77,8 +77,8 @@ VARS = [("dpt", np.linspace(0, 800, 21), r"$\delta p_T$ [MeV]"),
 
 
 def main():
-    qe = _select_engine("data/oracle/t2k_cc0pi_engine_rich.npz")
-    res = _select_engine("data/oracle/t2k_cc1pi_engine_rich.npz")            # RES with pion absorbed
+    qe = _select_engine("data/oracle/t2k_cc0pi.npz")
+    res = _select_engine("data/oracle/t2k_cc1pi.npz")            # RES with pion absorbed
     ado = {k: np.concatenate([qe[k], res[k]]) for k in qe}
     H = _select_ach()
     sA, sH = ado["w"].sum(), H["w"].sum()

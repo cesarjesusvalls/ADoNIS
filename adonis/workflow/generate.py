@@ -145,7 +145,10 @@ def run_channel(channel, gc, target, n_w=None):
                                         configs=target.configs)
     sf_n = SpectralFunction(target.spectral_n); sf_p = SpectralFunction(target.spectral_p)
     n_neutron = target.A - target.Z; n_proton = target.Z      # initwgt = N_species * S scaling
-    out = os.path.join(gc.out_dir, f"t2k_{_CHAN_OUT[channel]}_engine_rich{gc.tag}.npz")
+    os.makedirs(gc.out_dir, exist_ok=True)            # create the output tree on first run (e.g. output/adonis)
+    # bank name = {flux}_{material}_{chanout}{tag}.npz (tag empty for the canonical run) -- every
+    # context property threaded from the config, none asserted as a literal.
+    out = os.path.join(gc.out_dir, f"{gc.flux}_{gc.material}_{_CHAN_OUT[channel]}{gc.tag}.npz")
     truth_out = out.replace(".npz", "_truth.npz")
     # Optional frozen VegasGrid (RES importance estimator only) over the 6 final-state hypercube dims
     # (beam + 3-body).  Default OFF -> `grid=None` -> bit-identical sampling.  QE has no grid (its

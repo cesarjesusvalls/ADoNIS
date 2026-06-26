@@ -26,21 +26,23 @@ def _pick(*cands):
             return c
     return cands[-1]
 
-# material -> (RES bank, QE bank, ACHILLES proc-tagged reference); prefer high-seed, fall back to cv5/av5
+# material -> (RES bank, QE bank, ACHILLES proc-tagged reference).  ADoNIS banks: the canonical
+# {flux}_{material}_{chanout}.npz merged banks in output/adonis (override via ADONIS_RES_BANK/ADONIS_QE_BANK).
+# ACHILLES ref filenames/location are pending the separate ACHILLES-output naming cleanup.
 MATERIALS = {
-    "C":  (_pick("data/oracle/t2k_cc1pi_engine_rich_cv12.npz", "data/oracle/t2k_cc1pi_engine_rich_cv5.npz"),
-           _pick("data/oracle/t2k_cc0pi_engine_rich_cv30.npz", "data/oracle/t2k_cc0pi_engine_rich_cv5.npz"),
+    "C":  ("output/adonis/t2k_C_cc1pi.npz",
+           "output/adonis/t2k_C_cc0pi.npz",
            "data/oracle/t2k_cc1pi_rich_ach_FSI_proc.npz"),
-    "Ar": (_pick("data/oracle/t2k_cc1pi_engine_rich_av12.npz", "data/oracle/t2k_cc1pi_engine_rich_av5.npz"),
-           _pick("data/oracle/t2k_cc0pi_engine_rich_av30.npz", "data/oracle/t2k_cc0pi_engine_rich_av5.npz"),
+    "Ar": ("output/adonis/t2k_Ar_cc1pi.npz",
+           "output/adonis/t2k_Ar_cc0pi.npz",
            "data/oracle/t2k_cc1pi_rich_ach_FSI_Ar_proc.npz"),
     # C-GAUSSIAN (all-Gaussian apples-to-apples): 5-seed Gaussian ADoNIS banks vs the 2M Gaussian ACHILLES ref.
-    "CG": ("data/oracle/t2k_cc1pi_engine_rich_5seedG.npz",
-           "data/oracle/t2k_cc0pi_engine_rich_5seedG.npz",
+    "CG": ("data/oracle/t2k_cc1pi_5seedG.npz",
+           "data/oracle/t2k_cc0pi_5seedG.npz",
            "data/oracle/t2k_cc1pi_rich_ach_FSI_C_gauss.npz"),
     # Ar-GAUSSIAN.
-    "ArG": ("data/oracle/t2k_cc1pi_engine_rich_ar5seedG.npz",
-            "data/oracle/t2k_cc0pi_engine_rich_ar5seedG.npz",
+    "ArG": ("data/oracle/t2k_cc1pi_ar5seedG.npz",
+            "data/oracle/t2k_cc0pi_ar5seedG.npz",
             "data/oracle/t2k_cc1pi_rich_ach_FSI_Ar_gauss.npz"),
 }
 REF_PROC = {"qe": [200], "res": [401, 402], "both": None}
@@ -48,9 +50,9 @@ REF_PROC = {"qe": [200], "res": [401, 402], "both": None}
 # PRE-FSI (no cascade) bank set + PURE-target ACHILLES no-FSI references (no proc field needed:
 # pre-FSI the pion selection itself separates channels -- CC0pi=pion-veto->QE, CC1pi=pi+ ->RES).
 MATERIALS_NOFSI = {
-    "C":  ("data/oracle/t2k_cc1pi_engine_rich_nofsi.npz", "data/oracle/t2k_cc0pi_engine_rich_nofsi.npz",
+    "C":  ("data/oracle/t2k_cc1pi_nofsi.npz", "data/oracle/t2k_cc0pi_nofsi.npz",
            "data/oracle/t2k_cc1pi_rich_ach_C_nofsi.npz"),
-    "Ar": ("data/oracle/t2k_cc1pi_engine_rich_ar_nofsi.npz", "data/oracle/t2k_cc0pi_engine_rich_ar_nofsi.npz",
+    "Ar": ("data/oracle/t2k_cc1pi_ar_nofsi.npz", "data/oracle/t2k_cc0pi_ar_nofsi.npz",
            "data/oracle/t2k_cc1pi_rich_ach_nofsi_Ar.npz"),
 }
 

@@ -9,8 +9,8 @@ import adonis.workflow.analyze as A
 from scripts.gen_cc_matrix import signal_block, banks, neff, _obs
 
 REF = "data/oracle/t2k_cc1pi_rich_ach_FSI_proc.npz"
-QE  = "data/oracle/t2k_cc0pi_engine_rich_cv5.npz"
-RB  = "data/oracle/t2k_cc1pi_engine_rich_lead2.npz"
+QE  = "data/oracle/t2k_cc0pi_cv5.npz"
+RB  = "data/oracle/t2k_cc1pi_lead2.npz"
 
 def cell(channel, pcat):
     sigd, obs = signal_block(channel, "res", pcat)

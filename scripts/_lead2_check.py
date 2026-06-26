@@ -9,7 +9,7 @@ import adonis.workflow.analyze as A
 from scripts.gen_cc_matrix import signal_block, banks, neff, _obs, REF_PROC
 
 REF = "data/oracle/t2k_cc1pi_rich_ach_FSI_proc.npz"
-QE  = "data/oracle/t2k_cc0pi_engine_rich_cv5.npz"   # QE bank (shared; contrib=res so unused)
+QE  = "data/oracle/t2k_cc0pi_cv5.npz"   # QE bank (shared; contrib=res so unused)
 
 def cell(res_bank, pcat):
     sigd, obs = signal_block("cc0pi", "res", pcat)
@@ -23,9 +23,9 @@ def cell(res_bank, pcat):
     Na, nea, sa = neff(ado["w"]); Nr, ner, sr = neff(ref["w"])
     return sa, sr, Na, Nr, nea, ner
 
-banks_test = [("OLD cv5", "data/oracle/t2k_cc1pi_engine_rich_cv5.npz"),
-              ("OLD hicap", "data/oracle/t2k_cc1pi_engine_rich_hicap.npz"),
-              ("NEW lead2", "data/oracle/t2k_cc1pi_engine_rich_lead2.npz")]
+banks_test = [("OLD cv5", "data/oracle/t2k_cc1pi_cv5.npz"),
+              ("OLD hicap", "data/oracle/t2k_cc1pi_hicap.npz"),
+              ("NEW lead2", "data/oracle/t2k_cc1pi_lead2.npz")]
 # ACHILLES absolute per multiplicity (from any cell's sr -- same ref)
 print(f"{'bank':12s} {'pcat':5s} {'sig_ADO':>11s} {'sig_ACH':>11s} {'ACH/ADO':>9s} {'pull':>6s}  N_ado N_ach")
 for name, rb in banks_test:

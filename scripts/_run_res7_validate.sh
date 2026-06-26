@@ -18,8 +18,8 @@ import numpy as np
 from adonis.workflow.config import load_analysis_config
 import adonis.workflow.signal as SG
 def neff(w): w=np.asarray(w); return w.sum()**2/np.sum(w**2)
-for tag,path in [("tchannel cfix","data/oracle/t2k_cc1pi_engine_rich_cfix.npz"),
-                 ("resonance res7","data/oracle/t2k_cc1pi_engine_rich_res7.npz")]:
+for tag,path in [("tchannel cfix","data/oracle/t2k_cc1pi_cfix.npz"),
+                 ("resonance res7","data/oracle/t2k_cc1pi_res7.npz")]:
     cfg=load_analysis_config("configs/ana_cc1pi_resonly_res7.yaml")
     s=SG.select_signal(path, cfg.signal, carbon_only=cfg.carbon_only)
     print(f"  {tag:16s}: raw_bank? sel_count={len(s['w'])}  sel_Neff={neff(s['w']):.0f}  sigma={s['w'].sum():.4e}")

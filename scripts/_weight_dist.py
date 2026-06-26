@@ -7,10 +7,10 @@ import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 BANKS = {
-    ("C", "QE"):  "data/oracle/t2k_cc0pi_engine_rich_c6h.npz",
-    ("C", "RES"): "data/oracle/t2k_cc1pi_engine_rich_c6h.npz",
-    ("Ar", "QE"):  "data/oracle/t2k_cc0pi_engine_rich_ar6h.npz",
-    ("Ar", "RES"): "data/oracle/t2k_cc1pi_engine_rich_ar6h.npz",
+    ("C", "QE"):  "data/oracle/t2k_cc0pi_c6h.npz",
+    ("C", "RES"): "data/oracle/t2k_cc1pi_c6h.npz",
+    ("Ar", "QE"):  "data/oracle/t2k_cc0pi_ar6h.npz",
+    ("Ar", "RES"): "data/oracle/t2k_cc1pi_ar6h.npz",
 }
 def neffN(w): w = w[w > 0]; return (w.sum()**2 / np.sum(w**2)) / len(w)
 

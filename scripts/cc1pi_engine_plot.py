@@ -1,5 +1,5 @@
 """Render the CC1pi+Np diff-xsec + ACH/ADO ratio figure FROM the saved engine RICH bank
-(data/oracle/t2k_cc1pi_engine_rich.npz, produced by gen_cc_engine_rich.py res).  No engine rerun:
+(data/oracle/t2k_cc1pi.npz, produced by gen_cc_engine_rich.py res).  No engine rerun:
 the bank holds per-event everything needed to apply ANY signal definition as pure re-binning.
 
 Signal (mirrors cascade_engine_figure.py exactly):
@@ -18,7 +18,7 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 import scripts.cc1pi_fig_tki as F            # observables() (single source)
 import scripts.cc1pi_signal as S
 
-BANK = sys.argv[1] if len(sys.argv) > 1 else "data/oracle/t2k_cc1pi_engine_rich.npz"
+BANK = sys.argv[1] if len(sys.argv) > 1 else "data/oracle/t2k_cc1pi.npz"
 COS70 = np.cos(np.deg2rad(70.0))
 MU_LO, MU_HI = S.DEFAULT["mu_win"]; PI_LO, PI_HI = S.DEFAULT["pi_win"]; P_LO, P_HI = S.DEFAULT["p_win"]
 
@@ -28,7 +28,7 @@ def _acc(p4, lo, hi):
     return (m > lo) & (m < hi) & (p4[:, 3] / np.clip(m, 1e-9, None) > COS70)
 
 
-def qe_created_signal(bank="data/oracle/t2k_cc0pi_engine_rich.npz"):
+def qe_created_signal(bank="data/oracle/t2k_cc0pi.npz"):
     """CC1pi contribution from the QE bank: a QE event whose CASCADE created a surviving pi+ (NN
     inelastic).  Symmetric to the RES-pion-absorbed term in CC0pi -- a full-CC ACHILLES run (the
     reference) contains these, so the RES-only engine must add them for an apples-to-apples CC1pi."""

@@ -51,7 +51,7 @@ for c in tqdm(range(NCHUNK), desc="cascade chunks (1st ~compile)", file=sys.stdo
     parts.append(one_chunk(slice(bounds[c], bounds[c + 1]), jax.random.PRNGKey(11 + c)))
 bank = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
 st(f"cascade done ({time.time()-tcasc:.1f}s for {m} events)")
-out = "data/oracle/t2k_cc1pi_engine_rich_1seed_gauss.npz"; np.savez(out, **bank); st(f"bank saved -> {out}")
+out = "data/oracle/t2k_cc1pi_1seed_gauss.npz"; np.savez(out, **bank); st(f"bank saved -> {out}")
 
 # ---- usual CC1pi ratio+chi2 plot vs ACHILLES-C ----
 st("building CC1pi ADoNIS-vs-ACHILLES ratio plot...")

@@ -34,7 +34,7 @@ def mu_mask(mu):
 
 
 def ado():
-    fs = [f for f in sorted(glob.glob(f"data/oracle/t2k_cc1pi_engine_rich_{TAG}_batch*.npz"))
+    fs = [f for f in sorted(glob.glob(f"data/oracle/t2k_cc1pi_{TAG}_batch*.npz"))
           if "n_p" in np.load(f, allow_pickle=True).files]
     nb = len(fs); cnt = {s: [] for s in SPECIES}; ws = []
     for p in fs:

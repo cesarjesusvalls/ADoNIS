@@ -1,5 +1,5 @@
 """Render the T2K CC0pi-Np TKI figure (dsigma/d delta_pT, d delta_alphaT, dQ2) from the saved CC0pi
-engine RICH bank (data/oracle/t2k_cc0pi_engine_rich.npz, gen_cc_engine_rich.py qe).  ADoNIS = the
+engine RICH bank (data/oracle/t2k_cc0pi.npz, gen_cc_engine_rich.py qe).  ADoNIS = the
 FAITHFUL BFS cascade engine on 12C QE (+ free-proton H, no FSI) -- apples-to-apples QE-vs-QE against
 ACHILLES proc==200 (QE on CH).  No engine rerun: any cut/binning is pure re-binning of the bank.
 
@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
-BANK = sys.argv[1] if len(sys.argv) > 1 else "data/oracle/t2k_cc0pi_engine_rich.npz"
+BANK = sys.argv[1] if len(sys.argv) > 1 else "data/oracle/t2k_cc0pi.npz"
 _PIONS = (211, 111, -211)
 # T2K CC0pi-Np cuts
 MU_LO, COSMU_LO = 250.0, -0.6

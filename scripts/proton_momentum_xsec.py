@@ -22,8 +22,9 @@ ACH_FIELD = "neut_p4" if SPECIES == "neutron" else "prot_p4"
 SPL = "neutron" if SPECIES == "neutron" else "proton"
 MU_WIN = [250.0, 7000.0]; COS70 = float(np.cos(np.deg2rad(70.0)))
 _suf = "_nofsi" if MODE == "nofsi" else ""
-ADO_DIR = os.environ.get("ADO_DIR", "data/oracle")
-ADO_QE = sorted(glob.glob(f"{ADO_DIR}/t2k_cc0pi_engine_rich_cv5{_suf}_batch*.npz"))
+ADO_DIR = os.environ.get("ADO_DIR", "output/adonis")
+MAT = os.environ.get("MAT", "C"); FLUX = os.environ.get("FLUX", "t2k"); TAG = os.environ.get("TAG", "")
+ADO_QE = sorted(glob.glob(f"{ADO_DIR}/{FLUX}_{MAT}_cc0pi{TAG}{_suf}_batch*.npz"))
 ACH = os.environ.get("ACH_BANK",
                      f"data/oracle/t2k_cc1pi_rich_ach_{'nofsi' if MODE == 'nofsi' else 'FSI'}_proc.npz")
 EDGES = np.linspace(0.0, 2000.0, 41)                       # 50 MeV bins; log-y shows the high-p tail

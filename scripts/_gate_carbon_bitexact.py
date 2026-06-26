@@ -6,8 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 def cmp(tag):
-    new = np.load(ROOT / f"data/oracle/t2k_{tag}_engine_rich_basecarb.npz")
-    gold = np.load(ROOT / f"data/oracle/t2k_{tag}_engine_rich_basegold.npz")
+    new = np.load(ROOT / f"data/oracle/t2k_{tag}_basecarb.npz")
+    gold = np.load(ROOT / f"data/oracle/t2k_{tag}_basegold.npz")
     ok = True
     keys = sorted(set(new.files) | set(gold.files))
     for k in keys:
