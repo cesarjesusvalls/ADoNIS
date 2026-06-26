@@ -11,7 +11,8 @@ WALK/WEIGHT SPLIT: the cascade walk is theta-independent (kind-1), so a bank of 
 is precomputed once (the sampling step) and each fit iteration is a pure reweight via pool_fsi_reweight.
 """
 import os, sys, time
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # repo root (analysis/t2k/differentiability/ -> .)
 import numpy as np, uproot
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -217,7 +218,8 @@ def main():
     XL = r"$\delta p_T$ [GeV/c]" if OBS == "dpt" else r"$\delta\alpha_T$ [rad]"
     YL = (r"d$\sigma$/d$\delta p_T$ [$10^{-38}$cm$^2$/(GeV/c)/nuc]" if OBS == "dpt"
           else r"d$\sigma$/d$\delta\alpha_T$ [$10^{-38}$cm$^2$/rad/nuc]")
-    FIG = f"paper_figures/cc0pi_tune_adonis{'' if OBS == 'dpt' else '_dat'}.png"
+    os.makedirs("output/figures", exist_ok=True)
+    FIG = f"output/figures/cc0pi_tune_adonis{'' if OBS == 'dpt' else '_dat'}.png"
     mb = A * np.mean([np.asarray(_hist(jnp.asarray(bfp), R)) for R in bank], axis=0)
     fig, ax = plt.subplots(1, 2, figsize=(12, 4.3))
     ax[0].errorbar(ctr, np.asarray(DATA), yerr=D_ERR, fmt="o", color="k", capsize=3, label="T2K data")

@@ -14,7 +14,7 @@ jax.config.update("jax_enable_x64", True)
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import res_xsec
 import scripts.cc1pi_fig_tki as F                 # selection, observables, cascades, generate_H
-from scripts.h_cc0pi import generate_H
+from adonis.workflow.free_proton import generate_H
 
 NRES = int(sys.argv[1]) if len(sys.argv) > 1 else 100000
 NH, NSEED = 50000, 4

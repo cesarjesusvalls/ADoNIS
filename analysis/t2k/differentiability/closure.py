@@ -14,7 +14,8 @@ The optimisation HISTORY (trajectory, histograms, BFP, Hessian, pseudo-data) is 
 knob; --noA = absolute normalization, no profiled A.)
 """
 import os, sys, time
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # repo root (analysis/t2k/differentiability/ -> .)
 import numpy as np
 
 RUN_DIR = "/tmp/adonis_tune_runs"
@@ -26,7 +27,7 @@ def run():
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
-    import scripts.cc0pi_tune_adonis as T        # observable picked by argv[1] there too
+    from analysis.t2k.differentiability import tune as T   # observable picked by argv[1] there too
     # POOL differentiable core (single engine); N is env-tunable, mirroring cc0pi_tune_adonis.main.
     T.NQE = T.NRES = int(os.environ.get("CC0PI_N", "40000"))
     _build, _hist = T.build_replica, T.model_hist
@@ -140,7 +141,8 @@ def make_figure(npz_path):
     ax[1].legend(fontsize=8); ax[1].grid(alpha=0.3)
     fig.suptitle(f"REAL-chain tune CLOSURE on {obs}: recover $\\theta^*$ from nominal")
     tag = ("" if th_true[2] == 1.0 else "_ma") + ("" if profile_a else "_abs")
-    FIG = f"paper_figures/cc0pi_tune_closure_{obs}{tag}.png"
+    os.makedirs("output/figures", exist_ok=True)
+    FIG = f"output/figures/cc0pi_tune_closure_{obs}{tag}.png"
     fig.tight_layout(); fig.savefig(FIG, dpi=120); print(f"wrote {FIG}", flush=True)
 
 

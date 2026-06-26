@@ -4,8 +4,6 @@ Runs the produced pion through the discrete cascade, then applies the CC0pi-Np s
 Reports the H absolute RES sigma and how many H events pass CC0pi.
 """
 import os, sys
-from pathlib import Path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -78,5 +76,6 @@ if __name__ == "__main__":
     wcc = w * (absorbed & has_p)
     dpt, dat, Q2, ww = _cc0pi_obs(knu, mu, lead, wcc)
     print(f"  H CC0pi-Np events: {len(ww)}   sigma_CC0pi(H) = {ww.sum():.4e} nb")
-    np.savez("data/oracle/t2k_cc0pi_tki_adonis_H.npz", dpt=dpt, dalphat=dat, Q2=Q2, w=ww)
-    print("wrote data/oracle/t2k_cc0pi_tki_adonis_H.npz")
+    os.makedirs("output/adonis", exist_ok=True)
+    np.savez("output/adonis/t2k_C_cc0pi_H.npz", dpt=dpt, dalphat=dat, Q2=Q2, w=ww)
+    print("wrote output/adonis/t2k_C_cc0pi_H.npz")

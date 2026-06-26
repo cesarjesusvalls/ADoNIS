@@ -20,7 +20,7 @@ dcc.BATCH_INTERP = "spline"
 from adonis.xsec import qe_xsec, res_xsec
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
 from adonis.fsi.pool_fsi import run_fsi
-from scripts.h_cc0pi import generate_H
+from adonis.workflow.free_proton import generate_H
 
 MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
 _MODE = sys.argv[1] if len(sys.argv) > 1 else "cylinder"        # "cylinder" (T2K) or "gaussian"

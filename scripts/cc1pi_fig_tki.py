@@ -30,7 +30,7 @@ import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import res_xsec
 from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
 from adonis.fsi.pool_fsi import run_fsi, proton_candidates
-from scripts.h_cc0pi import generate_H
+from adonis.workflow.free_proton import generate_H
 
 NRES = int(sys.argv[1]) if (len(sys.argv) > 1 and sys.argv[1].isdigit()) else 200000  # robust when imported
 NH, NSEED = 50000, 4
