@@ -287,68 +287,25 @@ def block_nucleon_momentum(mat, mode, flux, tag):
 
 
 # ============================================================ BLOCK: CC1pi+Np STV (ADoNIS vs ACHILLES vs data)
-def block_cc1pi_stv(nres, recompute):
+def block_cc1pi_stv(flux="t2k", mat="C"):
+    """CC1pi+Np STV (pN/dpTT/daT) vs ACHILLES vs T2K data.  RES-C comes from the EXISTING engine bank
+    (no regeneration -- the bank already carries the per-event rich final state); only the free-proton H
+    contribution (pi+ always survives, no nuclear FSI) is generated."""
     import jax; jax.config.update("jax_enable_x64", True)
-    import jax.numpy as jnp
     import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
-    from adonis.xsec import res_xsec
-    from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
-    from adonis.fsi.pool_fsi import run_fsi, proton_candidates
+    import adonis.workflow.observables as O
+    from adonis.workflow.config import SignalDef
+    from adonis.workflow.signal import select_signal
     from adonis.workflow.free_proton import generate_H
     from analysis.utils.hepmc import weight_to_nb_of
 
-    NH, NSEED, MPROT = 50000, 4, 6
+    NH, NSEED = 50000, 4
     MU_LO, MU_HI = 250.0, 7000.0; PI_LO, PI_HI = 150.0, 1200.0; P_LO, P_HI = 450.0, 1200.0
-    M_A12, M_A11 = 11174.862, 10252.547; NB_PER_CM2 = 1e33; A_CH = 13.0
-    _CFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool", **k)
-    _OTHER_MESON = (111, -211, -1)
+    NB_PER_CM2 = 1e33; A_CH = 13.0
 
     def _acc(p4, lo, hi):
         m = np.linalg.norm(p4[:, 1:], axis=1)
         return (m > lo) & (m < hi) & (p4[:, 3] / np.clip(m, 1e-9, None) > COS70)
-
-    def observables(kmu, ppi, lead, is_h, seed=0):
-        rng = np.random.default_rng(seed)
-        mu3, pi3, p3 = kmu[:, 1:], ppi[:, 1:], lead[:, 1:]; beam = np.array([0.0, 0.0, 1.0])
-        zhat = np.cross(np.broadcast_to(beam, mu3.shape), mu3); zhat = zhat / (np.linalg.norm(zhat, axis=1, keepdims=True) + 1e-9)
-        had3 = pi3 + p3; dptt = np.sum(had3 * zhat, axis=1)
-        lt = mu3[:, :2]; dpt_vec = lt + had3[:, :2]; dpt = np.linalg.norm(dpt_vec, axis=1)
-        c = -np.sum(lt * dpt_vec, axis=1) / (np.linalg.norm(lt, axis=1) * dpt + 1e-9); dat = np.arccos(np.clip(c, -1, 1))
-        flat = is_h | (np.abs(dptt) < 0.5); dat = np.where(flat, rng.uniform(0.0, np.pi, len(dat)), dat)
-        pL = kmu[:, 3] + ppi[:, 3] + lead[:, 3]; Evis = kmu[:, 0] + ppi[:, 0] + lead[:, 0]; R = M_A12 + pL - Evis
-        dpL = 0.5 * R - (M_A11 ** 2 + dpt ** 2) / (2.0 * np.clip(R, 1.0, None))
-        return dptt, np.sqrt(np.clip(dpt ** 2 + dpL ** 2, 0.0, None)), dat, dpt
-
-    def _signal_pip(prot, pid_pi, cr_pid, pi_post, cr_p4):
-        n = len(pid_pi); ar = np.arange(n)
-        prim_pip = (pid_pi == 211); cr_pip = (cr_pid == 211)
-        n_pip = prim_pip.astype(int) + cr_pip.astype(int)
-        n_other = np.isin(pid_pi, _OTHER_MESON).astype(int) + np.isin(cr_pid, _OTHER_MESON).astype(int)
-        meson_ok = (n_pip == 1) & (n_other == 0); pi_f = np.where(prim_pip[:, None], pi_post, cr_p4)
-        pm = np.linalg.norm(prot[:, :, 1:], axis=2); ct = prot[:, :, 3] / np.clip(pm, 1e-9, None)
-        inwin = (pm > P_LO) & (pm < P_HI) & (ct > COS70); j = np.argmax(np.where(inwin, pm, -1.0), axis=1)
-        return prot[ar, j], inwin[ar, j], pi_f, meson_ok
-
-    def res_C(n, seed):
-        e = res_xsec.generate(n, seed=seed, return_events=True)["events"]
-        knu, kmu, pstr = (np.asarray(e[k]) for k in ("k_nu", "k_mu", "p_struck"))
-        ppi, pN, w = np.asarray(e["p_pi"]), np.asarray(e["p_N"]), np.asarray(e["w"])
-        ppid, ipid, Npid = np.asarray(e["ppid"]), np.asarray(e["ipid"]), np.asarray(e["Npid"])
-        out = run_fsi(jnp.asarray(ppi), jnp.asarray(pN), jnp.asarray(ppid, jnp.int32), jnp.asarray(ipid, jnp.int32),
-                      jnp.asarray(Npid, jnp.int32), _CFG(seed=1), jax.random.PRNGKey(seed + 11), channel="res")
-        pid_pi = np.asarray(out["pterm"]["pid"]); pi_post = np.asarray(out["pterm"]["p4"])
-        cr_pid = np.where(np.asarray(out["created"]["alive"]), np.asarray(out["created"]["pid"]), 0)
-        cr_p4 = np.asarray(out["created"]["p4"]); prot, _, _ = proton_candidates(out["nterms"], MPROT)
-        lead, has_p, pi_f, meson_ok = _signal_pip(prot, pid_pi, cr_pid, pi_post, cr_p4)
-        sel = (meson_ok & has_p & (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pi_f, PI_LO, PI_HI))
-        dptt, pn, dat, dpt = observables(kmu[sel], pi_f[sel], lead[sel], np.zeros(int(sel.sum()), bool), seed)
-        return dict(dptt=dptt, pn=pn, dalphat=dat, w=w[sel])
-
-    def res_H(n, seed):
-        knu, kmu, pN, pPi, w = (np.asarray(x) for x in generate_H(n, seed=seed))
-        sel = (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pPi, PI_LO, PI_HI) & _acc(pN, P_LO, P_HI)
-        dptt, pn, dat, dpt = observables(kmu[sel], pPi[sel], pN[sel], np.ones(int(sel.sum()), bool), seed)
-        return dict(dptt=dptt, pn=pn, dalphat=dat, w=w[sel])
 
     def load_data(name):
         lines = open(f"../nuisance/data/T2K/CC1pipNp_STV/xsec_{name}.txt").read().splitlines()
@@ -357,19 +314,27 @@ def block_cc1pi_stv(nres, recompute):
         cov = np.array([[float(x) for x in lines[3 + i].split()] for i in range(nb)])
         return edges, vals, cov
 
-    bp = f"{ADO_DIR_DEFAULT}/t2k_C_cc1pi_blueprint.npz"
-    if os.path.exists(bp) and not recompute:
-        d = np.load(bp); ado = {k: np.asarray(d[k]) for k in ("dptt", "pn", "dalphat", "w")}
-        print("loaded cached ADoNIS blueprint (use --recompute to regenerate)", flush=True)
-    else:
-        acc = {}
-        for cell, fn, n in (("RES-C", res_C, nres), ("RES-H", res_H, NH)):
-            parts = [fn(n, sd) for sd in range(NSEED)]
-            acc[cell] = {k: np.concatenate([p[k] for p in parts]) for k in parts[0]}
-            acc[cell]["w"] = acc[cell]["w"] / NSEED
-            print(f"  {cell}: {len(acc[cell]['w'])} ev  sigma={acc[cell]['w'].sum():.4e} nb", flush=True)
-        ado = {k: np.concatenate([acc[c][k] for c in acc]) for k in ("dptt", "pn", "dalphat", "w")}
-        os.makedirs(ADO_DIR_DEFAULT, exist_ok=True); np.savez(bp, **ado)
+    # RES-C: read the EXISTING engine bank (no regeneration); CC1pi+ tight signal via the package selector.
+    bankf = f"{ADO_DIR_DEFAULT}/{flux}_{mat}_cc1pi.npz"
+    if not os.path.exists(bankf):
+        print(f"[cc1pi-stv] ADoNIS bank {bankf} missing (run generation first) -- skip", flush=True); return
+    sd = SignalDef(mu_win=(MU_LO, MU_HI), pi_win=(PI_LO, PI_HI), p_win=(P_LO, P_HI), cth=COS70,
+                   proton_lead="in_window", pion_id="pip", require_proton=True, proton_count="ge1",
+                   target="carbon", W_conv="vertex")
+    selC = select_signal(bankf, sd)                          # dptt/pn/dalphat/w (absolute nb) from the bank
+    print(f"  RES-C (bank {os.path.basename(bankf)}): {len(selC['w'])} signal ev  sigma={selC['w'].sum():.4e} nb", flush=True)
+
+    # RES-H: free proton (pi+ always survives, no nuclear FSI) -- the only piece generated.
+    Hp = {"dptt": [], "pn": [], "dalphat": [], "w": []}
+    for s in range(NSEED):
+        knu, kmu, pN, pPi, w = (np.asarray(x) for x in generate_H(NH, seed=s))
+        m = (w > 0) & _acc(kmu, MU_LO, MU_HI) & _acc(pPi, PI_LO, PI_HI) & _acc(pN, P_LO, P_HI)
+        dptt, pn, dat, _ = O.tki(kmu[m], pPi[m], pN[m], np.ones(int(m.sum()), bool), s)
+        Hp["dptt"].append(dptt); Hp["pn"].append(pn); Hp["dalphat"].append(dat); Hp["w"].append(w[m])
+    H = {k: np.concatenate(v) for k, v in Hp.items()}; H["w"] = H["w"] / NSEED
+    print(f"  RES-H (free p, generated): {len(H['w'])} ev  sigma={H['w'].sum():.4e} nb", flush=True)
+
+    ado = {k: np.concatenate([selC[k], H[k]]) for k in ("dptt", "pn", "dalphat", "w")}
 
     ach_path = os.environ.get("ACH_CC1PI", "output/achilles/t2k_cc1pi_tki_achilles.npz")
     if not os.path.exists(ach_path):
@@ -433,8 +398,6 @@ def main(argv=None):
     ap.add_argument("--mode", default="fsi", choices=["fsi", "nofsi"])
     ap.add_argument("--flux", default="t2k")
     ap.add_argument("--tag", default="")
-    ap.add_argument("--nres", type=int, default=200000, help="cc1pi-stv RES-C events/seed")
-    ap.add_argument("--recompute", action="store_true", help="cc1pi-stv: ignore the cached blueprint")
     a = ap.parse_args(argv)
     blocks = (a.matrix, a.multiplicity, a.nucleon_momentum, a.cc1pi_stv)
     do_all = not any(blocks) and not a.pdf                    # no block flag -> all; --pdf alone -> bundle only
@@ -447,7 +410,7 @@ def main(argv=None):
         if a.nucleon_momentum or do_all:
             block_nucleon_momentum(mat, a.mode, a.flux, a.tag)
     if a.cc1pi_stv or do_all:
-        block_cc1pi_stv(a.nres, a.recompute)
+        block_cc1pi_stv(a.flux, "C")                         # T2K CC1pi is the CH (carbon+H) measurement
     if a.pdf:
         build_pdf()
 
