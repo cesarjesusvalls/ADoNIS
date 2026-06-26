@@ -45,8 +45,11 @@ def main():
                                                                  # time-sync); >0 = refill (slow events sit in a slot,
                                                                  # others churn).  Use refill for time_step runs.
     ap.add_argument("--no-fsi", action="store_true")             # PRE-FSI banks (no cascade); tag -> _nofsi
+    ap.add_argument("--tag", type=str, default=None)             # override the config bank tag (variant runs)
     a = ap.parse_args()
     gc = load_gen_config(a.config); K, M, N = a.workers, a.seeds_per_worker, a.n_per_seed
+    if a.tag is not None:
+        gc.tag = a.tag
     p_arg = [] if a.P is None else ["--P", str(a.P)]            # pass-through only if explicitly set
     if a.no_fsi:
         gc.tag = gc.tag + "_nofsi"

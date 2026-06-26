@@ -19,9 +19,13 @@ stepping-clock (time-sync) explanation. The de-noised conclusion is different an
    the wait queue at init (`compact(g0, M+Q)`) and on slot-refill. RES N(p)/N(n)/N(π) then match ACHILLES
    to ~1% (verified: refill n_p 0.77 → 1.751 == lockstep == cv5 1.78).
 4. **time-sync (adaptive ACHILLES AdaptiveStep, `cfg.time_step`)** is a **wash** on forward observables vs
-   distance-sync (de-noised at 250k–1M); the decoupled `Δt=step` variant over-produces pions. The adaptive
-   path also has a small P-invariance break (~99.9% at intermediate P). It is kept **behind `time_step`
-   (default False = distance-sync, the committed engine)** as experimental/reference, not a default.
+   distance-sync. De-noised at 250k–1M, distance / adaptive / decoupled (`Δt=step`) all match ACHILLES to
+   ~1–2% on every species in QE and RES (an earlier "decoupled over-produces pions ~2.7x" claim was a QE
+   rare-bin (~1e-7) statistical fluke -- it does NOT survive the de-noised RES, where pions are the primary
+   and decoupled matches to ~1%). The three differ only in cost (distance < adaptive << decoupled ~3x) and
+   P-invariance (distance & decoupled exact; adaptive a small ~99.9% break at intermediate P). time-sync is
+   kept **behind `cfg.time_step` (default False = distance-sync, the committed engine)** as experimental/
+   reference -- it confirms, rather than improves on, the default.
 5. **Engine physics is faithful**: post-fix lockstep reproduces the pre-fix engine exactly; the per-scatter
    pn-recoil path was verified line-by-line vs ACHILLES (see the table below).
 
