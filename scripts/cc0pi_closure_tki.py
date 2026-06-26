@@ -19,7 +19,7 @@ SABS0, SSC0 = 1.0, 1.0
 NSTEP, DX, RHO, MB_FM2 = 14, 0.45, 0.16, 0.1
 SIG_NN0, SIG_ABS0 = 40.0, 30.0
 F_RES = 0.18
-_d = np.load("data/oracle/t2k_cc0pi_stv_data.npz")
+_d = np.load("data/experiment/t2k_cc0pi_stv/t2k_cc0pi_stv_data.npz")
 DAT_EDGES = _d["dalphat_edges"]                  # rad
 DPT_EDGES = _d["dpt_edges"] * 1000.0             # GeV -> MeV (same bins as the T2K data)
 

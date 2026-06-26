@@ -1,7 +1,7 @@
 """Experimental-data overlay loaders for the analysis API.
 
 Two sources (matching the existing scripts):
-  - npz          : data/oracle/t2k_cc0pi_stv_data.npz (keys '<obs>_edges','<obs>','<obs>_err'),
+  - npz          : data/experiment/t2k_cc0pi_stv/t2k_cc0pi_stv_data.npz (keys '<obs>_edges','<obs>','<obs>_err'),
                    per-nucleon cm^2 -> per-A nb via x 1e33 (nb/cm^2) x A.
   - nuisance_txt : nuisance release txt (edges:/values:/covariance) -- cc1pi_fig_tki.load_data format.
 Returns per-observable {ctr, val, err} for chi2_ratio_panel's optional data overlay.

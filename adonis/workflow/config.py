@@ -167,7 +167,7 @@ class ObservableSpec:
 @dataclass
 class DataOverlay:
     enabled: bool = False
-    source: str = "npz"                     # "npz" (t2k_cc0pi_stv_data.npz) | "nuisance_txt"
+    source: str = "npz"                     # "npz" (data/experiment/t2k_cc0pi_stv/) | "nuisance_txt"
     path: str = ""
     names: dict = field(default_factory=dict)   # observable-key -> data key/file
     per_nucleon_cm2: bool = True
