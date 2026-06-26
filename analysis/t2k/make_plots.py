@@ -247,43 +247,50 @@ def block_multiplicity(mat, mode, flux, tag):
             print(f"  {clabel}: sigma ADoNIS={wQ.sum():.4e} ACH={hwQ.sum():.4e} ACH/ADO={hwQ.sum()/wQ.sum():.3f}", flush=True)
 
 
-# ============================================================ BLOCK: nucleon momentum
+# ============================================================ BLOCK: nucleon momentum (per RANK)
 def block_nucleon_momentum(mat, mode, flux, tag):
+    """dsigma/dp per nucleon RANK (0=leading, 1=sub-leading, ... up to NRANK-1), proton AND neutron, for
+    QE and RES, ADoNIS vs ACHILLES.  Ranks come from the bank's |p|-sorted top-M terminals (prot/neut)."""
     from adonis.workflow.plotting import chi2_ratio_panel
     suf = "_nofsi" if mode == "nofsi" else ""
-    edges = np.linspace(0.0, 2000.0, 41)
-    ado_paths = _ado_glob(flux, mat, "cc0pi", tag, suf)
+    edges = np.linspace(0.0, 1200.0, 25); names = {0: "proton", 1: "neutron"}
     ach_path = os.environ.get("ACH_BANK", f"output/achilles/t2k_cc1pi_rich_ach_{'nofsi' if mode == 'nofsi' else 'FSI'}_proc.npz")
-    if not ado_paths:
-        print(f"[nucleon-momentum] no ADoNIS QE banks ({flux}_{mat}_cc0pi{tag}{suf}_batch*) -- skip", flush=True)
-        return
-    for species in ("proton", "neutron"):
-        ado_field = "neut" if species == "neutron" else "prot"
-        ach_field = "neut_p4" if species == "neutron" else "prot_p4"
-        paths = [p for p in ado_paths if ado_field in np.load(p, allow_pickle=True).files]
+    for channel in ("qe", "res"):
+        chan = "cc0pi" if channel == "qe" else "cc1pi"; proc = [200] if channel == "qe" else [401, 402]
+        paths = [p for p in _ado_glob(flux, mat, chan, tag, suf) if "neut" in np.load(p, allow_pickle=True).files]
         if not paths:
-            print(f"[nucleon-momentum] {species}: no bank field {ado_field} -- skip", flush=True); continue
-        lp, ws = [], []
+            print(f"[nucleon-momentum] {channel.upper()}: no ADoNIS banks ({flux}_{mat}_{chan}{tag}{suf}_batch*) -- skip", flush=True)
+            continue
+        nb = len(paths); Ap = {0: [], 1: []}; W = []
         for p in paths:
             b = dict(np.load(p, allow_pickle=True)); m = _mu_mask(b["mu"]) & (b["w"] > 0)
-            plead = np.linalg.norm(b[ado_field][m][:, 0, 1:], axis=1); has = plead > 0
-            lp.append(plead[has]); ws.append(b["w"][m][has])
-        aP, wa = np.concatenate(lp), np.concatenate(ws) / len(paths)
-        fig, (a0, a1) = plt.subplots(2, 1, figsize=(8, 6), height_ratios=[3, 1], sharex=True)
+            W.append(b["w"][m] / nb)
+            Ap[0].append(np.linalg.norm(b["prot"][m][:, :, 1:], axis=2))   # (n,M) |p| per rank
+            Ap[1].append(np.linalg.norm(b["neut"][m][:, :, 1:], axis=2))
+        A = {k: np.concatenate(v, 0) for k, v in Ap.items()}; wa = np.concatenate(W)
+        nrank = min(4, A[0].shape[1])
+        H = None; wh = None
         if os.path.exists(ach_path):
-            d = dict(np.load(ach_path, allow_pickle=True)); sel = np.isin(d["proc"], [200]) & _mu_mask(d["mu"])
-            hp = np.linalg.norm(d[ach_field][sel][:, 0, 1:], axis=1); has = hp > 0
-            hP, wh = hp[has], d["w"][sel][has] * float(d["weight_to_nb"])
-            chi2_ratio_panel(a0, a1, edges, {"values": hP, "w": wh}, {"values": aP, "w": wa},
-                             label=rf"QE: lead $p_{{{species[0]}}}$ [MeV]", ado_label="ADoNIS", ref_label="ACHILLES", logy=True)
-        else:
-            from adonis.workflow.plotting import hist_with_errors
-            dd, ed = hist_with_errors(aP, wa, edges); ctr = 0.5 * (edges[1:] + edges[:-1])
-            a0.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=3, lw=0.9, label="ADoNIS"); a0.set_yscale("log")
-        a0.set_ylabel("QE  d$\\sigma$/dp [nb/MeV]"); a1.set_ylabel("ACH/ADO"); a0.legend(fontsize=8)
-        fig.suptitle(f"QE d$\\sigma$/dp(lead {species}) ({mat}, muon-acceptance CC-inclusive; "
-                     f"{'NO FSI' if mode == 'nofsi' else 'FSI'}): ADoNIS vs ACHILLES")
-        fig.tight_layout(); _save(fig, f"{OUTDIR}/nucleon_momentum_{mat}_{species}{suf}.png")
+            d = dict(np.load(ach_path, allow_pickle=True)); sel = np.isin(d["proc"], proc) & _mu_mask(d["mu"])
+            wh = d["w"][sel] * float(d["weight_to_nb"])
+            H = {0: np.linalg.norm(d["prot_p4"][sel][:, :, 1:], axis=2), 1: np.linalg.norm(d["neut_p4"][sel][:, :, 1:], axis=2)}
+        fig, ax = plt.subplots(4, nrank, figsize=(4.6 * nrank, 12), height_ratios=[3, 1, 3, 1], sharex="col", squeeze=False)
+        for sp in (0, 1):
+            r0, r1 = (0, 1) if sp == 0 else (2, 3)
+            for rk in range(nrank):
+                a0, a1 = ax[r0, rk], ax[r1, rk]; a0.set_xlim(edges[0], edges[-1])
+                pa = A[sp][:, rk]; ma = pa > 0
+                ph = H[sp][:, rk] if (H is not None and rk < H[sp].shape[1]) else np.zeros(0)
+                mh = ph > 0
+                chi2_ratio_panel(a0, a1, edges, {"values": ph[mh], "w": (wh[mh] if wh is not None else np.zeros(0))},
+                                 {"values": pa[ma], "w": wa[ma]},
+                                 label=f"{names[sp]} rank {rk}", ado_label="ADoNIS", ref_label="ACHILLES", logy=True)
+                sa = wa[ma].sum(); sh = (wh[mh].sum() if wh is not None else 0.0)
+                a0.text(0.5, 0.88, f"σ ACH/ADO={sh/max(sa,1e-30):.3f}", transform=a0.transAxes, ha="center", fontsize=8, color="purple")
+        ax[0, 0].set_ylabel("proton  dσ/dp [nb/MeV]"); ax[2, 0].set_ylabel("neutron  dσ/dp [nb/MeV]"); ax[0, 0].legend(fontsize=8)
+        fig.suptitle(f"{mat}-{channel.upper()}: dσ/dp per nucleon RANK (0=leading, 1=sub, ...), "
+                     f"{'NO FSI' if mode == 'nofsi' else 'FSI'}: ADoNIS vs ACHILLES")
+        fig.tight_layout(); _save(fig, f"{OUTDIR}/nucleon_rank_{mat}_{channel}{suf}.png")
 
 
 # ============================================================ BLOCK: CC1pi+Np STV (ADoNIS vs ACHILLES vs data)
