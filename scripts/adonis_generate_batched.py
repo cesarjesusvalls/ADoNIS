@@ -40,6 +40,10 @@ def main():
     ap.add_argument("--n-per-seed", type=int, default=10000)     # events per seed
     ap.add_argument("--P", type=int, default=None)              # None -> inherit config / CascadeHyperparams default
     ap.add_argument("--single-thread", action="store_true")      # 1 XLA/Eigen thread per worker (K workers ~ K cores)
+    ap.add_argument("--n-w", type=int, default=0)               # cascade refill working set: 0 = lock-step
+                                                                 # (one slow event stalls the whole seed -- BAD for
+                                                                 # time-sync); >0 = refill (slow events sit in a slot,
+                                                                 # others churn).  Use refill for time_step runs.
     ap.add_argument("--no-fsi", action="store_true")             # PRE-FSI banks (no cascade); tag -> _nofsi
     a = ap.parse_args()
     gc = load_gen_config(a.config); K, M, N = a.workers, a.seeds_per_worker, a.n_per_seed
@@ -83,7 +87,7 @@ def main():
             cache = "load" if (vegas_on and channel == "res") else "auto"
             procs.append(subprocess.Popen(
                 [PY, "-u", GEN, a.config, "--n-seeds", str(M), "--n-per-seed", str(N),
-                 "--seed0", str(seed0), "--tag", tag, "--n-w", "0",
+                 "--seed0", str(seed0), "--tag", tag, "--n-w", str(a.n_w),
                  "--vegas-cache", cache] + p_arg + extra,
                 stdout=open(f"/tmp/worker_{chanout}_b{idx:02d}.log", "w"), stderr=subprocess.STDOUT, env=env))
         rcs = [p.wait() for p in procs]

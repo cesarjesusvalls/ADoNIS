@@ -122,8 +122,23 @@ class DiscreteCascadeConfig:
     density_n: str = "c12_density.txt"     # neutron density file (= nucleus for N=Z nuclei, e.g. C)
     configs: str = "QMC_configs.out.gz"    # nucleon configuration file (QMC/RMF; A read from header)
     step: float = 0.05
-    max_steps: int = 260
+    max_steps: int = 100000  # ABSOLUTE per-particle/per-event step ceiling (ACHILLES cMaxSteps = 100000).
+                             # NOT a physics knob: the cascade terminates via escape/capture/absorption/
+                             # path_budget_R far below this.  Reaching it = a runaway particle, which the
+                             # pool RAISES on (run_cascade_pool _raise_if_runaway) rather than silently
+                             # truncating.  Keep == cascade_full._HARD_STEPS.
+    path_budget_R: float = 3.0  # PHYSICS termination: drop a particle once its accumulated path length
+                             # exceeds path_budget_R * nuclear_radius (lpath >= R_budget).  Scheme-
+                             # independent (distance- AND time-sync), no beta literal: a slow track just
+                             # takes more steps to cover the same distance.  Tweak to widen/tighten reach.
     seed: int = 0
+    time_step: bool = False  # stepping clock: False = fixed-DISTANCE march (every particle advances
+                             # `step` fm/global-step -> distance-synchronized).  True = fixed-TIME march
+                             # mirroring ACHILLES AdaptiveStep: `step` is read as Dt and every particle
+                             # advances `beta*step` fm/global-step (its own beta), so fast tracks outrun
+                             # slow ones -> time-synchronized.  Decoupled (own beta, no max_beta) so
+                             # P-invariance holds; fz then decrements by the shared Dt (=step), keeping
+                             # the fz-expiry distance beta*fz invariant.  See cascade_subcascade_sequencing.md.
     # interaction probability is ALWAYS the Gaussian model exp(-pi b^2/sigma) -- the single,
     # differentiable interaction-probability law (the non-differentiable Cylinder hard-disk and the
     # unreliable ACHILLES "Pion" model were removed in the pool-unification cleanup).
@@ -200,7 +215,7 @@ def _ev_fold_uniform(keys, data, shape=()):
 
 
 def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
-                  rgrid, rhoP, rhoN, radius, cfg, key):
+                  rgrid, rhoP, rhoN, radius, cfg, key, dt_evt=None):
     """ONE step of the NUCLEON cascade for one particle per event (n,) -- the per-step physics of
     `_propagate_nucleon_discrete.body` (escape/recapture, formation zone, in-slab geometry, elastic
     scatter + per-species Pauli, NN->NDelta->NN'pi inelastic + channel charges), re-expressed for the
@@ -223,12 +238,23 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     p4 = jnp.where(recap[:, None], jnp.array([M_N, 0.0, 0.0, 0.0]), p4)
     alive = alive & ~escaping
     beta = jnp.linalg.norm(p4[:, 1:], axis=1) / jnp.clip(p4[:, 0], 1e-9, None)
-    timeStep = cfg.step / jnp.clip(beta, 1e-6, None)
+    # STEPPING CLOCK: distance-sync -> every particle sweeps `step` fm/step, fz -= step/beta (proper time).
+    # time-sync (ACHILLES AdaptiveStep) -> the per-event time step dt_evt = step/beta_max (beta_max over the
+    # event's alive particles, supplied by the pool) sets the clock: sweep beta*dt_evt fm/step (fast tracks
+    # outrun slow ones; a particle ALONE has beta_max=beta -> sweeps `step`, never freezes), fz -= dt_evt.
+    # Both schemes keep the fz-expiry distance = beta*fz invariant.
+    if cfg.time_step:
+        _dt = jnp.full_like(beta, cfg.step) if dt_evt is None else dt_evt
+        _dstep = beta * _dt                           # distance swept this step = beta * Dt
+        timeStep = _dt                                # fz decrement = shared per-event Dt
+    else:
+        _dstep = jnp.full_like(beta, cfg.step)        # fixed distance
+        timeStep = cfg.step / jnp.clip(beta, 1e-6, None)
     can_int = fz <= 0.0
     rel = npos - pos[:, None, :]
     par = jnp.sum(rel * dhat[:, None, :], axis=2)
     perp2 = jnp.sum(rel ** 2, axis=2) - par ** 2
-    in_slab = (par > 0) & (par <= cfg.step) & (~consumed) & alive[:, None]
+    in_slab = (par > 0) & (par <= _dstep[:, None]) & (~consumed) & alive[:, None]
     Pp = p4[:, None, :] + nmom
     s = Pp[:, :, 0] ** 2 - jnp.sum(Pp[:, :, 1:] ** 2, axis=2)
     sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
@@ -366,7 +392,7 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     fz = jnp.where((fz > 0.0) & alive, fz - timeStep, fz)
     fz = jnp.where(do, fz_new, jnp.where(is_inel, _formation_zone(p4, lead_in), fz))
     d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
-    pos = pos + cfg.step * dhat * alive[:, None]
+    pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
     return ((p4, pos, dhat, fz, alive), escaping, recap, do.astype(jnp.int32),
             (ko_cand, ko_pos, ko_fz, ko_q, ko_alive),
             (_pPiX, pi_pos, pi_fz, pi_chidx, pi_alive), consumed,
@@ -374,7 +400,7 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
 
 
 def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
-               rgrid, rhoP, rhoN, radius, cfg, key):
+               rgrid, rhoP, rhoN, radius, cfg, key, dt_evt=None):
     """ONE step of the PION cascade for one pion per event (n,) -- a line-for-line extraction of
     `_propagate_discrete.body` (algo="step"), re-expressed for the POOLED engine: the absorption
     products (piNN->NN, up to 2 protons), the scatter recoil, and the eta-N' conversion baryon are
@@ -400,10 +426,18 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     inert = (jnp.linalg.norm(pos, axis=1) > radius) & outward          # outside & outward -> will escape
     escaping = esc_plane | inert
     alive = alive & ~escaping
+    # STEPPING CLOCK (see _nucleon_step): time-sync -> sweep beta*dt_evt (dt_evt=step/beta_max from the pool);
+    # else fixed step.  Pions carry NO formation zone (ACHILLES skips IsPion in InFormationZone) -> slab+advance only.
+    _beta_pi = jnp.linalg.norm(p_pi[:, 1:], axis=1) / jnp.clip(p_pi[:, 0], 1e-9, None)
+    if cfg.time_step:
+        _dt = jnp.full_like(_beta_pi, cfg.step) if dt_evt is None else dt_evt
+        _dstep = _beta_pi * _dt
+    else:
+        _dstep = jnp.full_like(_beta_pi, cfg.step)
     rel = npos - pos[:, None, :]
     par = jnp.sum(rel * dhat[:, None, :], axis=2)
     perp2 = jnp.sum(rel ** 2, axis=2) - par ** 2
-    cand = (par > 0) & (~consumed) & alive[:, None] & (par <= cfg.step)
+    cand = (par > 0) & (~consumed) & alive[:, None] & (par <= _dstep[:, None])
     pE = p_pi[:, 0]; pmom = jnp.linalg.norm(p_pi[:, 1:], axis=1); m_pi = _CH_MASS[ch]
     vpi = p_pi[:, 1:] / pE[:, None]
     rnuc = jnp.linalg.norm(npos, axis=2)
@@ -576,7 +610,7 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     interacted = is_abs | is_scat | is_conv
     consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & interacted[:, None])
     d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
-    pos = pos + cfg.step * dhat * alive[:, None]
+    pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
     bcode = jnp.where(chose_abs, 1, jnp.where(chose_conv, 2, 0)).astype(jnp.int32)
     ss_j = sig_j - sa_j - si_j
     return ((p_pi, pos, dhat, ch, nsc, alive), escaping, is_abs, is_conv,

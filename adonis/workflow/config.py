@@ -43,9 +43,13 @@ def _coerce(cls, d):
 @dataclass
 class CascadeHyperparams:
     P: int = 1                  # pool particle-buffer width (SINGLE source of truth; configs inherit this)
-    step: float = 0.04          # Glauber step [fm]
-    max_steps: int = 260
+    step: float = 0.04          # Glauber step [fm] (time_step=False: distance/step; True: Dt/step)
+    max_steps: int = 260        # legacy field; the engine now uses a fixed 100k runaway ceiling +
+                                #   path_budget_R*radius as the physics bound (generate.py sets the ceiling)
     nn_inelastic: bool = True
+    time_step: bool = False     # stepping clock: False = distance-sync (every particle sweeps `step`);
+                                #   True = ACHILLES AdaptiveStep time-sync (Dt=step/beta_max per round)
+    path_budget_R: float = 3.0  # physics termination: drop a particle once its path length > this * radius
     mprot: int = 6              # top-M proton terminals stored per event (-> ADONIS_MPROT)
 
 

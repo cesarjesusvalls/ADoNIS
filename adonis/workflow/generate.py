@@ -131,13 +131,16 @@ def run_channel(channel, gc, target, n_w=None):
     # 2*radius, the rho<1e-6 escape cutoff) plus margin for scattered paths, else slow nucleons get
     # truncated mid-flight ("alive inside" -> spurious soft final state instead of escape/capture).  The
     # fixed 260 was carbon-tuned (C radius 6.55 fm) and far too short for larger nuclei (Ar 9.10 fm).
-    # Scale ~3*radius/step; keep the YAML value as a floor.  early_exit makes max_steps a CAP -> the walk
-    # stops once every nucleon has escaped, so a generous cap costs ~the actual escape distribution.
+    # Physics termination is path_budget_R*radius; max_steps is the fixed 100k runaway ceiling (engine RAISES
+    # if hit -> a runaway is visible, never silently truncated).  ADONIS_TIMESTEP env overrides the stepping
+    # clock for A/B (distance-sync vs ACHILLES time-sync) without editing the YAML.
     _, _, _, _radius = _load_density(target.density_p, target.density_n)
-    _ms = max(cas.max_steps, int(np.ceil(3.0 * _radius / cas.step)))
-    print(f"[cascade] nucleus radius={_radius:.2f} fm -> max_steps={_ms} (floor {cas.max_steps})", flush=True)
-    cfg_cascade = DiscreteCascadeConfig(step=cas.step, max_steps=_ms,
+    _ts = os.environ.get("ADONIS_TIMESTEP", "1" if cas.time_step else "0") == "1"
+    print(f"[cascade] radius={_radius:.2f} fm  stepping={'TIME-sync' if _ts else 'DISTANCE-sync'}  "
+          f"path_budget={cas.path_budget_R}*R  (100k runaway ceiling)", flush=True)
+    cfg_cascade = DiscreteCascadeConfig(step=cas.step, max_steps=100000,
                                         seed=1, nn_inelastic=cas.nn_inelastic,
+                                        time_step=_ts, path_budget_R=cas.path_budget_R,
                                         nucleus=target.density_p, density_n=target.density_n,
                                         configs=target.configs)
     sf_n = SpectralFunction(target.spectral_n); sf_p = SpectralFunction(target.spectral_p)
