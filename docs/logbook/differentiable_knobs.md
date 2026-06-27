@@ -98,6 +98,25 @@ Parametric deformation over the tabulated `S(|p|,E)` (adonis/xsec/spectral.py); 
 ### Group F — overall normalizations  (trivial R)
 `qe_norm`, `res_norm`, `H_norm` — global σ multipliers (nominal 1.0); included for completeness.
 
+## PROGRESS (2026-06-27)
+- **Group D DONE (10 hard-vertex knobs, all closure-tested + committed):** QE `M_A` (pre-existing),
+  `axial_strength`, `vector_strength`, `mu_p`(gmp), `mu_n`(gmn), `gep`, `gen`; RES `res_axial_strength`(C5A),
+  `pw_norm[14]`, `pion_pole`(F_P).  Mechanism: amps2 quadratic in the scale -> 3-eval (a,b,c) records
+  (adonis/analysis/ma_records.py) + `strength_reweight`/`ma_reweight`.  Hooks: `me_cross_section`
+  vector_scale/ff_scale; `exclusive_amps2_batch` knobs=/pion_pole=.  Tests: test_strength_reweight.py,
+  test_res_strength_reweight.py (+ all nominal bit-exact gates still pass).
+  - `bkg_scale` DEFERRED: the DCC table sums bare+dressed+nonres at load (loader.py); needs the loader to
+    keep the 3 components separate to scale the non-resonant one.  (axial_z/time, vec_cc_z are assembly
+    DIAGNOSTICS, not physical knobs -> not exposed.)
+- **Group A scoped (NEXT, core-record surgery):** the per-channel sigma split needs the kind-1 record
+  (emitted in _pion_step/_nucleon_step + cascade_full make_pool_stepper with_rec + _rec_scatter) extended to
+  carry per-channel sigma + the realized sub-channel.  In-engine the components ALREADY exist: pion `sio`
+  (n,A,3 per-out-channel -> elastic=sio[ch_in], cex=sum others) and `sa` (abs); nucleon `sig_el(same_iso)`
+  (pp/nn vs pn) + `sig_in`.  Granular reweight generalizes pion_branch_reweight/nucleon_scat_reweight; GATE
+  with nominal-identity (granular==current sabs/sscat==1) + reweight==in-walk before trusting.
+- Groups B/C/E/F still pending (B branch-fractions share the A record surgery; E SF is event-level via
+  p_struck; F norms trivial).
+
 ## Implementation phases (each ends green-tested + committed)
 - **Phase 0 — scaffolding.** A single knob registry (`name → default → record → reweight_fn`) + a per-event
   record container; generalize the closure-test harness to be parameterized by knob (nominal-identity +
