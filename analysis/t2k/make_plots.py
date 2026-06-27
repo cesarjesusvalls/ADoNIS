@@ -343,10 +343,24 @@ def block_cc1pi_stv(flux="t2k", mat="C"):
 
     ado = {k: np.concatenate([selC[k], H[k]]) for k in ("dptt", "pn", "dalphat", "w")}
 
+    # ACHILLES reference must be CH (carbon + free-H) to match the T2K CH measurement and the ADoNIS
+    # selC+H curve.  The carbon STV bank is carbon-only; add ACHILLES's OWN free-hydrogen CC1pi STV
+    # (run_T2K_H.yml -> extract.py cc1pi; free proton, no FSI -- same physics class as the ADoNIS res_H).
     ach_path = os.environ.get("ACH_CC1PI", "output/achilles/t2k_cc1pi_tki_achilles.npz")
+    ach_h_path = os.environ.get("ACH_CC1PI_H", "output/achilles/t2k_cc1pi_tki_achilles_H.npz")
     if not os.path.exists(ach_path):
         print(f"[cc1pi-stv] ACHILLES ref {ach_path} missing -- skip (set ACH_CC1PI)", flush=True); return
-    ach = np.load(ach_path); ach_w = np.asarray(ach["w"]) * weight_to_nb_of(ach)
+    achC = np.load(ach_path); achC_w = np.asarray(achC["w"]) * weight_to_nb_of(achC)
+    if os.path.exists(ach_h_path):
+        achH = np.load(ach_h_path); achH_w = np.asarray(achH["w"]) * weight_to_nb_of(achH)
+        ach = {k: np.concatenate([np.asarray(achC[k]), np.asarray(achH[k])]) for k in ("pn", "dptt", "dalphat")}
+        ach_w = np.concatenate([achC_w, achH_w])
+        print(f"  ACHILLES CH: carbon sigma={achC_w.sum():.4e} + free-H sigma={achH_w.sum():.4e} nb "
+              f"= {ach_w.sum():.4e}", flush=True)
+    else:
+        print(f"  [cc1pi-stv] WARNING: ACHILLES free-H {ach_h_path} missing -> ACHILLES curve is CARBON-ONLY "
+              f"(not a fair CH comparison; generate via run_T2K_H.yml + extract.py cc1pi)", flush=True)
+        ach = {k: np.asarray(achC[k]) for k in ("pn", "dptt", "dalphat")}; ach_w = achC_w
     ado["dalphat_deg"] = np.degrees(ado["dalphat"])
     VARS = [("pn", "pN", r"$p_N$ [MeV/c]"), ("dptt", "dpTT", r"$\delta p_{TT}$ [MeV/c]"),
             ("dalphat_deg", "daT", r"$\delta\alpha_T$ [deg]")]
@@ -361,7 +375,7 @@ def block_cc1pi_stv(flux="t2k", mat="C"):
         da, ea = hist(ach_v, ach_w); dd, ed = hist(ado[key], ado["w"]); ax, axr = axes[0, c], axes[1, c]
         ax.fill_between(edges, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
                         step="post", color="0.5", alpha=0.25, lw=0)
-        ax.step(edges, np.append(da, da[-1]), where="post", color="0.35", lw=1.4, label="ACHILLES")
+        ax.step(edges, np.append(da, da[-1]), where="post", color="0.35", lw=1.4, label="ACHILLES (CH)")
         ax.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=4, capsize=2, lw=1.0, label="ADoNIS (CH)", zorder=4)
         ax.errorbar(ctr, d_y, yerr=d_e, fmt="o", color="k", ms=5, capsize=3, lw=1.4, label="T2K data", zorder=5)
         ax.set_ylabel(r"d$\sigma$/dx [nb/unit per CH]"); ax.set_ylim(bottom=0); ax.legend(fontsize=8)
