@@ -35,13 +35,19 @@ def _zexpand(A, z):
     return res + A[0]
 
 
-def nucleon_ff(Q2_GeV2):
-    """Returns dict of F1p,F1n,F2p,F2n,FA,FAP at Q2 [GeV^2].  Vectorised over Q2."""
+def nucleon_ff(Q2_GeV2, ff_scale=None):
+    """Returns dict of F1p,F1n,F2p,F2n,FA,FAP at Q2 [GeV^2].  Vectorised over Q2.
+    ff_scale (dict | None): per-Sachs-component MULTIPLIERS for the differentiable knobs --
+    keys gep,gen,gmp,gmn (vector Sachs); each defaults to 1.0 (bit-exact no-op).  Scaling a single Sachs
+    FF keeps amps2 QUADRATIC in that scale (the current is linear in F1/F2), so a 3-eval (s=0,1,-1)
+    decomposition gives an exact reweight (mu_p == gmp scale, mu_n == gmn scale).  The axial FA stays on
+    the dedicated axial_scale hook (dirac.py); ff_scale is vector-only to avoid double-scaling."""
+    s = ff_scale or {}
     tau = Q2_GeV2 / 4.0 / _MP_GEV ** 2
-    Gep = _param(_EP, tau)
-    Gen = 1.0 / (1 + Q2_GeV2 / _LAMBDASQ) ** 2 * _EN[0] * tau / (1 + _EN[1] * tau)
-    Gmp = _MUP * _param(_MP, tau)
-    Gmn = _MUN * _param(_MN, tau)
+    Gep = _param(_EP, tau) * s.get("gep", 1.0)
+    Gen = (1.0 / (1 + Q2_GeV2 / _LAMBDASQ) ** 2 * _EN[0] * tau / (1 + _EN[1] * tau)) * s.get("gen", 1.0)
+    Gmp = _MUP * _param(_MP, tau) * s.get("gmp", 1.0)
+    Gmn = _MUN * _param(_MN, tau) * s.get("gmn", 1.0)
     F1p = (Gep + tau * Gmp) / (1 + tau); F1n = (Gen + tau * Gmn) / (1 + tau)
     F2p = (Gmp - Gep) / (1 + tau);        F2n = (Gmn - Gen) / (1 + tau)
     # GRADIENT PROTECTION: the z-expansion radicand TCUT+Q2 < 0 for unphysical Q2 < -TCUT (timelike q

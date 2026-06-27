@@ -51,6 +51,19 @@ def build_qe_vector_records(k_nu, k_mu, p_struck, p_out):
             np.where(ok, 0.5 * (a1 + am) - a0, 0.0), np.where(ok, q2, 1.0))
 
 
+def build_qe_ff_records(k_nu, k_mu, p_struck, p_out, key):
+    """Per-event (a, b, c, Q2) for a single Sachs-FF scale knob `key` in {gep,gen,gmp,gmn}: amps2 is
+    quadratic in the scale (3-eval at s=0,1,-1).  mu_p == 'gmp', mu_n == 'gmn'.  Weight = strength_reweight."""
+    kn, km, ps, po = (jnp.asarray(x) for x in (k_nu, k_mu, p_struck, p_out))
+    def ev(s):
+        return np.asarray(me_cross_section(kn, km, ps, po, ff_scale={key: s})["amps2"])
+    a1, a0, am = ev(1.0), ev(0.0), ev(-1.0)
+    q = np.asarray(kn - km); q2 = np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2
+    ok = np.isfinite(a0) & np.isfinite(a1) & np.isfinite(am) & (q2 > 0)
+    return (np.where(ok, a0, 1.0), np.where(ok, 0.5 * (a1 - am), 0.0),
+            np.where(ok, 0.5 * (a1 + am) - a0, 0.0), np.where(ok, q2, 1.0))
+
+
 def build_res_ma_records(k_nu, k_mu, p_struck, p_N, p_pi, ipid, ppid):
     """Per-event (a, b, c, Q2) for the RES sample (channel = (ipid, ppid))."""
     from adonis.xsec import dcc_current as dcc

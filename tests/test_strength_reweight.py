@@ -14,13 +14,15 @@ jax.config.update("jax_enable_x64", True)
 
 from adonis.xsec import qe_xsec
 from adonis.xsec.backend import me_cross_section
-from adonis.analysis.ma_records import build_qe_ma_records, build_qe_vector_records, strength_reweight
+from adonis.analysis.ma_records import (build_qe_ma_records, build_qe_vector_records,
+                                        build_qe_ff_records, strength_reweight)
 
 N = 2000
 _QE = qe_xsec.sample_importance(N, seed=5)
 _KN, _KM, _PS, _PO = (jnp.asarray(_QE[k]) for k in ("k_nu", "k_mu", "p_struck", "p_out"))
 _REC = build_qe_ma_records(_KN, _KM, _PS, _PO)
 _VREC = build_qe_vector_records(_KN, _KM, _PS, _PO)
+_FFREC = {k: build_qe_ff_records(_KN, _KM, _PS, _PO, k) for k in ("gmp", "gmn", "gep", "gen")}
 
 
 def test_strength_nominal_identity():
@@ -72,7 +74,39 @@ def test_vector_autodiff_equals_fd():
 
 
 def test_qe_nominal_amps2_unchanged():
-    """vector_scale=axial_scale=1 reproduces the default amps2 bit-for-bit (no-op nominal)."""
+    """vector_scale=axial_scale=1, ff_scale=None reproduces the default amps2 bit-for-bit (no-op nominal)."""
     base = np.asarray(me_cross_section(_KN, _KM, _PS, _PO)["amps2"])
-    both = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, axial_scale=1.0, vector_scale=1.0)["amps2"])
+    both = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, axial_scale=1.0, vector_scale=1.0, ff_scale=None)["amps2"])
     assert np.array_equal(base, both)
+
+
+# ---- per-Sachs-FF knobs: mu_p (gmp), mu_n (gmn), gep, gen ----
+def test_ff_nominal_identity():
+    for k, rec in _FFREC.items():
+        assert np.allclose(np.asarray(strength_reweight(rec, 1.0)), 1.0, atol=1e-12), k
+
+
+def test_ff_matches_direct_amps2():
+    for k, rec in _FFREC.items():
+        a, b, c, _ = (np.asarray(x) for x in rec)
+        a1 = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, ff_scale={k: 1.0})["amps2"])
+        valid = np.isfinite(a1) & (a1 > 0) & ~((b == 0.0) & (c == 0.0))
+        for s in (0.7, 1.3):
+            direct = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, ff_scale={k: s})["amps2"])
+            w = np.asarray(strength_reweight(rec, s))
+            assert np.allclose((w * a1)[valid], direct[valid], rtol=1e-9), (k, s)
+
+
+def test_ff_autodiff_equals_fd():
+    eps = 1e-5
+    for k, rec in _FFREC.items():
+        f = lambda s: jnp.sum(strength_reweight(rec, s))
+        g_ad = float(jax.grad(f)(1.15))
+        g_fd = (float(f(1.15 + eps)) - float(f(1.15 - eps))) / (2 * eps)
+        assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-6, k
+
+
+def test_ff_gmp_nominal_amps2_unchanged():
+    base = np.asarray(me_cross_section(_KN, _KM, _PS, _PO)["amps2"])
+    g1 = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, ff_scale={"gmp": 1.0})["amps2"])
+    assert np.array_equal(base, g1)
