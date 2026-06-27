@@ -399,3 +399,27 @@ shifts the lab-|p|-binned CEX fraction much more than the (steeply-falling, less
 absolute.  NEXT: compare the π⁰-scatter CEX fraction per **W** bin (not lab |p|) on identical inputs
 (ACHILLES VERTEXDUMP/achilles:vertex replayed through the ADoNIS segment logger), to confirm it is the
 W-distribution/binning rather than a per-scatter difference.
+
+## 11. pi0 CEX per-W test: per-scatter physics is FAITHFUL; sec-8 residual is not in the CEX (2026-06-27)
+
+Decisive per-W test (`scripts/pi0_cex_perW.py`, fig `output/figures/pi0_cex_perW.png`).  Fired a pi0 BEAM
+at uniform lab |p| [80,900] into 12C on BOTH sides and compared the scatter CEX fraction cex/(el+cex):
+- ADoNIS: drove `_pion_step` directly (500k pi0, R_DISK=8), recording per first-scatter (lab |p|, W,
+  el/cex).  ACHILLES: `achilles:vertex` VERTEXDUMP, 9 seed batches (~18.4k pi0 scatters).
+- Logic: f_cex(W) is proven bit-identical (sec 10), and CEX(lab|p|)=∫f_cex(W)·P(W|lab|p|)dW, so this
+  tests the W DISTRIBUTION at fixed lab |p| (= the struck-nucleon Fermi/relative-angle sampling = transport).
+
+RESULTS:
+- **Cascade runtime CEX-vs-W lies exactly on the cross-section curve** (right panel): no runtime W/sigma
+  bug.  (0.34 at the Delta dip W~1270, rising to ~0.49 at W~1475, falling to ~0.38 by 1600.)
+- **CEX-vs-lab|p| agrees ADoNIS/ACHILLES to <5% (statistics)** across every bin (left panel):
+  ratio A/C = 1.01, 0.95, 0.99, 0.98, 1.03, 0.98 for [200,400]..[800,900].  18.4k ACH / 49k ADO scatters.
+
+So the per-scatter pi0 CEX -- cross section AND transport (the W-distribution at fixed lab |p|) -- is
+FAITHFUL to ACHILLES.  A controlled pi0 beam does NOT reproduce the sec-8 RES residual (27-36% deficit).
+CONCLUSION: the sec-8 RES pi0-CEX residual is NOT in the cascade CEX physics.  It is upstream/RES-specific
+-- either the RES-PRODUCED pi0 momentum/angular population (primary RES generation, feeding the segment
+matrix) or a segment-matrix stats/binning artifact -- NOT the DCC charge-exchange cross section or the
+pion transport.  (The cross-section hypothesis of sec 8/10 is now fully closed: refuted analytically in
+sec 10 and confirmed in-cascade here.)  If the RES residual matters for CC1pi it should be chased in the
+RES pi0 spectrum, not the cascade.
