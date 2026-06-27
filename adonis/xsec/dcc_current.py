@@ -180,18 +180,19 @@ from adonis.xsec.dcc_kinematics import boost_matrix_batch, setdfun_batch
 _BUILD_ZMTX_V = None
 
 
-def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None):
+def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None, pion_pole=1.0):
     """Unified amplitude matrix: the batched differential.build_zmtx_batched (the single
     build_zmtx; proven == vmapped assembly.build_zmtx for CC in tests/test_build_zmtx_equiv.py).
     m_N via conventions (amplitude-internal avg mass); m_pi passed in (conventions.amp_m_pi()).
     r_axial (N,) scales the axial amplitudes (M_A reweight hook; None = nominal)."""
     from adonis.primary.dcc.differential import build_zmtx_batched as _bzb
     return _bzb(vec, isv, axial, W, Q2, _PW_2J, _PW_2L, _PW_2I,
-                mode=1, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial)
+                mode=1, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial, pion_pole=pion_pole)
 
 
 def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
-                          return_zj=False, q_direct=None, r_axial=None, return_q2=False, knobs=None):
+                          return_zj=False, q_direct=None, r_axial=None, return_q2=False, knobs=None,
+                          pion_pole=1.0):
     """Vectorised exclusive amps2 over a batch of events (all SAME channel: itiz, hPID).
     Returns amps2 (N,) on the ACHILLES absolute scale (/_NORM).
     return_zj=True returns the lab hadron current zj (N,4_combo,4_mu) instead (DIAGNOSTIC).
@@ -239,7 +240,7 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     amp_mpi = AMP_MPI_OVERRIDE if AMP_MPI_OVERRIDE is not None else mpi
     r_ax = None if r_axial is None else jnp.asarray(r_axial)
     zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, amp_mpi,
-                                          r_axial=r_ax))  # (N,8,npw)
+                                          r_axial=r_ax, pion_pole=pion_pole))  # (N,8,npw)
     tiz = itiz / 2.0; tpinz = tcrz + tiz; tmax = tm_f + 0.5 + _EPS_TPIN
     IGM1 = (-1, 0, 1, 2)
     zcrnt = np.zeros((N, 2, 2, 4), complex)

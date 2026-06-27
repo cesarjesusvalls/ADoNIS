@@ -162,7 +162,7 @@ def angular_factor(theta, phi, pre):
 #  Batched build_zmtx (the angle-independent, knob-dependent amplitude matrix)  #
 # --------------------------------------------------------------------------- #
 def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
-                       m_N, m_pi, r_axial=None, vfac=1.0):
+                       m_N, m_pi, r_axial=None, vfac=1.0, pion_pole=1.0):
     """Batched port of `hadron_assembly.build_zmtx`.
 
     vec, isv, axial : (N, 8, n_pw) complex (interpolated amplitude components).
@@ -191,7 +191,7 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
             zmtx = zmtx.at[:, src].set(a[:, src])
             zmtx = zmtx.at[:, dst].set(a[:, src] * pha)
         if mode > 0:                                         # pion pole (CC only)
-            facpp = (1.0 / (-Q2 - m_pi ** 2))[:, None]
+            facpp = (jnp.asarray(pion_pole) / (-Q2 - m_pi ** 2))[:, None]   # pion_pole: F_P reweight knob
             zp = (qc0c * zmtx[:, 2] - qcc * zmtx[:, 6]) * facpp
             zm = (qc0c * zmtx[:, 3] - qcc * zmtx[:, 7]) * facpp
             zmtx = zmtx.at[:, 2].add(-qc0c * zp)
