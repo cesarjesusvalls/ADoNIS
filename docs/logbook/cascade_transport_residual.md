@@ -502,3 +502,34 @@ Delta -> expected sub-% on CC1pi.  A genuine fix needs per-encounter instrumenta
 the exact divergence -- an ACHILLES-rebuild-level effort.  Documented; NOT hacked with a fitted constant.
 Tools: scripts/cascade_channel_perW.py (beam driver, records recoil charge + all scatters),
 scripts/cascade_channel_plot.py, /tmp/pn_ratio.py.
+
+## 15. RESOLUTION: pi+/pi- CEX "deficit" was a diagnostic artifact -- transport is faithful (2026-06-27)
+
+Ran the gold-standard identical-config replay (user's option b): ACHILLES_DUMPCFG dumped the EXACT per-event
+nucleus (beam pi+ + all 12 nucleons, 4-mom + position) for a pi+ beam (12 seeds, 213837 configs); ADoNIS's
+`_pion_step` selection was run on the SAME nuclei (scripts/cex_replay.py).  CEX fraction per beam |p| ON
+IDENTICAL CONFIGS:
+
+| beam |p| | ADoNIS/ACHILLES (identical cfg) | (own-cfg all-scatter) | (sec-13 first-scatter) |
+|---|---|---|---|
+| [200,400] | 1.01 ± 0.04 | 0.96 ± 0.03 | 0.89 |
+| [400,600] | 1.05 ± 0.05 | 1.11 ± 0.05 | 0.90 |
+| [600,900] | 1.00 ± 0.05 | 1.15 ± 0.05 | -- |
+
+On identical configs the pi+ CEX is faithful to <=1-5%.  The apparent ~10% deficit was NOT a transport or
+selection bug -- it was diagnostic methodology:
+1. **First-scatter binning** (the sec-13/14 driver froze each pion at its FIRST interaction -- surface-
+   biased, lower density) vs ACHILLES VERTEXDUMP = ALL vertices.  Fixing to all-scatter moved [200,400]
+   0.89 -> 0.96.
+2. **Config-ensemble run-to-run statistics**: two ACHILLES runs of the same card differ ~4% on this
+   diluted channel (e.g. ACHILLES pi+ CEX[200,400] 0.161 _beam_pip vs 0.155 _dc); own-config ADoNIS
+   ratios scatter 0.96-1.15 around 1.  The identical-config replay removes this -> ~1.0.
+
+`sample_nucleons` marginals MATCH ACHILLES exactly (proton |r| 2.168 vs 2.164 fm; proton Fermi |p| 158.6
+vs 158.8 MeV; p/n ratio 1.00) -- config generation is faithful too.
+
+**This SUPERSEDES sec-14**: there is NO ~5% proton over-selection.  That number was the first-scatter
+own-config artifact; on identical configs ADoNIS's nucleon selection reproduces ACHILLES (CEX ratio ~1.0,
+event-by-event same-channel 74%).  The cascade pion transport+selection is faithful to ACHILLES.  The
+diagnostic fix (all-scatter recording) is in scripts/cascade_channel_perW.py; the replay in
+scripts/cex_replay.py.
