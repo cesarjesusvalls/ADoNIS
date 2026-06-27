@@ -8,7 +8,9 @@ EXACT CrossSection-mode beam geometry (RunCascade.cc::InitCrossSection): a pi+ f
 parameter b uniform in a disk of radius R_DISK=10 fm, starting at z = -1.05*R_nuc (5% outside the
 surface, status external_test -> no formation zone).  No fitted constants, no duplicated physics -- it
 reuses cascade_full.run_cascade_pool + cascade_discrete._pion_step (the same engine the T2K blueprint
-uses).  reaction = the pion interacted (kind-1 record nh>0); absorption = reacted with NO surviving pion.
+uses).  reaction = the primary pion ACTUALLY interacted (prim_fate ABSORB/CONVERT or an actual scatter
+nsc>0) -- NOT kind-1 nh, which records the pre-Pauli sampled hit (ACHILLES counts a reaction only when
+NOT Pauli-blocked: Cascade.cc:903 `if(hit)`); absorption = reacted with NO surviving pion.
 
 ACHILLES side = configs/achilles/run_cascade_pip_C.yml (achilles:cascade, Mode: CrossSection, VirtRes
 interactions), a uniform-momentum beam over KickMomentum=[80,500].  Only REACTED events are written; the
@@ -77,12 +79,20 @@ def adonis_transparency(n=200_000, seed=0, target="C", M=12, max_steps=2000):
     _base = jax.vmap(lambda e: jax.random.fold_in(knuc, e))(jnp.arange(n))
     g0["pkey"] = jax.vmap(lambda b: jax.random.fold_in(b, 0))(_base)[:, None, :]
     stepper = CF.make_pool_stepper(su, cfg, with_rec=True)
-    out, _sofl, _oofl, _prim_fate, (fsi_rec, _rofl) = CF.run_cascade_pool(
+    out, _sofl, _oofl, prim_fate, (_fsi_rec, _rofl) = CF.run_cascade_pool(
         g0, stepper, knuc, su["consumed0"], M=M, max_steps=max_steps, M_out=24,
         prim_origin=CF._ORIG_PRIM_PI, rec_caps=(8, 8))
-    reacted = np.asarray(fsi_rec["nh"]) > 0                              # pion interacted at least once
+    # REACTION = the primary pion ACTUALLY interacted (ACHILLES Cascade.cc:903 adds the history vertex
+    # only inside `if(hit)` -> a Pauli-BLOCKED interaction is NOT a reaction).  So count the latched
+    # primary fate (absorbed/converted) OR an actual scatter (nsc counts is_scat only, excludes blocked),
+    # NOT the kind-1 `nh` (which records the pre-Pauli sampled hit and would over-count blocked scatters).
+    prim_fate = np.asarray(prim_fate)
+    prim_pi = np.asarray((out["species"] == CF.PION) & out["alive"] & (out["origin"] == CF._ORIG_PRIM_PI))
+    nsc_prim = (np.asarray(out["nsc"]) * prim_pi).max(axis=1)            # surviving primary pion scatter count
+    scattered = nsc_prim > 0
+    reacted = (prim_fate == CF.FATE_ABSORB) | (prim_fate == CF.FATE_CONVERT) | scattered
     has_pi = np.asarray(((out["species"] == CF.PION) & out["alive"]).any(axis=1))
-    absorbed = reacted & ~has_pi
+    absorbed = reacted & ~has_pi                                         # reacted with no surviving pion
     p = np.asarray(mom)
     idx = np.clip(np.digitize(p, EDGES) - 1, 0, len(CEN) - 1)
     sr = np.zeros(len(CEN)); sa = np.zeros(len(CEN)); cnt = np.zeros(len(CEN))

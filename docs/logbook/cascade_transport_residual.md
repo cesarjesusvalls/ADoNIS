@@ -337,24 +337,38 @@ TODO (separate session): localize the pi0 charge-ex deficit to the DCC charge-ex
 Rebuilt the π⁺¹²C transparency as paper Fig. 3 on the SOLE pool engine (`analysis/paper/fig3_cascade_
 absorption/make.py`): the ADoNIS side drives `cascade_full.run_cascade_pool` + `_pion_step` in ACHILLES's
 EXACT `InitCrossSection` beam geometry (beam_r uniform in a disk R_DISK=10 fm, z₀=−1.05·R_nuc, status
-external_test → no formation zone); reaction = kind-1 record `nh>0`, absorption = reacted with no
-surviving pion.  ACHILLES side = `run_cascade_pip_C.yml` (VirtRes interactions; uniform-momentum range
-beam [80,500], σ(p)=πR²·n_react/(n_tried·Δbin/Δrange), n_tried from the GenCrossSection counter; 8 seed
-batches, 41.6k reactions).
+external_test → no formation zone).  ACHILLES side = `run_cascade_pip_C.yml` (VirtRes interactions;
+uniform-momentum range beam [80,500], σ(p)=πR²·n_react/(n_tried·Δbin/Δrange), n_tried from the
+GenCrossSection counter; 8 seed batches, 41.6k reactions).
 
 **Geometry fix vs the old oracle (commit 3cfbeea).**  The old CSVs used MISMATCHED radii — ACHILLES
 πR² with R=6.5, ADoNIS "R from ρ tail" — so the old "~1.33×" was partly a normalization mismatch.  With
 R=10 on BOTH sides ACHILLES gives **641 mb at the Δ (290 MeV)**, matching the physical DUET π⁺¹²C
 reaction σ (~600 mb); the old R=6.5 gave only 270 mb (truncated the ρ tail).  R=10 is the correct disk.
 
-**Result (80k ADoNIS vs 8-seed ACHILLES, matched R=10):**
-- ABSORPTION matches well: χ²/ndf = 5.1, ratio within ±10% across the curve; abs fraction ADoNIS 0.275
-  vs ACHILLES 0.305 (|Δ|=0.03, within the locked oracle-test bound).
-- REACTION runs HIGH: mean ADO/ACH = 1.10 over the Δ (230–350 MeV), GROWING to ~1.5 at low p
-  (90–130 MeV); χ²/ndf = 51.6.  The excess is therefore in the SCATTERING channel (reaction−absorption),
-  not absorption — consistent with §8's pi0 charge-exchange / scattering residual surfacing at high stats.
-- Both σ(p) peak at the Δ; shapes agree.
+**Reaction-counting bug found + fixed (the real cause of the apparent residual).**  A first pass defined
+the ADoNIS reaction as the kind-1 record `nh>0`.  `nh` records the *sampled* pion hit BEFORE Pauli
+blocking (`_pion_step` returns `has_hit` at cascade_discrete.py:618; the Pauli check sets `is_scat=False`
+but the record still fires).  ACHILLES counts a reaction ONLY when the interaction is NOT Pauli-blocked —
+`Cascade::FinalizeMomentum` adds the history vertex inside `if(hit)` (Cascade.cc:903,996), and
+`reaction = History().size()>0`.  So `nh>0` over-counted blocked scatters; the over-count is largest at
+low pion momentum where the recoil nucleon is soft and Pauli blocking is strongest.  This produced a
+SPURIOUS reaction excess: ADO/ACH = 1.10 at the Δ growing to ~1.5 at 90–130 MeV, χ²/ndf = 51.6 — entirely
+in the scattering channel (absorption was untouched, since a blocked scatter leaves the pion alive so the
+"no surviving pion" absorption tag was already correct).
+Fix: define reaction from the primary pion's ACTUAL fate — `prim_fate∈{ABSORB,CONVERT}` OR an actual
+scatter `out["nsc"]>0` (`nsc += is_scat` counts only non-blocked scatters, cascade_discrete.py:608) —
+NOT `nh`.
 
-The reaction excess is the parked cascade transport residual (untuned Oset+DCC, no fitted constants).
-Open: the scattering over-production at low–mid p (links to §8 DCC charge-exchange and the slow-pion Oset
-1/v_rel wing).  fig3 reports it honestly (ratio + χ²/ndf).
+**Result after the fix (80k ADoNIS vs 8-seed ACHILLES, matched R=10):**
+- REACTION: mean ADO/ACH = **1.001** over the Δ (230–350 MeV); per-bin within a few % (statistics);
+  χ²/ndf = **2.9**.  Low-p 90 MeV now 1.01 (was 1.5).
+- ABSORPTION: abs fraction ADoNIS **0.308** vs ACHILLES 0.305; χ²/ndf = **4.9** (a few high-p bins
+  scatter at low absolute σ / lower stats).
+- Both σ(p) peak at the Δ; shapes and magnitudes agree.
+
+CONCLUSION: the π⁺¹²C cascade transport is faithful to ACHILLES at the ~1% level (reaction at the Δ
+<1%, absorption fraction <1%) with the SAME untuned Oset+DCC and no fitted constants — the earlier
+"~1.10–1.5× reaction residual" was a fig3-side counting artifact, not cascade physics.  This is
+consistent with §1–3 (identical-config replay <1%).  The §8 pi0 charge-exchange channel residual is
+SEPARATE (a DCC out-channel split, not the reaction total) and still open.
