@@ -137,6 +137,15 @@ Parametric deformation over the tabulated `S(|p|,E)` (adonis/xsec/spectral.py); 
 - Tests: test_strength_reweight.py, test_res_strength_reweight.py, test_pool_fsi_reweight.py (all green);
   cascade regression suite + all pre-existing bit-exact/oracle gates still pass.
 
+## UPDATE 2026-06-28: Group E DONE + nothing-broke confirmed
+- **Group E (4 knobs) DONE:** kF_sf, Eb_shift, sf_norm, src_tail (adonis/analysis/sf_reweight.py) -- JAX
+  bilinear S(p,E) interp + density-ratio reweight on the recorded struck (|p|,removal).  Closure green
+  (nominal identity, sf_norm multiplier, autodiff==FD x4, kF moves weights).  Commit 7a7197a.
+- **NOTHING BROKE (verified):** full suite 86 passed / 4 skipped / 0 failed; and a full-config 1M QE bank
+  regenerated with the NEW code is **byte-for-byte identical** to the committed reference (w,n_n,n_p,mu,
+  struck all array_equal, maxabsdiff 0).  Every knob is a true nominal no-op on the forward prediction.
+- **RUNNING TOTAL: 24 differentiable knobs** (D 10 + A 9 + B 1 + E 4), each gated, all committed.
+
 ## REMAINING (need new infrastructure, NOT the record-extension pattern) — deliberately deferred
 - **f_abs_isospin, f_delta_decay (Group B):** these are multi-component isospin CLEBSCH-GORDAN structure,
   not well-defined single-scalar tunables; their physical content is already captured by the per-channel
