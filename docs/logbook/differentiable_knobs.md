@@ -146,6 +146,25 @@ Parametric deformation over the tabulated `S(|p|,E)` (adonis/xsec/spectral.py); 
   struck all array_equal, maxabsdiff 0).  Every knob is a true nominal no-op on the forward prediction.
 - **RUNNING TOTAL: 24 differentiable knobs** (D 10 + A 9 + B 1 + E 4), each gated, all committed.
 
+## UPDATE 2026-06-28: Phase 4 — multi-mechanism JOINT CLOSURE via model_hist_full
+The end-to-end differentiable predictor `full_knobs.model_hist_full(knobs, R, HV, SF, edges)` threads ALL
+24 knobs into the T2K CC0pi dsigma/dx; `tests/test_full_knobs_grad.py` gates nominal==legacy model_hist +
+autodiff==FD on real bins (7/7).  Capstone: a **joint closure across all three reweight mechanisms at once**
+(`analysis/t2k/differentiability/closure_full.py`, mirrors closure.py) — perturb+recover
+`M_A` (hard-vertex amps2, R2) + `sabs` (FSI kind-1, R1) + `kF_sf` (spectral-function density, R3); pseudo-data
+from INDEPENDENT walks; two-replica covariant chi2; Hessian errors.  Reduced stats (CC0PI_N=12000, NREP=8,
+NPSE=4).
+- **ABSOLUTE norm (`--noA`, the blueprint default):** chi2/ndf 9.83 -> 0.54; M_A 1.090+/-0.106 (true 1.10,
+  **-0.10 sig**), kF_sf 1.117+/-0.026 (true 1.10, +0.65 sig), sabs 0.627+/-0.440 (true 1.30, -1.53 sig;
+  weakly constrained on dpt — large error, within 2 sig).  All three recovered within errors.
+- **PROFILED A:** chi2/ndf 4.51 -> 0.62 but M_A **-4.70 sig** biased — profiling A absorbs M_A's QE-norm
+  handle, leaving only its shape signature (degenerate with kF_sf).  This is exactly the blueprint
+  normalization stance: fit ABSOLUTELY by default; profile a norm only with an explicit stated reason.
+  The profiled-vs-absolute contrast (M_A -4.70 sig -> -0.10 sig) is the diagnostic, not a bug.
+- Figures: output/figures/cc0pi_tune_closure_full_dpt{,_abs}.png; history npz in /tmp/adonis_tune_runs.
+- NOTE on sabs: dpt has weak FSI sensitivity (the FSI knob error dwarfs the others); dat (delta_alphaT) is
+  the FSI-sensitive observable — a dat closure would tighten sabs.
+
 ## REMAINING (need new infrastructure, NOT the record-extension pattern) — deliberately deferred
 - **f_abs_isospin, f_delta_decay (Group B):** these are multi-component isospin CLEBSCH-GORDAN structure,
   not well-defined single-scalar tunables; their physical content is already captured by the per-channel
