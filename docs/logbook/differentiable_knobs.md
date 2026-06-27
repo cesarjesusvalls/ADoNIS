@@ -161,9 +161,16 @@ NPSE=4).
   handle, leaving only its shape signature (degenerate with kF_sf).  This is exactly the blueprint
   normalization stance: fit ABSOLUTELY by default; profile a norm only with an explicit stated reason.
   The profiled-vs-absolute contrast (M_A -4.70 sig -> -0.10 sig) is the diagnostic, not a bug.
-- Figures: output/figures/cc0pi_tune_closure_full_dpt{,_abs}.png; history npz in /tmp/adonis_tune_runs.
-- NOTE on sabs: dpt has weak FSI sensitivity (the FSI knob error dwarfs the others); dat (delta_alphaT) is
-  the FSI-sensitive observable — a dat closure would tighten sabs.
+- **dat (delta_alphaT), ABSOLUTE:** chi2/ndf 4.57 -> 0.43; M_A 1.023+/-0.373 (-0.21 sig), kF_sf
+  1.136+/-0.098 (+0.36 sig), sabs 0.856+/-2.54 (-0.17 sig).  All unbiased (|pull|<=0.36 sig).
+- **CORRECTION (measured, refuting an earlier guess):** dat did NOT tighten sabs — its error GREW
+  (dpt 0.44 -> dat 2.54, i.e. fully unconstrained).  sabs (pion-absorption scale) is weakly constrained
+  by EITHER single CC0pi STV observable in an absolute fit (its sigma dwarfs M_A/kF_sf in both); only the
+  pull stays small because the error is large.  Tightening sabs needs a JOINT dpt+dat fit or a direct
+  FSI-sensitive observable — not built here.  The closure itself is sound: every knob unbiased,
+  differentiable end-to-end across all three mechanisms; sabs identifiability is observable-limited, not a
+  code issue.
+- Figures: output/figures/cc0pi_tune_closure_full_{dpt,dat}{,_abs}.png; history npz in /tmp/adonis_tune_runs.
 
 ## REMAINING (need new infrastructure, NOT the record-extension pattern) — deliberately deferred
 - **f_abs_isospin, f_delta_decay (Group B):** these are multi-component isospin CLEBSCH-GORDAN structure,
