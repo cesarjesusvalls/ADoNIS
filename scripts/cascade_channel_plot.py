@@ -33,19 +33,17 @@ _CH = {211: 0, 111: 1, -211: 2}
 
 
 def ach_load(name):
-    plab, chan = [], []
-    for f in glob.glob(f"output/achilles/_beam_{name}_vtx*.log") + (
-            glob.glob("output/achilles/_pi0beam_vtx*.log") if name == "pi0" else []):
+    plab, W, chan = [], [], []
+    want = {"pip": 211, "pi0": 111, "pim": -211, "p": 2212, "n": 2112}[name]
+    for f in glob.glob(f"output/achilles/_wbeam_{name}_vtx*.log"):   # W-instrumented beams (achilles:vertexw)
         for line in open(f):
             if not line.startswith("VTX "):
                 continue
-            m = dict(re.findall(r"(\w+)=(-?[\d.eE+]+)", line))
-            ip = int(m.get("inc_pid", 0))
-            want = {"pip": 211, "pi0": 111, "pim": -211, "p": 2212, "n": 2112}[name]
-            if ip != want:
+            m = dict(re.findall(r"(\w+)=(-?[\d.]+(?:[eE][-+]?\d+)?)", line))
+            if int(m.get("inc_pid", 0)) != want:
                 continue
-            plab.append(float(m["inc_p"])); chan.append(int(m["channel"]))
-    return np.array(plab), np.array(chan)
+            plab.append(float(m["inc_p"])); W.append(float(m.get("W", -1))); chan.append(int(m["channel"]))
+    return np.array(plab), np.array(W), np.array(chan)
 
 
 def binfrac(plb, sc, c2, edges):
@@ -77,45 +75,27 @@ def main():
         is_pion = pid in _CH
         plo, phi = (80, 900) if is_pion else (200, 1700)
         ped = np.linspace(plo, phi, 11)
-        # ADoNIS
+        Wed = np.arange(*((1120, 1620, 40) if is_pion else (1950, 2480, 50)))
+        # ADoNIS (charge-matched all-scatter) -- CEX/inel vs lab|p| (left) AND vs W (right)
         af = Path(f"/tmp/chan_ado_{pid}.npz")
         if af.exists():
             d = np.load(af); ap, aw, ak = d["plab"], d["W"], d["kind"]
-            # all-scatter records every vertex of the EVOLVING pion; keep only vertices where the pion
-            # is STILL this charge (match ACHILLES inc_pid -- a post-CEX pi0 must not count as pi+/pi-).
-            if is_pion and "chpre" in d:
+            if is_pion and "chpre" in d:                 # keep only vertices where pion is STILL this charge
                 keep = d["chpre"] == _CH[pid]; ap, aw, ak = ap[keep], aw[keep], ak[keep]
             asc = (ak == 0) | (ak == 1); ac2 = ak == 1
-            xc, fa, ea = binfrac(ap, asc, ac2, ped)
-            a0.errorbar(xc, fa, ea, fmt='s-', color='C0', capsize=3, label='ADoNIS')
-            Wed = np.arange(*( (1120, 1620, 40) if is_pion else (1900, 2500, 60)))
-            wc, fw, ew = binfrac(aw, asc, ac2, Wed)
-            a1.errorbar(wc, fw, ew, fmt='s', color='C0', capsize=3, label='ADoNIS (post-Pauli)')
-        # ADoNIS no-Pauli (pi0 only) -> should match pre-Pauli curve
-        npf = Path(f"/tmp/chan_ado_{pid}_nopauli.npz")
-        if npf.exists():
-            d = np.load(npf); np_w, np_k = d["W"], d["kind"]; nsc = (np_k == 0) | (np_k == 1); nc2 = np_k == 1
-            Wed = np.arange(1120, 1620, 40); wc, fw2, ew2 = binfrac(np_w, nsc, nc2, Wed)
-            a1.errorbar(wc, fw2, ew2, fmt='^', color='C2', capsize=3, label='ADoNIS (no Pauli)')
-        # ACHILLES
-        plab, chan = ach_load(name)
+            xc, fa, ea = binfrac(ap, asc, ac2, ped); a0.errorbar(xc, fa, ea, fmt='s-', color='C0', capsize=3, label='ADoNIS')
+            wc, fw, ew = binfrac(aw, asc, ac2, Wed);  a1.errorbar(wc, fw, ew, fmt='s-', color='C0', capsize=3, label='ADoNIS')
+        # ACHILLES -- same observable, both axes (apples-to-apples)
+        plab, Wa, chan = ach_load(name)
         if len(chan):
             sc = np.isin(chan, [1, 2]); c2 = chan == 2
-            xc, fc, ec = binfrac(plab, sc, c2, ped)
-            a0.errorbar(xc, fc, ec, fmt='D--', color='0.35', capsize=3, label='ACHILLES')
-        # pre-Pauli cross-section curve
-        if is_pion:
-            if pion_curves is None:
-                Wg = np.linspace(1120, 1600, 80); pion_curves = (Wg, pion_cex_curve(Wg))
-            Wg, pc = pion_curves
-            a1.plot(Wg, pc[_CH[pid]], '-', color='C3', lw=2, label='cross section (pre-Pauli)')
-        else:
-            Wg = np.linspace(1950, 2480, 80)
-            a1.plot(Wg, nucleon_inel_curve(Wg), '-', color='C3', lw=2, label='cross section (pre-Pauli)')
+            xc, fc, ec = binfrac(plab, sc, c2, ped); a0.errorbar(xc, fc, ec, fmt='D--', color='0.35', capsize=3, label='ACHILLES')
+            wm = sc & (Wa > 0)
+            wc, fc2, ec2 = binfrac(Wa, wm, c2, Wed); a1.errorbar(wc, fc2, ec2, fmt='D--', color='0.35', capsize=3, label='ACHILLES')
         ylab = "CEX / (el+cex)" if kind == "cex" else "inel / (el+inel)"
         a0.set_title(f"{lbl} on $^{{12}}$C : {ylab} vs lab |p|"); a0.set_xlabel("lab |p| [MeV]")
         a0.set_ylabel(ylab); a0.legend(fontsize=8)
-        a1.set_title(f"{lbl} : {ylab} vs W"); a1.set_xlabel("W [MeV]"); a1.legend(fontsize=8)
+        a1.set_title(f"{lbl} : {ylab} vs W (invariant mass)"); a1.set_xlabel("W [MeV]"); a1.legend(fontsize=8)
     fig.suptitle("Cascade per-W channel fractions: ADoNIS vs ACHILLES (pi: CEX; N: inelastic)", fontsize=13)
     fig.tight_layout(); out = "output/figures/cascade_channel_perW.png"; fig.savefig(out, dpi=120)
     print("wrote", out)
