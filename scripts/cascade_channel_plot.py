@@ -67,37 +67,47 @@ def pion_cex_curve(W):  # nucleon-summed sigma_cex/sigma_scat for a pion charge 
     return out
 
 
+def panel(am, ar, edges, ado, ach, xlabel, ylab, title):
+    """T2K-style: main axis am (ADoNIS + ACHILLES) + ratio axis ar (ADoNIS/ACHILLES) + chi2/ndf."""
+    ca, fa, ea = ado; cc, fc, ec = ach
+    am.errorbar(cc, fc, ec, fmt='D--', color='0.35', ms=4, capsize=2, lw=1.0, label='ACHILLES')
+    am.errorbar(ca, fa, ea, fmt='s-', color='C0', ms=4, capsize=2, lw=1.0, label='ADoNIS')
+    am.set_title(title, fontsize=9); am.set_ylabel(ylab, fontsize=8); am.legend(fontsize=7); am.set_ylim(bottom=0)
+    m = np.isfinite(fa) & np.isfinite(fc) & (fc > 0) & (fa > 0)
+    ar.axhspan(0.9, 1.1, color='green', alpha=0.12); ar.axhline(1.0, ls='--', color='0.5', lw=0.7)
+    if m.any():
+        r = fa[m] / fc[m]; er = r * np.sqrt((ea[m] / fa[m]) ** 2 + (ec[m] / fc[m]) ** 2)
+        ar.errorbar(ca[m], r, er, fmt='o', color='C3', ms=3, capsize=2)
+        chi2 = float(np.sum((fa[m] - fc[m]) ** 2 / (ea[m] ** 2 + ec[m] ** 2))); ndf = int(m.sum())
+        ar.text(0.03, 0.82, f"$\\chi^2$/ndf = {chi2:.0f}/{ndf} = {chi2/max(ndf,1):.2f}",
+                transform=ar.transAxes, fontsize=8)
+    ar.set_ylim(0.7, 1.3); ar.set_xlabel(xlabel, fontsize=8); ar.set_ylabel("ADO/ACH", fontsize=7)
+
+
 def main():
-    fig, axes = plt.subplots(5, 2, figsize=(13, 17))
-    pion_curves = None
+    fig, axes = plt.subplots(10, 2, figsize=(13, 22), height_ratios=[3, 1] * 5)
     for r, (pid, name, lbl, kind) in enumerate(ROW):
-        a0, a1 = axes[r, 0], axes[r, 1]
+        am0, ar0 = axes[2 * r, 0], axes[2 * r + 1, 0]      # left col: vs lab|p| (main, ratio)
+        am1, ar1 = axes[2 * r, 1], axes[2 * r + 1, 1]      # right col: vs W (main, ratio)
         is_pion = pid in _CH
         plo, phi = (80, 900) if is_pion else (200, 1700)
-        ped = np.linspace(plo, phi, 11)
-        Wed = np.arange(*((1120, 1620, 40) if is_pion else (1950, 2480, 50)))
-        # ADoNIS (charge-matched all-scatter) -- CEX/inel vs lab|p| (left) AND vs W (right)
-        af = Path(f"/tmp/chan_ado_{pid}.npz")
-        if af.exists():
-            d = np.load(af); ap, aw, ak = d["plab"], d["W"], d["kind"]
-            if is_pion and "chpre" in d:                 # keep only vertices where pion is STILL this charge
-                keep = d["chpre"] == _CH[pid]; ap, aw, ak = ap[keep], aw[keep], ak[keep]
-            asc = (ak == 0) | (ak == 1); ac2 = ak == 1
-            xc, fa, ea = binfrac(ap, asc, ac2, ped); a0.errorbar(xc, fa, ea, fmt='s-', color='C0', capsize=3, label='ADoNIS')
-            wc, fw, ew = binfrac(aw, asc, ac2, Wed);  a1.errorbar(wc, fw, ew, fmt='s-', color='C0', capsize=3, label='ADoNIS')
-        # ACHILLES -- same observable, both axes (apples-to-apples)
-        plab, Wa, chan = ach_load(name)
-        if len(chan):
-            sc = np.isin(chan, [1, 2]); c2 = chan == 2
-            xc, fc, ec = binfrac(plab, sc, c2, ped); a0.errorbar(xc, fc, ec, fmt='D--', color='0.35', capsize=3, label='ACHILLES')
-            wm = sc & (Wa > 0)
-            wc, fc2, ec2 = binfrac(Wa, wm, c2, Wed); a1.errorbar(wc, fc2, ec2, fmt='D--', color='0.35', capsize=3, label='ACHILLES')
-        ylab = "CEX / (el+cex)" if kind == "cex" else "inel / (el+inel)"
-        a0.set_title(f"{lbl} on $^{{12}}$C : {ylab} vs lab |p|"); a0.set_xlabel("lab |p| [MeV]")
-        a0.set_ylabel(ylab); a0.legend(fontsize=8)
-        a1.set_title(f"{lbl} : {ylab} vs W (invariant mass)"); a1.set_xlabel("W [MeV]"); a1.legend(fontsize=8)
-    fig.suptitle("Cascade per-W channel fractions: ADoNIS vs ACHILLES (pi: CEX; N: inelastic)", fontsize=13)
-    fig.tight_layout(); out = "output/figures/cascade_channel_perW.png"; fig.savefig(out, dpi=120)
+        ped = np.linspace(plo, phi, 13)
+        Wed = np.arange(*((1120, 1620, 30) if is_pion else (1950, 2480, 40)))
+        ylab = "CEX/(el+cex)" if kind == "cex" else "inel/(el+inel)"
+        # ADoNIS (charge-matched all-scatter)
+        d = np.load(f"/tmp/chan_ado_{pid}.npz"); ap, aw, ak = d["plab"], d["W"], d["kind"]
+        if is_pion and "chpre" in d:
+            keep = d["chpre"] == _CH[pid]; ap, aw, ak = ap[keep], aw[keep], ak[keep]
+        asc = (ak == 0) | (ak == 1); ac2 = ak == 1
+        # ACHILLES
+        plab, Wa, chan = ach_load(name); sc = np.isin(chan, [1, 2]); c2 = chan == 2; wm = sc & (Wa > 0)
+        panel(am0, ar0, ped, binfrac(ap, asc, ac2, ped), binfrac(plab, sc, c2, ped),
+              "lab |p| [MeV]", ylab, f"{lbl} on $^{{12}}$C : {ylab} vs lab |p|")
+        panel(am1, ar1, Wed, binfrac(aw, asc, ac2, Wed), binfrac(Wa, wm, c2, Wed),
+              "W [MeV]", ylab, f"{lbl} : {ylab} vs W (invariant mass)")
+    fig.suptitle("Cascade channel fractions, ADoNIS vs ACHILLES on $^{12}$C (pi: charge-exchange; N: inelastic)",
+                 fontsize=13)
+    fig.tight_layout(rect=[0, 0, 1, 0.99]); out = "output/figures/cascade_channel_perW.png"; fig.savefig(out, dpi=120)
     print("wrote", out)
 
 
