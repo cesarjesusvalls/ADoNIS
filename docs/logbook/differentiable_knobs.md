@@ -126,6 +126,32 @@ Parametric deformation over the tabulated `S(|p|,E)` (adonis/xsec/spectral.py); 
   (a_nom = G/sigma_tot, sigma_tot(s)=s_el*sig_el+s_inel*sig_in) x el/inel sub-branch.
 - Groups B/C/E/F still pending (B branch-fractions share the record surgery; E SF event-level; F norms).
 
+## FINAL STATE THIS SESSION — 20 knobs added, validated, committed
+- **Group D (10):** M_A*, axial_strength, vector_strength, mu_p, mu_n, gep, gen, res_axial_strength(C5A),
+  pw_norm[14], pion_pole(F_P).  (* pre-existing.)  amps2 3-eval decomposition + strength/ma reweight.
+- **Group A (9):** pion s_piN_elastic, s_piN_cex, s_conv (+ s_pi_abs=sabs) ; nucleon
+  s_NN_elastic{pp,pn,nn}, s_NN_inelastic{pp,pn,nn}.  Core kind-1 record surgery; fsi_pion_reweight +
+  fsi_nucleon_reweight; pool_fsi_reweight backward-compatible + granular keywords.  Real-record gates:
+  nominal==1 (4e-16), forward identical with/without records, autodiff==FD (3e-8).
+- **Group B (1):** f_NN_cex (NN-elastic charge-exchange fraction, nominal 0.5).
+- Tests: test_strength_reweight.py, test_res_strength_reweight.py, test_pool_fsi_reweight.py (all green);
+  cascade regression suite + all pre-existing bit-exact/oracle gates still pass.
+
+## REMAINING (need new infrastructure, NOT the record-extension pattern) — deliberately deferred
+- **f_abs_isospin, f_delta_decay (Group B):** these are multi-component isospin CLEBSCH-GORDAN structure,
+  not well-defined single-scalar tunables; their physical content is already captured by the per-channel
+  sigma knobs (Group A).  Expose only if a specific multi-outcome parameterization is wanted.
+- **M_delta, Gamma_delta (Group C):** the cascade Delta mass is sampled from the FULL dsigma/dm
+  (nn_inelastic.dsigma_dm: relativistic BW x matrix element x phase space), not a bare BW.  Reweight needs
+  recording the sampled m_d + the density ratio dsigma_dm(m_d;theta)/dsigma_dm(m_d;theta0) -> re-evaluate
+  dsigma_dm at two pole masses.  Doable, but new (density-ratio) machinery.
+- **Spectral function (Group E):** sf_norm + src_tail are trivial event-weight multipliers (no interp);
+  kF_sf + Eb_shift need a JAX-DIFFERENTIABLE SF interpolation (current SpectralFunction is NumPy/detached) to
+  evaluate S at scaled/shifted (p,E).  The differentiable interp is the real new piece.
+- **bkg_scale (Group D):** needs the DCC loader to keep the 3 table components separate (currently summed).
+- **Group F norms:** trivial global event-weight multipliers; fold in with the tune-theta integration.
+- **cascade k_F:** deferred by design (soft-Pauli relaxation; see last section).
+
 ## Implementation phases (each ends green-tested + committed)
 - **Phase 0 — scaffolding.** A single knob registry (`name → default → record → reweight_fn`) + a per-event
   record container; generalize the closure-test harness to be parameterized by knob (nominal-identity +
