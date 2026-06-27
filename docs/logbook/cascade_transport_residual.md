@@ -447,3 +447,24 @@ on `do` -> showed inel=0; fixed to (do | pio_alive).  ADoNIS produces NN inelast
 
 Net: every per-scatter cascade channel (pion el/cex/abs, nucleon el/inel) is faithful to ACHILLES; the
 sec-8 RES pi0-CEX residual remains attributable to the RES pi0 POPULATION (upstream), not the cascade.
+
+## 13. pi+/pi- low-p CEX deficit = nucleon-SELECTION geometry (pre-Pauli), not Pauli/xsec (2026-06-27)
+
+The all-channel per-W plot left panels show pi+/pi- CEX ~10% LOW vs ACHILLES at low lab |p| [200,400]
+(W~Delta): pi+ 0.89+/-0.03 (-3.7s), pi- 0.91+/-0.02 (-4.5s); pi0 is fine (1.01).  Decisive test
+(ACHILLES_NO_PAULI on both sides):
+  pi+ [200,400]: post-Pauli A/C 0.89+/-0.03 ; NO-Pauli A/C 0.90+/-0.05  -> deficit PERSISTS w/o Pauli.
+So it is NOT a Pauli-implementation difference (that cancels here), and NOT the cross section (bit-exact,
+sec 10).  Remaining cause: the per-step NUCLEON-SELECTION geometry -- ADoNIS's Gaussian discrete-Glauber
+(closest nucleon passing exp(-pi b^2/sigma)) vs ACHILLES's exact impact-parameter walk -- picks the p/n
+hit ratio slightly differently.  It only shows in pi+/pi- because their CEX is CHARGE-ASYMMETRIC (pi+ CEX
+= pi+ n -> pi0 p needs a NEUTRON) while at the Delta sigma(pi+ p)=198 >> sigma(pi+ n)=68, so a small p/n
+selection bias swings the small (diluted) CEX fraction ~10%.  pi0 is immune (both nucleons give CEX
+symmetrically -> selection-independent).  This is the documented continuum/discrete transport residual
+surfacing in the charge-asymmetric channel; small absolute (diluted channel), sub-% expected on CC1pi.
+
+CAVEAT on the right-panel curve: sigma_cex/sigma_scat (nucleon-SUMMED) is the bare-sigma ratio assuming
+P(hit nucleon) ∝ sigma_total (dilute limit).  It is EXACT for pi0 (symmetric) -- no-Pauli runtime lands
+on it (+0.6s) -- but only APPROXIMATE for pi+/pi- (no-Pauli runtime sits ~ -10s below it) because the
+geometric selection deviates from sigma-weighting when sigma is large/asymmetric (Delta).  So for pi+/pi-
+judge agreement by the LEFT panel (ADoNIS vs ACHILLES), not the right-panel curve.
