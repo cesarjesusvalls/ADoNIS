@@ -226,3 +226,28 @@ implemented/measured. (kin mode earlier matched the RECOIL only; it never tested
 Status: ordering REFUTED; tracking-drop REFUTED (ejection matches, no structural drop); recapture REFUTED
 (low-|p| matches). Open: high-|p| multi-scatter secondary-neutron deficit; the NN-elastic charge-exchange
 swap is the leading concrete difference to implement + measure next.
+
+### 2026-06-27: IMPLEMENTED NN-elastic charge exchange -> high-|p| tail FIXED
+Added the 50% id-swap to ADoNIS `_nucleon_step` elastic branch (cascade_discrete.py): a per-event coin
+(fold 109) swaps the outgoing isospin of the continuing (a-role) and recoil (b-role) nucleons -> threaded
+through the 2->2 masses, the Pauli k_F species (leading at its own pos, recoil at the struck vertex), the
+recoil charge, AND a NEW leading-charge update (the engine never flipped a nucleon's charge before; also
+fixed the latent inelastic leading-charge = channel charge).  `make_pool_stepper` applies `qln` so a
+nucleon's charge can now change.  No-op for pp/nn.
+
+Identical-input ablation (same 108k-QE dump), BEFORE -> AFTER charge exchange:
+```
+                    BEFORE   AFTER   ACHILLES
+mean N(n) ACH/ADO   1.045    1.028
+mean N(p) ACH/ADO   1.000    1.003
+N(n) k=2 ACH/ADO    1.177    1.123
+N(n) k=3 ACH/ADO    1.289    1.017     <- fixed
+ejected-n p99 |p|   984      1059      1065   <- HIGH-|p| TAIL FIXED
+ejected-n p90 |p|   603      618       619
+ejected-n count     23785    24089     24181
+```
+The missing NN-elastic charge exchange WAS the high-|p| neutron-tail deficit (p99 984->1059≈1065) and ~40%
+of the mean-N(n) residual (1.045->1.028).  Mechanism: ACHILLES puts the fast forward particle as a NEUTRON
+in 50% of pn elastic; ADoNIS always kept it a proton, so its neutrons were systematically the slow recoil.
+RESIDUAL after the fix: mean N(n) ~1.028, k=2 ~1.123 -- a smaller multi-neutron piece still open (next lead).
+ejected-neutron |p| spectrum now matches across the full range (ablation_qe_neutron_p.png, ratio chi2/ndf 1.1).

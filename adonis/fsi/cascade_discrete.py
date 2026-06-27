@@ -293,19 +293,27 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     # away at a different density, so using its k_F leaked sub-k_F leading outgoing -> slow-proton
     # over-interaction (5sigma at 125-250 MeV vs ACHILLES).
     _r_lead = jnp.linalg.norm(pos, axis=1)
-    kf_lead = jnp.where(isp, _kf_local(_rho_species(_r_lead, rgrid, rhoP)),
-                        _kf_local(_rho_species(_r_lead, rgrid, rhoN)))
+    _kfp_l = _kf_local(_rho_species(_r_lead, rgrid, rhoP)); _kfn_l = _kf_local(_rho_species(_r_lead, rgrid, rhoN))
 
-    # 2->2 final-state masses PHYSICAL per-species (ACHILLES GenerateMomentum ma/mb): elastic -> leading
-    # keeps its species (isp), recoil keeps the struck species (nisp[j]).
-    m_lead_phys = jnp.where(isp, _MP_PHYS, _MN_PHYS)
-    m_struck_phys = jnp.where(nisp[ar, j], _MP_PHYS, _MN_PHYS)
+    # ACHILLES NN ELASTIC CHARGE EXCHANGE: the two outgoing are {id1,id2} OR the id-SWAPPED {id2,id1}, each
+    # at HALF the elastic sigma (NucleonNucleon.cc:62-65).  a-role = p_out (continues in the slot),
+    # b-role = recoil; the swap exchanges their isospin (-> mass, Pauli k_F species, charge).  No-op for
+    # pp/nn (isp == struck).  Per-event coin (fold 109), independent of the other channel draws.
+    _swap_cx = _ev_fold_uniform(sk, 109) < 0.5
+    _struck_isp = nisp[ar, j]
+    lead_isp_out = jnp.where(_swap_cx, _struck_isp, isp)         # continuing nucleon's OUTGOING isospin
+    rec_isp_out = jnp.where(_swap_cx, isp, _struck_isp)          # recoil's OUTGOING isospin
+    kf_lead = jnp.where(lead_isp_out, _kfp_l, _kfn_l)            # leading Pauli k_F (its own position, swapped species)
+    kf_rec = jnp.where(rec_isp_out, kf_p_j, kf_n_j)             # recoil Pauli k_F (struck vertex, swapped species)
+    # 2->2 final-state masses PHYSICAL per-species (ACHILLES GenerateMomentum ma/mb), swap-aware.
+    m_lead_phys = jnp.where(lead_isp_out, _MP_PHYS, _MN_PHYS)
+    m_struck_phys = jnp.where(rec_isp_out, _MP_PHYS, _MN_PHYS)
 
-    def scat_one(p_lead, pN_i, kf_out, kf_rec, m1, m2, k):
+    def scat_one(p_lead, pN_i, kf_out, kf_rec_, m1, m2, k):
         p_o = _two_body_cm_scatter(p_lead, pN_i, m1, k, m_recoil=m2)
         p_r = (p_lead + pN_i) - p_o
-        return p_o, (jnp.linalg.norm(p_o[1:]) < kf_out) | (jnp.linalg.norm(p_r[1:]) < kf_rec)
-    p_out, blocked = jax.vmap(scat_one)(p4, pN_j, kf_lead, kf_j, m_lead_phys, m_struck_phys, ks)
+        return p_o, (jnp.linalg.norm(p_o[1:]) < kf_out) | (jnp.linalg.norm(p_r[1:]) < kf_rec_)
+    p_out, blocked = jax.vmap(scat_one)(p4, pN_j, kf_lead, kf_rec, m_lead_phys, m_struck_phys, ks)
     if not cfg.pauli:
         blocked = blocked & False
     sig_in_j = sig_in[ar, j]; sig_el_j = sig_el[ar, j]
@@ -372,13 +380,19 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     pi_chidx = (1 - pi_q).astype(jnp.int32)
     do = has_hit & ~chose_inel & ~blocked
     recoil = (p4 + pN_j) - p_out
-    bg_proton = nisp[ar, j]
+    bg_proton = rec_isp_out                                      # elastic recoil isospin (charge-exchange aware)
     fz_new = _formation_zone(p4, p_out)
     nl_is1 = jnp.linalg.norm(pN1[:, 1:], axis=1) >= jnp.linalg.norm(pN2[:, 1:], axis=1)
     inel_nl = jnp.where(nl_is1[:, None], pN2, pN1)
     inel_nl_q = jnp.where(nl_is1, dch - pi_q, q_pair - dch)
     ko_cand = jnp.where(is_inel[:, None], inel_nl, recoil)
     ko_q = jnp.where(is_inel, inel_nl_q, bg_proton.astype(jnp.int32))
+    # CONTINUING (leading) nucleon's new charge: elastic charge-exchange -> lead_isp_out; inelastic -> the
+    # LEADING nucleon's channel charge (the partner of the knockout inel_nl_q); else unchanged.  Previously
+    # the leading kept its incident charge always (no NN charge exchange + inelastic leading mis-charged).
+    lead_inel_q = jnp.where(nl_is1, q_pair - dch, dch - pi_q)
+    lead_q_new = jnp.where(do, lead_isp_out.astype(jnp.int32),
+                           jnp.where(is_inel, lead_inel_q, isp.astype(jnp.int32))).astype(jnp.int32)
     ko_fz = jnp.where(is_inel, _formation_zone(p4, inel_nl), _formation_zone(p4, recoil))
     ko_alive = (do | is_inel) & (jnp.linalg.norm(ko_cand[:, 1:], axis=1) > 1.0)
     ko_pos = npos[ar, j]
@@ -393,7 +407,7 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     fz = jnp.where(do, fz_new, jnp.where(is_inel, _formation_zone(p4, lead_in), fz))
     d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
     pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
-    return ((p4, pos, dhat, fz, alive), escaping, recap, do.astype(jnp.int32),
+    return ((p4, pos, dhat, fz, alive, lead_q_new), escaping, recap, do.astype(jnp.int32),
             (ko_cand, ko_pos, ko_fz, ko_q, ko_alive),
             (_pPiX, pi_pos, pi_fz, pi_chidx, pi_alive), consumed,
             jax.lax.stop_gradient((has_hit, perp2_c, sig_c)))

@@ -64,7 +64,7 @@ fz = jnp.zeros(m); alive = jnp.ones(m, bool); consumed = su["consumed0"]
 nsc = jnp.zeros(m, jnp.int32); made_pi = jnp.zeros(m, bool)
 n_ko_p = jnp.zeros(m, jnp.int32); n_ko_n = jnp.zeros(m, jnp.int32); lead_ko = jnp.zeros(m)
 for i in range(max_steps):
-    (p4, pos, dhat, fz, alive), esc, recap, do, ko, pin, consumed, _ = _nucleon_step(
+    (p4, pos, dhat, fz, alive, _qcx), esc, recap, do, ko, pin, consumed, _ = _nucleon_step(
         p4, pos, dhat, fz, is_p, alive, su["npos"], su["nmom"], su["nisp"], consumed,
         rgrid, rhoP, rhoN, radius, cfg, keys[i])
     nsc = nsc + do                                             # elastic-scatter count

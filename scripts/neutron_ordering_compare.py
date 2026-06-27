@@ -11,7 +11,7 @@ import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "output/figures/neutron_ordering_compare.png"
 OLD = "output/adonis/t2k_C_cc0pi.npz"
-NEW_GLOB = "output/adonis/t2k_C_cc0pi_ord_batch*.npz"
+NEW_GLOB = "output/adonis/t2k_C_cc0pi_cx_batch*.npz"   # M=1 ACHILLES-order + NN charge exchange
 ACH = "output/achilles/t2k_cc1pi_rich_ach_FSI_proc.npz"
 COS70 = float(np.cos(np.deg2rad(70.0)))
 
@@ -55,7 +55,7 @@ def panel(am, ar, lab, ado_old, ado_new, ach, w_old, w_new, w_ach, nm=5):
     fo, eo = fr(ado_old, w_old, nm); fn, en = fr(ado_new, w_new, nm); fh, eh = fr(ach, w_ach, nm)
     am.errorbar(x, fh, eh, fmt='D--', color='0.3', ms=5, capsize=2, lw=1.1, label='ACHILLES')
     am.errorbar(x - 0.06, fo, eo, fmt='s', color='C1', ms=4, capsize=2, lw=0.9, label='ADoNIS (RNG order)')
-    am.errorbar(x + 0.06, fn, en, fmt='o', color='C0', ms=4, capsize=2, lw=0.9, label='ADoNIS (ACH order, M=1)')
+    am.errorbar(x + 0.06, fn, en, fmt='o', color='C0', ms=4, capsize=2, lw=0.9, label='ADoNIS (M=1 + NN charge-exch)')
     am.set_yscale('log'); am.set_ylim(max(1e-5, fh[fh > 0].min() * 0.3), 1.4)
     am.set_ylabel("fraction of $\\sigma$", fontsize=9); am.set_title(lab, fontsize=10); am.legend(fontsize=8)
     ar.axhspan(0.9, 1.1, color='green', alpha=0.12); ar.axhline(1.0, ls='--', color='green', lw=0.7)
@@ -77,7 +77,7 @@ def main():
     fig, ax = plt.subplots(2, 2, figsize=(13, 8), height_ratios=[3, 1])
     panel(ax[0, 0], ax[1, 0], "N(neutrons)", no, nn, nh, wo, wn, wh)
     panel(ax[0, 1], ax[1, 1], "N(protons)", po, pn, ph, wo, wn, wh)
-    fig.suptitle("QE CC0$\\pi$/$^{12}$C post-FSI multiplicity: ADoNIS RNG-order vs ACHILLES creation-order (M=1) vs ACHILLES",
+    fig.suptitle("QE CC0$\\pi$/$^{12}$C post-FSI multiplicity: ADoNIS old vs M=1+NN-charge-exchange vs ACHILLES",
                  fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.97]); fig.savefig(OUT, dpi=120); print("wrote", OUT, flush=True)
 

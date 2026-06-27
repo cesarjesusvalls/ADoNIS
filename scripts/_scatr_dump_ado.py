@@ -30,7 +30,7 @@ fz = jnp.zeros(m); alive = jnp.ones(m, bool); consumed = su["consumed0"]; is_p =
 R, PL, PR, W = [], [], [], []                                    # radius, lead-out |p|, recoil |p|, weight
 for i in range(MS):
     pos_pre = pos
-    (p4, pos, dhat, fz, alive), esc, recap, do, ko, pin, consumed, _ = _nucleon_step(
+    (p4, pos, dhat, fz, alive, _qcx), esc, recap, do, ko, pin, consumed, _ = _nucleon_step(
         p4, pos, dhat, fz, is_p, alive, su["npos"], su["nmom"], su["nisp"], consumed,
         rgrid, rhoP, rhoN, radius, cfg, keys[i])
     do = np.asarray(do).astype(bool)

@@ -116,7 +116,7 @@ def run_nucleons(p_N, Npid, ipid, cfg, su, rgrid, rhoP, rhoN, radius, key):
     keys = jax.random.split(key, MAXSTEPS)
     for i in range(MAXSTEPS):
         d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
-        (p4, pos, _dn, fz, alive), esc, recap, do, ko, pin, consumed, nstat = _nucleon_step(
+        (p4, pos, _dn, fz, alive, _qcx), esc, recap, do, ko, pin, consumed, nstat = _nucleon_step(
             p4, pos, dhat, fz, isp, alive, su["npos"], su["nmom"], su["nisp"], consumed,
             rgrid, rhoP, rhoN, radius, cfg, keys[i])
         do = np.asarray(do).astype(bool)                         # ACTUAL elastic scatter (post-block)

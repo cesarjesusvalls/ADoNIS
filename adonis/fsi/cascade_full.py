@@ -178,7 +178,7 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             _kk = jax.vmap(lambda k: jax.random.split(k))(step_key)        # (n,2,2)
             kN, kP = _kk[:, 0], _kk[:, 1]                                  # per-particle nucleon/pion keys (n,2)
             # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
-            (p4n, posn, _dn, fzn, alnN), escN, _rc, _do, koN, pinN, consumedN, nstat = _nucleon_step(
+            (p4n, posn, _dn, fzn, alnN, qln), escN, _rc, _do, koN, pinN, consumedN, nstat = _nucleon_step(
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kN, dt_evt=_dt_e)
             # PION branch (charge = pion index 0/1/2); scatter continues, abs/conv removed.
@@ -200,7 +200,9 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             pos_2 = jnp.where(is_N[:, None], posn, jnp.where(is_pi[:, None], posp, pos))
             fz_2 = jnp.where(is_N, fzn, fz)                           # only the nucleon updates fz
             nsc_2 = jnp.where(is_pi, nscp, nsc)                       # only the pion updates nsc
-            chg_2 = jnp.where(is_pi, chp, chg)                        # pion charge oscillates
+            # nucleon charge can now change: NN elastic charge-exchange / inelastic leading channel charge
+            # (qln from _nucleon_step; == incident charge when no scatter).  Pion charge oscillates (chp).
+            chg_2 = jnp.where(is_N, qln, jnp.where(is_pi, chp, chg))
             al_2 = jnp.where(is_N, alnN, jnp.where(is_pi, alnP, al))
             # PER-PARTICLE termination (P-INVARIANT; both caps key off the particle's OWN state, never the
             # global step count -> no P-dependent truncation; capped = dropped, not a final state):

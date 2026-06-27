@@ -91,7 +91,7 @@ def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True, fast_xse
         for st in range(max_steps):
             kN = jax.random.split(jax.random.fold_in(key, st), n)
             plab_pre = np.asarray(jnp.linalg.norm(p4[:, 1:], axis=1))
-            (p4n, posn, dhn, fzn, aln), term, recap, do, koN, pio, consn, _ = step(
+            (p4n, posn, dhn, fzn, aln, _qcx), term, recap, do, koN, pio, consn, _ = step(
                 p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kN)
             # `do` is ELASTIC-only (NN->NN); inelastic (NN->NN pi) comes back as the created-pion spawn
