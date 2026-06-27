@@ -114,8 +114,17 @@ Parametric deformation over the tabulated `S(|p|,E)` (adonis/xsec/spectral.py); 
   (n,A,3 per-out-channel -> elastic=sio[ch_in], cex=sum others) and `sa` (abs); nucleon `sig_el(same_iso)`
   (pp/nn vs pn) + `sig_in`.  Granular reweight generalizes pion_branch_reweight/nucleon_scat_reweight; GATE
   with nominal-identity (granular==current sabs/sscat==1) + reweight==in-walk before trusting.
-- Groups B/C/E/F still pending (B branch-fractions share the A record surgery; E SF is event-level via
-  p_struck; F norms trivial).
+- **Group A PION side DONE (3 knobs):** `s_piN_elastic`, `s_piN_cex`, `s_conv` (+ `s_pi_abs`=sabs).
+  Kind-1 pion record extended (branch 3->4 channels {el,cex,abs,conv} + ss_el); `fsi_pion_reweight`
+  per-hit = s_realized*D0/D; `pool_fsi_reweight` backward-compatible + keyword granular knobs.  GATED:
+  real-record nominal==1 (4e-16), forward identical w/wo records, autodiff==FD, 16/16 cascade tests.
+  Commit ed2059b.  NOTE: granular reweight==in-walk for s_el!=s_cex is not forward-gated (the forward
+  cascade uses nominal sigma); it is the exact analytic likelihood ratio, validated by nominal-identity +
+  back-compat (which IS in-walk-gated) + autodiff==FD.
+- Group A NUCLEON side NEXT (same pattern): split nucleon sigma into pp/pn/nn x elastic/inelastic.  Record
+  needs per-candidate sig_el,sig_in + pair-iso + realized el/inel; reweight is the Gaussian hit/no-hit
+  (a_nom = G/sigma_tot, sigma_tot(s)=s_el*sig_el+s_inel*sig_in) x el/inel sub-branch.
+- Groups B/C/E/F still pending (B branch-fractions share the record surgery; E SF event-level; F norms).
 
 ## Implementation phases (each ends green-tested + committed)
 - **Phase 0 — scaffolding.** A single knob registry (`name → default → record → reweight_fn`) + a per-event
