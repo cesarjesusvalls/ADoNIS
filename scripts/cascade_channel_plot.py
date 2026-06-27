@@ -82,6 +82,7 @@ def panel(am, ar, edges, ado, ach, xlabel, ylab, title):
         ar.text(0.03, 0.82, f"$\\chi^2$/ndf = {chi2:.0f}/{ndf} = {chi2/max(ndf,1):.2f}",
                 transform=ar.transAxes, fontsize=8)
     ar.set_ylim(0.7, 1.3); ar.set_xlabel(xlabel, fontsize=8); ar.set_ylabel("ADO/ACH", fontsize=7)
+    am.set_xlim(edges[0], edges[-1]); ar.set_xlim(edges[0], edges[-1])   # ratio shares the main x-range
 
 
 def main():
