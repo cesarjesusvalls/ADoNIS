@@ -37,6 +37,20 @@ def build_qe_ma_records(k_nu, k_mu, p_struck, p_out):
             np.where(ok, 0.5 * (a1 + am) - a0, 0.0), np.where(ok, q2, 1.0))
 
 
+def build_qe_vector_records(k_nu, k_mu, p_struck, p_out):
+    """Per-event (a, b, c, Q2) for the QE VECTOR-current scale (F1,F2 multiplier): amps2 is quadratic in
+    vector_scale, so 3 evals (v=0,1,-1) give (a,b,c).  Same decomposition as the axial record; the weight
+    is vector_strength_reweight(rec, v) = strength_reweight (flat-scale ratio).  Q2 carried for bookkeeping."""
+    kn, km, ps, po = (jnp.asarray(x) for x in (k_nu, k_mu, p_struck, p_out))
+    a1 = np.asarray(me_cross_section(kn, km, ps, po, vector_scale=1.0)["amps2"])
+    a0 = np.asarray(me_cross_section(kn, km, ps, po, vector_scale=0.0)["amps2"])
+    am = np.asarray(me_cross_section(kn, km, ps, po, vector_scale=-1.0)["amps2"])
+    q = np.asarray(kn - km); q2 = np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2     # MeV^2
+    ok = np.isfinite(a0) & np.isfinite(a1) & np.isfinite(am) & (q2 > 0)
+    return (np.where(ok, a0, 1.0), np.where(ok, 0.5 * (a1 - am), 0.0),
+            np.where(ok, 0.5 * (a1 + am) - a0, 0.0), np.where(ok, q2, 1.0))
+
+
 def build_res_ma_records(k_nu, k_mu, p_struck, p_N, p_pi, ipid, ppid):
     """Per-event (a, b, c, Q2) for the RES sample (channel = (ipid, ppid))."""
     from adonis.xsec import dcc_current as dcc

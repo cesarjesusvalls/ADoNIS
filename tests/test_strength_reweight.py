@@ -14,12 +14,13 @@ jax.config.update("jax_enable_x64", True)
 
 from adonis.xsec import qe_xsec
 from adonis.xsec.backend import me_cross_section
-from adonis.analysis.ma_records import build_qe_ma_records, strength_reweight
+from adonis.analysis.ma_records import build_qe_ma_records, build_qe_vector_records, strength_reweight
 
 N = 2000
 _QE = qe_xsec.sample_importance(N, seed=5)
 _KN, _KM, _PS, _PO = (jnp.asarray(_QE[k]) for k in ("k_nu", "k_mu", "p_struck", "p_out"))
 _REC = build_qe_ma_records(_KN, _KM, _PS, _PO)
+_VREC = build_qe_vector_records(_KN, _KM, _PS, _PO)
 
 
 def test_strength_nominal_identity():
@@ -45,3 +46,33 @@ def test_strength_autodiff_equals_fd():
     g_ad = float(jax.grad(f)(1.2))
     g_fd = (float(f(1.2 + eps)) - float(f(1.2 - eps))) / (2 * eps)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-6
+
+
+# ---- vector_strength (QE vector-current scale): same flat-scale ratio on the vector record ----
+def test_vector_nominal_identity():
+    assert np.allclose(np.asarray(strength_reweight(_VREC, 1.0)), 1.0, atol=1e-12)
+
+
+def test_vector_matches_direct_amps2():
+    a, b, c, _ = (np.asarray(x) for x in _VREC)
+    a1 = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, vector_scale=1.0)["amps2"])
+    valid = np.isfinite(a1) & (a1 > 0) & ~((b == 0.0) & (c == 0.0))
+    for v in (0.6, 1.4):
+        direct = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, vector_scale=v)["amps2"])
+        w = np.asarray(strength_reweight(_VREC, v))
+        assert np.allclose((w * a1)[valid], direct[valid], rtol=1e-9)
+
+
+def test_vector_autodiff_equals_fd():
+    f = lambda v: jnp.sum(strength_reweight(_VREC, v))
+    eps = 1e-5
+    g_ad = float(jax.grad(f)(1.2))
+    g_fd = (float(f(1.2 + eps)) - float(f(1.2 - eps))) / (2 * eps)
+    assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-6
+
+
+def test_qe_nominal_amps2_unchanged():
+    """vector_scale=axial_scale=1 reproduces the default amps2 bit-for-bit (no-op nominal)."""
+    base = np.asarray(me_cross_section(_KN, _KM, _PS, _PO)["amps2"])
+    both = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, axial_scale=1.0, vector_scale=1.0)["amps2"])
+    assert np.array_equal(base, both)
