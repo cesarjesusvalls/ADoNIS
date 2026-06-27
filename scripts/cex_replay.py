@@ -27,7 +27,7 @@ def parse(logpath):
     for line in open(logpath):
         if line.startswith("DUMP_EVENT"):
             if cur is not None: events.append(cur)
-            cur = dict(beam=None, nuc=[], chan=[])
+            cur = dict(beam=None, nuc=[], chan=[], vtx=[])
         elif cur is None:
             continue
         elif line[:5] in ("BEAM ", "NUC p"):
@@ -40,7 +40,9 @@ def parse(logpath):
             else: cur["nuc"].append((int(m["pid"]), p4, pos))
         elif line.startswith("VTX ") and "inc_pid=211" in line:
             mm = dict(re.findall(r"(\w+)=(-?[\d.]+(?:[eE][-+]?\d+)?)", line))
-            if int(mm["channel"]) in (1, 2): cur["chan"].append(int(mm["channel"]))
+            if int(mm["channel"]) in (1, 2):
+                cur["chan"].append(int(mm["channel"]))                 # first-vertex list (legacy)
+                cur["vtx"].append((float(mm["inc_p"]), int(mm["channel"])))  # ALL pi+ vertices (inc_p, chan)
     if cur is not None: events.append(cur)
     return events
 
@@ -70,38 +72,32 @@ def main(logpath):
     d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
     ch = jnp.zeros(n, jnp.int32); nsc = jnp.zeros(n, jnp.int32); alive = jnp.ones(n, bool)
     key = jax.random.PRNGKey(0)
-    ado_kind = np.full(n, -1, np.int32); ado_rq = np.full(n, -9, np.int32); done = np.zeros(n, bool)
     step = jax.jit(_pion_step, static_argnums=(14,))
+    # ALL pi+ scatters on the same starting configs: record (plab, cex?) for vertices where pion is STILL pi+
+    a_plab, a_cex = [], []
     for st in range(1200):
         kP = jax.random.split(jax.random.fold_in(key, st), n)
-        chp = np.asarray(ch)
+        chp = np.asarray(ch); al = np.asarray(alive)
+        plab_pre = np.asarray(jnp.linalg.norm(p4[:, 1:], axis=1))
         (p4n, posn, dhn, chn, nscn, aln), esc, is_abs, is_conv, s1, s2, consn, _ = step(
             p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed, rg, rp, rn, radius, cfg, kP)
-        scat = (np.asarray(nscn) > np.asarray(nsc)) & ~done
-        rem = (np.asarray(is_abs) | np.asarray(is_conv)) & ~done
+        scat = (np.asarray(nscn) > np.asarray(nsc)) & al & (chp == 0)   # vertex where pion is pi+
         if scat.any():
             idx = np.where(scat)[0]
-            ado_kind[idx] = (np.asarray(chn)[idx] != chp[idx]).astype(np.int32)   # 0 el, 1 cex
-            ado_rq[idx] = np.asarray(s1[3])[idx]; done[idx] = True
-        if rem.any():
-            idx = np.where(rem)[0]; ado_kind[idx] = 2; done[idx] = True            # abs/conv
+            a_plab.append(plab_pre[idx]); a_cex.append((np.asarray(chn)[idx] != chp[idx]).astype(np.int32))
         p4, pos, dhat, ch, nsc, consumed = p4n, posn, dhn, chn, nscn, consn
-        alive = aln & ~jnp.asarray(done)
+        alive = aln & ~jnp.asarray(np.asarray(is_abs) | np.asarray(is_conv))   # scatters CONTINUE
         if bool(jnp.all(~alive)): break
-    # compare on SCATTERS (el+cex), BINNED by beam |p| -- the axis where the deficit appeared
-    plab = np.linalg.norm(beam_p4[:, 1:], axis=1)
-    np.savez("/tmp/cex_replay.npz", plab=plab, ado_kind=ado_kind, ado_rq=ado_rq, ach_first=ach_first)
-    am = (ado_kind == 0) | (ado_kind == 1); cm = (ach_first == 1) | (ach_first == 2)
-    print(f"\nON IDENTICAL ACHILLES CONFIGS ({n} events) -- CEX fraction per beam |p|:")
+    ap = np.concatenate(a_plab); ak = np.concatenate(a_cex)
+    # ACHILLES: ALL pi+ vertices (inc_p, chan) on the SAME configs
+    cv = np.array([v for e in events for v in e["vtx"]]); cp_, cc = cv[:, 0], cv[:, 1].astype(int)
+    print(f"\nALL pi+ SCATTERS on IDENTICAL configs ({n} events) -- CEX fraction per |p| (charge-matched):")
     print(f"  {'bin':12}{'ADoNIS':>9}{'ACHILLES':>10}{'ratio':>8}")
-    for lo, hi in [(80, 200), (200, 400), (400, 600), (600, 900)]:
-        a = am & (plab >= lo) & (plab < hi); c = cm & (plab >= lo) & (plab < hi)
-        if a.sum() > 30 and c.sum() > 30:
-            fa = (ado_kind[a] == 1).mean(); fc = (ach_first[c] == 2).mean()
-            print(f"  [{lo},{hi})    {fa:9.3f}{fc:10.3f}{fa/fc:8.3f}   (nA={int(a.sum())} nC={int(c.sum())})")
-    both = am & cm
-    print(f"  same-channel (el/cex) where BOTH scatter ({int(both.sum())}): "
-          f"{(ado_kind[both]==(ach_first[both]-1)).mean():.3f}")
+    for lo, hi in [(200, 400), (400, 600), (600, 900)]:
+        a = (ap >= lo) & (ap < hi); c = (cp_ >= lo) & (cp_ < hi)
+        fa = ak[a].mean(); fc = (cc[c] == 2).mean(); ea = np.sqrt(fa*(1-fa)/a.sum()); ec = np.sqrt(fc*(1-fc)/c.sum())
+        r = fa/fc; er = r*np.sqrt((ea/fa)**2+(ec/fc)**2)
+        print(f"  [{lo},{hi})    {fa:9.3f}{fc:10.3f}{r:7.3f}±{er:.3f}   (nA={int(a.sum())} nC={int(c.sum())})")
 
 
 if __name__ == "__main__":

@@ -81,6 +81,10 @@ def main():
         af = Path(f"/tmp/chan_ado_{pid}.npz")
         if af.exists():
             d = np.load(af); ap, aw, ak = d["plab"], d["W"], d["kind"]
+            # all-scatter records every vertex of the EVOLVING pion; keep only vertices where the pion
+            # is STILL this charge (match ACHILLES inc_pid -- a post-CEX pi0 must not count as pi+/pi-).
+            if is_pion and "chpre" in d:
+                keep = d["chpre"] == _CH[pid]; ap, aw, ak = ap[keep], aw[keep], ak[keep]
             asc = (ak == 0) | (ak == 1); ac2 = ak == 1
             xc, fa, ea = binfrac(ap, asc, ac2, ped)
             a0.errorbar(xc, fa, ea, fmt='s-', color='C0', capsize=3, label='ADoNIS')

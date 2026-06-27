@@ -533,3 +533,28 @@ own-config artifact; on identical configs ADoNIS's nucleon selection reproduces 
 event-by-event same-channel 74%).  The cascade pion transport+selection is faithful to ACHILLES.  The
 diagnostic fix (all-scatter recording) is in scripts/cascade_channel_perW.py; the replay in
 scripts/cex_replay.py.
+
+## 16. CORRECTION + refined localization: pi+ MULTI-scatter CEX excess (2026-06-27)
+
+Sec-15 had two errors from buggy diagnostics (now fixed): the "all-scatter" runs were silently failing
+(IndentationError -> re-reading stale FIRST-scatter npz), and the all-scatter driver mislabeled post-CEX
+pi0 scatters as pi+ (must bin by the pion's CURRENT charge = ACHILLES inc_pid).  Fixes: all-scatter
+recording + per-vertex charge `chpre` filter (scripts/cascade_channel_perW.py).
+
+Accurate picture after the fixes:
+- **pi+ FIRST scatter, identical configs (replay)**: ratio 1.01 -> per-scatter selection FAITHFUL.
+- **pi0, pi- all-scatter (charge-matched, own configs)**: faithful (0.96-1.03).
+- **pi+ ALL-scatter (charge-matched)**: own-config 1.09-1.14; on IDENTICAL starting configs 1.08 / 1.25 /
+  1.08 for [200,400]/[400,600]/[600,900].  So pi+ LATER (multi-)scatters over-produce CEX by ~10-25%,
+  worst in [400,600] where degraded pions accumulate.  It is REAL (persists on identical starting nuclei),
+  not config-ensemble; cascades diverge after scatter 1, so this is a multi-scatter EVOLUTION difference.
+- sample_nucleons marginals match ACHILLES exactly (|r|, Fermi |p|, p/n).
+
+So the residual is now narrow and specific: ADoNIS's pi+ RE-scatters (after an elastic) carry too much CEX
+vs ACHILLES.  First scatter + pi0 + pi- are faithful.  Likely cause: the pi+ elastic scattering kinematics
+(cos_cm angular distribution / energy loss) that set up the 2nd-scatter conditions -- the CEX FRACTION of
+the first scatter already matches, so it is the post-scatter STATE (momentum/direction), not the branching.
+NEXT: compare the pi+ elastic dsigma/dOmega (jax_sample_cos_cm) + post-scatter |p| vs ACHILLES on identical
+first-scatter inputs.  The "10% deficit" of the original plots was first-scatter-vs-all-vertices +
+charge-mislabeling artifacts (opposite sign); corrected plot (output/figures/cascade_channel_perW.png)
+shows pi0/pi- faithful and pi+ the ~10% multi-scatter excess.

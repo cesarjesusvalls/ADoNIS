@@ -53,7 +53,7 @@ def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True, fast_xse
     done = np.zeros(n, bool)
 
     # ALL scatters (every interaction along the path, like the ACHILLES VERTEXDUMP), not just the first.
-    acc_plab, acc_W, acc_kind, acc_rq = [], [], [], []
+    acc_plab, acc_W, acc_kind, acc_rq, acc_chpre = [], [], [], [], []
     if is_pion:
         ch = jnp.full(n, _CH[pid], jnp.int32); nsc = jnp.zeros(n, jnp.int32)
         step = jax.jit(_pion_step, static_argnums=(14,))
@@ -71,17 +71,21 @@ def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True, fast_xse
                 rq = np.asarray(s1[3]); idx = np.where(scat)[0]
                 acc_plab.append(plab_pre[idx]); acc_W.append(W[idx])
                 acc_kind.append((np.asarray(chn)[idx] != ch_pre[idx]).astype(np.int32)); acc_rq.append(rq[idx])
+                acc_chpre.append(ch_pre[idx])                  # pion charge AT this vertex (match ACHILLES inc_pid)
             for mask, kv in ((absb, 2), (conv, 3)):
                 if mask.any():
                     idx = np.where(mask)[0]; acc_plab.append(plab_pre[idx]); acc_W.append(np.zeros(len(idx)))
                     acc_kind.append(np.full(len(idx), kv)); acc_rq.append(np.full(len(idx), -9))
+                    acc_chpre.append(ch_pre[idx])
             p4, pos, dhat, ch, nsc, consumed = p4n, posn, dhn, chn, nscn, consn
             alive = aln & ~jnp.asarray(absb | conv)        # scatters CONTINUE; abs/conv removed
+            if st % 200 == 0: print(f"  step {st}: alive {int(np.asarray(alive).sum())}/{n}", flush=True)
             if bool(jnp.all(~alive)): break
         rec_plab = np.concatenate(acc_plab); rec_W = np.concatenate(acc_W)
         rec_kind = np.concatenate(acc_kind); rec_recoilq = np.concatenate(acc_rq)
-            if st % 200 == 0: print(f"  step {st}: done {int(done.sum())}/{n}", flush=True)
+        rec_chpre = np.concatenate(acc_chpre)
     else:
+        rec_chpre = np.full(n, -9, np.int32)
         isp = jnp.full(n, pid == 2212); fz = jnp.zeros(n)
         step = jax.jit(_nucleon_step, static_argnums=(14,))
         for st in range(max_steps):
@@ -105,7 +109,8 @@ def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True, fast_xse
             if st % 200 == 0: print(f"  step {st}: done {int(done.sum())}/{n}", flush=True)
     ch12 = (rec_kind == 0) | (rec_kind == 1)
     print(f"pid {pid}: interacted {int((rec_kind>=0).sum())}/{n} (chan1+2 {int(ch12.sum())}, chan2 {int((rec_kind==1).sum())})", flush=True)
-    np.savez(f"/tmp/chan_ado_{pid}{tag}.npz", plab=rec_plab, W=rec_W, kind=rec_kind, recoilq=rec_recoilq)
+    np.savez(f"/tmp/chan_ado_{pid}{tag}.npz", plab=rec_plab, W=rec_W, kind=rec_kind, recoilq=rec_recoilq,
+             chpre=rec_chpre)
 
 
 if __name__ == "__main__":
