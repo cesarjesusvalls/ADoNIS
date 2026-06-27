@@ -93,10 +93,10 @@ def build_ma_records(qe, res):
 # ============================================================================================== #
 import adonis.fsi.cascade_full as _CF
 # Gaussian interaction probability everywhere -> ADoNIS forward + differentiable tuning share ONE model and the
-# kind-1 sigma-reweight is exact (see all-gaussian decision).  max_steps=600 is a SATURATION CEILING:
-# the pool early-exits once every particle has escaped, so a generous cap costs ~nothing but removes the
-# legacy 260 truncation risk (260 was BFS-verified, not pool-verified).
-POOLCFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool", **k)
+# kind-1 sigma-reweight is exact (see all-gaussian decision).  max_steps=100000 (= production / the runaway
+# ceiling): with the M=1 serial pool the per-event nstep is the SUM of all particles' steps, so the physics
+# bound is path_budget_R*radius, not a small step cap (a 600 cap wrongly trips the runaway guard at M=1).
+POOLCFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=100000, path_budget_R=3.0, engine="pool", **k)
 REC_CAPS = (32, 64)            # pion hits<=32, nucleon candidate steps<=64 per event (measured ns_max~43)
 _P_BUF = 12
 
@@ -118,13 +118,13 @@ def build_replica(kcasc, qe, qw, res, rw):
     # QE: struck neutron -> proton through the pool (no pion); record carries only nucleon scatters.
     _pt, ntq, oflq, _c, recq = _CF.cascade_nucleus(
         jnp.zeros((nq, 4)), j(qe["p_out"]), jnp.zeros(nq, jnp.int32), jnp.full(nq, 2112, jnp.int32),
-        jnp.full(nq, 2212, jnp.int32), POOLCFG(seed=2), kq, P=_P_BUF, channel="qe", rec_caps=REC_CAPS)
+        jnp.full(nq, 2212, jnp.int32), POOLCFG(seed=2), kq, channel="qe", rec_caps=REC_CAPS)
     q_lead = _lead_proton_pool(ntq[0])
     q_dpt = _obs(j(qe["k_mu"]), q_lead); q_keep = _sel(j(qe["k_mu"]), q_lead)
     # RES: primary pion + recoil through the pool (joint pion+nucleon record).
     ptr, ntr, oflr, _c2, recr = _CF.cascade_nucleus(
         j(res["p_pi"]), j(res["p_N"]), j(res["ppid"]).astype(jnp.int32), j(res["ipid"]).astype(jnp.int32),
-        jnp.full(nr, 2212, jnp.int32), POOLCFG(seed=1), kr, P=_P_BUF, channel="res", rec_caps=REC_CAPS)
+        jnp.full(nr, 2212, jnp.int32), POOLCFG(seed=1), kr, channel="res", rec_caps=REC_CAPS)
     r_lead = _lead_proton_pool(ntr[0])
     absb = (ptr["pid"] == 0).astype(float)                      # primary pion absorbed -> CC0pi
     r_dpt = _obs(j(res["k_mu"]), r_lead); r_keep = _sel(j(res["k_mu"]), r_lead)
