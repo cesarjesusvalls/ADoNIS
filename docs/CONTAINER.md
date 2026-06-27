@@ -94,8 +94,21 @@ After that, everything (closure tests, figures, fits) runs from the clone alone.
 ## Rebuilding the image
 
 The Dockerfile (`Dockerfile.debian`) and the full build recipe live in the
-ACHILLES source tree, not in this repo. Two flags are required/defensive:
+ACHILLES source tree, not in this repo. Flags required/defensive:
 `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` (docopt declares an ancient
-`cmake_minimum_required`) and `-DCMAKE_CXX_FLAGS="-fno-visibility-inlines-hidden"`
-(keeps the self-registering factory maps coalescing across the shared libs). After
-a rebuild, update the provenance commit above and bump `DATA_CACHE_KEY` in `ci.yml`.
+`cmake_minimum_required`); `-DCMAKE_CXX_FLAGS="-fno-visibility-inlines-hidden"`
+(keeps the self-registering factory maps coalescing across the shared libs);
+**`-DCMAKE_EXE_LINKER_FLAGS="-Wl,--no-as-needed"`** (CRITICAL for the cascade
+executables: `libAchillesCascadeInteractions.so` is only transitively linked and
+its interactions self-register, so the default `--as-needed` drops it from the
+binary's `NEEDED` → no interactions register → `InteractionFactory::List()` empty →
+`GetSuggestion(empty,…)` does `opts[0]` on an empty vector → SIGSEGV at cascade
+setup, *after* the DecayHandler warnings, before "Cascade running").  Also build
+SHARED (`-DBUILD_SHARED_LIBS=ON`), `-DACHILLES_ENABLE_CASCADE_TEST=ON` (gives
+`bin/achilles-cascade`, the CrossSection-mode runner), `-DACHILLES_ENABLE_GZIP=ON`,
+`-DCMAKE_BUILD_TYPE=RelWithDebInfo`.  Verify the fix with
+`readelf -d bin/achilles-cascade | grep CascadeInteractions` (must be present).
+Add a `.dockerignore` (`_dockerbuild`, `_resrun_out`, `_drvout`, `_zmtxout`,
+`*.hepmc`, `.git`, …) — the source tree accumulates multi-GB run outputs that
+otherwise bloat the build context to >10 GB.  After a rebuild, update the
+provenance commit above and bump `DATA_CACHE_KEY` in `ci.yml`.
