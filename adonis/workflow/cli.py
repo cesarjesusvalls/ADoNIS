@@ -41,7 +41,6 @@ def _apply_overrides(gc, a):
     if a.n_seeds is not None:    gc.n_seeds = a.n_seeds
     if a.seed0 is not None:      gc.seed0 = a.seed0
     if a.tag is not None:        gc.tag = a.tag
-    if a.P is not None:          gc.cascade.P = a.P
     if a.vegas_cache is not None and getattr(gc, "vegas", None) is not None:
         gc.vegas.cache = a.vegas_cache
     return gc
@@ -62,7 +61,6 @@ def _run_batched(a):
         gc.tag = a.tag
     if a.no_fsi:
         gc.tag = gc.tag + "_nofsi"
-    p_arg = [] if a.P is None else ["--P", str(a.P)]
     extra = ["--no-fsi"] if a.no_fsi else []
     vegas_on = getattr(gc, "vegas", None) is not None and gc.vegas.enabled
 
@@ -73,7 +71,7 @@ def _run_batched(a):
     me = [sys.executable, "-u", "-m", "adonis.workflow.cli"]     # re-invoke THIS module for each shard
 
     print(f"[batched] config={a.config} channels={gc.channels} workers={K} seeds/worker={M} "
-          f"n/seed={N} -> {K*M*N} events total  P={a.P if a.P is not None else 'config-default'} "
+          f"n/seed={N} -> {K*M*N} events total  (M=1 serial cascade) "
           f"single_thread={a.single_thread} fsi={not a.no_fsi}", flush=True)
 
     for channel in gc.channels:
@@ -83,7 +81,7 @@ def _run_batched(a):
             print(f"[batched] {channel}: ensuring VEGAS grid (cache=auto warm-up) ...", flush=True)
             subprocess.run(me + [a.config, "--n-seeds", "1", "--n-per-seed", "2000",
                                  "--seed0", "999000", "--tag", "_gridwarm", "--n-w", "0",
-                                 "--vegas-cache", "auto"] + p_arg, check=True, env=env)
+                                 "--vegas-cache", "auto"], check=True, env=env)
             gw = _bankpath(gc, chanout, "_gridwarm")
             if os.path.exists(gw):
                 os.remove(gw)
@@ -103,7 +101,7 @@ def _run_batched(a):
             procs.append(subprocess.Popen(
                 me + [a.config, "--n-seeds", str(M), "--n-per-seed", str(N),
                       "--seed0", str(seed0), "--tag", tag, "--n-w", str(a.n_w),
-                      "--vegas-cache", cache] + p_arg + extra,
+                      "--vegas-cache", cache] + extra,
                 stdout=open(f"/tmp/worker_{chanout}_b{idx:02d}.log", "w"), stderr=subprocess.STDOUT, env=env))
         rcs = [p.wait() for p in procs]
         paths = [_bankpath(gc, chanout, t) for t in tags]
@@ -128,7 +126,6 @@ def main(argv=None):
     ap.add_argument("--n-seeds", type=int, default=None)           # single-process / per-shard seed count
     ap.add_argument("--seed0", type=int, default=None)
     ap.add_argument("--tag", type=str, default=None)
-    ap.add_argument("--P", type=int, default=None)
     ap.add_argument("--n-w", type=int, default=None, help="cascade refill working set (0 = full-batch lock-step)")
     ap.add_argument("--vegas-cache", type=str, default=None, choices=[None, "auto", "load", "rebuild"])
     ap.add_argument("--no-fsi", action="store_true", help="PRE-FSI bank (primary products, no cascade)")

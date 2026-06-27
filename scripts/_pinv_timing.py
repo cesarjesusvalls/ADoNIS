@@ -20,7 +20,7 @@ def build_cfg():
     tg = resolve_targets("C")[0][0]
     _, _, _, r = _load_density(tg.density_p, tg.density_n)
     ms = max(600, int(np.ceil(3.0 * r / 0.04)))
-    return DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True,
+    return DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True,
                                  nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
 
 
@@ -34,7 +34,7 @@ def main():
     key = jax.random.PRNGKey(11)
 
     def run():
-        out = CF.cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, P=P, channel=CH, n_w=0)
+        out = CF.cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, channel=CH, n_w=0)
         out[1][0]["alive"].block_until_ready()
         return out
 

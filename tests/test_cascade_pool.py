@@ -48,7 +48,7 @@ def test_loop_drains_and_collects_output():
     M = 6
     init = _batch(1, M, [[5, 0, 0, 0, 0, 0]], [[True, False, False, False, False, False]])
 
-    def stepper(stk, key, state, dt_evt=None):           # dt_evt: per-event timestep (time-sync); toy ignores it
+    def stepper(stk, key, state, step=0, dt_evt=None):   # step/dt_evt: real-stepper contract; toy ignores them
         tag = stk["p4"][..., 0]
         alive = stk["alive"]
         terminal = alive & (tag <= 0.5)                       # escape when tag hits 0

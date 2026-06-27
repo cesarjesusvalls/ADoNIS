@@ -42,7 +42,8 @@ def _coerce(cls, d):
 # ----------------------------------------------------------------------------- generation
 @dataclass
 class CascadeHyperparams:
-    P: int = 1                  # pool particle-buffer width (SINGLE source of truth; configs inherit this)
+    # NOTE: the pool stack width is FIXED at 1 (serial, ACHILLES-faithful processing order) -- there is no
+    # P knob.  See adonis/fsi/cascade_full.py (cascade_nucleus hardcodes M=1).
     step: float = 0.04          # Glauber step [fm] (time_step=False: distance/step; True: Dt/step)
     max_steps: int = 260        # legacy field; the engine now uses a fixed 100k runaway ceiling +
                                 #   path_budget_R*radius as the physics bound (generate.py sets the ceiling)

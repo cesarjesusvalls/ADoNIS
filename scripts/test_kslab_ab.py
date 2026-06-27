@@ -28,7 +28,7 @@ LCAP = 96
 def cfg_for(tg, fast):
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    return DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    return DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                  nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs,
                                  fast_xsec=fast)
 
@@ -63,7 +63,7 @@ def run(tg, fast, key):
     ppi = jnp.asarray(np.asarray(e["p_pi"])[rs]); ppid = jnp.asarray(np.asarray(e["ppid"])[rs], jnp.int32)
     pN = jnp.asarray(np.asarray(e["p_N"])[rs]); Npid = jnp.asarray(np.asarray(e["Npid"])[rs], jnp.int32)
     ipid = jnp.asarray(np.asarray(e["ipid"])[rs], jnp.int32)
-    log, counts, ofl = cascade_nucleus(ppi, pN, ppid, ipid, Npid, cfg, key, P=16, channel="res", log_cap=LCAP)
+    log, counts, ofl = cascade_nucleus(ppi, pN, ppid, ipid, Npid, cfg, key, channel="res", log_cap=LCAP)
     return first_chan_fracs({k: np.asarray(v) for k, v in log.items()}, counts, rw[rs])
 
 

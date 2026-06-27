@@ -106,18 +106,19 @@ def compact(b, P_out, sort_priority=False):
     """Compact live particles of a (n, M) batch to the front of a (n, P_out) buffer.  Returns
     (compacted_batch, n_overflow); overflow = live particles that did not fit in P_out (dropped, never
     silently).  sort_priority=False -> position order (cumsum).  sort_priority=True -> pack the ACTIVE
-    cascade stack in P-INVARIANT (lstep, sid) order (sid = pkey[...,0]); processing in this order makes
-    shared-state (consumed) claims land in particle-time order at ANY stack width P -> P-invariant."""
+    cascade stack in ACHILLES processing order: gtime cohort, then ascending CREATION index (track_id)."""
     alive = b["alive"]; n, M = alive.shape
     if not sort_priority:
         # stable rank of each live particle within its event (0-based); dead get a large rank
         rank = jnp.cumsum(alive.astype(jnp.int32), axis=1) - 1
     else:
-        # lexsort keys (LAST = primary): alive-first, then ABSOLUTE TIME gtime asc, then sid (pkey0,pkey1)
-        # asc.  gtime (not per-particle lstep) is the cascade-synchronized order so daughters act with
-        # their cohort, not ahead of it.  Integer keys -> no float-precision dependence; full pkey tiebreak
-        # -> no position fallback.  rank = inverse permutation of the sorted order.
-        order = jnp.lexsort((b["pkey"][:, :, 1], b["pkey"][:, :, 0], b["gtime"], (~alive).astype(jnp.int32)), axis=-1)
+        # lexsort keys (LAST = primary): alive-first, then ABSOLUTE TIME gtime asc, then CREATION index
+        # track_id asc.  gtime (not per-particle lstep) is the cascade-synchronized cohort so daughters act
+        # with their cohort, not ahead of it; WITHIN a cohort, ascending track_id reproduces ACHILLES's
+        # within-timestep order (Cascade.cc:353 iterates kickedIdxs = std::set<size_t> ascending particle
+        # index = creation order).  Integer keys -> no float-precision dependence; track_id is unique per
+        # alive particle (primaries 0/1; daughters _TRACK_OFFSET + step*3 + chan) -> no position fallback.
+        order = jnp.lexsort((b["track_id"], b["gtime"], (~alive).astype(jnp.int32)), axis=-1)
         rank = jnp.argsort(order, axis=-1)
     rank = jnp.where(alive, rank, M + P_out)                      # dead -> out of range
     n_overflow = jnp.sum((alive & (rank >= P_out)).astype(jnp.int32))
@@ -304,26 +305,22 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         spawn["pkey"] = jax.vmap(jax.vmap(_dk))(_ppk, jnp.broadcast_to(_chan, (n, 3 * M)), _pls)
         spawn["lstep"] = jnp.zeros((n, 3 * M), jnp.int32)            # daughter's own step count starts at 0
         spawn["gtime"] = stack["gtime"][:, _pslot] + 1              # but acts at the NEXT absolute time (cohort-synced)
+        # track_id = CREATION index (ALWAYS set; the within-cohort processing order keys off it -- see
+        # compact sort_priority).  Unique per (step,slot,channel): `step` is a SCALAR global step (lock-step)
+        # or a PER-EVENT (n,) nstep (refill); both monotone in creation time, so ascending track_id == the
+        # order daughters were born == ACHILLES's ascending particle index.  _pslot/_chan reuse the pkey cols.
+        sa = jnp.asarray(step)
+        if sa.ndim == 0:
+            tid = (_TRACK_OFFSET + (step * M + _pslot) * 3 + _chan).astype(jnp.int32)
+            spawn["track_id"] = jnp.broadcast_to(tid[None, :], (n, 3 * M))
+        else:
+            tid = (_TRACK_OFFSET + (sa[:, None] * M + _pslot[None, :]) * 3 + _chan[None, :]).astype(jnp.int32)
+            spawn["track_id"] = tid
         if with_seg:                                                 # G4-like provenance (physics-inert):
-            # daughter gen = parent gen + 1; parent_id = parent track_id; track_id unique per (step,slot,
-            # channel) so it never collides across a particle's repeated interactions.  origin is NOT
-            # touched (the physics' RES primary-pion latch depends on its default-0 propagation).
-            pslot = jnp.tile(jnp.arange(M), 3)                       # (3M,) parent slot per spawn col
-            chan_off = jnp.repeat(jnp.arange(3), M)                  # 0=nuc1,1=nuc2(pion 2nd N),2=pio
-            pgen = stack["gen"][:, pslot]; ptid = stack["track_id"][:, pslot]
-            spawn["gen"] = pgen + 1
-            spawn["parent_id"] = ptid
-            # track_id unique per (step,slot,channel).  `step` is a SCALAR global step (lock-step) or a
-            # PER-EVENT (n,) nstep (refill).  At n_w=N_total the per-event nstep is all == the global step,
-            # so the per-event form reproduces the scalar broadcast bit-for-bit; for n_w<N_total the ids
-            # differ by the slot/step offset (a physics-inert label -- parent<->child links stay intact).
-            sa = jnp.asarray(step)
-            if sa.ndim == 0:
-                tid = (_TRACK_OFFSET + (step * M + pslot) * 3 + chan_off).astype(jnp.int32)
-                spawn["track_id"] = jnp.broadcast_to(tid[None, :], (n, 3 * M))
-            else:
-                tid = (_TRACK_OFFSET + (sa[:, None] * M + pslot[None, :]) * 3 + chan_off[None, :]).astype(jnp.int32)
-                spawn["track_id"] = tid
+            # daughter gen = parent gen + 1; parent_id = parent track_id.  origin is NOT touched (the
+            # physics' RES primary-pion latch depends on its default-0 propagation).
+            spawn["gen"] = stack["gen"][:, _pslot] + 1
+            spawn["parent_id"] = stack["track_id"][:, _pslot]
         out = (stack2, terminal, spawn, consumed)
         if with_rec:
             out = out + (rec,)
@@ -481,10 +478,13 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
             dt_evt = jnp.full_like(betamax, step) if os.environ.get("ADONIS_DECOUPLED") == "1" else step / betamax
         else:
             dt_evt = None
+        # step_i is passed in EVERY path now (not just logging): track_id (creation index, used by the
+        # within-cohort processing order) needs the real step counter -- a stale step=0 would collapse all
+        # daughters to the same id and break the ACHILLES-order tiebreak.
         if bg_w is not None:
-            _step = stepper(stk, kk, state, step_i, bg=bg_w, dt_evt=dt_evt) if do_log else stepper(stk, kk, state, bg=bg_w, dt_evt=dt_evt)
+            _step = stepper(stk, kk, state, step_i, bg=bg_w, dt_evt=dt_evt)
         else:
-            _step = stepper(stk, kk, state, step_i, dt_evt=dt_evt) if do_log else stepper(stk, kk, state, dt_evt=dt_evt)
+            _step = stepper(stk, kk, state, step_i, dt_evt=dt_evt)
         stk2, terminal, spawn, state2 = _step[:4]
         extra = _step[4] if len(_step) >= 5 else None
         term_batch = {**stk2, "alive": terminal}
@@ -674,7 +674,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     return go, sofl, oofl, gp
 
 
-def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, log_cap=None,
+def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log_cap=None,
                   n_w=0, q_cap=0, per_event_cap=None):
     """POOLED-engine realization of cascade_nucleus (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
@@ -720,12 +720,12 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
     if log_cap is not None:                                            # SEGMENT-LOGGER path: same cascade, logger on
         stepper = make_pool_stepper(su, cfg, with_seg=True)
         _o, _so, _oo, _pf, logtuple = run_cascade_pool(
-            g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps, M_out=24,
+            g0, stepper, knuc, su["consumed0"], M=1, max_steps=cfg.max_steps, M_out=24,
             prim_origin=prim_origin, log_cap=log_cap, pending=pend, n_w=nw, q_cap=q_cap,
             per_event_cap=per_event_cap, time_sync=cfg.time_step, step=cfg.step)
         return logtuple                                               # (log dict, counts (n,), log_overflow)
     stepper = make_pool_stepper(su, cfg, with_rec=rec_caps is not None)
-    _rc = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=P, max_steps=cfg.max_steps,
+    _rc = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=1, max_steps=cfg.max_steps,
                            M_out=24, prim_origin=prim_origin, rec_caps=rec_caps, pending=pend, n_w=nw,
                            q_cap=q_cap, per_event_cap=per_event_cap, time_sync=cfg.time_step, step=cfg.step)
     if rec_caps is not None:
@@ -767,7 +767,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=None, 
     return pterm, nterms, sofl + oofl, created, fsi_rec
 
 
-def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=1, sabs=1.0, sscat=1.0,
+def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, sabs=1.0, sscat=1.0,
                       channel="res", rec_caps=None, log_cap=None, n_w=None, q_cap=None, per_event_cap=None,
                       su_external=None):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
@@ -799,8 +799,8 @@ def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, P=1, sabs=1.0, ss
     # inside the step; persistent-refill working set + keep-overflow queue by default (n_w=0 -> lock-step).
     # Validated vs ACHILLES + bit-exact gates (docs/logbook/cascade_persistent_refill_plan.md).
     if log_cap is not None:
-        return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, log_cap=log_cap,
+        return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, log_cap=log_cap,
                              n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
-    res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, P, rec_caps=rec_caps,
+    res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=rec_caps,
                          n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
     return res5 if rec_caps is not None else res5[:4]

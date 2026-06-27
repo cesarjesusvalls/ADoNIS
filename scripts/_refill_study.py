@@ -41,7 +41,7 @@ def main():
     tg = resolve_targets("C")[0][0]
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
     if CH == "res":
@@ -63,10 +63,10 @@ def main():
         nw = None if tok == "none" else min(int(tok), n)
         args = (ppi, pN, ppid, ipid, Npid)
         with ticker(f"n_w={tok} compile+run"):
-            r = cascade_nucleus(*args, cfg, KEY, P=P, channel=CH, n_w=nw)
+            r = cascade_nucleus(*args, cfg, KEY, channel=CH, n_w=nw)
             jax.block_until_ready(r[0]["p4"])
         t0 = time.time()
-        r = cascade_nucleus(*args, cfg, KEY, P=P, channel=CH, n_w=nw)
+        r = cascade_nucleus(*args, cfg, KEY, channel=CH, n_w=nw)
         jax.block_until_ready(r[0]["p4"]); dt = time.time() - t0
         ofl = float(np.asarray(r[2])); evps = n / dt
         if base is None:

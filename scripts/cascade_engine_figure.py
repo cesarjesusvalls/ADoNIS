@@ -21,7 +21,7 @@ from analysis.utils.hepmc import hepmc_norm
 NRES = int(sys.argv[1]) if len(sys.argv) > 1 else 30000
 NSEED = int(sys.argv[2]) if len(sys.argv) > 2 else 4
 COS70 = np.cos(np.deg2rad(70.0)); P = 10
-CFG = DiscreteCascadeConfig(step=0.04, max_steps=260, seed=1, nn_inelastic=True)
+CFG = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True)
 MU_LO, MU_HI, PI_LO, PI_HI, P_LO, P_HI = 250., 7000., 150., 1200., 450., 1200.
 # Fixed batch shape across seeds -> compiles ONCE (no per-seed re-JIT).  We generate ALL seeds first,
 # set N_PAD = the MAX accepted-event count across them, and pad shorter seeds with w=0 dummies (excluded
@@ -59,7 +59,7 @@ def engine_signal():
         knu, kmu, pstr = a["k_nu"], a["k_mu"], a["p_struck"]
         ppi = jnp.asarray(a["p_pi"]); pN = jnp.asarray(a["p_N"]); w = a["w"]
         ppid = jnp.asarray(a["ppid"], jnp.int32); ipid = jnp.asarray(a["ipid"], jnp.int32); Npid = jnp.asarray(a["Npid"], jnp.int32)
-        pterm, nterms, ofl, created = CF.cascade_nucleus(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11), P=12)
+        pterm, nterms, ofl, created = CF.cascade_nucleus(ppi, pN, ppid, ipid, Npid, CFG, jax.random.PRNGKey(sd + 11))
         n = len(w); ar = np.arange(n)
         # signal pion: combine the primary pion with the NN-created pion (created-pion-rescue).
         # exactly-one-pi+ AND no-other-meson over {primary, created}; conv (-1 = eta/K) counts as other meson.

@@ -39,7 +39,7 @@ def main():
     tg = resolve_targets("C")[0][0]
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     ngen = int(N / 2.4) + 5000                                        # res yields ~2.6x after the w>0 cut
     print(f"[fullbatch] generating ~{N} C-RES events (ngen={ngen}) ...", flush=True)
@@ -56,9 +56,9 @@ def main():
     for P in PG:
         try:
             with ticker(f"P={P} compile"):
-                t = time.time(); r = cascade_nucleus(*a, cfg, KEY, P=P, channel="res", n_w=0, q_cap=QCAP)
+                t = time.time(); r = cascade_nucleus(*a, cfg, KEY, channel="res", n_w=0, q_cap=QCAP)
                 jax.block_until_ready(r[0]["p4"]); t_c = time.time() - t
-            t = time.time(); r = cascade_nucleus(*a, cfg, KEY, P=P, channel="res", n_w=0, q_cap=QCAP)
+            t = time.time(); r = cascade_nucleus(*a, cfg, KEY, channel="res", n_w=0, q_cap=QCAP)
             jax.block_until_ready(r[0]["p4"]); t_r = time.time() - t
             ofl = float(np.asarray(r[2]))
             print(f"{P:>4} {t_c-t_r:>8.1f} {t_r:>9.2f} {n/t_r:>9.0f} {100*ofl/n:>8.4f}", flush=True)

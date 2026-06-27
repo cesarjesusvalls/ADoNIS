@@ -29,7 +29,7 @@ def main():
     tg = resolve_targets("C")[0][0]
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     e = res_xsec.generate(N_GEN, seed=SEED, return_events=True, sf_n=SpectralFunction(tg.spectral_n),
                           sf_p=SpectralFunction(tg.spectral_p), n_neutron=tg.A - tg.Z, n_proton=tg.Z)["events"]
@@ -40,7 +40,7 @@ def main():
     n_all = ppi.shape[0]
     nchunk = max(1, n_all // CHUNK); n_use = nchunk * CHUNK            # equal chunks -> single compile
     def call(sl):
-        r = cascade_nucleus(ppi[sl], pN[sl], ppid[sl], ipid[sl], Npid[sl], cfg, KEY, P=P, channel="res")
+        r = cascade_nucleus(ppi[sl], pN[sl], ppid[sl], ipid[sl], Npid[sl], cfg, KEY, channel="res")
         jax.block_until_ready(r[0]["p4"]); return float(np.asarray(r[2]))
     c0 = slice(0, CHUNK)
     t = time.time(); call(c0); t_c = time.time() - t                  # compile + run

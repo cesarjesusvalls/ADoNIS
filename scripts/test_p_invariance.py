@@ -60,7 +60,7 @@ def main():
     print(f"channel={CH}  n_events={ne} (n={N})  Ps={PS}  ref=P{REF_P}", flush=True)
     res = {}
     for P in PS:
-        out = CF.cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, P=P, channel=CH, n_w=0)
+        out = CF.cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, channel=CH, n_w=0)
         res[P] = mult(out[1])
     rp, rn = res[REF_P]
     print(f"\n{'P':>3} {'meanN(p)':>9} {'meanN(n)':>9} {'match%(p)':>10} {'match%(n)':>10} {'match%(both)':>12}", flush=True)

@@ -28,7 +28,7 @@ def main():
     tg = resolve_targets("Ar")[0][0]
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     e = res_xsec.generate(N, seed=0, return_events=True, sf_n=SpectralFunction(tg.spectral_n),
                           sf_p=SpectralFunction(tg.spectral_p), n_neutron=tg.A - tg.Z, n_proton=tg.Z)["events"]
@@ -40,7 +40,7 @@ def main():
     print(f"[Ar check] N={n} RES  P={P}  max_steps={ms}", flush=True)
 
     def run(n_w, q_cap, tag):
-        pt, nt, ofl, cr = cascade_nucleus(ppi, pN, ppid, ipid, Npid, cfg, KEY, P=P, channel="res",
+        pt, nt, ofl, cr = cascade_nucleus(ppi, pN, ppid, ipid, Npid, cfg, KEY, channel="res",
                                           n_w=n_w, q_cap=q_cap)
         finals = int(np.asarray(nt[0]["alive"]).sum())
         print(f"  {tag:<8} n_w={str(n_w):<5} q={str(q_cap):<5} overflow(sofl+oofl)={int(ofl):<6} escaped_nucleons={finals}", flush=True)

@@ -41,7 +41,7 @@ def run_all(D, tg, n_w=0, q_cap=0):
     q_cap=int -> explicit refill/queue (used by _engine_refill_check to gate refill==golden)."""
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     res, qe = sample(tg)
     out = {}
@@ -53,18 +53,18 @@ def run_all(D, tg, n_w=0, q_cap=0):
         pidNi = ipid if ch == "res" else jnp.full(n, 2112, jnp.int32)
         nw = n_w; qc = q_cap                                          # forwarded verbatim (None=auto, 0=off)
         # forward rich schema
-        pt, nt, ofl, cr = cascade_nucleus(ppi, a["pN"], ppid, pidNi, a["Npid"], cfg, KEY, P=12, channel=ch, n_w=nw, q_cap=qc)
+        pt, nt, ofl, cr = cascade_nucleus(ppi, a["pN"], ppid, pidNi, a["Npid"], cfg, KEY, channel=ch, n_w=nw, q_cap=qc)
         out[f"{tag}_pterm_pid"] = np.asarray(pt["pid"]); out[f"{tag}_pterm_p4"] = np.asarray(pt["p4"])
         out[f"{tag}_nt_pid"] = np.asarray(nt[0]["pid"]); out[f"{tag}_nt_p4"] = np.asarray(nt[0]["p4"])
         out[f"{tag}_nt_alive"] = np.asarray(nt[0]["alive"])
         out[f"{tag}_cr_pid"] = np.asarray(cr["pid"]); out[f"{tag}_cr_p4"] = np.asarray(cr["p4"])
         out[f"{tag}_ofl"] = np.asarray(ofl)
         # with_rec
-        *_, rb = cascade_nucleus(ppi, a["pN"], ppid, pidNi, a["Npid"], cfg, KEY, P=12, channel=ch, rec_caps=(32, 64), n_w=nw, q_cap=qc)
+        *_, rb = cascade_nucleus(ppi, a["pN"], ppid, pidNi, a["Npid"], cfg, KEY, channel=ch, rec_caps=(32, 64), n_w=nw, q_cap=qc)
         for kk, vv in rb.items():                                # rb = the per-event FSI record dict
             out[f"{tag}_rec_{kk}"] = np.asarray(vv)
         # with_seg
-        log, counts, logofl = cascade_nucleus(ppi, a["pN"], ppid, pidNi, a["Npid"], cfg, KEY, P=12, channel=ch, log_cap=64, n_w=nw, q_cap=qc)
+        log, counts, logofl = cascade_nucleus(ppi, a["pN"], ppid, pidNi, a["Npid"], cfg, KEY, channel=ch, log_cap=64, n_w=nw, q_cap=qc)
         for kk, vv in log.items():
             out[f"{tag}_log_{kk}"] = np.asarray(vv)
         out[f"{tag}_counts"] = np.asarray(counts); out[f"{tag}_logofl"] = np.asarray(logofl)

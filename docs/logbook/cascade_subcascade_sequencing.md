@@ -142,3 +142,40 @@ by `gtime` then `sid`) — a secondary candidate.
 - `scripts/cascade_seq_test.py` (intensity + per-generation + multiplicity)
 - `scripts/_scatter_kin_compare.py` (2→2 recoil kinematics on ACHILLES inputs)
 - dumps: `_oracle_out/QE_cascdump.cdump` (50k), `_oracle_out/QE_cascdump_big.cdump` (500k)
+
+## 2026-06-27: fix P=1 + commit to ACHILLES within-step ORDER (user decision)
+Decision (user): stop allowing P to vary (P=1 is the validated fastest config), and commit the within-step
+processing order to ACHILLES's. So the (gtime, sid=RNG-key) P-invariant tiebreak — kept only to make
+results P-independent — is no longer needed; replace it with ACHILLES's order and hardcode the stack at M=1.
+
+ACHILLES order (verified, Cascade.cc): `kickedIdxs` is a `std::set<size_t>` iterated **ascending particle
+index = creation order** (Cascade.cc:353); `FinalizeMomentum` appends products (higher index), picked up
+the NEXT timestep (`UpdateKicked` at :376). Maps onto the pool's gtime cohort + within-cohort tiebreak.
+
+Changes (adonis/fsi/cascade_full.py):
+- `compact(sort_priority=True)` lexsort tiebreak: `pkey` (sid) -> `track_id` (creation index).
+- `track_id` now ALWAYS populated in the stepper spawn (was `with_seg`-only); `step_i` passed to the
+  stepper in every path (forward too) so track_id is monotone in creation time. pkey is KEPT for the
+  physics RNG (step_key), only the ORDERING key changed.
+- `P` removed from `cascade_nucleus`/`_cascade_pool` (hardcoded M=1); `CascadeHyperparams.P` field, the
+  CLI `--P`, and `pool_fsi.run_fsi(P=)` removed. P-study/timing dev scripts now obsolete (flagged).
+- NOTE on caps: with M=1 the per-event `nstep` is the SUM of all particles' steps (serial), so dev cfgs
+  with small `max_steps` trip the runaway guard; production already uses `max_steps=100000` (path-budget
+  is the physics bound) and runs clean (overflow 0).
+
+Evidence — forward QE CC0π on C, muon-accepted, 120k (_ord) vs same ACHILLES bank vs the pre-change bank:
+```
+                 ACH      ADO_old  ACH/old   ADO_new  ACH/new
+mean N(n)        0.2132   0.2087   1.022     0.2079   1.026      <- headline FLAT (slightly worse)
+mean N(p)        1.1233   1.1231   1.000     1.1294   0.995
+N(n) k=2         0.01591  0.01460  1.090     0.01490  1.068
+N(n) k=3         0.00132  0.00094  1.406     0.00102  1.290      <- moved a little, but ~60-event bin
+N(n) k=4         0.00013  0.00003  4.60      0.00007  1.85       (noise-dominated)
+```
+The ACHILLES-order change moves the rare high-k tail slightly toward ACHILLES but **does NOT close the
+headline mean-N(n) residual** (1.022 -> 1.026, flat within sampling noise); N(p) is unchanged within noise.
+=> within-step ordering is NOT the dominant lever for the QE neutron-multiplicity residual. (An earlier raw
+smoke test WITHOUT the muon cut showed a large k=2 jump; that was the no-cut selection, not the ordering.)
+The change is kept anyway: it is the FAITHFUL ACHILLES order (removes the arbitrary RNG tiebreak) and is
+not a regression. Clean identical-input ablation (rebuild of an ACHILLES image with CASCADEDUMP — no
+existing image has it) pending to confirm transport-only k≥2 with the new ordering.

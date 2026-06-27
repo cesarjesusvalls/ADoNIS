@@ -24,7 +24,7 @@ def main():
     tg = resolve_targets("C")[0][0]
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     ngen = int(N / 2.4) + 4000
     e = res_xsec.generate(ngen, seed=SEED, return_events=True, sf_n=SpectralFunction(tg.spectral_n),
@@ -34,9 +34,9 @@ def main():
     pN = jnp.asarray(np.asarray(e["p_N"])[rs][:N]); Npid = jnp.asarray(np.asarray(e["Npid"])[rs][:N], jnp.int32)
     ipid = jnp.asarray(np.asarray(e["ipid"])[rs][:N], jnp.int32)
     n = ppi.shape[0]; a = (ppi, pN, ppid, ipid, Npid)
-    t = time.time(); r = cascade_nucleus(*a, cfg, KEY, P=P, channel="res", n_w=0, q_cap=64)
+    t = time.time(); r = cascade_nucleus(*a, cfg, KEY, channel="res", n_w=0, q_cap=64)
     jax.block_until_ready(r[0]["p4"]); t_c = time.time() - t
-    t = time.time(); r = cascade_nucleus(*a, cfg, KEY, P=P, channel="res", n_w=0, q_cap=64)
+    t = time.time(); r = cascade_nucleus(*a, cfg, KEY, channel="res", n_w=0, q_cap=64)
     jax.block_until_ready(r[0]["p4"]); t_r = time.time() - t
     print("RESULT " + json.dumps(dict(n_eff=n, P=P, jit_s=round(t_c - t_r, 1), run_s=round(t_r, 1),
           evps=round(n / t_r, 1), ofl_pct=round(100.0 * float(np.asarray(r[2])) / n, 4))), flush=True)

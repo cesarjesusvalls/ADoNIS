@@ -45,7 +45,7 @@ def main():
     tg = resolve_targets("C")[0][0]
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
     Nmax = max(NG)
@@ -72,11 +72,11 @@ def main():
             tc = time.time()
             print(f"  [{ci+1}/{len(cells)}] compiling P={P} N={n} ...", flush=True)
             with ticker(f"cell {ci+1}/{len(cells)} P={P} N={n} compiling"):
-                r = cascade_nucleus(*args, cfg, KEY, P=P, channel=CH)   # compile+run
+                r = cascade_nucleus(*args, cfg, KEY, channel=CH)   # compile+run
                 jax.block_until_ready(r[0]["p4"])
             print(f"  [{ci+1}/{len(cells)}] compile+run {time.time()-tc:.1f}s; timing pure run ...", flush=True)
             t0 = time.time()
-            r = cascade_nucleus(*args, cfg, KEY, P=P, channel=CH)   # pure run
+            r = cascade_nucleus(*args, cfg, KEY, channel=CH)   # pure run
             jax.block_until_ready(r[0]["p4"]); dt = time.time() - t0
             ofl = float(np.asarray(r[2])); oflpct = 100.0 * ofl / n
             print(f"{P:>4} {n:>8} {dt:>9.3f} {n/dt:>10.0f} {oflpct:>7.3f}", flush=True)

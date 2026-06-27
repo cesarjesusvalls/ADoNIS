@@ -28,7 +28,7 @@ def main():
     tg = resolve_targets("C")[0][0]
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                 nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
     Nmax = max(NS)
@@ -45,9 +45,9 @@ def main():
         n = min(N, navail)
         a = (ppi[:n], pN[:n], ppid[:n], ipid[:n], Npid[:n])
         t0 = time.time()
-        out = cascade_nucleus(a[0], a[1], a[2], a[3], a[4], cfg, KEY, P=P, channel="res")
+        out = cascade_nucleus(a[0], a[1], a[2], a[3], a[4], cfg, KEY, channel="res")
         jax.block_until_ready(out[0]["p4"]); t1 = time.time()
-        out = cascade_nucleus(a[0], a[1], a[2], a[3], a[4], cfg, KEY, P=P, channel="res")
+        out = cascade_nucleus(a[0], a[1], a[2], a[3], a[4], cfg, KEY, channel="res")
         jax.block_until_ready(out[0]["p4"]); t2 = time.time()
         print(f"{n:>8} {t1-t0:>15.2f} {t2-t1:>10.3f} {n/(t2-t1):>12.0f}", flush=True)
 

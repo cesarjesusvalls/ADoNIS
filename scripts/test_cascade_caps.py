@@ -32,7 +32,7 @@ LCAP = 128                                                        # generous, to
 def cfg_for(tg):
     _, _, _, radius = _load_density(tg.density_p, tg.density_n)
     ms = max(1000, int(np.ceil(3.0 * radius / 0.04)))
-    return DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=True, pauli=True,
+    return DiscreteCascadeConfig(step=0.04, max_steps=100000, seed=1, nn_inelastic=True, pauli=True,
                                  nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs), radius
 
 
@@ -62,11 +62,11 @@ def main():
         ipid = jnp.asarray(np.asarray(e["ipid"])[rs], jnp.int32)
         k = jax.random.PRNGKey(31 + sd)
         # (1) segments/event via the logged path (generous L to see the true tail)
-        _lg, counts, logofl = cascade_nucleus(ppi, pN, ppid, ipid, Npid, cfg, k, P=12, channel="res", log_cap=LCAP)
+        _lg, counts, logofl = cascade_nucleus(ppi, pN, ppid, ipid, Npid, cfg, k, channel="res", log_cap=LCAP)
         all_counts.append(np.asarray(counts))
         # (2) pool-M overflow at production P=12 + one lower P for the margin (no log)
         for P in ofl_by_P:
-            *_, ofl, _c = cascade_nucleus(ppi, pN, ppid, ipid, Npid, cfg, k, P=P, channel="res")
+            *_, ofl, _c = cascade_nucleus(ppi, pN, ppid, ipid, Npid, cfg, k, channel="res")
             ofl_by_P[P] += int(ofl)
         print(f"  chunk {sd+1}: +{int(rs.sum())} events (logofl={int(logofl)})", flush=True)
 

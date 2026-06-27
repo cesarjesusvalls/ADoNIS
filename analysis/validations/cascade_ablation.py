@@ -64,7 +64,7 @@ def mode_qe(dump, target, pauli):
     p_pi = jnp.zeros((n, 4)); p_N = jnp.asarray(arr["prim_p4"])
     ppid = jnp.zeros(n, jnp.int32); ipid = jnp.full(n, 2112, jnp.int32); Npid = jnp.full(n, 2212, jnp.int32)
     print("running ADoNIS cascade on ACHILLES input ...", flush=True)
-    _, nterms, _, _ = cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, P=2, channel="qe", su_external=su)
+    _, nterms, _, _ = cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, channel="qe", su_external=su)
     g0 = nterms[0]
     sp = np.asarray(g0["species"]); ch = np.asarray(g0["charge"]); al = np.asarray(g0["alive"])
     p3 = np.linalg.norm(np.asarray(g0["p4"])[:, :, 1:], axis=2); al = al & (p3 > 0.0)
@@ -126,9 +126,9 @@ def mode_res(dump, target, pauli, inel):
     print(f"parsing {dump} ...", flush=True)
     arr = _res_arrays(parse_cascadedump(dump)); n = arr["n"]
     print(f"  {n} RES events; bg A={arr['A']}  pion charge frac +/0/-={np.bincount(arr['pich'], minlength=3)/n}", flush=True)
-    tg = _tg(target); _, _, _, r = _load_density(tg.density_p, tg.density_n); ms = max(600, int(np.ceil(3.0 * r / 0.04)))
-    cfg = DiscreteCascadeConfig(step=0.04, max_steps=ms, seed=1, nn_inelastic=inel, pauli=pauli,
-                                nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
+    tg = _tg(target)
+    cfg = DiscreteCascadeConfig(step=0.04, max_steps=100000, path_budget_R=3.0, seed=1, nn_inelastic=inel,
+                                pauli=pauli, nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs)
     key = jax.random.PRNGKey(12345)
     su = dict(npos=jnp.asarray(arr["npos"]), nmom=jnp.asarray(arr["nmom"]), nisp=jnp.asarray(arr["nisp"]),
               pos0=jnp.asarray(arr["pos0"]), consumed0=jnp.asarray(~arr["nmask"]),
@@ -136,7 +136,7 @@ def mode_res(dump, target, pauli, inel):
     p_pi = jnp.asarray(arr["p_pi"]); p_N = jnp.asarray(arr["p_N"])
     ppid = jnp.full(n, 211, jnp.int32); ipid = jnp.full(n, 2112, jnp.int32); Npid = jnp.asarray(arr["Npid"]).astype(jnp.int32)
     print(f"running ADoNIS pool RES cascade on ACHILLES input (pauli={pauli} inel={inel}) ...", flush=True)
-    nterms = cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, P=4, channel="res", su_external=su)[1]
+    nterms = cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, channel="res", su_external=su)[1]
     g0 = nterms[0]; sp = np.asarray(g0["species"]); ch = np.asarray(g0["charge"]); al = np.asarray(g0["alive"])
     p3 = np.linalg.norm(np.asarray(g0["p4"])[:, :, 1:], axis=2); isn = (sp == NUCLEON) & (ch == 0) & al & (p3 > 0)
     ado = np.where(isn, p3, -1.0).max(1); ach = arr["ach_leadn"]; w = arr["w"]
@@ -185,7 +185,7 @@ def mode_seq(dump, target, nmax, logcap, step):
     p_pi = jnp.zeros((n, 4)); p_N = jnp.asarray(arr["prim_p4"])
     ppid = jnp.zeros(n, jnp.int32); ipid = jnp.full(n, 2112, jnp.int32); Npid = jnp.full(n, 2212, jnp.int32)
     print(f"running ADoNIS cascade w/ segment logger (LOGCAP={logcap}) ...", flush=True)
-    log, counts, ovf = cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, P=2, channel="qe",
+    log, counts, ovf = cascade_nucleus(p_pi, p_N, ppid, ipid, Npid, cfg, key, channel="qe",
                                        su_external=su, log_cap=logcap)
     counts = np.asarray(counts); chan = np.asarray(log["chan"]); inc_pid = np.asarray(log["inc_pid"]); gen = np.asarray(log["gen"])
     n1_pid = np.asarray(log["n1_pid"]); n1_al = np.asarray(log["n1_al"]); n2_pid = np.asarray(log["n2_pid"]); n2_al = np.asarray(log["n2_al"])

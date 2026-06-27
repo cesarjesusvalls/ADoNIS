@@ -79,7 +79,7 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
     pterm, nterms, ofl, created = CF.cascade_nucleus(
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
         jnp.asarray(a["Npid"], jnp.int32), cfg_cascade, jax.random.PRNGKey(seed + 11),
-        P=cas.P, channel=channel, n_w=n_w)
+        channel=channel, n_w=n_w)
     p4s, orgs, gns, n4s = [], [], [], []
     for g in nterms:
         sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])
@@ -179,7 +179,7 @@ def run_channel(channel, gc, target, n_w=None):
     parts, truths = [], []
     print(f"[{channel}] target={target.symbol}{target.A} Z={target.Z} N={n_neutron} "
           f"dens=({target.density_p},{target.density_n}) cfg={target.configs}", flush=True)
-    print(f"[{channel}] {'PRE-FSI (no cascade)' if not gc.fsi else 'buffers: P=%d MPROT=%d' % (cas.P, cas.mprot)} "
+    print(f"[{channel}] {'PRE-FSI (no cascade)' if not gc.fsi else 'buffers: M=1 (serial) MPROT=%d' % cas.mprot} "
           f"track={gc.tracking.enabled} -> {out}", flush=True)
     for k in range(gc.n_seeds):
         sd = gc.seed0 + k
