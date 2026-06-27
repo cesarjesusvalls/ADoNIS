@@ -177,5 +177,52 @@ headline mean-N(n) residual** (1.022 -> 1.026, flat within sampling noise); N(p)
 => within-step ordering is NOT the dominant lever for the QE neutron-multiplicity residual. (An earlier raw
 smoke test WITHOUT the muon cut showed a large k=2 jump; that was the no-cut selection, not the ordering.)
 The change is kept anyway: it is the FAITHFUL ACHILLES order (removes the arbitrary RNG tiebreak) and is
-not a regression. Clean identical-input ablation (rebuild of an ACHILLES image with CASCADEDUMP — no
-existing image has it) pending to confirm transport-only k≥2 with the new ordering.
+not a regression.
+
+### Identical-input ablation (DEFINITIVE, transport-only) — ordering REFUTED
+Rebuilt an ACHILLES image with the CASCADEDUMP instrumentation (no existing image had it; the
+`achilles:cascadedump` tag had been repurposed for a RESDUMP build). Two gotchas fixed during the rebuild:
+(a) with `BUILD_SHARED_LIBS=ON` the dump strings live in `libphysics.so`, not the exe; (b) the RESDUMP
+instrumentation (XSecBackend.cc) was ALWAYS-ON and flooded the CASCADEDUMP stderr — gated it behind
+`ACHILLES_RESDUMP` (Achilles fork). New image `achilles:cascadedump2` (Dockerfile.vtxw + `-Wl,--no-as-needed`).
+
+ADoNIS NEW-ordering engine run on ACHILLES's EXACT per-event input (5725 QE events, pure transport):
+```
+              ADoNIS   ACHILLES  ACH/ADO        (OLD engine, logbook)
+mean N(p)     1.1572   1.1474    0.991
+mean N(n)     0.2164   0.2235    1.033          <- SAME as old engine's 1.033 (NO change)
+N(n) k=2                         1.045
+N(n) k=3                         1.289
+ejected-n |p| p50 337/336  p90 608/618  p99 917/1159   <- ADoNIS still misses the high-|p| tail
+```
+The transport-only mean N(n) ACH/ADO = **1.033 is IDENTICAL to the old (RNG-order) engine's 1.033**. The
+ACHILLES within-step ordering change does NOT move the transport residual at all. Combined with the flat
+forward result, this is conclusive: **within-step processing order / seeds is NOT the cause** of the QE
+neutron-multiplicity deficit. The residual is a genuine sub-cascade transport effect — ADoNIS
+under-produces secondary neutrons at k≥2 AND at high |p| (p99 917 vs 1159 MeV) on identical input, with
+bit-faithful per-scatter physics. Next candidates (NOT ordering): formation-zone / re-scatter count limiting
+the high-|p| secondary tail; recapture in the sub-cascade; or the gtime-cohort vs ACHILLES adaptive-timestep
+coupling (earlier ruled a wash on forward, but the high-|p| tail was not isolated then).
+
+### 2026-06-27 (cont.): localize the neutron loss — it is POST-ejection, high-|p|, multi-scatter
+Full-stats identical-input ablation (~50k QE, new image `achilles:cascadedump2`):
+- mean N(p) 1.000 (perfect), mean N(n) ACH/ADO **1.045**; N(n) k=2 ACH/ADO **1.177** (now solid, ~900 evts).
+- `--seq`: successful NN scatters 1.002, **scatters ejecting a neutron 0.999** (PERFECT). So ADoNIS ejects
+  exactly the ACHILLES number of neutrons at the scatter level — the entire deficit is POST-ejection.
+- ejected-neutron |p| spectrum (ablation_qe_neutron_p.png): matches <600 MeV (so NOT low-|p| recapture),
+  ADoNIS progressively LOW above ~650 MeV (p99 984 vs 1065). The loss is the HIGH-|p| neutron tail.
+- N(p) "perfect" is DILUTION: mean N(p)=1 primary proton + ~0.16 knockout; a generic ~5% sub-cascade
+  knockout deficit shows as 5% in N(n) (all knockout) but ~0.7% in N(p). So NOT necessarily neutron-specific.
+
+Concrete ACHILLES/ADoNIS DIFFERENCE found while chasing this (NucleonNucleon.cc:62-65): ACHILLES NN
+ELASTIC offers TWO final states at HALF-σ each -- `{id1,id2}` and the **id-SWAPPED `{id2,id1}`** -- i.e. a
+50% charge-exchange (for pn: 50% neutron-forward / 50% neutron-recoil). ADoNIS has NO swap (leading always
+keeps the incident species, recoil the struck). Per single scatter under ISOTROPIC CM (both codes isotropic)
+the swap is count- and spectrum-NEUTRAL (neutron is high-|p| half the time either way), so it cannot explain
+the single-scatter match-but-cascade-deficit by itself. BUT it changes WHICH SPECIES is the fast penetrating
+particle in the SUB-CASCADE (ACHILLES: a fast forward NEUTRON 50% of pn; ADoNIS: always a fast proton),
+which can change downstream multi-scatter neutron production -> a viable multi-scatter candidate. NOT YET
+implemented/measured. (kin mode earlier matched the RECOIL only; it never tested the swapped forward neutron.)
+Status: ordering REFUTED; tracking-drop REFUTED (ejection matches, no structural drop); recapture REFUTED
+(low-|p| matches). Open: high-|p| multi-scatter secondary-neutron deficit; the NN-elastic charge-exchange
+swap is the leading concrete difference to implement + measure next.
