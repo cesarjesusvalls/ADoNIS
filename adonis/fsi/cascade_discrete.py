@@ -103,6 +103,23 @@ def pion_branch_reweight(brec, sabs, sscat):
     return jnp.prod(jnp.where(valid, br, 1.0), axis=1)
 
 
+def fsi_pion_reweight(brec, s_abs, s_el, s_cex, s_conv):
+    """GRANULAR per-hit pion FSI reweight.  brec = (code4 (n,K) {0 el,1 cex,2 abs,3 conv}, sa, ss_el, ss,
+    si (n,K), nh (n,)) with ss = total scatter sigma, ss_el = elastic part (ss_cex = ss - ss_el).
+    Per hit the realized-channel likelihood ratio is exactly  s_realized * D0/D,  with
+      D0 = sa + ss + si,  D = s_abs*sa + s_el*ss_el + s_cex*(ss-ss_el) + s_conv*si.
+    Pure in the scales; == 1 at all-nominal; reduces BIT-EXACTLY to pion_branch_reweight(.,sabs,sscat) when
+    s_el=s_cex=sscat, s_abs=sabs, s_conv=1 (s_realized*D0/D == the old num/den * D0/Dk)."""
+    code, sa, ss_el, ss, si, nh = brec
+    valid = jnp.arange(sa.shape[1])[None, :] < nh[:, None]
+    ss_cex = jnp.clip(ss - ss_el, 0.0, None)
+    D0 = sa + ss + si
+    D = s_abs * sa + s_el * ss_el + s_cex * ss_cex + s_conv * si
+    s_real = jnp.where(code == 0, s_el, jnp.where(code == 1, s_cex, jnp.where(code == 2, s_abs, s_conv)))
+    per = s_real * D0 / jnp.clip(D, 1e-12, None)
+    return jnp.prod(jnp.where(valid, per, 1.0), axis=1)
+
+
 def nucleon_scat_reweight(srec, sscat):
     """Kind-1 sigma_scatter reweight from compressed nucleon-walk records srec =
     (hit (n,K), a_nom (n,K), n_slab (n,)) with a_nom = pi b^2/(sigma fm^2) of the closest
@@ -625,9 +642,15 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & interacted[:, None])
     d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
     pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
-    bcode = jnp.where(chose_abs, 1, jnp.where(chose_conv, 2, 0)).astype(jnp.int32)
     ss_j = sig_j - sa_j - si_j
+    ss_el_j = sig_io_j[ar, ch]                                  # elastic (out==in) scatter sigma at the hit
+    # GRANULAR kind-1 channel code {0 elastic, 1 charge-exchange, 2 absorption, 3 conversion} (was the
+    # 3-code {0 scatter,1 abs,2 conv}).  Scatter splits into elastic/cex by the sampled out-pion charge
+    # (out_ch==ch -> elastic).  ss_el recorded alongside ss (total scatter) -> ss_cex = ss - ss_el; this
+    # lets fsi_pion_reweight scale s_piN_elastic / s_piN_cex / s_pi_abs / s_conv independently.
+    code4 = jnp.where(chose_abs, 2, jnp.where(chose_conv, 3,
+                      jnp.where(out_ch == ch, 0, 1))).astype(jnp.int32)
     return ((p_pi, pos, dhat, ch, nsc, alive), escaping, is_abs, is_conv,
             (s1_p4, s1_pos, s1_fz, s1_q, s1_al), (s2_p4, s2_pos, s2_fz, s2_q, s2_al), consumed,
-            jax.lax.stop_gradient((has_hit, bcode, sa_j, ss_j, si_j)))
+            jax.lax.stop_gradient((has_hit, code4, sa_j, ss_el_j, ss_j, si_j)))
 

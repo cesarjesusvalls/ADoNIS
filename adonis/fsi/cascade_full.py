@@ -28,7 +28,7 @@ from __future__ import annotations
 import os
 import jax, jax.numpy as jnp
 from adonis.fsi.cascade_discrete import (_CH_PID, sample_nucleons, MB_TO_FM2,
-                                         pion_branch_reweight, nucleon_scat_reweight)
+                                         pion_branch_reweight, fsi_pion_reweight, nucleon_scat_reweight)
 
 PION, NUCLEON = 0, 1
 FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
@@ -190,10 +190,10 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             #   nucleon: record every in-slab candidate step (perp2_c<1e5) -> hit flag + a_nom=pi b^2/sigma.
             # Computed ONLY when with_rec (the differentiable/tuning path) -> forward generation pays nothing.
             if with_rec:
-                p_hh, p_bc, p_sa, p_ss, p_si = pstat                  # _pion_step stats
+                p_hh, p_bc, p_sa, p_ss_el, p_ss, p_si = pstat         # _pion_step stats (code4 + ss_el,ss)
                 n_hh, n_perp2, n_sig = nstat                          # _nucleon_step stats
                 a_nom = jnp.pi * n_perp2 / jnp.clip(n_sig * MB_TO_FM2, 1e-12, None)
-                rec_slot = (is_pi & p_hh, p_bc, p_sa, p_ss, p_si,    # pion hit mask + branch stats
+                rec_slot = (is_pi & p_hh, p_bc, p_sa, p_ss_el, p_ss, p_si,   # pion hit mask + granular stats
                             is_N & (n_perp2 < 1e5), n_hh, a_nom)     # nucleon candidate mask + hit + a_nom
             consumed = consumedN | consumedP                          # only the active species adds bits
             p4_2 = jnp.where(is_N[:, None], p4n, jnp.where(is_pi[:, None], p4p, p4))
@@ -277,7 +277,7 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
                   "gtime": stack["gtime"] + stack["alive"].astype(jnp.int32)}   # absolute time advances in lockstep
         terminal = T(terms)
         if with_rec:                                                 # per-slot (n,M) kind-1 record this step
-            rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss", "pi_si", "nu_m", "nu_hh", "nu_a")
+            rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss_el", "pi_ss", "pi_si", "nu_m", "nu_hh", "nu_a")
             rec = {k: T(v) for k, v in zip(rk, scanned[4])}
         if with_seg:                                                 # per-slot (n,M) SEGMENT record this step
             sk = ("chan", "incp", "inc_pid", "parent_id", "gen", "track_id", "cont_pid", "cont_p",
@@ -376,17 +376,24 @@ def _rec_scatter(bufs, cnt, mask, vals, cap):
 
 
 def _empty_fsi_record(n, Kp, Kn):
-    """Per-event kind-1 FSI reweight buffers in legacy brec/srec layout (defaults give per-slot LR=1)."""
-    return dict(bc=jnp.zeros((n, Kp), jnp.int32), sa=jnp.ones((n, Kp)), ss=jnp.ones((n, Kp)),
+    """Per-event kind-1 FSI reweight buffers (defaults give per-slot LR=1).  bc is the granular pion channel
+    code {0 el,1 cex,2 abs,3 conv}; ss_el = elastic part of the total scatter sigma ss (ss_cex = ss-ss_el)."""
+    return dict(bc=jnp.zeros((n, Kp), jnp.int32), sa=jnp.ones((n, Kp)),
+                ss_el=jnp.ones((n, Kp)), ss=jnp.ones((n, Kp)),
                 si=jnp.zeros((n, Kp)), nh=jnp.zeros(n, jnp.int32),
                 hh=jnp.zeros((n, Kn), bool), a=jnp.full((n, Kn), 50.0), ns=jnp.zeros(n, jnp.int32))
 
 
-def pool_fsi_reweight(record, sabs, sscat):
-    """Joint kind-1 FSI reweight for the pool (mirrors legacy): pion branch-split (sabs,sscat) x nucleon
-    sigma_scatter (sscat).  Pure in (sabs,sscat); == 1 at nominal; == the in-walk weight at any theta."""
-    wp = pion_branch_reweight((record["bc"], record["sa"], record["ss"], record["si"], record["nh"]),
-                              sabs, sscat)
+def pool_fsi_reweight(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None, s_conv=1.0):
+    """Joint kind-1 FSI reweight for the pool.  Pion branch-split + nucleon sigma_scatter.  Pure in the
+    scales; == 1 at nominal; == the in-walk weight at any theta.  BACKWARD-COMPATIBLE: pool_fsi_reweight(
+    record, sabs, sscat) reproduces the legacy 3-branch reweight bit-for-bit (s_piN_elastic/_cex default to
+    sscat, s_conv=1).  The GRANULAR pion knobs (differentiable_knobs.md Group A) are exposed as keywords:
+    s_piN_elastic, s_piN_cex (separate pion elastic vs charge-exchange sigma scales); s_pi_abs == sabs."""
+    s_el = sscat if s_piN_elastic is None else s_piN_elastic
+    s_cex = sscat if s_piN_cex is None else s_piN_cex
+    wp = fsi_pion_reweight((record["bc"], record["sa"], record["ss_el"], record["ss"], record["si"],
+                           record["nh"]), sabs, s_el, s_cex, s_conv)
     wn = nucleon_scat_reweight((record["hh"], record["a"], record["ns"]), sscat)
     return wp * wn
 
@@ -496,12 +503,12 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         prim = jnp.where(anyp & (prim == FATE_NONE), stk2["fate"][ar, j], prim)
         if with_rec:
             rec = extra
-            (bc, sa, ss, si), nh, op = _rec_scatter(
-                [rb["bc"], rb["sa"], rb["ss"], rb["si"]], rb["nh"], rec["pi_hh"],
-                [rec["pi_bc"], rec["pi_sa"], rec["pi_ss"], rec["pi_si"]], Kp)
+            (bc, sa, ss_el, ss, si), nh, op = _rec_scatter(
+                [rb["bc"], rb["sa"], rb["ss_el"], rb["ss"], rb["si"]], rb["nh"], rec["pi_hh"],
+                [rec["pi_bc"], rec["pi_sa"], rec["pi_ss_el"], rec["pi_ss"], rec["pi_si"]], Kp)
             (hh, a), ns, on = _rec_scatter([rb["hh"], rb["a"]], rb["ns"], rec["nu_m"],
                                            [rec["nu_hh"], rec["nu_a"]], Kn)
-            rb = dict(bc=bc, sa=sa, ss=ss, si=si, nh=nh, hh=hh, a=a, ns=ns)
+            rb = dict(bc=bc, sa=sa, ss_el=ss_el, ss=ss, si=si, nh=nh, hh=hh, a=a, ns=ns)
             rofl = (rofl + op + on).astype(rofl.dtype)
         if do_log:
             seg = extra
