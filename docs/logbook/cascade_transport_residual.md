@@ -331,3 +331,30 @@ Lower-priority secondary cells: QE pi+ elastic 2.97 / pi- elastic 3.63 (very low
 QE p inelastic 2.47, QE n elastic 2.14, RES n inelastic 1.84.
 TODO (separate session): localize the pi0 charge-ex deficit to the DCC charge-exchange cross section
 (jax_channel_sigmas_resolved out_ch distribution) vs ACHILLES at W ~ 400-800 MeV pi0 + nucleon.
+
+## 9. fig3 matched-geometry transparency (pool engine, R=10 both sides, 2026-06-27)
+
+Rebuilt the π⁺¹²C transparency as paper Fig. 3 on the SOLE pool engine (`analysis/paper/fig3_cascade_
+absorption/make.py`): the ADoNIS side drives `cascade_full.run_cascade_pool` + `_pion_step` in ACHILLES's
+EXACT `InitCrossSection` beam geometry (beam_r uniform in a disk R_DISK=10 fm, z₀=−1.05·R_nuc, status
+external_test → no formation zone); reaction = kind-1 record `nh>0`, absorption = reacted with no
+surviving pion.  ACHILLES side = `run_cascade_pip_C.yml` (VirtRes interactions; uniform-momentum range
+beam [80,500], σ(p)=πR²·n_react/(n_tried·Δbin/Δrange), n_tried from the GenCrossSection counter; 8 seed
+batches, 41.6k reactions).
+
+**Geometry fix vs the old oracle (commit 3cfbeea).**  The old CSVs used MISMATCHED radii — ACHILLES
+πR² with R=6.5, ADoNIS "R from ρ tail" — so the old "~1.33×" was partly a normalization mismatch.  With
+R=10 on BOTH sides ACHILLES gives **641 mb at the Δ (290 MeV)**, matching the physical DUET π⁺¹²C
+reaction σ (~600 mb); the old R=6.5 gave only 270 mb (truncated the ρ tail).  R=10 is the correct disk.
+
+**Result (80k ADoNIS vs 8-seed ACHILLES, matched R=10):**
+- ABSORPTION matches well: χ²/ndf = 5.1, ratio within ±10% across the curve; abs fraction ADoNIS 0.275
+  vs ACHILLES 0.305 (|Δ|=0.03, within the locked oracle-test bound).
+- REACTION runs HIGH: mean ADO/ACH = 1.10 over the Δ (230–350 MeV), GROWING to ~1.5 at low p
+  (90–130 MeV); χ²/ndf = 51.6.  The excess is therefore in the SCATTERING channel (reaction−absorption),
+  not absorption — consistent with §8's pi0 charge-exchange / scattering residual surfacing at high stats.
+- Both σ(p) peak at the Δ; shapes agree.
+
+The reaction excess is the parked cascade transport residual (untuned Oset+DCC, no fitted constants).
+Open: the scattering over-production at low–mid p (links to §8 DCC charge-exchange and the slow-pion Oset
+1/v_rel wing).  fig3 reports it honestly (ratio + χ²/ndf).

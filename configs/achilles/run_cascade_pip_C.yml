@@ -1,8 +1,10 @@
-# ACHILLES cascade pi+ on 12C reaction/absorption cross section (paper Fig c12_ar40_validation, left).
-# achilles:cascade image (CrossSection mode). KickMomentum is the pi+ |p| -- the sigma(p_pi) curve is
-# a SCAN over KickMomentum (runner overrides). radius=10 fm beam disk -> absolute mb normalization.
-#   docker run --rm -v "$PWD/output/achilles:/out" --entrypoint /achilles/bin/cascade \
-#     achilles:fullcascade /out/run_cascade_pip_C.yml
+# ACHILLES cascade pi+ on 12C reaction/absorption cross section (paper Fig 3 / c12_ar40_validation, left).
+# achilles:cascade image, /achilles/bin/achilles-cascade, Mode: CrossSection.  KickMomentum is a RANGE:
+# the beam pion |p| is drawn uniform in [80,500] MeV per event (RunCascade.cc:250) and sigma(p) is
+# extracted by BINNING the incoming |p| (analysis/paper/fig3 make.py), NOT a per-point scan.  Only
+# REACTED events are written; GenCrossSection's 4th field = n_tried (uniform in p) gives the bin
+# normalization.  radius=10 fm beam disk -> piR^2=3141.6 mb.  ACHILLES SIGSEGVs mid-run -> use --seeds N.
+#   python -m analysis.utils.run_achilles configs/achilles/run_cascade_pip_C.yml --seeds 8
 Initialize:
   seed: 123456789
 
@@ -11,7 +13,8 @@ Nucleus:
   Binding: 8.6
   Fermi Momentum: 225
   Density:
-    File: data/c12.prova.txt
+    ProtonFile: data/densities/c12.prova.txt
+    NeutronFile: data/densities/c12.prova.txt
     FilePotential: data/realOP_12C_EDAI.dat
     Function: configuration
     Configs: data/configurations/QMC_configs.out.gz
@@ -25,65 +28,12 @@ Nucleus:
 
 Cascade:
   Mode: CrossSection
-  Interactions: 
-    - Name: GeantInteraction
-      Options:
-        GeantData: data/GeantData.hdf5
-    - Name: MesonBaryonInteraction
-      Options:
-      # We currently don't have interactions with strange baryons in the initial state
-      # Therefore, we set their cross sections to zero by hand
-    - Name: ConstantInteraction
-      Options:
-        InitialStates:
-          - Incoming: [3112, 2112]
-            Outgoing: 
-              - Outgoing: [3112, 2112]
-                CrossSection: 0
-          - Incoming: [3112, 2212]
-            Outgoing: 
-              - Outgoing: [3212, 2112]
-                CrossSection: 0
-          - Incoming: [321, 2212]
-            Outgoing: 
-              - Outgoing: [321, 2212]
-                CrossSection: 0
-          - Incoming: [321, 2112]
-            Outgoing: 
-              - Outgoing: [321, 2112]
-                CrossSection: 0
-          - Incoming: [3122, 2212]
-            Outgoing: 
-              - Outgoing: [3122, 2212]
-                CrossSection: 0
-          - Incoming: [3122, 2112]
-            Outgoing: 
-              - Outgoing: [3122, 2112]
-                CrossSection: 0
-          - Incoming: [3212, 2212]
-            Outgoing: 
-              - Outgoing: [3212, 2212]
-                CrossSection: 0
-          - Incoming: [3212, 2112]
-            Outgoing: 
-              - Outgoing: [3212, 2112]
-                CrossSection: 0
-          - Incoming: [3222, 2112]
-            Outgoing: 
-              - Outgoing: [3222, 2112]
-                CrossSection: 0
-          - Incoming: [3222, 2212]
-            Outgoing: 
-              - Outgoing: [3222, 2212]
-                CrossSection: 0
-          - Incoming: [311, 2112]
-            Outgoing: 
-              - Outgoing: [311, 2112]
-                CrossSection: 0
-          - Incoming: [311, 2212]
-            Outgoing: 
-              - Outgoing: [311, 2212]
-                CrossSection: 0
+  # Virtual-Resonances interaction set (the validated transparency cascade, docs/logbook/
+  # cascade_transport_residual.md): NucleonNucleon GiBUU/Decay + PionInteraction (MesonBaryon DCC
+  # hard-scatter + PionAbsorptionOneStep Oset) + ConstantInteraction (strange-baryon zeros).
+  # hA_Rules.yml REQUIRES NucleonNucleon ResonanceMode:Decay when MesonBaryon/PionAbsorptionOneStep
+  # are present -- the GeantInteraction set the image rejects.
+  Interactions: !include "data/default/VirtResInteractions.yml"
   Step: 0.04
   Probability: Gaussian
   InMedium: None
@@ -92,8 +42,8 @@ Cascade:
   Params:
     radius: 10
 
-KickMomentum: [1500, 1500]
-NEvents: 4000
+KickMomentum: [80, 500]   # uniform-momentum beam; sigma(p) extracted by binning incoming |p| (RunCascade.cc:250)
+NEvents: 200000
 PID: 211
 
 Output:

@@ -32,7 +32,7 @@ ORACLE = "ghcr.io/cesarjesusvalls/achilles:oracle"
 
 # card-name prefix -> (image, native_arm64, entrypoint).  native_arm64=True => NO --platform.
 _RULES = [
-    ("run_cascade_pip", ("achilles:cascade", True, "/achilles/bin/cascade")),
+    ("run_cascade_pip", ("achilles:cascade", True, "/achilles/bin/achilles-cascade")),
     ("run_T2K_C_fsi",   ("achilles:fullcascade", True, "/achilles/bin/achilles")),  # Cascade Run:True
     ("run_T2K_Ar_fsi",  ("achilles:fullcascade", True, "/achilles/bin/achilles")),
     # everything else is a no-cascade oracle run (inclusive, free-nucleon, res1pi, T2K *_nofsi, T2K_H)
