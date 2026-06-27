@@ -191,7 +191,7 @@ def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None):
 
 
 def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
-                          return_zj=False, q_direct=None, r_axial=None, return_q2=False):
+                          return_zj=False, q_direct=None, r_axial=None, return_q2=False, knobs=None):
     """Vectorised exclusive amps2 over a batch of events (all SAME channel: itiz, hPID).
     Returns amps2 (N,) on the ACHILLES absolute scale (/_NORM).
     return_zj=True returns the lab hadron current zj (N,4_combo,4_mu) instead (DIAGNOSTIC).
@@ -231,10 +231,11 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     bleg = legendre_ylm_batch(_LMAX, xz_pin)                                  # (N, L+1, 2L+1)
     # interp switch (default "spline" = bit-matches ACHILLES interpolate_amp).  "bilinear" is a fast
     # diagnostic ONLY -- ~0.3% on the integral but a known W-SHAPE offender (>1% in the high-W tail).
+    _kn = knobs if knobs is not None else DCCKnobs()    # pw_norm / axial_strength reweight hook (record-build)
     if BATCH_INTERP == "spline":
-        vec, isv, axial = _AMP.amplitudes_spline_np(wcm, Q2, DCCKnobs())
+        vec, isv, axial = _AMP.amplitudes_spline_np(wcm, Q2, _kn)
     else:
-        vec, isv, axial = _AMP.amplitudes_bilinear_np(wcm, Q2, DCCKnobs())
+        vec, isv, axial = _AMP.amplitudes_bilinear_np(wcm, Q2, _kn)
     amp_mpi = AMP_MPI_OVERRIDE if AMP_MPI_OVERRIDE is not None else mpi
     r_ax = None if r_axial is None else jnp.asarray(r_axial)
     zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, amp_mpi,

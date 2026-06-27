@@ -84,6 +84,35 @@ def build_res_ma_records(k_nu, k_mu, p_struck, p_N, p_pi, ipid, ppid):
     return (np.where(ok, A, 1.0), np.where(ok, B, 0.0), np.where(ok, Cq, 0.0), np.where(ok, Q2r, 1.0))
 
 
+def build_res_pw_records(k_nu, k_mu, p_struck, p_N, p_pi, ipid, ppid, wave, npw=14):
+    """Per-event (a, b, c, Q2) for a single DCC partial-wave norm `wave` in [0,npw).  amps2 is quadratic
+    in s = 1 + pw_norm[wave] (the wave's amplitude is scaled by s), so 3 numeric evals at s=0,1,2 give
+    (a,b,c) with amps2(s)=a+b s+c s^2.  Weight = strength_reweight(rec, 1 + pw_norm[wave]); ==1 at 0."""
+    from adonis.xsec import dcc_current as dcc
+    from adonis.core.params import DCCKnobs
+    n = len(np.asarray(k_nu))
+    A = np.ones(n); B = np.zeros(n); Cq = np.zeros(n); Q2r = np.ones(n)
+    ipid = np.asarray(ipid); ppid = np.asarray(ppid)
+
+    def _pwknob(s):
+        pw = [0.0] * npw; pw[wave] = s - 1.0          # pw_norm[wave] = s-1 -> scale s on that wave
+        return DCCKnobs(pw_norm=tuple(pw))
+
+    for (ip, pp), itiz in RES_ITIZ.items():
+        m = (ipid == ip) & (ppid == pp)
+        if not m.any():
+            continue
+        args = [np.asarray(x)[m] for x in (k_nu, k_mu, p_struck, p_N, p_pi)]
+        e1, q2 = dcc.exclusive_amps2_batch(*args, itiz, pp, knobs=_pwknob(1.0), return_q2=True)
+        e0 = dcc.exclusive_amps2_batch(*args, itiz, pp, knobs=_pwknob(0.0))
+        e2 = dcc.exclusive_amps2_batch(*args, itiz, pp, knobs=_pwknob(2.0))
+        # amps2(s)=a+b s+c s^2 from s=0,1,2:  a=e0, c=(e2-2e1+e0)/2, b=e1-e0-c
+        cc = 0.5 * (e2 - 2 * e1 + e0); bb = e1 - e0 - cc
+        A[m] = e0; B[m] = bb; Cq[m] = cc; Q2r[m] = q2
+    ok = np.isfinite(A) & np.isfinite(B) & np.isfinite(Cq) & (Q2r > 0)
+    return (np.where(ok, A, 1.0), np.where(ok, B, 0.0), np.where(ok, Cq, 0.0), np.where(ok, Q2r, 1.0))
+
+
 def ma_reweight(rec, MA):
     """Exact per-event M_A weight from an (a, b, c, Q2) record; pure in MA, == 1 at MA = 1.0."""
     a, b, c, q2 = (jnp.asarray(x) for x in rec)
