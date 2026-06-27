@@ -21,10 +21,11 @@ def _record(seed=0):
     iso = rng.integers(0, 3, (N, KN)).astype(np.int32)          # nucleon pair-iso pp/pn/nn
     finel = rng.uniform(0.0, 0.4, (N, KN))                      # inelastic fraction
     inel = rng.random((N, KN)) < finel                         # realized inelastic (only matters at a hit)
+    swap = rng.random((N, KN)) < 0.5                           # NN-elastic charge-exchange swap bit
     return dict(bc=jnp.asarray(bc), sa=jnp.asarray(sa), ss_el=jnp.asarray(ss_el), ss=jnp.asarray(ss),
                 si=jnp.asarray(si), nh=jnp.asarray(nh.astype(np.int32)), hh=jnp.asarray(hh),
                 a=jnp.asarray(a), iso=jnp.asarray(iso), finel=jnp.asarray(finel), inel=jnp.asarray(inel),
-                ns=jnp.asarray(ns.astype(np.int32)))
+                swap=jnp.asarray(swap), ns=jnp.asarray(ns.astype(np.int32)))
 
 
 def test_nominal_identity():
@@ -60,6 +61,19 @@ def test_nucleon_granular_nominal_identity():
     r = _record(8)
     w = np.asarray(pool_fsi_reweight(r, 1.0, 1.0, s_NN_elastic=(1., 1., 1.), s_NN_inelastic=(1., 1., 1.)))
     assert np.abs(w - 1.0).max() < 1e-12
+
+
+def test_nn_cex_fraction_nominal_and_grad():
+    """f_NN_cex=0.5 is identity; gradient autodiff==FD; only pn elastic hits are affected."""
+    r = _record(11)
+    w_nom = np.asarray(pool_fsi_reweight(r, 1.0, 1.0, f_NN_cex=0.5))
+    assert np.abs(w_nom - 1.0).max() < 1e-12
+    def loss(f):
+        return jnp.sum(pool_fsi_reweight(r, 1.0, 1.0, f_NN_cex=f))
+    eps = 1e-5
+    g_ad = float(jax.grad(loss)(0.6))
+    g_fd = (float(loss(0.6 + eps)) - float(loss(0.6 - eps))) / (2 * eps)
+    assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-5
 
 
 def test_nucleon_granular_autodiff_equals_fd():

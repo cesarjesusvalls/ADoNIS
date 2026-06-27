@@ -142,6 +142,18 @@ def fsi_nucleon_reweight(srec, s_el, s_inel):
     return jnp.prod(br, axis=1)
 
 
+def fsi_nncex_reweight(srec, f_cex):
+    """NN-elastic charge-exchange FRACTION reweight (ACHILLES value 0.5).  srec = (hh, iso, inel, swap (n,K),
+    ns (n,)).  Only pn elastic hits (iso==1, hh & ~inel) carry a meaningful swap; per such hit the realized
+    branch likelihood ratio is f_cex/0.5 if swapped else (1-f_cex)/0.5.  ==1 at f_cex=0.5.  pp/nn swaps are
+    no-ops (same species) -> not reweighted."""
+    hh, iso, inel, swap, ns = srec
+    valid = jnp.arange(iso.shape[1])[None, :] < ns[:, None]
+    pn_el = hh & (~inel) & (iso == 1)
+    br = jnp.where(valid & pn_el, jnp.where(swap, f_cex / 0.5, (1.0 - f_cex) / 0.5), 1.0)
+    return jnp.prod(br, axis=1)
+
+
 def nucleon_scat_reweight(srec, sscat):
     """Kind-1 sigma_scatter reweight from compressed nucleon-walk records srec =
     (hit (n,K), a_nom (n,K), n_slab (n,)) with a_nom = pi b^2/(sigma fm^2) of the closest
@@ -455,7 +467,7 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     return ((p4, pos, dhat, fz, alive, lead_q_new), escaping, recap, do.astype(jnp.int32),
             (ko_cand, ko_pos, ko_fz, ko_q, ko_alive),
             (_pPiX, pi_pos, pi_fz, pi_chidx, pi_alive), consumed,
-            jax.lax.stop_gradient((has_hit, perp2_c, sig_c, iso_c, finel_c, is_inel)))
+            jax.lax.stop_gradient((has_hit, perp2_c, sig_c, iso_c, finel_c, is_inel, do & _swap_cx)))
 
 
 def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,

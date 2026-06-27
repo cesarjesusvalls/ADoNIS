@@ -28,7 +28,8 @@ from __future__ import annotations
 import os
 import jax, jax.numpy as jnp
 from adonis.fsi.cascade_discrete import (_CH_PID, sample_nucleons, MB_TO_FM2, pion_branch_reweight,
-                                         fsi_pion_reweight, nucleon_scat_reweight, fsi_nucleon_reweight)
+                                         fsi_pion_reweight, nucleon_scat_reweight, fsi_nucleon_reweight,
+                                         fsi_nncex_reweight)
 
 PION, NUCLEON = 0, 1
 FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
@@ -191,10 +192,10 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             # Computed ONLY when with_rec (the differentiable/tuning path) -> forward generation pays nothing.
             if with_rec:
                 p_hh, p_bc, p_sa, p_ss_el, p_ss, p_si = pstat         # _pion_step stats (code4 + ss_el,ss)
-                n_hh, n_perp2, n_sig, n_iso, n_finel, n_inel = nstat  # _nucleon_step granular stats
+                n_hh, n_perp2, n_sig, n_iso, n_finel, n_inel, n_swap = nstat  # _nucleon_step granular stats
                 a_nom = jnp.pi * n_perp2 / jnp.clip(n_sig * MB_TO_FM2, 1e-12, None)
                 rec_slot = (is_pi & p_hh, p_bc, p_sa, p_ss_el, p_ss, p_si,   # pion hit mask + granular stats
-                            is_N & (n_perp2 < 1e5), n_hh, a_nom, n_iso, n_finel, n_inel)  # nucleon granular
+                            is_N & (n_perp2 < 1e5), n_hh, a_nom, n_iso, n_finel, n_inel, n_swap)  # nucleon
             consumed = consumedN | consumedP                          # only the active species adds bits
             p4_2 = jnp.where(is_N[:, None], p4n, jnp.where(is_pi[:, None], p4p, p4))
             pos_2 = jnp.where(is_N[:, None], posn, jnp.where(is_pi[:, None], posp, pos))
@@ -278,7 +279,7 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         terminal = T(terms)
         if with_rec:                                                 # per-slot (n,M) kind-1 record this step
             rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss_el", "pi_ss", "pi_si",
-                  "nu_m", "nu_hh", "nu_a", "nu_iso", "nu_finel", "nu_inel")
+                  "nu_m", "nu_hh", "nu_a", "nu_iso", "nu_finel", "nu_inel", "nu_swap")
             rec = {k: T(v) for k, v in zip(rk, scanned[4])}
         if with_seg:                                                 # per-slot (n,M) SEGMENT record this step
             sk = ("chan", "incp", "inc_pid", "parent_id", "gen", "track_id", "cont_pid", "cont_p",
@@ -384,11 +385,11 @@ def _empty_fsi_record(n, Kp, Kn):
                 si=jnp.zeros((n, Kp)), nh=jnp.zeros(n, jnp.int32),
                 hh=jnp.zeros((n, Kn), bool), a=jnp.full((n, Kn), 50.0),
                 iso=jnp.zeros((n, Kn), jnp.int32), finel=jnp.zeros((n, Kn)),
-                inel=jnp.zeros((n, Kn), bool), ns=jnp.zeros(n, jnp.int32))
+                inel=jnp.zeros((n, Kn), bool), swap=jnp.zeros((n, Kn), bool), ns=jnp.zeros(n, jnp.int32))
 
 
 def pool_fsi_reweight(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None, s_conv=1.0,
-                      s_NN_elastic=None, s_NN_inelastic=None):
+                      s_NN_elastic=None, s_NN_inelastic=None, f_NN_cex=0.5):
     """Joint kind-1 FSI reweight for the pool.  Pion branch-split + nucleon (per-iso el/inel).  Pure in the
     scales; == 1 at nominal; == the in-walk weight at any theta.  BACKWARD-COMPATIBLE: pool_fsi_reweight(
     record, sabs, sscat) reproduces the legacy reweight bit-for-bit (all granular knobs default to sabs/sscat).
@@ -402,7 +403,9 @@ def pool_fsi_reweight(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None
     nsi = jnp.broadcast_to(jnp.asarray(sscat), (3,)) if s_NN_inelastic is None else jnp.asarray(s_NN_inelastic)
     wn = fsi_nucleon_reweight((record["hh"], record["a"], record["iso"], record["finel"], record["inel"],
                               record["ns"]), nse, nsi)
-    return wp * wn
+    wc = fsi_nncex_reweight((record["hh"], record["iso"], record["inel"], record["swap"], record["ns"]),
+                            f_NN_cex)                            # NN charge-exchange fraction (nominal 0.5)
+    return wp * wn * wc
 
 
 # SEGMENT-LOG fields written by the in-engine logger (see run_cascade_pool log_cap path).  One row per
@@ -513,11 +516,11 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
             (bc, sa, ss_el, ss, si), nh, op = _rec_scatter(
                 [rb["bc"], rb["sa"], rb["ss_el"], rb["ss"], rb["si"]], rb["nh"], rec["pi_hh"],
                 [rec["pi_bc"], rec["pi_sa"], rec["pi_ss_el"], rec["pi_ss"], rec["pi_si"]], Kp)
-            (hh, a, iso, finel, inel), ns, on = _rec_scatter(
-                [rb["hh"], rb["a"], rb["iso"], rb["finel"], rb["inel"]], rb["ns"], rec["nu_m"],
-                [rec["nu_hh"], rec["nu_a"], rec["nu_iso"], rec["nu_finel"], rec["nu_inel"]], Kn)
+            (hh, a, iso, finel, inel, swap), ns, on = _rec_scatter(
+                [rb["hh"], rb["a"], rb["iso"], rb["finel"], rb["inel"], rb["swap"]], rb["ns"], rec["nu_m"],
+                [rec["nu_hh"], rec["nu_a"], rec["nu_iso"], rec["nu_finel"], rec["nu_inel"], rec["nu_swap"]], Kn)
             rb = dict(bc=bc, sa=sa, ss_el=ss_el, ss=ss, si=si, nh=nh, hh=hh, a=a,
-                      iso=iso, finel=finel, inel=inel, ns=ns)
+                      iso=iso, finel=finel, inel=inel, swap=swap, ns=ns)
             rofl = (rofl + op + on).astype(rofl.dtype)
         if do_log:
             seg = extra
