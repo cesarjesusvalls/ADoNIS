@@ -372,3 +372,30 @@ CONCLUSION: the π⁺¹²C cascade transport is faithful to ACHILLES at the ~1% 
 "~1.10–1.5× reaction residual" was a fig3-side counting artifact, not cascade physics.  This is
 consistent with §1–3 (identical-config replay <1%).  The §8 pi0 charge-exchange channel residual is
 SEPARATE (a DCC out-channel split, not the reaction total) and still open.
+
+## 10. pi0 CEX residual: the DCC cross section is REFUTED as the cause (2026-06-27)
+
+Followed up §8's TODO (localize the π⁰ charge-exchange deficit to the DCC cross section).  The
+cross section is BIT-FAITHFUL to ACHILLES — it is NOT the cause:
+- **Amplitude file identical**: `data/achilles/.../ANL_0-0.dat` is byte-for-byte the ACHILLES repo file
+  (96095 B, `diff` clean).  W grid [1080, 2200] MeV (pion lab |p| up to 2096) — covers the whole
+  400–800 MeV (W 1300–1557) region; both sides clamp to 0 only beyond the grid.
+- **Wave column order identical**: ADoNIS `WAVES` ≡ ACHILLES `PWnames`/`L_vec`/`twoJ_vec`/`twoI_vec`
+  (L 0,0,1,1,1,1,2…; 2I 1,3,1,1,3,3…; 2J 1,1,1,3,1,3…).  No I=1/2 scrambling.
+- **Formula identical**: ADoNIS `_channel_sigma` == ACHILLES `CalcCrossSectionW_grid` — same CG products
+  (π⁰p→π⁺n CEX = √2/3·(A₃ᐟ₂−A₁ᐟ₂)), same Σ_LJ (2J+1)|Σ_I CG_I·A_LJI|², same pref 197.32²·10·2π·4W²/PF.
+- **Resulting CEX fraction is textbook-correct** (JAX cascade path `jax_channel_sigmas_resolved`):
+  σ_cex/(σ_el+σ_cex) for π⁰ = 0.35 at the Δ (W1225; the 2:1 elastic:cex ratio), rising to ~0.50 in the
+  I=1/2 second-resonance region (W~1475), falling back to ~0.38 by W1600.  Charge-resolved per struck
+  nucleon (π⁰p→π⁺n needs p; π⁰n→π⁻p needs n).  out_ch sampling = inverse-CDF on these σ, == ACHILLES
+  SelectChannel.
+
+So the per-scatter π⁰ CEX cross section AND fraction match ACHILLES at fixed W.  The §8 segment-matrix
+residual (CEX low by 27–36% at 400–800 MeV lab |p|, growing with stats) therefore lives DOWNSTREAM of
+the cross section.  Leading remaining candidate: the CEX fraction is steeply W-dependent above the Δ
+(0.35→0.50 over W 1225→1475 while σ_el falls 90→10 mb), so a small difference in the W DISTRIBUTION at
+fixed lab |p| — i.e. the struck-nucleon Fermi-momentum/relative-angle sampling at the scatter vertex —
+shifts the lab-|p|-binned CEX fraction much more than the (steeply-falling, less sensitive) elastic
+absolute.  NEXT: compare the π⁰-scatter CEX fraction per **W** bin (not lab |p|) on identical inputs
+(ACHILLES VERTEXDUMP/achilles:vertex replayed through the ADoNIS segment logger), to confirm it is the
+W-distribution/binning rather than a per-scatter difference.
