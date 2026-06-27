@@ -120,6 +120,28 @@ def fsi_pion_reweight(brec, s_abs, s_el, s_cex, s_conv):
     return jnp.prod(jnp.where(valid, per, 1.0), axis=1)
 
 
+def fsi_nucleon_reweight(srec, s_el, s_inel):
+    """GRANULAR per-candidate nucleon FSI reweight.  srec = (hh (n,K) hit, a_nom (n,K)=pi b^2/(sigma_tot fm^2),
+    iso (n,K) {0 pp,1 pn,2 nn}, finel (n,K)=sigma_in/sigma_tot, inel (n,K) realized-inelastic, ns (n,)).
+    s_el,s_inel are length-3 (per-iso) scales.  At each candidate the total-sigma scale is
+      g = s_el[iso]*(1-finel) + s_inel[iso]*finel    (sigma_tot(s)=g*sigma_tot_0),
+    so a_nom(s)=a_nom/g; the Gaussian hit factor is exp(-a_nom/g)/exp(-a_nom) for a hit (else the no-hit
+    complement), and a HIT carries the el/inel sub-branch factor s_realized/g (s_realized=s_inel[iso] if
+    inel else s_el[iso]).  ==1 at all-nominal; reduces BIT-EXACTLY to nucleon_scat_reweight(.,sscat) when
+    s_el=s_inel=sscat (g=sscat, s_realized/g=1)."""
+    hh, a_nom, iso, finel, inel, ns = srec
+    se = jnp.asarray(s_el); si = jnp.asarray(s_inel)
+    valid = jnp.arange(a_nom.shape[1])[None, :] < ns[:, None]
+    se_i = se[iso]; si_i = si[iso]                                # per-candidate per-iso scales
+    g = jnp.clip(se_i * (1.0 - finel) + si_i * finel, 1e-6, None)
+    p0 = jnp.clip(jnp.exp(-a_nom), 1e-6, 1.0 - 1e-6)
+    pk = jnp.clip(jnp.exp(-a_nom / g), 1e-6, 1.0 - 1e-6)
+    s_real = jnp.where(inel, si_i, se_i)
+    hit_f = (pk / p0) * (s_real / g)                             # hit: Gaussian ratio x el/inel sub-branch
+    br = jnp.where(valid, jnp.where(hh, hit_f, (1.0 - pk) / (1.0 - p0)), 1.0)
+    return jnp.prod(br, axis=1)
+
+
 def nucleon_scat_reweight(srec, sscat):
     """Kind-1 sigma_scatter reweight from compressed nucleon-walk records srec =
     (hit (n,K), a_nom (n,K), n_slab (n,)) with a_nom = pi b^2/(sigma fm^2) of the closest
@@ -297,6 +319,12 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     perp2_is = jnp.where(in_slab, perp2, jnp.inf); cidx = jnp.argmin(perp2_is, axis=1)
     has_slab = jnp.any(in_slab, axis=1)
     perp2_c = jnp.where(has_slab, perp2_is[ar, cidx], 1e6); sig_c = sig[ar, cidx]
+    # GRANULAR nucleon-FSI record: pair-isospin of the closest in-slab candidate {0 pp,1 pn,2 nn} and the
+    # inelastic fraction finel = sig_in/sig_tot there -> lets fsi_nucleon_reweight scale per-iso elastic and
+    # inelastic NN sigma independently (s_NN_elastic{pp,pn,nn}, s_NN_inelastic{pp,pn,nn}).
+    _nisp_c = nisp[ar, cidx]
+    iso_c = jnp.where(isp & _nisp_c, 0, jnp.where((~isp) & (~_nisp_c), 2, 1)).astype(jnp.int32)
+    finel_c = jnp.clip(sig_in[ar, cidx] / jnp.clip(sig_c, 1e-12, None), 0.0, 1.0)
     pN_j = nmom[ar, j]
     rnuc = jnp.linalg.norm(npos, axis=2)
     kf_n = _kf_local(jnp.where(nisp, _rho_species(rnuc, rgrid, rhoP), _rho_species(rnuc, rgrid, rhoN)))
@@ -427,7 +455,7 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     return ((p4, pos, dhat, fz, alive, lead_q_new), escaping, recap, do.astype(jnp.int32),
             (ko_cand, ko_pos, ko_fz, ko_q, ko_alive),
             (_pPiX, pi_pos, pi_fz, pi_chidx, pi_alive), consumed,
-            jax.lax.stop_gradient((has_hit, perp2_c, sig_c)))
+            jax.lax.stop_gradient((has_hit, perp2_c, sig_c, iso_c, finel_c, is_inel)))
 
 
 def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
