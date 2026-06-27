@@ -423,3 +423,27 @@ matrix) or a segment-matrix stats/binning artifact -- NOT the DCC charge-exchang
 pion transport.  (The cross-section hypothesis of sec 8/10 is now fully closed: refuted analytically in
 sec 10 and confirmed in-cascade here.)  If the RES residual matters for CC1pi it should be chased in the
 RES pi0 spectrum, not the cascade.
+
+## 12. All-channel per-W test: pi+/pi0/pi-/p/n faithful; Pauli effect on CEX (2026-06-27)
+
+Generalized the per-W test to all 5 beam hadrons (`scripts/cascade_channel_perW.py` + `_plot.py`, fig
+`output/figures/cascade_channel_perW.png`).  Pions: CEX fraction cex/(el+cex); nucleons: inelastic
+fraction inel/(el+inel) (NN->NN pi).  ADoNIS drives `_pion_step`/`_nucleon_step` directly; ACHILLES
+`achilles:vertex` VERTEXDUMP (8 seed batches each).  ADoNIS/ACHILLES ratio vs lab |p| (binomial errors):
+- pi+ CEX: 0.89-1.01 ; pi0 CEX: 0.95-1.01 ; pi- CEX: 0.91-1.02 (low-p [200,400] ~0.9 for pi+/pi-, ~3sigma)
+- p inel: 1.00-1.10 ; n inel: 0.99-1.16 (high-p <2%; low-p/near-threshold bins noisy).
+Nucleon inelastic turns on correctly at the Delta-production threshold (W~2017, lab|p|~800) -> ~0.4,
+tracking ACHILLES and the pre-Pauli NN->NDelta cross section.
+
+DIFFERENTIAL-PAULI effect (pi0, confirmed): the post-Pauli runtime CEX-vs-W sits BELOW the bare
+cross-section ratio (sum-pull -4.6 sigma over W 1240-1520); with cfg.pauli=False it returns to the curve
+(+0.6 sigma).  Above the Delta the CEX recoil nucleon is softer than the elastic recoil (I=1/2 angular
+content) -> CEX is Pauli-blocked slightly more -> post-Pauli CEX fraction suppressed below the bare sigma
+ratio.  ACHILLES applies the same Pauli blocking, so ADoNIS-vs-ACHILLES (both post-Pauli) still agree.
+
+NOTE (diagnostic-only bug, not ADoNIS): `_nucleon_step` returns `do` = ELASTIC-only; inelastic is
+signaled by the created-pion spawn pio[4]=pi_alive with do=False.  A first nucleon driver gated scatters
+on `do` -> showed inel=0; fixed to (do | pio_alive).  ADoNIS produces NN inelastic correctly.
+
+Net: every per-scatter cascade channel (pion el/cex/abs, nucleon el/inel) is faithful to ACHILLES; the
+sec-8 RES pi0-CEX residual remains attributable to the RES pi0 POPULATION (upstream), not the cascade.
