@@ -63,3 +63,14 @@ def ma_reweight(rec, MA):
     r = axial_reweight_dipole(q2, MA)
     den = a + b + c
     return jnp.where(den > 0, (a + b * r + c * r * r) / jnp.where(den > 0, den, 1.0), 1.0)
+
+
+def strength_reweight(rec, strength):
+    """Exact overall-axial-STRENGTH weight from the SAME (a, b, c) amps2 record as M_A; pure in
+    `strength`, == 1 at strength = 1.0.  amps2(s) = a + b*s + c*s^2 (the hadron current is linear in the
+    axial block, so amps2 is exactly quadratic in the overall axial scale), so the reweight is the flat-
+    scale ratio -- the M_A knob is the SAME decomposition with the Q2-dependent dipole ratio r in place of
+    the flat s.  Differentiable knob: adonis/core/params.py axial_strength."""
+    a, b, c, _ = (jnp.asarray(x) for x in rec)
+    den = a + b + c
+    return jnp.where(den > 0, (a + b * strength + c * strength * strength) / jnp.where(den > 0, den, 1.0), 1.0)
