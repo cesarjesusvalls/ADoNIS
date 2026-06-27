@@ -468,3 +468,37 @@ P(hit nucleon) ∝ sigma_total (dilute limit).  It is EXACT for pi0 (symmetric) 
 on it (+0.6s) -- but only APPROXIMATE for pi+/pi- (no-Pauli runtime sits ~ -10s below it) because the
 geometric selection deviates from sigma-weighting when sigma is large/asymmetric (Delta).  So for pi+/pi-
 judge agreement by the LEFT panel (ADoNIS vs ACHILLES), not the right-panel curve.
+
+## 14. pi+/pi- CEX deficit LOCALIZED: nucleon selection over-weights protons ~5% (2026-06-27)
+
+Chased the sec-13 pi+/pi- low-p CEX deficit to its mechanism via a pi+ beam, recording per scatter the
+recoil-nucleon charge (proton/neutron HIT fraction among scatters).  Measured ADoNIS vs ACHILLES vs the
+sigma-weighted prediction (sigma_scat(pi+p)/(sigma_scat(pi+p)+sigma_scat(pi+n)) at each scatter's W):
+
+| lab|p| | ADoNIS runtime | sigma-weighted pred | ACHILLES |
+|---|---|---|---|
+| [200,400] | 0.773 | 0.738 | 0.744 |
+| [400,600] | 0.631 | 0.615 | 0.595 |
+| [600,900] | 0.292 | 0.305 | 0.318 |
+
+**ACHILLES follows the sigma-weighted prediction; ADoNIS does NOT** -- it over-selects protons by ~3-5%
+at/below the Delta (and slightly under at high p).  Since pi+ CEX needs a NEUTRON (pi+ n -> pi0 p) and at
+the Delta sigma(pi+p)=198 >> sigma(pi+n)=68, a ~5% proton-over-selection -> ~11% fewer neutron hits ->
+the ~10% pi+/pi- CEX deficit.  pi0 is selection-symmetric (both nucleons give CEX) -> immune (matches).
+
+RULED OUT as the cause (all measured null): cross section (bit-exact, sec 10); Fermi-momentum sampling
+(ACHILLES kf*cbrt(U) == ADoNIS, uniform Fermi sphere, no SRC); Pauli (deficit persists with
+ACHILLES_NO_PAULI on both sides); fast_xsec top-K (~0.09 nucleons per 0.04fm slab, never active);
+time_step (null for a lone pion); step granularity (step 0.04->0.16 left proton-frac 0.773->0.767);
+first-vs-all-scatter binning (all-scatter gives the same 0.773).  The selection LAW is provably identical
+to ACHILLES (closest-perp passer == perp-sorted first-passer).
+
+So the residual is a SUBTLE discrete-Glauber transport realization difference: ADoNIS's per-step Gaussian
+nucleon selection departs from sigma_total-weighting by ~5% at large/asymmetric sigma (the Delta), where
+ACHILLES's exact impact-parameter walk stays sigma-weighted.  NOT pinned to a single fixable line; the
+per-encounter ingredients are each faithful.  Impact: ~10% on the DILUTED pi+/pi- CEX channel at the
+Delta -> expected sub-% on CC1pi.  A genuine fix needs per-encounter instrumentation on BOTH sides
+(ACHILLES dump of the candidate set + struck nucleon + impact parameter, replayed through ADoNIS) to pin
+the exact divergence -- an ACHILLES-rebuild-level effort.  Documented; NOT hacked with a fitted constant.
+Tools: scripts/cascade_channel_perW.py (beam driver, records recoil charge + all scatters),
+scripts/cascade_channel_plot.py, /tmp/pn_ratio.py.

@@ -25,12 +25,16 @@ from adonis.fsi.cascade_discrete import (DiscreteCascadeConfig, _load_density, s
 _CH = {211: 0, 111: 1, -211: 2}            # pion charge index
 
 
-def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True):
+def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True, fast_xsec=True, time_step=False,
+        step=0.04):
     is_pion = pid in _CH
     tg = resolve_targets(target)[0][0]
     cfg = DiscreteCascadeConfig(nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs,
-                                step=0.04, pauli=pauli, nn_inelastic=True)
-    tag = "" if pauli else "_nopauli"
+                                step=step, pauli=pauli, nn_inelastic=True, fast_xsec=fast_xsec,
+                                time_step=time_step)
+    max_steps = int(max_steps * 0.04 / step)         # keep total path budget ~constant
+    tag = ("" if pauli else "_nopauli") + ("" if fast_xsec else "_full") + ("_ts" if time_step else "") \
+        + ("" if step == 0.04 else f"_step{step}")
     rgrid, rhoP, rhoN, radius = _load_density(cfg.nucleus, cfg.density_n)
     z0 = -1.05 * float(radius); R_DISK = 8.0
     p_lo, p_hi = (80.0, 900.0) if is_pion else (200.0, 1700.0)     # nucleon inelastic opens ~800 MeV
@@ -45,8 +49,11 @@ def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True):
     npos, nmom, nisp = sample_nucleons(kn, n, cfg); consumed = jnp.zeros(nisp.shape, bool)
     alive = jnp.ones(n, bool)
     rec_plab = np.full(n, -1.0); rec_W = np.full(n, -1.0); rec_kind = np.full(n, -1, np.int32)
+    rec_recoilq = np.full(n, -9, np.int32)        # recoil nucleon charge (1=p,0=n) at the scatter
     done = np.zeros(n, bool)
 
+    # ALL scatters (every interaction along the path, like the ACHILLES VERTEXDUMP), not just the first.
+    acc_plab, acc_W, acc_kind, acc_rq = [], [], [], []
     if is_pion:
         ch = jnp.full(n, _CH[pid], jnp.int32); nsc = jnp.zeros(n, jnp.int32)
         step = jax.jit(_pion_step, static_argnums=(14,))
@@ -56,18 +63,23 @@ def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True):
             (p4n, posn, dhn, chn, nscn, aln), esc, is_abs, is_conv, s1, s2, consn, _ = step(
                 p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kP)
-            scat = (np.asarray(nscn) > np.asarray(nsc)) & ~done
-            absb = np.asarray(is_abs) & ~done; conv = np.asarray(is_conv) & ~done
+            al = np.asarray(alive)
+            scat = (np.asarray(nscn) > np.asarray(nsc)) & al
+            absb = np.asarray(is_abs) & al; conv = np.asarray(is_conv) & al
             if scat.any():
                 P = np.asarray(p4n) + np.asarray(s1[0]); W = np.sqrt(np.clip(P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, 1), 0, None))
-                idx = np.where(scat)[0]; rec_plab[idx] = plab_pre[idx]; rec_W[idx] = W[idx]
-                rec_kind[idx] = (np.asarray(chn)[idx] != ch_pre[idx]).astype(np.int32); done[idx] = True
+                rq = np.asarray(s1[3]); idx = np.where(scat)[0]
+                acc_plab.append(plab_pre[idx]); acc_W.append(W[idx])
+                acc_kind.append((np.asarray(chn)[idx] != ch_pre[idx]).astype(np.int32)); acc_rq.append(rq[idx])
             for mask, kv in ((absb, 2), (conv, 3)):
                 if mask.any():
-                    idx = np.where(mask)[0]; rec_plab[idx] = plab_pre[idx]; rec_kind[idx] = kv; done[idx] = True
+                    idx = np.where(mask)[0]; acc_plab.append(plab_pre[idx]); acc_W.append(np.zeros(len(idx)))
+                    acc_kind.append(np.full(len(idx), kv)); acc_rq.append(np.full(len(idx), -9))
             p4, pos, dhat, ch, nsc, consumed = p4n, posn, dhn, chn, nscn, consn
-            alive = aln & ~jnp.asarray(done)
+            alive = aln & ~jnp.asarray(absb | conv)        # scatters CONTINUE; abs/conv removed
             if bool(jnp.all(~alive)): break
+        rec_plab = np.concatenate(acc_plab); rec_W = np.concatenate(acc_W)
+        rec_kind = np.concatenate(acc_kind); rec_recoilq = np.concatenate(acc_rq)
             if st % 200 == 0: print(f"  step {st}: done {int(done.sum())}/{n}", flush=True)
     else:
         isp = jnp.full(n, pid == 2212); fz = jnp.zeros(n)
@@ -93,10 +105,12 @@ def run(pid, n=400_000, seed=0, target="C", max_steps=1400, pauli=True):
             if st % 200 == 0: print(f"  step {st}: done {int(done.sum())}/{n}", flush=True)
     ch12 = (rec_kind == 0) | (rec_kind == 1)
     print(f"pid {pid}: interacted {int((rec_kind>=0).sum())}/{n} (chan1+2 {int(ch12.sum())}, chan2 {int((rec_kind==1).sum())})", flush=True)
-    np.savez(f"/tmp/chan_ado_{pid}{tag}.npz", plab=rec_plab, W=rec_W, kind=rec_kind)
+    np.savez(f"/tmp/chan_ado_{pid}{tag}.npz", plab=rec_plab, W=rec_W, kind=rec_kind, recoilq=rec_recoilq)
 
 
 if __name__ == "__main__":
     pid = int(sys.argv[1]); n = int(sys.argv[2]) if len(sys.argv) > 2 else 400_000
-    pauli = not (len(sys.argv) > 3 and sys.argv[3] == "nopauli")
-    run(pid, n=n, pauli=pauli)
+    opts = sys.argv[3:]
+    stepv = next((float(o[4:]) for o in opts if o.startswith("step")), 0.04)
+    run(pid, n=n, pauli=("nopauli" not in opts), fast_xsec=("full" not in opts), time_step=("ts" in opts),
+        step=stepv)
