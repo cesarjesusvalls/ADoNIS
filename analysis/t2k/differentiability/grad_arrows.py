@@ -127,7 +127,7 @@ def _build_grid_fig(obs, edges, h0, Js, labels):
             break
         yhi, ylo = nyhi, nylo
     span = yhi - ylo
-    sc = np.where(smax > 0, ARR * span / smax, 0.0)
+    sc = np.where(smax > 0, ARR * span / np.where(smax > 0, smax, 1.0), 0.0)
     dys = Js * sc[:, None]                                  # => per-panel longest arrow = ARR*span exactly
 
     n = len(labels); ncol = 6; nrow = int(np.ceil(n / ncol))
