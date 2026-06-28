@@ -74,15 +74,22 @@ def run():
 
     POOL = T.POOLCFG; CAPS = T.REC_CAPS
 
+    PMAX = 1e4  # MeV: physical ceiling for any final-state hadron (T2K energies ~GeV); above this is a
+                # known rare cascade artifact (~0.1% of particles, inf/sentinel momenta) -> dropped here so
+                # the stored bank is finite & safe for ANY signal def (acceptance rejects them anyway).
+
     def compact_finalstate(nt):
-        """Ragged (CSR) compaction of the (n, M_out) terminal buffer -> alive particles only."""
+        """Ragged (CSR) compaction of the (n, M_out) terminal buffer -> alive, PHYSICAL particles only."""
         al = np.asarray(nt["alive"]); pid = np.asarray(nt["pid"]); chg = np.asarray(nt["charge"])
-        p4 = np.asarray(nt["p4"])
-        cnt = al.sum(1).astype(np.int64)
+        p4 = np.asarray(nt["p4"]).astype(np.float64)
+        mom = np.sqrt(np.nan_to_num(p4[:, :, 1:] ** 2, posinf=np.inf).sum(2))
+        good = al & np.isfinite(p4).all(2) & (mom < PMAX)
+        ndrop = int((al & ~good).sum())
+        cnt = good.sum(1).astype(np.int64)
         off = np.concatenate([[0], np.cumsum(cnt)])
-        m = al.reshape(-1)
+        m = good.reshape(-1)
         return (off, pid.reshape(-1)[m].astype(np.int32), chg.reshape(-1)[m].astype(np.int32),
-                p4.reshape(-1, 4)[m].astype(np.float32))
+                p4.reshape(-1, 4)[m].astype(np.float32), ndrop)
 
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, labels=labels,
                     knobs_nominal=[float(x) for x in np.asarray(p0)])
@@ -119,8 +126,10 @@ def run():
         w0r, D1r, D2r, D3r = derivs(w_res)
         log(f"chunk {c+1}: derivatives done")
 
-        offq, fpq, fcq, fp4q = compact_finalstate(ntq[0])
-        offr, fpr, fcr, fp4r = compact_finalstate(ntr[0])
+        offq, fpq, fcq, fp4q, dropq = compact_finalstate(ntq[0])
+        offr, fpr, fcr, fp4r, dropr = compact_finalstate(ntr[0])
+        if dropq or dropr:
+            log(f"chunk {c+1}: dropped {dropq+dropr} non-physical final-state particles (|p|>1e4 MeV / non-finite)")
         np.savez(f"{outdir}/chunk_{c:03d}.npz",
                  # per-event scalars / kinematics / derivatives (QE then RES; channel 0=qe,1=res)
                  channel=np.concatenate([np.zeros(nq, np.int8), np.ones(nr, np.int8)]),
