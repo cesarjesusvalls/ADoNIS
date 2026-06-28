@@ -114,6 +114,50 @@ def signal_cc1pi(B):
     return mask, lead, single_pip(B)
 
 
+def leading_proton_window(B, pmin, pmax):
+    """Leading proton with momentum in [pmin,pmax) (the T2K CC1pi+Np acceptance picks the leading ACCEPTED p)."""
+    pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]; n = len(B["w0"])
+    mom = np.linalg.norm(p4[:, 1:], axis=1)
+    key = np.where((pid == 2212) & (mom >= pmin) & (mom < pmax), mom, -1.0)
+    maxk = np.full(n, -1.0); np.maximum.at(maxk, eidx, key)
+    lead = np.zeros((n, 4)); islead = (pid == 2212) & (key == maxk[eidx]); lead[eidx[islead]] = p4[islead]
+    return lead, maxk > 0.0
+
+
+# T2K CC1pi+Np STV (PRD 103 112009) -- acceptance windows [MeV] + nuclear masses for the p_N reconstruction
+_MU_LO, _MU_HI = 250.0, 7000.0; _PI_LO, _PI_HI = 150.0, 1200.0; _P_LO, _P_HI = 450.0, 1200.0
+_M12C, _M11B = 11174.862, 10252.547
+
+
+def signal_cc1pi_stv(B):
+    """T2K CC1pi+Np STV signal: exactly one pi+ (no other meson) + muon/pion/leading-proton in acceptance.
+    Returns (mask, lead, pip4)."""
+    npip, npi0, npim = pion_counts(B); pip = single_pip(B)
+    lead, hasp = leading_proton_window(B, _P_LO, _P_HI)
+    pmu = np.linalg.norm(B["k_mu"][:, 1:].astype(np.float64), axis=1)
+    ppi = np.linalg.norm(pip[:, 1:], axis=1)
+    mask = ((npip == 1) & (npi0 == 0) & (npim == 0) & hasp
+            & (pmu >= _MU_LO) & (pmu < _MU_HI) & (ppi >= _PI_LO) & (ppi < _PI_HI))
+    return mask, lead, pip
+
+
+def dptt_1pi(kmu, lead, pip):
+    """Double-transverse momentum imbalance delta_pTT = (p_pi+p_p).zhat, zhat=(beam x p_mu)/|.| (MeV/c)."""
+    beam = np.array([0.0, 0.0, 1.0]); mu3 = kmu[:, 1:]; had3 = pip[:, 1:] + lead[:, 1:]
+    zhat = np.cross(np.broadcast_to(beam, mu3.shape), mu3)
+    zhat = zhat / (np.linalg.norm(zhat, axis=1, keepdims=True) + 1e-9)
+    return np.sum(had3 * zhat, axis=1)
+
+
+def pN_1pi(kmu, lead, pip):
+    """Inferred struck-nucleon momentum p_N (carbon-mass reconstruction, NUISANCE/T2K prescription) [MeV]."""
+    dptmag = dpt_1pi(kmu, lead, pip)
+    pL = kmu[:, 3] + pip[:, 3] + lead[:, 3]; Evis = kmu[:, 0] + pip[:, 0] + lead[:, 0]
+    R = _M12C + pL - Evis
+    dpL = 0.5 * R - (_M11B ** 2 + dptmag ** 2) / (2.0 * np.maximum(R, 1.0))
+    return np.sqrt(np.maximum(dptmag ** 2 + dpL ** 2, 0.0))
+
+
 def dpt_1pi(kmu, lead, pip):
     """CC1pi+ transverse-momentum imbalance |p_T^mu + p_T^p + p_T^pi| (MeV)."""
     dv = kmu[:, 1:3] + lead[:, 1:3] + pip[:, 1:3]

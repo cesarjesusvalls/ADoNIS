@@ -96,13 +96,17 @@ def main():
         ]
         for nm, (fn, edges, xsc, xlabel, needp) in BO.OBSDEF.items():
             SPEC.append((INCL[nm], fn(B, lead), edges, xsc, xlabel, CONV_X, base & (has_p if needp else True)))
-    else:                                                              # CC1pi+ (topological), no acceptance
-        m1, lead, pip = BP.signal_cc1pi(B); kmu = B["k_mu"].astype(np.float64)
+    else:                                                              # CC1pi+ topological (no acceptance; good
+        sig = BP.signal_cc1pi_stv if "stv" in args else BP.signal_cc1pi   # stats). 'stv' arg -> T2K acceptance.
+        m1, lead, pip = sig(B); kmu = B["k_mu"].astype(np.float64)
         SPEC = [
             ("\\delta p_T^{1\\pi}", BP.dpt_1pi(kmu, lead, pip), np.linspace(0, 1000, 11), 1e3,
              r"$\delta p_T$ [GeV/c]", CONV_X, m1),
             ("\\delta\\alpha_T^{1\\pi}", BP.dat_1pi(kmu, lead, pip), np.linspace(0, np.pi, 9), 1.0,
              r"$\delta\alpha_T$ [rad]", CONV_X, m1),
+            ("\\delta p_{TT}", BP.dptt_1pi(kmu, lead, pip), np.array([-700., -500, -300, -100, 100, 300, 500, 700]),
+             1e3, r"$\delta p_{TT}$ [GeV/c]", CONV_X, m1),
+            ("p_N", BP.pN_1pi(kmu, lead, pip), np.linspace(0, 800, 11), 1e3, r"$p_N$ [GeV/c]", CONV_X, m1),
             ("p_\\pi", np.linalg.norm(pip[:, 1:], axis=1), np.linspace(0, 1000, 11), 1e3,
              r"$p_\pi$ [GeV/c]", CONV_X, m1),
         ]
