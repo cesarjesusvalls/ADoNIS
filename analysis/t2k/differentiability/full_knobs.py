@@ -33,8 +33,9 @@ def nominal_knobs():
                 kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0, src_tail=1.0, qe_norm=1.0, res_norm=1.0)
 
 
-def build_hv_sf(qe, res, sf):
-    """Build the per-channel hard-vertex amps2 records + SF grids/points ONCE (theta-independent)."""
+def build_hv_sf(qe, res, sf, with_pw=True):
+    """Build the per-channel hard-vertex amps2 records + SF grids/points ONCE (theta-independent).
+    with_pw=False skips the 14 DCC partial-wave records (the dominant build cost) -> pw_norm has no effect."""
     qa = (qe["k_nu"], qe["k_mu"], qe["p_struck"], qe["p_out"])
     ra = (res["k_nu"], res["k_mu"], res["p_struck"], res["p_N"], res["p_pi"])
     ip, pp = np.asarray(res["ipid"]), np.asarray(res["ppid"])
@@ -43,7 +44,7 @@ def build_hv_sf(qe, res, sf):
         qe_gmp=build_qe_ff_records(*qa, "gmp"), qe_gmn=build_qe_ff_records(*qa, "gmn"),
         qe_gep=build_qe_ff_records(*qa, "gep"), qe_gen=build_qe_ff_records(*qa, "gen"),
         res_ma=build_res_ma_records(*ra, ip, pp), res_pp=build_res_pionpole_records(*ra, ip, pp),
-        res_pw=[build_res_pw_records(*ra, ip, pp, w) for w in range(_NPW)])
+        res_pw=[build_res_pw_records(*ra, ip, pp, w) for w in range(_NPW)] if with_pw else None)
     grids = sf_grids(sf)
     SF = dict(grids=grids,
               qe_pmag=removal_from_struck(qe["p_struck"])[0], qe_erem=removal_from_struck(qe["p_struck"])[1],
@@ -61,6 +62,8 @@ def _hv_qe(k, HV):
 def _hv_res(k, HV):
     w = (ma_reweight(HV["res_ma"], k["M_A"]) * strength_reweight(HV["res_ma"], k["res_axial_strength"])
          * strength_reweight(HV["res_pp"], k["pion_pole"]))
+    if HV.get("res_pw") is None:                              # pw records skipped (with_pw=False) -> no-op
+        return w
     pw = jnp.asarray(k["pw_norm"])
     for i in range(_NPW):
         w = w * strength_reweight(HV["res_pw"][i], 1.0 + pw[i])

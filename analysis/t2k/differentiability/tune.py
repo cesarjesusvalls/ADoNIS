@@ -109,38 +109,55 @@ def _lead_proton_pool(nt):
     return jnp.where((mom[ar, j] > 0)[:, None], p4[ar, j], 0.0)
 
 
-def build_replica(kcasc, qe, qw, res, rw):
-    """Walk one replica: one cascade_nucleus pool run per channel -> leading proton (for the
-    theta-independent dpt/keep/idx) + the joint kind-1 FSI record (theta enters via pool_fsi_reweight).
+def build_walk(kcasc, qe, qw, res, rw):
+    """Run one OBSERVABLE-INDEPENDENT cascade replica: one cascade_nucleus pool run per channel ->
+    leading proton + the joint kind-1 FSI record (theta enters via pool_fsi_reweight).  Returns the raw
+    walk (leading protons, k_mu, w0, records); bin it into an R with bin_walk (the only obs-dependent step).
     CC0pi-RES = primary pion absorbed (pterm pid==0)."""
-    kq, kr = jax.random.split(kcasc, 2); j = jnp.asarray; edges = j(EDGES)
+    kq, kr = jax.random.split(kcasc, 2); j = jnp.asarray
     nq = len(qe["w"]); nr = len(res["w"])                       # actual event counts (RES generate != NRES)
     # QE: struck neutron -> proton through the pool (no pion); record carries only nucleon scatters.
     _pt, ntq, oflq, _c, recq = _CF.cascade_nucleus(
         jnp.zeros((nq, 4)), j(qe["p_out"]), jnp.zeros(nq, jnp.int32), jnp.full(nq, 2112, jnp.int32),
         jnp.full(nq, 2212, jnp.int32), POOLCFG(seed=2), kq, channel="qe", rec_caps=REC_CAPS)
     q_lead = _lead_proton_pool(ntq[0])
-    q_dpt = _obs(j(qe["k_mu"]), q_lead); q_keep = _sel(j(qe["k_mu"]), q_lead)
     # RES: primary pion + recoil through the pool (joint pion+nucleon record).
     ptr, ntr, oflr, _c2, recr = _CF.cascade_nucleus(
         j(res["p_pi"]), j(res["p_N"]), j(res["ppid"]).astype(jnp.int32), j(res["ipid"]).astype(jnp.int32),
         jnp.full(nr, 2212, jnp.int32), POOLCFG(seed=1), kr, channel="res", rec_caps=REC_CAPS)
     r_lead = _lead_proton_pool(ntr[0])
     absb = (ptr["pid"] == 0).astype(float)                      # primary pion absorbed -> CC0pi
-    r_dpt = _obs(j(res["k_mu"]), r_lead); r_keep = _sel(j(res["k_mu"]), r_lead)
-    R = dict(q_idx=jnp.clip(jnp.searchsorted(edges, q_dpt) - 1, 0, len(EDGES) - 2),
-             q_keep=q_keep, q_w0=j(qw), q_rec=recq,
-             r_idx=jnp.clip(jnp.searchsorted(edges, r_dpt) - 1, 0, len(EDGES) - 2),
-             r_keep=r_keep, r_w0=j(rw) * absb, r_rec=recr)
+    W = dict(q_kmu=j(qe["k_mu"]), q_lead=q_lead, q_w0=j(qw), q_rec=recq,
+             r_kmu=j(res["k_mu"]), r_lead=r_lead, r_w0=j(rw) * absb, r_rec=recr)
     nhmax = max(int(jnp.max(recq["nh"])), int(jnp.max(recr["nh"])))
     nsmax = max(int(jnp.max(recq["ns"])), int(jnp.max(recr["ns"])))
     assert nhmax <= REC_CAPS[0] and nsmax <= REC_CAPS[1], ("rec overflow", nhmax, nsmax)
     # pool buffer overflow (P stack / M_out finals): production tolerates a handful per 1e4-1e5 events
     # (logged, not fatal -- those events drop a low-rank particle).  LOG it, don't crash.
     if int(oflq) or int(oflr):
-        print(f"  [build_replica] pool buffer overflow: QE={int(oflq)} RES={int(oflr)} "
+        print(f"  [build_walk] pool buffer overflow: QE={int(oflq)} RES={int(oflr)} "
               f"of (nq={nq}, nr={nr}) events", flush=True)
-    return jax.block_until_ready(R)
+    return jax.block_until_ready(W)
+
+
+def bin_walk(W, edges=None, obs=None):
+    """Bin a build_walk output into an R (idx/keep/w0/rec) for a given observable.  Defaults to this
+    module's OBS (EDGES, _obs); pass edges/obs to bin the SAME walk for a different observable."""
+    edges = EDGES if edges is None else np.asarray(edges)
+    obs = _obs if obs is None else obs
+    ej = jnp.asarray(edges); nbm = len(edges) - 2
+    q_x = obs(W["q_kmu"], W["q_lead"]); q_keep = _sel(W["q_kmu"], W["q_lead"])
+    r_x = obs(W["r_kmu"], W["r_lead"]); r_keep = _sel(W["r_kmu"], W["r_lead"])
+    return dict(q_idx=jnp.clip(jnp.searchsorted(ej, q_x) - 1, 0, nbm), q_keep=q_keep,
+                q_w0=W["q_w0"], q_rec=W["q_rec"],
+                r_idx=jnp.clip(jnp.searchsorted(ej, r_x) - 1, 0, nbm), r_keep=r_keep,
+                r_w0=W["r_w0"], r_rec=W["r_rec"])
+
+
+def build_replica(kcasc, qe, qw, res, rw):
+    """Walk one replica and bin it for this module's observable (build_walk -> bin_walk).  Behaviour is
+    identical to before the walk/bin split."""
+    return jax.block_until_ready(bin_walk(build_walk(kcasc, qe, qw, res, rw)))
 
 
 @jax.jit
