@@ -112,10 +112,21 @@ def _build_grid_fig(obs, edges, h0, Js, labels):
     xsc = 1000.0 if obs == "dpt" else 1.0
     ctr = 0.5 * (edges[1:] + edges[:-1]) / xsc; xed = edges / xsc
     GMAX = float(np.max(np.abs(Js))) or 1.0
-    scale = 0.42 * h0.max() / GMAX
-    dys = Js * scale
-    ylo = min(0.0, float((h0 + dys).min())) * 1.12
-    yhi = float(np.maximum(h0.max(), (h0 + dys).max())) * 1.15
+    ARR = 0.20                                              # longest arrow on the page = ARR * y-axis span
+    hmax = float(h0.max())
+    yhi, ylo = hmax * 1.3, -0.05 * hmax                    # fixed-point: arrow length <-> axis span (no clip)
+    for _ in range(200):
+        span = yhi - ylo
+        dys = Js * (ARR * span / GMAX)
+        tops = h0 + np.where(Js > 0, dys, 0.0)
+        bots = h0 + np.where(Js < 0, dys, 0.0)
+        nyhi = max(hmax, float(tops.max())) + 0.05 * span
+        nylo = min(0.0, float(bots.min())) - 0.05 * span
+        if abs(nyhi - yhi) < 1e-12 and abs(nylo - ylo) < 1e-12:
+            break
+        yhi, ylo = nyhi, nylo
+    span = yhi - ylo
+    dys = Js * (ARR * span / GMAX)                          # => GMAX arrow = ARR*span exactly
 
     n = len(labels); ncol = 6; nrow = int(np.ceil(n / ncol))
     fig, axes = plt.subplots(nrow, ncol, figsize=(2.9 * ncol, 2.3 * nrow), sharex=True, sharey=True)
@@ -139,7 +150,8 @@ def _build_grid_fig(obs, edges, h0, Js, labels):
     for r in range(nrow):
         axes[r * ncol].set_ylabel(r"d$\sigma$/dx", fontsize=8)
     fig.suptitle(f"Per-bin Jacobian $\\partial(\\mathrm{{d}}\\sigma/\\mathrm{{d}}x)_i/\\partial\\theta$ on {obs} "
-                 f"— all knobs (up=+ red / down=$-$ blue; one global length scale, GMAX={GMAX:.1e})", fontsize=12)
+                 f"— all knobs (up=+ red / down=$-$ blue; longest arrow = {ARR:.1f}$\\times$y-span, "
+                 f"GMAX={GMAX:.1e})", fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.985])
     return fig
 
