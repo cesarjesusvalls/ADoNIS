@@ -38,6 +38,38 @@ def _good_range(B1, B2, B3, order):
     return out[0], out[1]                               # (lo<=0, hi>=0)
 
 
+_NOM = {"Eb_shift": 0.0, "f_NN_cex": 0.5}
+
+
+def _panel(ax, plt, B, ki, knob, nom, obs, edges, idx, mask):
+    nb = len(edges) - 1; xsc = 1000.0 if obs == "dpt" else 1.0; xed = edges / xsc
+    B1 = np.bincount(idx[mask], weights=B["D1"][mask, ki], minlength=nb)
+    B2 = np.bincount(idx[mask], weights=B["D2"][mask, ki], minlength=nb)
+    B3 = np.bincount(idx[mask], weights=B["D3"][mask, ki], minlength=nb)
+    for b in range(nb):
+        lo2, hi2 = _good_range(B1[b], B2[b], B3[b], 2)
+        lo1, hi1 = _good_range(B1[b], B2[b], B3[b], 1)
+        ax.fill_between([xed[b], xed[b + 1]], nom + lo2, nom + hi2, color="#5dade2", alpha=0.85,
+                        label="quadratic good (5%)" if b == 0 else None, lw=0)
+        ax.fill_between([xed[b], xed[b + 1]], nom + lo1, nom + hi1, color="#27ae60", alpha=0.95,
+                        label="linear good (5%)" if b == 0 else None, lw=0)
+    ax.axhline(nom, color="k", lw=1, ls="--", label=f"nominal={nom:g}")
+    ax.set(xlabel=(r"$\delta p_T$ [GeV/c]" if obs == "dpt" else r"$\delta\alpha_T$ [rad]"),
+           ylabel=knob, title=f"{obs}: {knob}", ylim=(nom - DMAX * 1.05, nom + DMAX * 1.05))
+    ax.legend(fontsize=7, loc="upper right")
+
+
+def _fig_for_knob(plt, B, knob, OBS):
+    ki = list(B["labels"]).index(knob); nom = _NOM.get(knob, 1.0)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    for ax, (obs, edges, idx, mask) in zip(axes, OBS):
+        _panel(ax, plt, B, ki, knob, nom, obs, edges, idx, mask)
+    fig.suptitle(f"Per-bin Taylor validity in {knob}  (band = knob range good to {TOL:.0%} vs next order; "
+                 f"green=linear, blue=quadratic; 100k bank)", fontsize=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig
+
+
 def main():
     knob = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "M_A"
     bankdir = sys.argv[2] if len(sys.argv) > 2 else "output/event_bank"
@@ -45,38 +77,24 @@ def main():
     from analysis.t2k.differentiability import tune as T
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     B = BP.load_bank(bankdir)
-    ki = list(B["labels"]).index(knob)
-    nom = 1.0 if knob not in ("Eb_shift", "f_NN_cex") else (0.0 if knob == "Eb_shift" else 0.5)
     mask, lead = BP.signal_cc0pi(B)
-
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    for ax, obs, ofn in ((axes[0], "dpt", BP.dpt), (axes[1], "dat", BP.dat)):
-        edges, _conv, _ = GA._obs_binning(T, obs)
-        xsc = 1000.0 if obs == "dpt" else 1.0
-        vals = ofn(B, lead); nb = len(edges) - 1
-        idx = np.clip(np.searchsorted(edges, vals) - 1, 0, nb - 1)
-        B1 = np.bincount(idx[mask], weights=B["D1"][mask, ki], minlength=nb)
-        B2 = np.bincount(idx[mask], weights=B["D2"][mask, ki], minlength=nb)
-        B3 = np.bincount(idx[mask], weights=B["D3"][mask, ki], minlength=nb)
-        xed = edges / xsc
-        for b in range(nb):
-            x0, x1 = xed[b], xed[b + 1]
-            lo2, hi2 = _good_range(B1[b], B2[b], B3[b], order=2)
-            lo1, hi1 = _good_range(B1[b], B2[b], B3[b], order=1)
-            ax.fill_between([x0, x1], nom + lo2, nom + hi2, color="#5dade2", alpha=0.85,
-                            label="quadratic good (5%)" if b == 0 else None, lw=0)
-            ax.fill_between([x0, x1], nom + lo1, nom + hi1, color="#27ae60", alpha=0.95,
-                            label="linear good (5%)" if b == 0 else None, lw=0)
-        ax.axhline(nom, color="k", lw=1, ls="--", label=f"nominal {knob}={nom:g}")
-        ax.set(xlabel=(r"$\delta p_T$ [GeV/c]" if obs == "dpt" else r"$\delta\alpha_T$ [rad]"),
-               ylabel=knob, title=f"{obs}: Taylor validity range in {knob}",
-               ylim=(nom - DMAX * 1.05, nom + DMAX * 1.05))
-        ax.legend(fontsize=8, loc="upper right")
-    fig.suptitle(f"Per-bin Taylor-expansion validity in {knob} (5% deviation-vs-next-order; from 100k bank)",
-                 fontsize=12)
+    OBS = []
+    for obs, ofn in (("dpt", BP.dpt), ("dat", BP.dat)):
+        edges, _c, _ = GA._obs_binning(T, obs)
+        idx = np.clip(np.searchsorted(edges, ofn(B, lead)) - 1, 0, len(edges) - 2)
+        OBS.append((obs, edges, idx, mask))
     os.makedirs("output/figures", exist_ok=True)
-    F = f"output/figures/cc0pi_taylor_validity_{knob}.png"
-    fig.tight_layout(rect=[0, 0, 1, 0.96]); fig.savefig(F, dpi=130); print(f"wrote {F}", flush=True)
+    if knob == "all":
+        from matplotlib.backends.backend_pdf import PdfPages
+        out = "output/figures/cc0pi_taylor_validity_all.pdf"
+        with PdfPages(out) as pdf:
+            for lab in B["labels"]:
+                pdf.savefig(_fig_for_knob(plt, B, lab, OBS)); plt.close("all")
+                print(f"  page: {lab}", flush=True)
+        print(f"wrote {out} ({len(B['labels'])} knobs)", flush=True)
+    else:
+        F = f"output/figures/cc0pi_taylor_validity_{knob}.png"
+        _fig_for_knob(plt, B, knob, OBS).savefig(F, dpi=130); print(f"wrote {F}", flush=True)
 
 
 if __name__ == "__main__":
