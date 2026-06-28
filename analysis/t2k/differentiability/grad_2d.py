@@ -113,12 +113,25 @@ def run():
     make_figure("/tmp/adonis_tune_runs/jac2d.npz")
 
 
-def make_figure(npz_path):
+def make_figure(npz_path, relative=False, rate_frac=0.01):
+    """Per-knob 2D sensitivity heatmap.  relative=False -> ABSOLUTE d(d2sigma)/dtheta; relative=True ->
+    FRACTIONAL d(ln sigma)/dtheta = J2d/norm2d (cells below rate_frac*max(norm2d) masked: relative is just
+    noise where there is ~no rate).  Per-panel symmetric scale (robust 99th pct for the relative case)."""
     d = np.load(npz_path, allow_pickle=True)
     edpt, edat = d["edpt"] / 1000.0, d["edat"]              # dpt back to GeV/c for axes
     norm2d, J2d, labels = d["norm2d"], d["J2d"], list(d["labels"])
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
-    mask = norm2d <= 0                                       # kinematically empty cells
+    if relative:
+        mask = norm2d <= rate_frac * float(norm2d.max())    # drop low-rate cells (noisy ratio)
+        denom = np.where(mask, 1.0, norm2d)
+        field = J2d / denom[None]                            # d(ln sigma)/dtheta
+        sym = "$\\partial(\\ln\\sigma)/\\partial\\theta$"; unit = "[/unit knob]"; tag = "relative"
+        robust = True
+    else:
+        mask = norm2d <= 0                                   # kinematically empty cells
+        field = J2d
+        sym = "$\\partial(\\mathrm{d}^2\\sigma)/\\partial\\theta$"; unit = ""; tag = "absolute"
+        robust = False
     n = len(labels); ncol = 6; nrow = int(np.ceil((n + 1) / ncol))
     fig, axes = plt.subplots(nrow, ncol, figsize=(3.0 * ncol, 2.7 * nrow), sharex=True, sharey=True)
     axes = np.atleast_1d(axes).ravel()
@@ -131,11 +144,11 @@ def make_figure(npz_path):
     a0.set_ylabel(r"$\delta\alpha_T$ [rad]", fontsize=8); fig.colorbar(pc, ax=a0, fraction=0.046)
 
     for j, lab in enumerate(labels):
-        ax = axes[j + 1]; J = np.ma.masked_where(mask, J2d[j])
-        vmax = float(np.max(np.abs(J2d[j][~mask]))) if np.any(~mask) else 1.0
-        vmax = vmax or 1.0
-        pc = ax.pcolormesh(X, Y, J, cmap="RdBu_r", vmin=-vmax, vmax=vmax, shading="flat")
-        ax.set_title(f"{lab}  |J|$_\\mathrm{{max}}$={vmax:.1e}", fontsize=8)
+        ax = axes[j + 1]; F = np.ma.masked_where(mask, field[j])
+        vals = np.abs(field[j][~mask])
+        vmax = float(np.percentile(vals, 99) if robust and vals.size else (np.max(vals) if vals.size else 1.0)) or 1.0
+        pc = ax.pcolormesh(X, Y, F, cmap="RdBu_r", vmin=-vmax, vmax=vmax, shading="flat")
+        ax.set_title(f"{lab}  max={vmax:.1e}", fontsize=8)
         fig.colorbar(pc, ax=ax, fraction=0.046)
     for j in range(n + 1, len(axes)):
         axes[j].axis("off")
@@ -145,16 +158,19 @@ def make_figure(npz_path):
             axes[idx].set_xlabel(r"$\delta p_T$ [GeV/c]", fontsize=8)
     for r in range(nrow):
         axes[r * ncol].set_ylabel(r"$\delta\alpha_T$ [rad]", fontsize=8)
-    fig.suptitle("Per-knob 2D sensitivity $\\partial(\\mathrm{d}^2\\sigma)/\\partial\\theta$ over "
-                 "$(\\delta p_T,\\,\\delta\\alpha_T)$  (red=+ / blue=$-$; per-panel symmetric scale)", fontsize=12)
+    extra = f"; cells <{rate_frac:.0%} of peak rate masked" if relative else ""
+    fig.suptitle(f"Per-knob 2D {tag} sensitivity {sym} {unit} over "
+                 f"$(\\delta p_T,\\,\\delta\\alpha_T)$  (red=+ / blue=$-$; per-panel symmetric scale{extra})",
+                 fontsize=12)
     os.makedirs("output/figures", exist_ok=True)
     fig.tight_layout(rect=[0, 0, 1, 0.985])
+    stem = "cc0pi_jacobian_2d_relative" if relative else "cc0pi_jacobian_2d"
     for ext in ("png", "pdf"):
-        F = f"output/figures/cc0pi_jacobian_2d.{ext}"; fig.savefig(F, dpi=120); print(f"wrote {F}", flush=True)
+        Fn = f"output/figures/{stem}.{ext}"; fig.savefig(Fn, dpi=120); print(f"wrote {Fn}", flush=True)
 
 
 if __name__ == "__main__":
     if "--plot-only" in sys.argv:
-        make_figure(sys.argv[sys.argv.index("--plot-only") + 1])
+        make_figure(sys.argv[sys.argv.index("--plot-only") + 1], relative="--relative" in sys.argv)
     else:
         run()
