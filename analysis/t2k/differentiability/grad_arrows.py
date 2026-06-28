@@ -107,9 +107,10 @@ def run():
     build_pdf("output/figures/cc0pi_jacobian_arrows_all.pdf", npzs)
 
 
-def _build_grid_fig(obs, edges, h0, Js, labels):
+def _build_grid_fig(obs, edges, h0, Js, labels, xlabel=None, xsc=None):
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
-    xsc = 1000.0 if obs == "dpt" else 1.0
+    if xsc is None:
+        xsc = 1000.0 if obs == "dpt" else 1.0
     ctr = 0.5 * (edges[1:] + edges[:-1]) / xsc; xed = edges / xsc
     ARR = 0.20                                              # EACH subplot's longest arrow = ARR * y-axis span
     smax = np.max(np.abs(Js), axis=1)                       # per-subplot max|J| (own physical scale)
@@ -133,7 +134,7 @@ def _build_grid_fig(obs, edges, h0, Js, labels):
     n = len(labels); ncol = 6; nrow = int(np.ceil(n / ncol))
     fig, axes = plt.subplots(nrow, ncol, figsize=(2.9 * ncol, 2.3 * nrow), sharex=True, sharey=True)
     axes = np.atleast_1d(axes).ravel()
-    XL = r"$\delta p_T$ [GeV/c]" if obs == "dpt" else r"$\delta\alpha_T$ [rad]"
+    XL = xlabel if xlabel is not None else (r"$\delta p_T$ [GeV/c]" if obs == "dpt" else r"$\delta\alpha_T$ [rad]")
     for j, lab in enumerate(labels):
         ax = axes[j]; J = Js[j]; dy = dys[j]
         ax.fill_between(xed, np.append(h0, h0[-1]), step="post", color="0.92", zorder=0)
