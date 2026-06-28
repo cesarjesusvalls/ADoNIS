@@ -111,22 +111,24 @@ def _build_grid_fig(obs, edges, h0, Js, labels):
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     xsc = 1000.0 if obs == "dpt" else 1.0
     ctr = 0.5 * (edges[1:] + edges[:-1]) / xsc; xed = edges / xsc
-    GMAX = float(np.max(np.abs(Js))) or 1.0
-    ARR = 0.20                                              # longest arrow on the page = ARR * y-axis span
+    ARR = 0.20                                              # EACH subplot's longest arrow = ARR * y-axis span
+    smax = np.max(np.abs(Js), axis=1)                       # per-subplot max|J| (own physical scale)
     hmax = float(h0.max())
     yhi, ylo = hmax * 1.3, -0.05 * hmax                    # fixed-point: arrow length <-> axis span (no clip)
     for _ in range(200):
         span = yhi - ylo
-        dys = Js * (ARR * span / GMAX)
-        tops = h0 + np.where(Js > 0, dys, 0.0)
-        bots = h0 + np.where(Js < 0, dys, 0.0)
+        sc = np.where(smax > 0, ARR * span / np.where(smax > 0, smax, 1.0), 0.0)  # per-panel scale
+        dys = Js * sc[:, None]                              # each panel: longest arrow = ARR*span
+        tops = h0[None, :] + np.where(Js > 0, dys, 0.0)
+        bots = h0[None, :] + np.where(Js < 0, dys, 0.0)
         nyhi = max(hmax, float(tops.max())) + 0.05 * span
         nylo = min(0.0, float(bots.min())) - 0.05 * span
         if abs(nyhi - yhi) < 1e-12 and abs(nylo - ylo) < 1e-12:
             break
         yhi, ylo = nyhi, nylo
     span = yhi - ylo
-    dys = Js * (ARR * span / GMAX)                          # => GMAX arrow = ARR*span exactly
+    sc = np.where(smax > 0, ARR * span / smax, 0.0)
+    dys = Js * sc[:, None]                                  # => per-panel longest arrow = ARR*span exactly
 
     n = len(labels); ncol = 6; nrow = int(np.ceil(n / ncol))
     fig, axes = plt.subplots(nrow, ncol, figsize=(2.9 * ncol, 2.3 * nrow), sharex=True, sharey=True)
@@ -150,8 +152,9 @@ def _build_grid_fig(obs, edges, h0, Js, labels):
     for r in range(nrow):
         axes[r * ncol].set_ylabel(r"d$\sigma$/dx", fontsize=8)
     fig.suptitle(f"Per-bin Jacobian $\\partial(\\mathrm{{d}}\\sigma/\\mathrm{{d}}x)_i/\\partial\\theta$ on {obs} "
-                 f"— all knobs (up=+ red / down=$-$ blue; longest arrow = {ARR:.1f}$\\times$y-span, "
-                 f"GMAX={GMAX:.1e})", fontsize=12)
+                 f"— all knobs (up=+ red / down=$-$ blue; EACH subplot scaled so its longest arrow = "
+                 f"{ARR:.1f}$\\times$y-span — sizes NOT comparable across panels, see |J|$_\\mathrm{{max}}$)",
+                 fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.985])
     return fig
 
