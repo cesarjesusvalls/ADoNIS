@@ -39,10 +39,13 @@ cause in the cascade kinematics is NOT yet diagnosed — TODO (affects grad_all/
 masked by acceptance).
 
 ## Validation (bank_validate.py)
-Reproduces the established results within MC stats (bank N < 1M). Smoke (743 evt, 141 CC0π): forward
-integral ratio bank/1M = 1.036 (dpt) / 0.917 (dat); dominant-knob gradient ratios 0.88–1.07; diagonal
-2nd/3rd derivs finite. 100k run: <PENDING — fill ratios>. Re-renders the 1D arrow grids FROM THE BANK
-(`*_BANK.png`) to eyeball against grad_all.
+Reproduces the established results within MC stats (bank N < 1M). Re-renders the 1D arrow grids FROM THE
+BANK (`*_BANK.png`) — match grad_all's per-knob shapes/signs.
+- **Smoke (743 evt, 141 CC0π):** forward integral ratio bank/1M = 1.036 (dpt) / 0.917 (dat); knob-grad 0.88–1.07.
+- **100k/channel (187,276 evt, 33,959 CC0π):** forward integral ratio **0.9997 (dpt) / 1.0063 (dat)**;
+  dominant-knob gradient ratios **0.99–1.01 (dpt)**, within ~3% (dat) — residuals are pure 100k-vs-1M
+  statistics (one high-δp_T tail bin 1.22). Diagonal 2nd/3rd derivs finite. → bank reproduces
+  grad_all/model_hist_full to ~1%.
 
 ## Status
 - event_bank.py / bank_plot.py / bank_validate.py committed (6e1163b); filter fix + this log: next commit.
