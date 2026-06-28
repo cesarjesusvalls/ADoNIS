@@ -78,9 +78,13 @@ def run():
                 # known rare cascade artifact (~0.1% of particles, inf/sentinel momenta) -> dropped here so
                 # the stored bank is finite & safe for ANY signal def (acceptance rejects them anyway).
 
+    _CHPID = np.array([211, 111, -211])     # pion charge idx (0:+,1:0,2:-) -> pid; PION species=0, NUCLEON=1
+
     def compact_finalstate(nt):
-        """Ragged (CSR) compaction of the (n, M_out) terminal buffer -> alive, PHYSICAL particles only."""
-        al = np.asarray(nt["alive"]); pid = np.asarray(nt["pid"]); chg = np.asarray(nt["charge"])
+        """Ragged (CSR) compaction of the (n, M_out) terminal buffer -> alive, PHYSICAL particles only.
+        TRUE pid reconstructed from species+charge (the buffer's `pid` field labels pions as 2112)."""
+        al = np.asarray(nt["alive"]); chg = np.asarray(nt["charge"]); sp = np.asarray(nt["species"])
+        pid = np.where(sp == 0, _CHPID[np.clip(chg, 0, 2)], np.where(chg == 1, 2212, 2112)).astype(np.int32)
         p4 = np.asarray(nt["p4"]).astype(np.float64)
         mom = np.sqrt(np.nan_to_num(p4[:, :, 1:] ** 2, posinf=np.inf).sum(2))
         good = al & np.isfinite(p4).all(2) & (mom < PMAX)

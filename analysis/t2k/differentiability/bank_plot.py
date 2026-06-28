@@ -93,6 +93,41 @@ def signal_cc0pi(B, topological=False):
     return sel & pi_ok, lead
 
 
+def pion_counts(B):
+    """(n_pi+, n_pi0, n_pi-) per event from the final state."""
+    pid = B["fs_pid"]; eidx = B["_eidx"]; n = len(B["w0"])
+    return tuple(np.bincount(eidx, weights=(pid == p).astype(float), minlength=n).astype(int)
+                 for p in (211, 111, -211))
+
+
+def single_pip(B):
+    """p4 of the (single) surviving pi+ per event (n,4); for >1 pi+ the last wins (CC1pi requires ==1)."""
+    pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]; n = len(B["w0"])
+    sel = pid == 211; pip = np.zeros((n, 4)); pip[eidx[sel]] = p4[sel]
+    return pip
+
+
+def signal_cc1pi(B):
+    """Topological CC1pi+ : exactly one pi+, no pi0/pi-, and a leading proton.  Returns (mask, lead, pip4)."""
+    npip, npi0, npim = pion_counts(B); lead, has = leading_proton(B)
+    mask = (npip == 1) & (npi0 == 0) & (npim == 0) & has
+    return mask, lead, single_pip(B)
+
+
+def dpt_1pi(kmu, lead, pip):
+    """CC1pi+ transverse-momentum imbalance |p_T^mu + p_T^p + p_T^pi| (MeV)."""
+    dv = kmu[:, 1:3] + lead[:, 1:3] + pip[:, 1:3]
+    return np.linalg.norm(dv, axis=1)
+
+
+def dat_1pi(kmu, lead, pip):
+    """CC1pi+ delta_alphaT [rad] (muon vs the full muon+proton+pion imbalance)."""
+    lt = kmu[:, 1:3]; dv = lt + lead[:, 1:3] + pip[:, 1:3]
+    num = -np.sum(lt * dv, axis=1)
+    den = np.linalg.norm(lt, axis=1) * np.clip(np.linalg.norm(dv, axis=1), 1e-9, None)
+    return np.arccos(np.clip(num / den, -1.0, 1.0))
+
+
 # ---- histograms (accumulate in f64) ----------------------------------------------------------------- #
 def hist_forward(values, B, mask, edges, conv=1.0):
     h, _ = np.histogram(values[mask], bins=edges, weights=B["w0"][mask].astype(np.float64))

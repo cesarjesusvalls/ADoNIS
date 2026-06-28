@@ -75,7 +75,9 @@ def _binned_derivs(B, mask, idx, nb, conv, bw):
 
 
 def main():
-    bankdir = sys.argv[1] if len(sys.argv) > 1 else "output/event_bank"
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    chan = "cc1pi" if "cc1pi" in args else "cc0pi"
+    bankdir = next((a for a in args if a not in ("cc0pi", "cc1pi")), "output/event_bank")
     sys.argv = [sys.argv[0], "dpt"]
     from analysis.t2k.differentiability import tune as T
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
@@ -83,20 +85,31 @@ def main():
     B = BP.load_bank(bankdir)
     labels = B["labels"]
     refs = np.array([abs(_NOM.get(l, 1.0)) or 1.0 for l in labels])
-    lead, has_p = BP.leading_proton(B)
-    base = (B["prim_pi_pid"] == 0)
-    acc = BP.acceptance(B, lead)
-    ed_dpt, c_dpt, _ = GA._obs_binning(T, "dpt"); ed_dat, c_dat, _ = GA._obs_binning(T, "dat")
-    # (name, values, edges, xsc, xlabel, conv, mask)
-    SPEC = [
-        ("\\delta p_T", BP.dpt(B, lead), ed_dpt, 1e3, r"$\delta p_T$ [GeV/c]", c_dpt, base & acc & has_p),
-        ("\\delta\\alpha_T", BP.dat(B, lead), ed_dat, 1.0, r"$\delta\alpha_T$ [rad]", c_dat, base & acc & has_p),
-    ]
-    for nm, (fn, edges, xsc, xlabel, needp) in BO.OBSDEF.items():
-        nicer = {"Q2": "Q^2", "W": "W", "cosmu": "\\cos\\theta_\\mu", "pmu": "p_\\mu", "plead": "p_{lead}"}[nm]
-        SPEC.append((nicer, fn(B, lead), edges, xsc, xlabel, CONV_X, base & (has_p if needp else True)))
+    INCL = {"Q2": "Q^2", "W": "W", "cosmu": "\\cos\\theta_\\mu", "pmu": "p_\\mu", "plead": "p_{lead}"}
+    if chan == "cc0pi":
+        lead, has_p = BP.leading_proton(B)
+        base = (B["prim_pi_pid"] == 0); acc = BP.acceptance(B, lead)
+        ed_dpt, c_dpt, _ = GA._obs_binning(T, "dpt"); ed_dat, c_dat, _ = GA._obs_binning(T, "dat")
+        SPEC = [
+            ("\\delta p_T", BP.dpt(B, lead), ed_dpt, 1e3, r"$\delta p_T$ [GeV/c]", c_dpt, base & acc & has_p),
+            ("\\delta\\alpha_T", BP.dat(B, lead), ed_dat, 1.0, r"$\delta\alpha_T$ [rad]", c_dat, base & acc & has_p),
+        ]
+        for nm, (fn, edges, xsc, xlabel, needp) in BO.OBSDEF.items():
+            SPEC.append((INCL[nm], fn(B, lead), edges, xsc, xlabel, CONV_X, base & (has_p if needp else True)))
+    else:                                                              # CC1pi+ (topological), no acceptance
+        m1, lead, pip = BP.signal_cc1pi(B); kmu = B["k_mu"].astype(np.float64)
+        SPEC = [
+            ("\\delta p_T^{1\\pi}", BP.dpt_1pi(kmu, lead, pip), np.linspace(0, 1000, 11), 1e3,
+             r"$\delta p_T$ [GeV/c]", CONV_X, m1),
+            ("\\delta\\alpha_T^{1\\pi}", BP.dat_1pi(kmu, lead, pip), np.linspace(0, np.pi, 9), 1.0,
+             r"$\delta\alpha_T$ [rad]", CONV_X, m1),
+            ("p_\\pi", np.linalg.norm(pip[:, 1:], axis=1), np.linspace(0, 1000, 11), 1e3,
+             r"$p_\pi$ [GeV/c]", CONV_X, m1),
+        ]
+        for nm, (fn, edges, xsc, xlabel, _needp) in BO.OBSDEF.items():
+            SPEC.append((INCL[nm], fn(B, lead), edges, xsc, xlabel, CONV_X, m1))
     os.makedirs("output/figures", exist_ok=True)
-    out = "output/figures/cc0pi_arrows_variation.pdf"
+    out = f"output/figures/{chan}_arrows_variation.pdf"
     with PdfPages(out) as pdf:
         for name, vals, edges, xsc, xlabel, conv, mask in SPEC:
             nb = len(edges) - 1; bw = np.diff(edges)
