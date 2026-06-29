@@ -8,36 +8,66 @@ Knobs (all nominal = no-op):
   sf_norm   : overall normalization              -> * sf_norm        (nominal 1.0)
   src_tail  : high-|p| (short-range-correlation) tail scale          (nominal 1.0)
 
-The reweight is exactly 1 at nominal for ANY interpolation (numerator==denominator at the same point), so a
-smooth JAX BILINEAR interp of the table suffices -- its accuracy only sets the GRADIENT quality, not the
-nominal identity.  S_0 is the same bilinear (not the NumPy cubic) on both sides, so the ratio is exact.
+INTERPOLATION: a C2 uniform-grid CUBIC B-SPLINE (coefficients prefiltered once with scipy.ndimage.
+spline_filter, mode='mirror'; evaluated in JAX with the cubic B-spline basis).  C2 is required so the
+2nd/3rd derivatives wrt kF_sf/Eb_shift are well-defined -- a bilinear (C0) interp gives correct gradients
+but garbage curvature (its 2nd derivative is 0 within a cell, delta at edges), which broke the kF_sf/Eb_shift
+D2/D3.  The reweight is exactly 1 at nominal for ANY interp (numerator==denominator at the same point), so
+this change does NOT touch the nominal forward prediction -- only the derivative quality.
 """
 from __future__ import annotations
 
 import numpy as np
 import jax.numpy as jnp
+from scipy.ndimage import spline_filter
 
 from adonis.xsec.spectral import SpectralFunction
 from adonis.xsec import constants as C
 
 
 def sf_grids(sf: SpectralFunction):
-    """Return (mom (np,), energy (ne,), spec2d (np,ne), norm) as jnp arrays for the JAX interp."""
+    """Cubic-B-spline prefiltered coefficients + uniform-grid metadata (one-time, NumPy)."""
     spec2d = np.asarray(sf.spec, float).reshape(sf.np, sf.ne)          # spec[j*ne+i] -> (mom, energy)
-    return (jnp.asarray(sf.mom), jnp.asarray(sf.energy), jnp.asarray(spec2d), float(sf.norm))
+    mom = np.asarray(sf.mom, float); energy = np.asarray(sf.energy, float)
+    coef = spline_filter(spec2d, order=3, mode="mirror")              # B-spline coeffs (deconvolution)
+    return dict(coef=jnp.asarray(coef), nm=int(sf.np), ne=int(sf.ne),
+                m0=float(mom[0]), hm=float(mom[1] - mom[0]), e0=float(energy[0]), he=float(energy[1] - energy[0]),
+                m_lo=float(mom[0]), m_hi=float(mom[-1]), e_lo=float(energy[0]), e_hi=float(energy[-1]),
+                norm=float(sf.norm))
 
 
-def _bilinear(mom, energy, spec2d, p, E):
-    """Differentiable bilinear S(p,E) on the (mom,energy) grid; 0 outside.  p,E (N,)."""
-    nx = mom.shape[0]; ny = energy.shape[0]
-    ix = jnp.clip(jnp.searchsorted(mom, p) - 1, 0, nx - 2)
-    iy = jnp.clip(jnp.searchsorted(energy, E) - 1, 0, ny - 2)
-    x0 = mom[ix]; x1 = mom[ix + 1]; y0 = energy[iy]; y1 = energy[iy + 1]
-    tx = jnp.clip((p - x0) / (x1 - x0), 0.0, 1.0); ty = jnp.clip((E - y0) / (y1 - y0), 0.0, 1.0)
-    z00 = spec2d[ix, iy]; z10 = spec2d[ix + 1, iy]; z01 = spec2d[ix, iy + 1]; z11 = spec2d[ix + 1, iy + 1]
-    val = (z00 * (1 - tx) * (1 - ty) + z10 * tx * (1 - ty) + z01 * (1 - tx) * ty + z11 * tx * ty)
-    in_grid = (p >= mom[0]) & (p <= mom[-1]) & (E >= energy[0]) & (E <= energy[-1])
-    return jnp.where(in_grid, jnp.clip(val, 0.0, None), 0.0)
+def _bw(f):
+    """Uniform cubic B-spline weights for the 4 taps (i-1,i,i+1,i+2) at fractional offset f in [0,1)."""
+    return ((1.0 - f) ** 3 / 6.0,
+            (4.0 - 6.0 * f ** 2 + 3.0 * f ** 3) / 6.0,
+            (1.0 + 3.0 * f + 3.0 * f ** 2 - 3.0 * f ** 3) / 6.0,
+            f ** 3 / 6.0)
+
+
+def _mirror(idx, n):
+    """scipy.ndimage 'mirror' boundary (reflect without repeating the edge sample)."""
+    per = 2 * (n - 1)
+    idx = jnp.mod(idx, per)
+    return jnp.where(idx >= n, per - idx, idx)
+
+
+def _bspline2d(g, p, E):
+    """C2 cubic B-spline S(p,E) on the uniform (mom,energy) grid; clipped >=0; 0 outside the grid."""
+    u = (p - g["m0"]) / g["hm"]; v = (E - g["e0"]) / g["he"]
+    iu = jnp.floor(u).astype(jnp.int32); iv = jnp.floor(v).astype(jnp.int32)
+    wu = _bw(u - iu); wv = _bw(v - iv)
+    coef = g["coef"]; nm = g["nm"]; ne = g["ne"]
+    val = 0.0
+    for a in range(4):
+        ia = _mirror(iu - 1 + a, nm)
+        col = 0.0
+        for b in range(4):
+            ib = _mirror(iv - 1 + b, ne)
+            col = col + coef[ia, ib] * wv[b]
+        val = val + col * wu[a]
+    in_grid = (p >= g["m_lo"]) & (p <= g["m_hi"]) & (E >= g["e_lo"]) & (E <= g["e_hi"])
+    return jnp.where(in_grid, val, 0.0)        # NO clip: it kinks the C2 spline where it overshoots <0
+
 
 
 def sf_reweight(grids, p_mag, E_removal, *, kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0, src_tail=1.0,
@@ -45,10 +75,9 @@ def sf_reweight(grids, p_mag, E_removal, *, kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0
     """Per-event spectral-function reweight w = sf_norm * tail * S(p/kF, E-Eb)/S(p,E).
     grids = sf_grids(SpectralFunction).  p_mag,E_removal (N,) the recorded sampled struck (|p|, removal).
     tail = 1 + (src_tail-1)*sigmoid((|p|-p_src)/w_src) enhances the high-|p| (SRC) region.  == 1 at nominal
-    (kF=1,Eb=0,norm=1,src_tail=1).  Differentiable in every knob (autodiff)."""
-    mom, energy, spec2d, _ = grids
-    s0 = _bilinear(mom, energy, spec2d, p_mag, E_removal)
-    sθ = _bilinear(mom, energy, spec2d, p_mag / kF_sf, E_removal - Eb_shift)
+    (kF=1,Eb=0,norm=1,src_tail=1).  Differentiable in every knob; C2 in (kF_sf,Eb_shift) -> valid D2/D3."""
+    s0 = _bspline2d(grids, p_mag, E_removal)
+    sθ = _bspline2d(grids, p_mag / kF_sf, E_removal - Eb_shift)
     ratio = jnp.where(s0 > 0, sθ / jnp.where(s0 > 0, s0, 1.0), 1.0)    # 0/0 -> 1 (no-op for off-grid)
     tail = 1.0 + (src_tail - 1.0) / (1.0 + jnp.exp(-(p_mag - p_src) / w_src))
     return sf_norm * tail * ratio
