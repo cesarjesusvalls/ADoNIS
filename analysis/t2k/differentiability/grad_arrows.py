@@ -25,7 +25,7 @@ def _specs(NOM):
     """Ordered (knob_name, component_idx|None, display_label, nominal_value).  pw_norm is EXCLUDED."""
     out = []
     for name, val in NOM.items():
-        if name == "pw_norm":
+        if name in ("pw_norm", "sscat"):       # pw_norm: excluded (cost); sscat: dead (superseded by granular)
             continue
         if isinstance(val, tuple):
             for i, vi in enumerate(val):

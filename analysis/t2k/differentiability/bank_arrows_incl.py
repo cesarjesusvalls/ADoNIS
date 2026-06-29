@@ -48,7 +48,7 @@ def main():
             nb = len(edges) - 1; bw = np.diff(edges)
             idx = np.clip(np.searchsorted(edges, vals) - 1, 0, nb - 1)
             h0, B1, B2, B3 = BA._binned_derivs(B, mask, idx, nb, BA.CONV_X, bw)
-            fig = BA._var_grid_fig(name, edges, h0, B1, B2, B3, labels, refs, xlabel, xsc)
+            fig = BA._ratio_grid_fig(name, edges, h0, B1, B2, B3, labels, refs, xlabel, xsc)
             pdf.savefig(fig); plt.close(fig)
             print(f"  page: {name}  ({int(mask.sum())} events)", flush=True)
     print(f"wrote {out}", flush=True)

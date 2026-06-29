@@ -38,7 +38,12 @@ def load_bank(outdir):
         B[k] = B[k] / nchunks
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
-    B["labels"] = man["labels"]; B["n_chunks"] = nchunks
+    labels = list(man["labels"])
+    if "sscat" in labels:                                      # drop the dead/superseded scatter umbrella
+        i = labels.index("sscat"); labels.pop(i)
+        for k in ("D1", "D2", "D3"):
+            B[k] = np.delete(B[k], i, axis=1)
+    B["labels"] = labels; B["n_chunks"] = nchunks
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
     return B
 

@@ -68,6 +68,50 @@ def _var_grid_fig(name, edges, h0, B1, B2, B3, labels, refs, xlabel, xsc):
     return fig
 
 
+def _ratio_grid_fig(name, edges, h0, B1, B2, B3, labels, refs, xlabel, xsc):
+    """Per-knob grid; each cell = top (nominal dsigma/dx) + bottom RATIO panel = predicted/nominal per bin
+    for +20% (solid) and +50% (dashed) knob variation (1.0 = no change, 1.04 = +4%).  Taylor 3rd order."""
+    import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    nk, nb = B1.shape
+    xed = edges / xsc
+    ncol = 6; nrow = int(np.ceil(nk / ncol))
+    fig = plt.figure(figsize=(3.0 * ncol, 3.0 * nrow))
+    outer = fig.add_gridspec(nrow, ncol, hspace=0.45, wspace=0.38)
+    hsafe = np.where(h0 > 0, h0, np.nan)
+    for j, lab in enumerate(labels):
+        r, c = divmod(j, ncol)
+        cell = outer[r, c].subgridspec(2, 1, height_ratios=[2, 1], hspace=0.05)
+        at = fig.add_subplot(cell[0]); ab = fig.add_subplot(cell[1], sharex=at)
+        at.fill_between(xed, np.append(h0, h0[-1]), step="post", color="0.9", zorder=0)
+        at.step(xed, np.append(h0, h0[-1]), where="post", color="0.5", lw=1.0)
+        at.set_title(lab, fontsize=8); at.tick_params(labelbottom=False, labelsize=6); at.set_ylim(bottom=0)
+        ratios = []
+        for D, sty, col in ((0.20, "-", "#c0392b"), (0.50, "--", "#2471a3")):
+            d = D * refs[j]
+            C = B1[j] * d + 0.5 * B2[j] * d ** 2 + B3[j] * d ** 3 / 6.0
+            ratio = 1.0 + C / hsafe
+            ratios.append(ratio)
+            ab.step(xed, np.append(ratio, ratio[-1]), where="post", color=col, lw=1.3, ls=sty)
+        ab.axhline(1.0, color="0.5", lw=0.7, ls=":")
+        allr = np.concatenate(ratios); allr = allr[np.isfinite(allr)]
+        if allr.size:
+            dev = max(0.04, float(np.nanmax(np.abs(allr - 1.0))) * 1.45)   # generous Y-margin
+            ab.set_ylim(1 - dev, 1 + dev)
+        ab.tick_params(labelsize=6)
+        if r == nrow - 1:
+            ab.set_xlabel(xlabel, fontsize=8)
+        if c == 0:
+            at.set_ylabel(r"d$\sigma$/dx", fontsize=7); ab.set_ylabel("ratio", fontsize=7)
+    leg = [Line2D([0], [0], color="#c0392b", lw=1.5, ls="-", label="+20%"),
+           Line2D([0], [0], color="#2471a3", lw=1.5, ls="--", label="+50%"),
+           Line2D([0], [0], color="0.5", lw=0.7, ls=":", label="nominal (=1)")]
+    fig.legend(handles=leg, loc="lower right", fontsize=9, ncol=3)
+    fig.suptitle(f"d$\\sigma$/d({name}): per-bin RATIO to nominal for +20% / +50% knob variation "
+                 f"(bottom panel; 1.0=no change; Taylor 3rd order; from bank)", fontsize=12)
+    return fig
+
+
 def _binned_derivs(B, mask, idx, nb, conv, bw):
     nk = B["D1"].shape[1]
     out = [np.zeros((nk, nb)) for _ in range(3)]
