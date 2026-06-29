@@ -4,6 +4,7 @@ using the identity-padded amps2 records so QE/RES are handled channel-correctly 
 JAX-differentiable -> gradients at plot time are jax.grad(sum of bank_weight); ratios are exact at any theta.
 """
 import numpy as np
+import jax
 import jax.numpy as jnp
 
 from adonis.analysis.ma_records import ma_reweight, strength_reweight
@@ -39,3 +40,13 @@ def bank_weight(B, knobs, grids):
                       sf_norm=k["sf_norm"], src_tail=k["src_tail"])
     norm = jnp.where(jnp.asarray(B["channel"]) == 0, k["qe_norm"], k["res_norm"])
     return jnp.asarray(B["w0"]) * norm * hv * fsi * sfw
+
+
+def to_jax(B):
+    """One-time conversion of the fields bank_weight reads to on-device jnp arrays (avoids re-converting the
+    ~250 MB FSI records on every reweight call)."""
+    keys = [k for k in B if k.startswith("hv_") or k.startswith("f_")] + ["p_struck", "channel", "w0"]
+    return {k: jnp.asarray(B[k]) for k in keys}
+
+
+weight_jit = jax.jit(bank_weight)        # JB (jnp pytree) stays on device, compiled once, knobs vary

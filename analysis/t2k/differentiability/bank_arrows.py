@@ -75,7 +75,8 @@ def knob_variation_weights(B, grids, fracs=(0.20, 0.50)):
     from analysis.t2k.differentiability import bank_reweight as BR, grad_arrows as GA
     from analysis.t2k.differentiability.full_knobs import nominal_knobs
     NOM = nominal_knobs(); SP = GA._specs(NOM)
-    w0 = _np.asarray(BR.bank_weight(B, NOM, grids)); W = {}
+    JB = BR.to_jax(B)                       # one-time host->device; jitted reweight reuses it
+    w0 = _np.asarray(BR.weight_jit(JB, NOM, grids)); W = {}
     for name, idx, label, nomv in SP:
         ref = _REF_ABS.get(label, abs(nomv) or 1.0)
         for fr in fracs:
@@ -84,7 +85,7 @@ def knob_variation_weights(B, grids, fracs=(0.20, 0.50)):
                 k[name] = v
             else:
                 b = list(NOM[name]); b[idx] = v; k[name] = tuple(b)
-            W[(label, fr)] = _np.asarray(BR.bank_weight(B, k, grids))
+            W[(label, fr)] = _np.asarray(BR.weight_jit(JB, k, grids))
     return w0, W, [s[2] for s in SP]
 
 
