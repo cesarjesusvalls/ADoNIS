@@ -220,15 +220,17 @@ def main():
         ]
         for nm, (fn, edges, xsc, xlabel, _needp) in BO.OBSDEF.items():
             SPEC.append((INCL[nm], fn(B, lead), edges, xsc, xlabel, CONV_X, m1))
+    import analysis.t2k.differentiability.bank_reweight as BR
+    grids = BR.default_grids()
+    print("computing exact per-knob variation weights ...", flush=True)
+    w0, W, _lab = knob_variation_weights(B, grids)
     os.makedirs("output/figures", exist_ok=True)
     suffix = "_stv" if (chan == "cc1pi" and "stv" in args) else ""
     out = f"output/figures/{chan}_arrows_variation{suffix}.pdf"
     with PdfPages(out) as pdf:
-        for name, vals, edges, xsc, xlabel, conv, mask in SPEC:
-            nb = len(edges) - 1; bw = np.diff(edges)
-            idx = np.clip(np.searchsorted(edges, vals) - 1, 0, nb - 1)
-            h0, B1, B2, B3 = _binned_derivs(B, mask, idx, nb, conv, bw)
-            fig = _var_grid_fig(name, edges, h0, B1, B2, B3, labels, refs, xlabel, xsc)
+        for name, vals, edges, xsc, xlabel, _conv, mask in SPEC:
+            idx = np.clip(np.searchsorted(edges, vals) - 1, 0, len(edges) - 2)
+            fig = ratio_page(name, edges, xsc, xlabel, idx, mask, w0, W, labels)
             pdf.savefig(fig); plt.close(fig)
             print(f"  page: {name}  ({int(mask.sum())} events)", flush=True)
     print(f"wrote {out}", flush=True)
