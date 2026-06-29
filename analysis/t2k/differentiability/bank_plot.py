@@ -19,31 +19,32 @@ import numpy as np
 PION_PIDS = (211, 111, -211)
 
 
+_FS = ("fs_off", "fs_pid", "fs_chg", "fs_p4")
+
+
 def load_bank(outdir):
-    """Concatenate all chunks into one in-memory bank.  Per-event weights/derivs are divided by n_chunks so
-    that summing over ALL events yields the cross section directly (each chunk is an independent estimator)."""
+    """Concatenate all chunks into one in-memory FULL-RECORD bank (kinematics + ragged final state + bare w0
+    + hard-vertex amps2 records + FSI kind-1 record).  Only w0 is divided by n_chunks (-> sum = cross
+    section); the records are per-event multipliers.  Exact reweight at any theta via bank_reweight."""
     man = json.load(open(f"{outdir}/manifest.json"))
     nchunks = man["n_chunks"]; files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
-    ev = dict(channel=[], prim_pi_pid=[], w0=[], D1=[], D2=[], D3=[], k_nu=[], p_struck=[], k_mu=[])
-    fs_pid = []; fs_chg = []; fs_p4 = []; offs = [np.array([0], np.int64)]
+    perev = {}; fs_pid = []; fs_chg = []; fs_p4 = []; offs = [np.array([0], np.int64)]
     for f in files:
         d = np.load(f)
-        for key in ev:
-            ev[key].append(d[key])
+        for key in d.files:
+            if key in _FS:
+                continue
+            perev.setdefault(key, []).append(d[key])
         fs_pid.append(d["fs_pid"]); fs_chg.append(d["fs_chg"]); fs_p4.append(d["fs_p4"])
-        offs.append(offs[-1][-1] + d["fs_off"][1:])           # rebase each chunk's CSR offsets
-    B = {k: np.concatenate(v) for k, v in ev.items()}
-    B["w0"] = B["w0"] / nchunks                                 # -> sum = cross section
-    for k in ("D1", "D2", "D3"):
-        B[k] = B[k] / nchunks
+        offs.append(offs[-1][-1] + d["fs_off"][1:])
+    B = {k: np.concatenate(v) for k, v in perev.items()}
+    B["w0"] = B["w0"] / nchunks
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
-    labels = list(man["labels"])
-    if "sscat" in labels:                                      # drop the dead/superseded scatter umbrella
-        i = labels.index("sscat"); labels.pop(i)
-        for k in ("D1", "D2", "D3"):
-            B[k] = np.delete(B[k], i, axis=1)
-    B["labels"] = labels; B["n_chunks"] = nchunks
+    B["n_chunks"] = nchunks
+    from analysis.t2k.differentiability import grad_arrows as GA
+    from analysis.t2k.differentiability.full_knobs import nominal_knobs
+    B["labels"] = [s[2] for s in GA._specs(nominal_knobs())]    # 26 plotted knobs (no pw_norm, no sscat)
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
     return B
 
