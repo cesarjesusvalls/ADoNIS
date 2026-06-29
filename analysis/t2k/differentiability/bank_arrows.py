@@ -77,7 +77,7 @@ def _binned_derivs(B, mask, idx, nb, conv, bw):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     chan = "cc1pi" if "cc1pi" in args else "cc0pi"
-    bankdir = next((a for a in args if a not in ("cc0pi", "cc1pi")), "output/event_bank")
+    bankdir = next((a for a in args if a not in ("cc0pi", "cc1pi", "stv")), "output/event_bank")
     sys.argv = [sys.argv[0], "dpt"]
     from analysis.t2k.differentiability import tune as T
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
@@ -113,7 +113,8 @@ def main():
         for nm, (fn, edges, xsc, xlabel, _needp) in BO.OBSDEF.items():
             SPEC.append((INCL[nm], fn(B, lead), edges, xsc, xlabel, CONV_X, m1))
     os.makedirs("output/figures", exist_ok=True)
-    out = f"output/figures/{chan}_arrows_variation.pdf"
+    suffix = "_stv" if (chan == "cc1pi" and "stv" in args) else ""
+    out = f"output/figures/{chan}_arrows_variation{suffix}.pdf"
     with PdfPages(out) as pdf:
         for name, vals, edges, xsc, xlabel, conv, mask in SPEC:
             nb = len(edges) - 1; bw = np.diff(edges)
