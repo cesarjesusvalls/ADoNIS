@@ -59,6 +59,27 @@ def n_protons(B, pmin=0.0, pmax=np.inf):
     return _event_sum(B, sel.astype(float)).astype(int)
 
 
+def n_neutrons(B):
+    return _event_sum(B, (B["fs_pid"] == 2112).astype(float)).astype(int)
+
+
+def ranked_mom(B, pid_target, k):
+    """|p| of the rank-k (0=leading,1=subleading,...) particle of species pid_target per event.
+    Returns (mom (n,), has (n,) = event has a rank-k such particle).  No signal cut."""
+    pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]; n = len(B["w0"])
+    sel = pid == pid_target
+    ev = eidx[sel]; mom = np.linalg.norm(p4[sel, 1:], axis=1)
+    out = np.zeros(n); has = np.zeros(n, bool)
+    if ev.size:
+        order = np.lexsort((-mom, ev)); ev = ev[order]; mom = mom[order]   # within event: |p| descending
+        newgrp = np.r_[True, ev[1:] != ev[:-1]]
+        grpstart = np.maximum.accumulate(np.where(newgrp, np.arange(ev.size), 0))
+        rank = np.arange(ev.size) - grpstart
+        msk = rank == k
+        out[ev[msk]] = mom[msk]; has[ev[msk]] = True
+    return out, has
+
+
 def leading_proton(B):
     """(lead_p4 (n,4), has_proton (n,)) -- global max-momentum escaped proton per event."""
     n = len(B["w0"]); pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]
