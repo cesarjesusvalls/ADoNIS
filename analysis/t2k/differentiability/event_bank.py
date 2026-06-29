@@ -79,7 +79,7 @@ def run():
             jnp.full(nq, 2112, jnp.int32), jnp.full(nq, 2212, jnp.int32), POOL(seed=2), kq, channel="qe", rec_caps=CAPS)
         ptr, ntr, _o2, _cr, recr = CF.cascade_nucleus(
             jnp.asarray(res["p_pi"]), jnp.asarray(res["p_N"]), jnp.asarray(res["ppid"]).astype(jnp.int32),
-            jnp.asarray(res["ipid"]).astype(jnp.int32), jnp.full(nr, 2212, jnp.int32), POOL(seed=1), kr, channel="res", rec_caps=CAPS)
+            jnp.asarray(res["ipid"]).astype(jnp.int32), jnp.asarray(res["Npid"]).astype(jnp.int32), POOL(seed=1), kr, channel="res", rec_caps=CAPS)
         log(f"chunk {c+1}/{n_chunks}: cascades done (nq={nq}, nr={nr})")
 
         # HARD-VERTEX records, identity-padded on the opposite channel (QE block then RES block)

@@ -124,7 +124,7 @@ def build_walk(kcasc, qe, qw, res, rw):
     # RES: primary pion + recoil through the pool (joint pion+nucleon record).
     ptr, ntr, oflr, _c2, recr = _CF.cascade_nucleus(
         j(res["p_pi"]), j(res["p_N"]), j(res["ppid"]).astype(jnp.int32), j(res["ipid"]).astype(jnp.int32),
-        jnp.full(nr, 2212, jnp.int32), POOLCFG(seed=1), kr, channel="res", rec_caps=REC_CAPS)
+        j(res["Npid"]).astype(jnp.int32), POOLCFG(seed=1), kr, channel="res", rec_caps=REC_CAPS)
     r_lead = _lead_proton_pool(ntr[0])
     absb = (ptr["pid"] == 0).astype(float)                      # primary pion absorbed -> CC0pi
     W = dict(q_kmu=j(qe["k_mu"]), q_lead=q_lead, q_w0=j(qw), q_rec=recq,
