@@ -20,6 +20,10 @@ import analysis.t2k.differentiability.bank_arrows_obs as BO
 CONV_X = 1e-33 / 12.0 * 1e38          # per raw-unit after /binwidth (Q2/W/... inclusive observables)
 FRACS = (0.20, 0.50)
 _NOM = {"Eb_shift": 0.0, "f_NN_cex": 0.5}
+# variation reference scale per knob: Delta = frac * ref.  Multiplicative knobs -> ref = |nominal| (so
+# frac is literally +20%/+50%).  ADDITIVE knobs with nominal 0 need a PHYSICAL absolute scale instead:
+# Eb_shift is a removal-energy shift in MeV -> ref 20 MeV (so the arrows are +4 / +10 MeV shifts).
+_REF_ABS = {"Eb_shift": 20.0}
 
 
 def _var_grid_fig(name, edges, h0, B1, B2, B3, labels, refs, xlabel, xsc):
@@ -84,7 +88,7 @@ def main():
     from matplotlib.backends.backend_pdf import PdfPages
     B = BP.load_bank(bankdir)
     labels = B["labels"]
-    refs = np.array([abs(_NOM.get(l, 1.0)) or 1.0 for l in labels])
+    refs = np.array([_REF_ABS.get(l, abs(_NOM.get(l, 1.0)) or 1.0) for l in labels])
     INCL = {"Q2": "Q^2", "W": "W", "cosmu": "\\cos\\theta_\\mu", "pmu": "p_\\mu", "plead": "p_{lead}"}
     if chan == "cc0pi":
         lead, has_p = BP.leading_proton(B)
