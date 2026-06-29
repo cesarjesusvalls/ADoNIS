@@ -51,3 +51,41 @@ BANK (`*_BANK.png`) — match grad_all's per-knob shapes/signs.
 - event_bank.py / bank_plot.py / bank_validate.py committed (6e1163b); filter fix + this log: next commit.
 - 100k/channel bank built (~19 min) at output/event_bank/.
 - Next: 1M (or larger) bank overnight once the 100k validation lands at ~1%.
+
+## CC1π matrix discrepancy — RES recoil Npid hardcoded (2026-06-29, commit 0f44788)
+The bank-sourced T2K matrix (`bank_matrix.py`) disagreed with the validated forward matrix on **CC1π RES
+only**: bank ACH/ADO 0.817 vs forward 0.996 (~22% bank σ too high). CC0π cells agreed (~1.00).
+
+**Localization (evidence, in order):**
+- Schema faithful: same-buffer test — forward `prot` (generate.py) and bank `compact_fs`+`_topk` produce
+  bit-identical proton sets (median lead |p| 501.01 both, identical counts). Not a schema/selection bug.
+- Pion logic faithful: final-state vs primary-pion CC1π+ selection agree to 0.2%.
+- Flux/kinematics physically identical: **weighted** E_nu (mean 1567 vs 1591) and muon (frac pmu>250
+  0.705 vs 0.707) match; the raw-spectrum difference was only a BEAM_MODE importance-sampling artifact.
+- Staged σ-breakdown: weighted σ agrees through meson_ok→muon→pi_acc (2.81 vs 2.84 e-6) and diverges
+  ONLY at the proton step (1.20 vs 1.46 e-6). Bank lead-proton harder (weighted med 522 vs 451 MeV),
+  proton present in 98.9% of base events vs 67%.
+
+**Root cause:** `event_bank.py` (and `tune.py`) fed the RES cascade a hardcoded recoil PID
+`jnp.full(nr, 2212)` (all protons). `res_xsec.generate` returns `Npid ∈ {2112: ~34%, 2212: ~66%}` —
+the n→n π⁺ channel recoils a NEUTRON, and that channel is a dominant CC1π⁺ signal mode. Forcing those
+neutrons to protons injected spurious hard in-window protons into the signal → +22% σ. Head-to-head on
+the same RES events: frac-events-with-proton 0.989 (Npid=2212) → 0.837 (threaded). The validated forward
+generator (`generate.py:run_one_seed`) already threads `a["Npid"]`; the bank/tune shared the latent literal.
+
+**Fix:** thread `res["Npid"]` (single source of truth) in event_bank.py:82 + tune.py:127. Audit of all
+other `full(...,2212)` sites: every remaining one is a QE (n→p, recoil always proton) or free-proton
+context — physically correct, not bugs.
+
+**Validation (100k bank, new-bank vs forward, identical selections):** cc1pi_res 0.991, cc0pi_res 0.980
+(N=2071), cc0pi_qe 1.021 — cc1pi closed from ~0.82 to ~0.99; cc0pi cells within 100k stats. Since forward
+matched ACHILLES at 0.996, bank-sourced matrix cc1pi_res now ≈1.00.
+
+**1M regenerated** → output/event_bank (10 chunks). Full matrix on the corrected bank: cc1pi_res_incl
+**0.817 → 0.992** (pull −0.5), cc1pi_both_incl 0.987, cc0pi_qe_incl 0.996, cc0pi_both_incl 0.998 — every
+physically-meaningful cell ~1–2%, pulls ≤1.3σ (low-stats outliers: cc0pi_res_0p N_ach=98, cc1pi_qe_* via
+rare FSI π-creation — noise). All 5 PDFs (t2k matrix + cc0pi/cc1pi/cc1pi-stv/incl variation) regenerated.
+
+**CC0π tune re-validated** (tune.py Npid change): nominal χ²/ndf 1.89 (A=0.874) at 40k/NREP=4 vs pre-fix
+2.05 (A=0.881) production — within the documented stats spread (1.44–2.05); fit unperturbed (CC0π is
+QE-dominated; RES enters only via pion-absorption).
