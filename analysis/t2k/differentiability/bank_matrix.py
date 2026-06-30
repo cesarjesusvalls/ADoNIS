@@ -46,6 +46,35 @@ def schema(B, ch, outpath):
     return int(s.sum())
 
 
+_PMIN = 1e-6   # |p| floor: drop recaptured/rest nucleons, matching ACHILLES + generate.py (alN & |p|>0)
+
+
+def _mult_count(B, pidval):
+    mom = np.linalg.norm(B["fs_p4"][:, 1:], axis=1)
+    return BP._event_sum(B, ((B["fs_pid"] == pidval) & (mom > _PMIN)).astype(float)).astype(int)
+
+
+def export_mult_batches(B, material, outdir="output/adonis", tag="_evb"):
+    """Write the per-channel multiplicity + nucleon-rank ADoNIS batches (make_plots block schema) FROM THE
+    EVENT BANK, so block_multiplicity / block_nucleon_momentum source the SAME 1M events as the matrix +
+    arrows.  Final-state counts require |p|>0 (rest/recaptured nucleons excluded) to match ACHILLES.
+    Files: {outdir}/t2k_{material}_{cc0pi|cc1pi}{tag}_batch00.npz (QE=channel0, RES=channel1)."""
+    os.makedirs(outdir, exist_ok=True)
+    prot, _ = _topk(B, lambda pid: pid == 2212, 4)
+    neut, _ = _topk(B, lambda pid: pid == 2112, 4)
+    counts = {p: _mult_count(B, p) for p in (2212, 2112, 211, 111, -211)}
+    out = {}
+    for ch, chan in ((0, "cc0pi"), (1, "cc1pi")):
+        s = B["channel"] == ch
+        d = dict(n_p=counts[2212][s], n_n=counts[2112][s], n_pip=counts[211][s],
+                 n_pi0=counts[111][s], n_pim=counts[-211][s],
+                 mu=B["k_mu"][s].astype(np.float64), w=B["w0"][s].astype(np.float64),
+                 prot=prot[s].astype(np.float64), neut=neut[s].astype(np.float64))
+        path = f"{outdir}/t2k_{material}_{chan}{tag}_batch00.npz"
+        np.savez(path, **d); out[chan] = (path, int(s.sum()))
+    return out
+
+
 def main():
     bankdir = sys.argv[1] if len(sys.argv) > 1 else "output/event_bank"
     B = BP.load_bank(bankdir)

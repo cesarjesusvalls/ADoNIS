@@ -392,6 +392,25 @@ def block_cc1pi_stv(flux="t2k", mat="C"):
     fig.tight_layout(); _save(fig, f"{OUTDIR}/cc1pi_stv_pn_dptt_data.png")
 
 
+# ============================================================ event-bank source (all blocks, one sample)
+def _event_bank_source(material):
+    """Source ALL blocks from the differentiable 1M EVENT BANK (output/event_bank, or $ADONIS_EVENT_BANK)
+    -- the SAME events the arrows + matrix use.  Writes the matrix rich schema (-> ADONIS_QE/RES_BANK) and
+    the multiplicity/nucleon batches (tag '_evb'), and returns that tag.  Carbon-only (the event bank is C);
+    other materials fall back to the forward banks.  Returns None if no event bank is present (-> forward)."""
+    bankdir = os.environ.get("ADONIS_EVENT_BANK", "output/event_bank")
+    if material != "C" or not os.path.isdir(bankdir):
+        return None
+    from analysis.t2k.differentiability import bank_plot as BP, bank_matrix as BM
+    print(f"[event-bank] sourcing ALL blocks from {bankdir} (same 1M events as arrows + matrix)", flush=True)
+    B = BP.load_bank(bankdir)
+    qe, res = "/tmp/bank_schema_qe.npz", "/tmp/bank_schema_res.npz"
+    BM.schema(B, 0, qe); BM.schema(B, 1, res)
+    os.environ["ADONIS_QE_BANK"] = qe; os.environ["ADONIS_RES_BANK"] = res
+    BM.export_mult_batches(B, "C")
+    return "_evb"
+
+
 # ============================================================ PDF bundle
 def build_pdf():
     from matplotlib.backends.backend_pdf import PdfPages
@@ -409,7 +428,9 @@ def build_pdf():
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="All T2K ADoNIS-vs-ACHILLES figures (opt-in blocks).")
+    ap = argparse.ArgumentParser(
+        description="T2K ADoNIS-vs-ACHILLES figures.  No flags == the standard combined document: "
+                    "--matrix --multiplicity --nucleon-momentum --pdf.  cc1pi-stv stays opt-in.")
     ap.add_argument("--matrix", action="store_true")
     ap.add_argument("--multiplicity", action="store_true")
     ap.add_argument("--nucleon-momentum", action="store_true")
@@ -420,19 +441,31 @@ def main(argv=None):
     ap.add_argument("--flux", default="t2k")
     ap.add_argument("--tag", default="")
     a = ap.parse_args(argv)
-    blocks = (a.matrix, a.multiplicity, a.nucleon_momentum, a.cc1pi_stv)
-    do_all = not any(blocks) and not a.pdf                    # no block flag -> all; --pdf alone -> bundle only
+    # No flags at all -> the standard combined document (matrix + multiplicity + nucleon-momentum + pdf).
+    # Any explicit flag turns OFF the default so `--pdf` alone just bundles existing PNGs and `--matrix`
+    # alone runs only the matrix.  cc1pi-stv is never part of the default; request it explicitly.
+    default = not any((a.matrix, a.multiplicity, a.nucleon_momentum, a.cc1pi_stv, a.pdf))
+    do_matrix = a.matrix or default
+    do_mult = a.multiplicity or default
+    do_nucl = a.nucleon_momentum or default
+    do_pdf = a.pdf or default
     mats = ["C", "Ar"] if a.material == "all" else [a.material]
-    if a.matrix or do_all:
+    # By default source every block from the ONE 1M event bank (same file as arrows + matrix); fall back to
+    # the forward banks if it is absent or the explicit --tag is set.  Carbon-only.
+    ev_tag = None
+    if (do_matrix or do_mult or do_nucl) and a.mode == "fsi" and not a.tag:
+        ev_tag = _event_bank_source(a.material)
+    if do_matrix:
         block_matrix(a.material, a.mode)
     for mat in mats:
-        if a.multiplicity or do_all:
-            block_multiplicity(mat, a.mode, a.flux, a.tag)
-        if a.nucleon_momentum or do_all:
-            block_nucleon_momentum(mat, a.mode, a.flux, a.tag)
-    if a.cc1pi_stv or do_all:
+        tag = ev_tag if (ev_tag is not None and mat == "C") else a.tag
+        if do_mult:
+            block_multiplicity(mat, a.mode, a.flux, tag)
+        if do_nucl:
+            block_nucleon_momentum(mat, a.mode, a.flux, tag)
+    if a.cc1pi_stv:
         block_cc1pi_stv(a.flux, "C")                         # T2K CC1pi is the CH (carbon+H) measurement
-    if a.pdf:
+    if do_pdf:
         build_pdf()
 
 
