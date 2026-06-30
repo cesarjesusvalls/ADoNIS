@@ -33,8 +33,13 @@ def _hist(knobs):
 
 
 def test_nominal_matches_legacy_model_hist():
-    """All knobs nominal -> identical to the legacy FSI+MA model_hist at theta=(1,1,1)."""
-    h_full = np.asarray(_hist(_NOM))
+    """All knobs nominal -> identical to the legacy FSI+MA model_hist at theta=(1,1,1).
+    Eb_shift is overridden to 0 here: the legacy model has no SF knob (== no removal-energy shift), so the
+    bit-identity comparison is against the unshifted SF.  The full-model NOMINAL Eb_shift is a deliberate
+    epsilon (_EB_EPS=1e-2 MeV, full_knobs) that anchors the gradient off the Eb=0 corner; it deforms the SF
+    by a negligible ~6e-5 (verified in test_sf_reweight), which is exactly the (intended) difference from
+    the legacy here -- not a bit-identity failure of the reweight machinery."""
+    h_full = np.asarray(_hist({**_NOM, "Eb_shift": 0.0}))
     h_leg = np.asarray(T.model_hist(jnp.array([1.0, 1.0, 1.0]), _R, _M))
     assert np.allclose(h_full, h_leg, rtol=1e-10, atol=1e-30), (h_full[:5], h_leg[:5])
 

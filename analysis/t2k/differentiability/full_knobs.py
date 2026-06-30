@@ -23,6 +23,13 @@ from adonis.analysis.sf_reweight import sf_grids, sf_reweight, removal_from_stru
 import adonis.fsi.cascade_full as _CF
 
 _NPW = 14
+# Eb_shift nominal: a negligible epsilon (NOT 0).  The SF removal-energy reweight S(p,E-Eb)/S(p,E) has a
+# coherent non-differentiable corner at Eb=0 (every event sits at the ratio=1 symmetric point, and the
+# down-shift direction hits the clamped low-E rise of the heavy-tailed SF).  Anchoring the nominal at a
+# small positive Eb puts the gradient on the smooth one-sided branch.  1e-2 MeV: forward bias vs ACHILLES
+# (Eb=0) is 6e-5 (negligible), and the autodiff gradient closes vs FD (AD/FD~1.00); 1e-4 was too small
+# (still inside the corner, AD/FD~1.14).  sf_reweight clamps Eb<0 -> 0 (one-sided knob).
+_EB_EPS = 1e-2
 
 
 def nominal_knobs():
@@ -30,7 +37,7 @@ def nominal_knobs():
                 res_axial_strength=1.0, pw_norm=tuple([0.0] * _NPW), pion_pole=1.0,
                 sabs=1.0, sscat=1.0, s_piN_elastic=1.0, s_piN_cex=1.0, s_conv=1.0,
                 s_NN_elastic=(1., 1., 1.), s_NN_inelastic=(1., 1., 1.), f_NN_cex=0.5,
-                kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0, src_tail=1.0, qe_norm=1.0, res_norm=1.0)
+                kF_sf=1.0, Eb_shift=_EB_EPS, sf_norm=1.0, src_tail=1.0, qe_norm=1.0, res_norm=1.0)
 
 
 def build_hv_sf(qe, res, sf, with_pw=True):

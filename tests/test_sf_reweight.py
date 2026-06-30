@@ -35,18 +35,28 @@ def test_sf_norm_is_multiplier():
 
 
 def test_sf_autodiff_equals_fd():
-    eps = 1e-4
-    # kF_sf, Eb_shift, sf_norm, src_tail
+    # (name, v0, eps, tol, f).  Eb_shift is checked at its OPERATING POINT (nominal _EB_EPS=1e-2 MeV,
+    # full_knobs) on the smooth one-sided branch -- NOT at a far-from-nominal v0 that would hide the
+    # near-zero corner.  The removal-energy reweight S(p,E-Eb)/S(p,E) is steep there (heavy-tailed SF), so
+    # FD closure is ~1% (not 1e-4); the tight 1e-4 machinery check is carried by the other three knobs,
+    # which share the same _bspline2d interpolation.
     cases = [
-        ("kF_sf", 1.1, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, kF_sf=v))),
-        ("Eb_shift", 4.0, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, Eb_shift=v))),
-        ("sf_norm", 1.2, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, sf_norm=v))),
-        ("src_tail", 1.3, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, src_tail=v))),
+        ("kF_sf", 1.1, 1e-4, 1e-4, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, kF_sf=v))),
+        ("Eb_shift", 1e-2, 5e-4, 1e-2, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, Eb_shift=v))),
+        ("sf_norm", 1.2, 1e-4, 1e-4, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, sf_norm=v))),
+        ("src_tail", 1.3, 1e-4, 1e-4, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, src_tail=v))),
     ]
-    for name, v0, f in cases:
+    for name, v0, eps, tol, f in cases:
         g_ad = float(jax.grad(f)(v0))
         g_fd = (float(f(v0 + eps)) - float(f(v0 - eps))) / (2 * eps)
-        assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-4, f"{name}: ad={g_ad} fd={g_fd}"
+        assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < tol, f"{name}: ad={g_ad} fd={g_fd}"
+
+
+def test_sf_eb_is_one_sided():
+    """Eb_shift is one-sided: negative shifts clamp to 0 (== no shift == ACHILLES nominal)."""
+    w_neg = np.asarray(sf_reweight(_G, _PMAG, _EREM, Eb_shift=-5.0))
+    w_nom = np.asarray(sf_reweight(_G, _PMAG, _EREM, Eb_shift=0.0))
+    assert np.allclose(w_neg, w_nom, atol=1e-12) and np.allclose(w_nom, 1.0, atol=1e-12)
 
 
 def test_sf_kF_moves_weight():
