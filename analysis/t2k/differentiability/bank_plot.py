@@ -141,30 +141,37 @@ def signal_cc1pi(B):
     return mask, lead, single_pip(B)
 
 
-def leading_proton_window(B, pmin, pmax):
-    """Leading proton with momentum in [pmin,pmax) (the T2K CC1pi+Np acceptance picks the leading ACCEPTED p)."""
+def leading_proton_window(B, pmin, pmax, cth=-1.0):
+    """Leading proton with momentum in [pmin,pmax) AND cos(theta)>cth (the T2K CC1pi+Np acceptance picks the
+    leading ACCEPTED proton -- window and forward cut both enter the pick, as in workflow.signal._prot_in_window)."""
     pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]; n = len(B["w0"])
     mom = np.linalg.norm(p4[:, 1:], axis=1)
-    key = np.where((pid == 2212) & (mom >= pmin) & (mom < pmax), mom, -1.0)
+    cz = p4[:, 3] / np.clip(mom, 1e-9, None)
+    key = np.where((pid == 2212) & (mom >= pmin) & (mom < pmax) & (cz > cth), mom, -1.0)
     maxk = np.full(n, -1.0); np.maximum.at(maxk, eidx, key)
     lead = np.zeros((n, 4)); islead = (pid == 2212) & (key == maxk[eidx]); lead[eidx[islead]] = p4[islead]
     return lead, maxk > 0.0
 
 
-# T2K CC1pi+Np STV (PRD 103 112009) -- acceptance windows [MeV] + nuclear masses for the p_N reconstruction
+# T2K CC1pi+Np STV (PRD 103 112009) -- acceptance windows [MeV] + forward cut + nuclear masses for the p_N
+# reconstruction.  All three particles (mu, pi+, leading p) must be forward: cos(theta) > cos(70 deg), as in
+# workflow.config.SignalDef(cth=COS70) / make_plots.block_cc1pi_stv.
 _MU_LO, _MU_HI = 250.0, 7000.0; _PI_LO, _PI_HI = 150.0, 1200.0; _P_LO, _P_HI = 450.0, 1200.0
+_CTH = float(np.cos(np.deg2rad(70.0)))
 _M12C, _M11B = 11174.862, 10252.547
 
 
 def signal_cc1pi_stv(B):
-    """T2K CC1pi+Np STV signal: exactly one pi+ (no other meson) + muon/pion/leading-proton in acceptance.
-    Returns (mask, lead, pip4)."""
+    """T2K CC1pi+Np STV signal: exactly one pi+ (no other meson) + muon/pion/leading-proton in acceptance
+    (momentum windows + cos(theta)>cos70 on all three).  Returns (mask, lead, pip4)."""
     npip, npi0, npim = pion_counts(B); pip = single_pip(B)
-    lead, hasp = leading_proton_window(B, _P_LO, _P_HI)
-    pmu = np.linalg.norm(B["k_mu"][:, 1:].astype(np.float64), axis=1)
-    ppi = np.linalg.norm(pip[:, 1:], axis=1)
+    lead, hasp = leading_proton_window(B, _P_LO, _P_HI, cth=_CTH)
+    kmu = B["k_mu"].astype(np.float64)
+    pmu = np.linalg.norm(kmu[:, 1:], axis=1); cmu = kmu[:, 3] / np.clip(pmu, 1e-9, None)
+    ppi = np.linalg.norm(pip[:, 1:], axis=1); cpi = pip[:, 3] / np.clip(ppi, 1e-9, None)
     mask = ((npip == 1) & (npi0 == 0) & (npim == 0) & hasp
-            & (pmu >= _MU_LO) & (pmu < _MU_HI) & (ppi >= _PI_LO) & (ppi < _PI_HI))
+            & (pmu >= _MU_LO) & (pmu < _MU_HI) & (cmu > _CTH)
+            & (ppi >= _PI_LO) & (ppi < _PI_HI) & (cpi > _CTH))
     return mask, lead, pip
 
 
