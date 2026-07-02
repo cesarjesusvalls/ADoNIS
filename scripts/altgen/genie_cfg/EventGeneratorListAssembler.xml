@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!-- ADoNIS/Callum_C custom event-generator lists.
+     - CCQERES : QE + RES only  -> exactly the channels ADoNIS models
+                 (primary probe: isolates QE-model / RES-model / FSI differences).
+     - CCNODIS : QE + RES + MEC + COH (no charm, no DIS) -> realistic CC0pi mix.
+     Charm (QEL-CC-CHARM) is dropped: its splines are absent from gxspl-min and it
+     triggers the NNBarOscDummyPXSec instantiation failure. DIS is dropped: PYTHIA6
+     hadronization raises an illegal instruction under Docker Rosetta amd64. Both
+     omissions are negligible at the T2K flux peak (~0.6 GeV). -->
+<alg_conf>
+
+  <param_set name="CCQERES">
+     <param type="int" name="NGenerators">   2                              </param>
+     <param type="alg" name="Generator-0">   genie::EventGenerator/QEL-CC   </param>
+     <param type="alg" name="Generator-1">   genie::EventGenerator/RES-CC   </param>
+  </param_set>
+
+  <param_set name="CCNODIS">
+     <param type="int" name="NGenerators">   4                              </param>
+     <param type="alg" name="Generator-0">   genie::EventGenerator/QEL-CC   </param>
+     <param type="alg" name="Generator-1">   genie::EventGenerator/RES-CC   </param>
+     <param type="alg" name="Generator-2">   genie::EventGenerator/MEC-CC   </param>
+     <param type="alg" name="Generator-3">   genie::EventGenerator/COH-CC   </param>
+  </param_set>
+
+</alg_conf>
