@@ -26,7 +26,8 @@ NREP, NPSE, NITERS = 8, 4, 400
 
 # fit-knob registry: name -> (truth value theta*, clip_lo, clip_hi, Adam lr).  One per mechanism.
 FIT = [
-    ("M_A",   1.10, 0.70, 1.50, 0.010),   # hard vertex (QE+RES amps2 quadratic)
+    ("M_A_qe",  1.10, 0.70, 1.50, 0.010),   # hard vertex QE (amps2 quadratic; M_A split per channel)
+    ("M_A_res", 0.90, 0.70, 1.50, 0.010),   # hard vertex RES (independent axial dipole mass)
     ("sabs",  1.30, 0.30, 3.00, 0.020),   # FSI pion absorption (kind-1)
     ("kF_sf", 1.10, 0.80, 1.30, 0.010),   # spectral function (density ratio)
 ]

@@ -25,7 +25,7 @@ def bank_weight(B, knobs, grids):
     k = knobs
     def ma(name): return (B[f"hv_{name}_a"], B[f"hv_{name}_b"], B[f"hv_{name}_c"], B[f"hv_{name}_Q2"])
     qe_ma, res_ma = ma("qe_ma"), ma("res_ma")
-    hv = (ma_reweight(qe_ma, k["M_A"]) * ma_reweight(res_ma, k["M_A"])
+    hv = (ma_reweight(qe_ma, k["M_A_qe"]) * ma_reweight(res_ma, k["M_A_res"])
           * strength_reweight(qe_ma, k["axial_strength"]) * strength_reweight(res_ma, k["res_axial_strength"])
           * strength_reweight(ma("qe_vec"), k["vector_strength"])
           * strength_reweight(ma("qe_gmp"), k["mu_p"]) * strength_reweight(ma("qe_gmn"), k["mu_n"])

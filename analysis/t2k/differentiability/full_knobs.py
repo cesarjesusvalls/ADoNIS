@@ -33,7 +33,9 @@ _EB_EPS = 1e-2
 
 
 def nominal_knobs():
-    return dict(M_A=1.0, axial_strength=1.0, vector_strength=1.0, mu_p=1.0, mu_n=1.0, gep=1.0, gen=1.0,
+    # M_A is split per channel: M_A_qe (QE dipole mass) and M_A_res (RES/DCC axial dipole mass) are
+    # INDEPENDENT knobs (each reweights only its own channel's amps2 record); both nominal 1.0.
+    return dict(M_A_qe=1.0, M_A_res=1.0, axial_strength=1.0, vector_strength=1.0, mu_p=1.0, mu_n=1.0, gep=1.0, gen=1.0,
                 res_axial_strength=1.0, pw_norm=tuple([0.0] * _NPW), pion_pole=1.0,
                 sabs=1.0, sscat=1.0, s_piN_elastic=1.0, s_piN_cex=1.0, s_conv=1.0,
                 s_NN_elastic=(1., 1., 1.), s_NN_inelastic=(1., 1., 1.), f_NN_cex=0.5,
@@ -60,14 +62,14 @@ def build_hv_sf(qe, res, sf, with_pw=True):
 
 
 def _hv_qe(k, HV):
-    return (ma_reweight(HV["qe_ma"], k["M_A"]) * strength_reweight(HV["qe_ma"], k["axial_strength"])
+    return (ma_reweight(HV["qe_ma"], k["M_A_qe"]) * strength_reweight(HV["qe_ma"], k["axial_strength"])
             * strength_reweight(HV["qe_vec"], k["vector_strength"]) * strength_reweight(HV["qe_gmp"], k["mu_p"])
             * strength_reweight(HV["qe_gmn"], k["mu_n"]) * strength_reweight(HV["qe_gep"], k["gep"])
             * strength_reweight(HV["qe_gen"], k["gen"]))
 
 
 def _hv_res(k, HV):
-    w = (ma_reweight(HV["res_ma"], k["M_A"]) * strength_reweight(HV["res_ma"], k["res_axial_strength"])
+    w = (ma_reweight(HV["res_ma"], k["M_A_res"]) * strength_reweight(HV["res_ma"], k["res_axial_strength"])
          * strength_reweight(HV["res_pp"], k["pion_pole"]))
     if HV.get("res_pw") is None:                              # pw records skipped (with_pw=False) -> no-op
         return w

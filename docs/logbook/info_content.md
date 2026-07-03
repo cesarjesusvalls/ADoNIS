@@ -101,3 +101,106 @@ essentially no information on it, so the fit parks it wherever χ² is marginall
 
 Full run ≈ 14 min on the 1M bank (CPU): 76 s load+datasets, 2 s per-event Jacobian (N×4), ~3 min per
 400-iteration Adam fit (three fits: closure, absolute, profiled), figures <1 s from the npz.
+
+---
+
+# Session 2: M_A channel split + SF-knob validation + 17-param fit
+
+## M_A split into M_A_qe / M_A_res
+
+`M_A` was ONE shared knob (same dipole ratio applied to `qe_ma` and `res_ma` records). Split into two
+independent knobs, each reweighting only its own channel's amps2 record — still exact, no bank change:
+`full_knobs.nominal_knobs` (M_A_qe, M_A_res), `_hv_qe`/`_hv_res`, `bank_reweight.bank_weight`; consumers
+updated (`closure_full` FIT registry now injects both; `bank_taylor` default). At nominal both = 1.0 →
+identical weights (identity gate re-verified in the full17 run below). The original 4-param demo (`--set
+axial4`) now uses M_A_qe.
+
+## SF-knob validation (`scripts/sf_knob_checks.py`, fig `sf_knob_checks.png`)
+
+The SF reweight is `w = sf_norm · tail(|p|) · S(p/kF, E−Eb)/S(p,E)` on a cubic-B-spline(p)×linear(E)
+interpolant; upstream sampler uses 4-pt Lagrange(p)×linear(E) on the same table. Carbon SF table: 40×80
+nodes, p∈[10,790], E∈[2.5,397.5] MeV.
+
+| # | check | result |
+|---|---|---|
+| 1 | grid uniformity (B-spline assumption) | exactly uniform: Δp=20, ΔE=5 MeV (rel spread 0) |
+| 2 | node exactness of prefiltered spline | max rel err 3.3e-11 at S>0 nodes; ≤1.6e-30 at S=0 nodes |
+| 3a | S(p,E) spline vs upstream @ 1.87M event points | rms 2.6e-2, pointwise; outliers at the S≈0 edge |
+| 3b | reweight RATIO spline vs upstream @ kF=1.1 | median 8e-4; mean w 1.31570 vs 1.31577; **weighted impact 3.0e-3**; max 209 confined to S₀<1e-4·max (2.6% of events) |
+| 4 | nominal identity | Eb=0: w≡1 exactly. Eb=ε anchor: mean bias −5.7e-5, 30/1.87M events at w=0 |
+| 5 | sf_norm | linear exactly: per-event \|dw/dnorm − w/norm\| ≤ 1.1e-16; AD/FD = 1.0000000000 |
+| 6 | src_tail | matches 1+(s−1)σ((p−300)/80) to 6e-5; per-event grad = σ·w_nom to 3e-5; AD/FD = 1.0000000000 |
+| 7 | kF_sf gradient | AD correct: per-event AD-vs-FD disagrees only for **24/1.87M events** at the S≈0 support edge (per-event \|J\| up to 1032; FD non-convergent there: sum AD/FD 0.9975→0.865 non-monotone in eps). Excluding them: AD/FD = 0.9986 @eps=1e-5. Physics sign: d⟨\|p\|⟩_w/dkF = +166 MeV/unit (stretch, as expected) |
+| 8 | Eb_shift | one-sided branch AD/FD = 0.9955–0.9995 @ Eb = ε/2/5/15 MeV; S-clamped (w=0) fractions 0%/3.6%/22%/60%; w(Eb<0) ≡ w(0) exactly (clamp) |
+
+Notes: (i) the spline-vs-Lagrange interpolant difference is the *documented* differentiability divergence
+(sf_reweight.py docstring) — its physical impact is 3e-3 on the reweighted cross section at a 10% kF
+deformation and 0 at nominal (ratio ≡ 1 both ways); (ii) the 22%/60% zero-weight fractions at Eb = 5/15 MeV
+mean large Eb shifts KILL a large part of the sample (events pushed off the SF support) — the Eb fit
+direction is one-sided and increasingly non-linear.
+
+## full17 gradient stage (17 params: M_A_qe, M_A_res, 4 SF, 11 FSI; 28 bins)
+
+Checkpoint: `/tmp/adonis_tune_runs/info_content_full17_grad.npz` (gradient/Fisher persisted before the fits).
+
+- Nominal identity after the M_A split: **1.29e-14** (bit-exact preserved).
+- Per-knob per-bin AD-vs-FD (eps=1e-3): **16 of 17 knobs pass at ≤ 6e-6**
+  (M_A_qe 3.4e-7, M_A_res 3.5e-7, kF_sf 5.9e-6, sf_norm 3e-9, src_tail 2e-9, all 11 FSI 2e-8–1.2e-6).
+  The single failure is **Eb_shift = 3.3e-2** — eps-scan diagnostic below.
+- **Fisher eigen-spectrum** (normalized F̃ = D^-1/2 F D^-1/2; condition number 4.9e19):
+  - λ = −9.2e-17 (**exact zero**): `+0.77·sabs +0.47·s_piN_cex +0.44·s_piN_elastic` — an exactly flat
+    pion-FSI combination (per-event structural test below).
+  - λ = 3.2e-4: `+0.64·sf_norm −0.50·M_A_qe −0.41·src_tail −0.25·M_A_res` — normalization vs form-factor.
+  - λ = 1.1e-3: `−0.51·s_NN_el[pp] −0.44·sf_norm −0.41·s_NN_el[pn] +0.35·s_piN_cex`.
+  - Stiffest: λ = 8.2 (`s_NN_el[pn] + f_NN_cex − src_tail + s_piN_cex` mix), λ = 3.5, λ = 2.9.
+  - 28 bins vs 17 params: the spectrum spans 20 decades — most of the parameter space is measured only
+    through a handful of stiff combinations. Cramér-Rao uses pinv (measurable subspace only).
+- Ops note: the 17-tangent `jacfwd`/`jax.hessian` OOM'd this 16 GB machine (tangents on every (N,64)
+  FSI-record intermediate ≈ 16 GB) — replaced by per-knob `jvp` / per-row Hessian (peak ≈ one forward pass).
+  Machine shared with the altgen session's fits (7.4 GB peaks) during these runs.
+
+## full17 fits (LM on the jvp Jacobian; npz `/tmp/adonis_tune_runs/info_content_full17.npz`)
+
+Fit engine: reverse-mode (`value_and_grad`) is ~7 s/eval on this graph vs ~0.3 s forward (gather-heavy
+FSI/SF VJPs) — Adam@600 iters ≈ 1.5–2 h/fit. Replaced by box-clipped Levenberg–Marquardt on the
+forward-mode per-bin Jacobian (17 jvps + 17×17 solve per step): closure converged in 8 steps; all
+3 fits + GN Hessians in ~2 h wall total. Errors are Gauss–Newton (`V = pinv(JᵀC⁻¹J)`); pinv because the
+Fisher is singular; rails flagged.
+
+- **Pseudo-data closure (17 params)**: injected θ* recovered to ~1e-7 in 14/17 params with final χ²=1.7e-8;
+  residual error is confined to the pion-FSI knobs (sabs −0.28, s_piN_cex −0.26, s_conv −0.19,
+  s_piN_elastic −0.17) and is **98.1% aligned with the Fisher null eigenvector** — in knob space
+  ≈ (+0.5,+0.5,+0.5,+0.5) on (sabs, s_piN_elastic, s_piN_cex, s_conv): a COMMON rescaling of all pion
+  interaction cross sections is unmeasurable (to first order) by these five distributions; χ² returns to
+  its minimum anywhere on that manifold.
+- **Absolute joint fit** (ndf=11): χ²/ndf 3.66 → **2.50**. Constrained: kF_sf = 0.929 ± 0.144,
+  f_NN_cex = 0.40 ± 1.12, M_A_qe = 0.94 ± 1.87, M_A_res = 0.90 ± 1.48 (only their stiff combinations are
+  measured). 7/17 params at clip rails with GN σ 13–235 (pion knobs) — the degenerate subspace parks at
+  rails without moving χ².
+- **Profiled-norm variant** (ndf=6): χ²/ndf 5.41 → 3.15, A_d = 1.98/2.01 (CC0π), 0.63/0.64/0.72 (CC1π);
+  shape params run to extremes (M_A_qe → 0.49, Eb → 27 MeV) compensated by A_d ≈ 2 — with 17 free shape
+  knobs the profiled norm absorbs so much that the shape/norm decomposition is no longer meaningful
+  (evidence for the blueprint's absolute-first stance).
+- M_A split content: **M_A_qe = 100 % CC0π** (53 dpt + 47 dat); **M_A_res = 92 % CC1π** (35 pN + 32 dpTT +
+  25 daT) — the per-channel axial masses are informed by disjoint datasets. kF_sf carries the largest
+  single-param information (F_kk ≈ 3.5e3, 63 % CC0π dpt); σ_conv and σ_NNinel[pp/nn] carry essentially none.
+- Figures: `info_content_{gradient_heatmaps,fisher_breakdown,joint_fit}_full17.png`.
+
+## Post-fit diagnostics (`scripts/fd_gate_diagnose.py`)
+
+1. **Eb_shift gate failure was an FD artifact — AD is correct.** Per-bin worst AD-vs-FD rel err vs the FD
+   bracket: 3.33e-2 @ eps=1e-3 → 2.95e-4 @ 1e-4 → **8.7e-6 @ 1e-5** (events with per-event AD≠FD:
+   600 → 58 → 16). With the faithful LINEAR-in-E interpolant, w(Eb) is piecewise-linear in Eb; central FD
+   across a kink (E−Eb crossing an E-node) averages two slopes while AD returns the exact local one. FD
+   converges to AD as eps shrinks below the kink spacing → gate passes at 8.7e-6.
+2. **The pion-FSI flat direction is a PER-EVENT structural identity, not a data limitation.**
+   |J·v| ≤ 1.3e-21 per event (per-bin ≤ 8e-17 vs |J| scales up to 1.65) for
+   v ≈ (+0.5,+0.5,+0.5,+0.5)/2 on (sabs, s_piN_elastic, s_piN_cex, s_conv). Code cause
+   (`adonis/fsi/cascade_discrete.py:fsi_pion_reweight`): each pion HIT is reweighted by s_real·D0/D with
+   D = s_abs·sa + s_el·ss_el + s_cex·ss_cex + s_conv·si — under a common rescale s of all four, D = s·D0
+   and the factor is exactly 1 at ANY s. The pion record reweights the branch split conditional on a hit,
+   but NOT the hit/no-hit probability (no survival factor). The nucleon reweight DOES carry the total-σ
+   response (exp(−a/g)/exp(−a) hit factor + (1−pk)/(1−p0) no-hit factor). **Open question for the main
+   session** (not touched here — shared FSI core): is the missing pion total-interaction-probability
+   response intended (walk design) or a coverage gap of the kind-1 pion record? Until then, only 3 of the
+   4 pion knobs are independent in any fit, exactly.
