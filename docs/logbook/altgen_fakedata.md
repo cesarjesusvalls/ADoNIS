@@ -255,8 +255,72 @@ fit). Figure `output/figures/altgen_fit_dpt_abs.png`.
 - [x] fit machinery closure-gated (kF_sf/res_norm recovered; degeneracies characterized)
 - [x] GENIE fake-data build (§6), fits (§9: δpT shape+abs, δαT shape), interpretation (§9b, §10)
 
+## 11. Integration of sessions A/B (merged origin/main @ 07a8cb4) + joint fit
+
+Merged main cleanly. Relevant to this task:
+- `full_knobs`: **M_A split → M_A_qe / M_A_res** (independent per-channel); `knob_specs` is the
+  knob-metadata single source of truth; **sscat officially documented dead** (matches §5 finding).
+- Session A (`info_content.py`): 5-dataset assembly `build_datasets` (CC0π dpt/dat per-nucleon +
+  CC1π pN/dpTT/daT nb/CH with frozen free-H offsets) = single source of truth; JB-as-argument +
+  per-knob `jvp` Jacobian pattern (avoids both my jit-constant OOM and the jacfwd 16 GB blowup);
+  pion-FSI flat direction shown to be a per-event structural identity.
+- Session B (`llh_surface.py`): on REAL T2K data, adding CC1π+Np tightens res_norm 3.2×
+  (σ 0.43→0.13) — CC0π alone leaves the RES direction loose. Exactly the degeneracy behind my
+  railed RES sector (§9/§9b).
+
+**Joint-fit extension built on their machinery:**
+- `build_fakedata.py` extended: CC1π+Np STV fake datasets from the SAME GENIE sample
+  (selection mirrors `signal_cc1pi_stv` incl. cos70° forward cuts + kaon veto; observables via the
+  imported validated `bank_plot` formulas; nb/CH; GENIE-C only — the frozen ADoNIS free-H offset is
+  added identically to model and data in the fit, cancelling in the residual, so ONLY the C part is
+  foreign). Selected: 54429 1π⁺ events → 7472 in acceptance.
+- `fit_fakedata_joint.py`: 5-dataset joint LM fit (Gauss-Newton with per-iteration jvp Jacobian),
+  same 6 knobs (M_A_qe, qe_norm, kF_sf, s_NN_el, sabs, res_norm), T2K covariances, GENIE centrals.
+- Key question on the table: does CC1π **un-rail** the RES sector on foreign fake data, and do the
+  δpT-driven pulls survive the RES-informed constraint?
+
+## 12. JOINT CC0π+CC1π fit result (the completion of the demonstration)
+
+Nominal joint (absolute, 28 bins): **χ²/ndf = 1.36** — remarkably close to the 1.44 the same model
+gives on REAL T2K data (llh_surface). Per-dataset nominal: CC0π dpt **3.72**/bin; everything else
+already agrees (dat 0.77, pN 0.43, dpTT 0.09, daT 0.04) — the foreign-generator tension is
+localized in CC0π δpT.
+
+LM converged (39 its, χ² 38.2 → 10.6, ndf 22 → **χ²/ndf 0.48**):
+
+```
+knob      BFP     +/-    pull                    single-obs dpt fit was:
+M_A_qe   1.738   0.894   +0.83                    0.862 (other end of the qe banana)
+qe_norm  0.906   0.279   -0.34                    1.7-2.2 (flat)
+kF_sf    0.925   0.035   -2.13   <- ROBUST        0.933 (-1.9σ)  [same value in EVERY fit]
+s_NN_el  1.655   0.388   +1.69                    2.52 (+1.8σ)  [moderated by CC1π]
+sabs     0.300   1.211   RAIL    <- persists      0.300 RAIL
+res_norm 1.229   0.288   +0.80   <- UN-RAILED     0.300 RAIL
+per-dataset chi2/nbin at BFP: dpt 1.00, dat 0.16, pN 0.22, dpTT 0.02, daT 0.09
+```
+
+Readings (vs §7 a-priori expectations and §9/9b):
+1. **CC1π un-rails res_norm** (0.300-RAIL → 1.229±0.288), exactly reproducing on foreign fake data
+   the degeneracy-breaking session B demonstrated on real data. The RES production strength is now
+   measured, physical, and mildly ABOVE nominal.
+2. **The sabs rail persists** — and is now interpretable: with RES production anchored by the
+   surviving-pion (CC1π) rate, the fit still wants minimal pion absorption, i.e. ADoNIS/Oset
+   converts more of its RES production into absorbed-pion CC0π events than GENIE/hA2018 does. A
+   genuine absorption-model difference (branching, not rate), consistent with §9b.
+3. **kF_sf = 0.925±0.035 (−2.1σ)** — the most stable pull of the whole study (0.93 in every fit,
+   every metric, every dataset combination): the 1-D-SF(GENIE-¹²C) vs 2-D-SF(ADoNIS) initial-state
+   width difference. **s_NN_el = 1.66±0.39 (+1.7σ)** — persistent nucleon-transport difference
+   (hA2018 vs INC), moderated from 2.5 once CC1π constrains the rest.
+4. M_A_qe/qe_norm land on the *other* end of their −0.97-correlation banana than the CC0π-only fit
+   (1.74/0.91 vs 0.86/1.7+) with individually insignificant pulls — single-observable "axial"
+   pulls against a foreign generator are not stable statements.
+5. End state: ADoNIS describes the 5-dataset GENIE QE+RES fake data at **χ²/ndf 0.48** with
+   physical knob values everywhere except the single interpretable sabs rail.
+
+Figure `output/figures/altgen_fit_joint.png`; history `output/altgen/fit_joint.npz`;
+log `/tmp/altgen_joint_fit.log`.
+
 ### Open follow-ups (not started)
-- Joint δpT+δαT fit (breaks the M_A↔qe_norm and sabs↔res_norm single-observable degeneracies)
 - Add MEC to the GENIE sample (CCNODIS minus COH) → tests the tail attribution in §9b
 - NEUT/NuWro variants (same pipeline, different card) — LUCiD has both
 - DUNE-ND/Ar variant — requires a DUNE-flux/Ar event bank (~21 h regen, deferred)

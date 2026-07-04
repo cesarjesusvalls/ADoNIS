@@ -37,7 +37,7 @@ OBS = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else 
 ABS = "--abs" in sys.argv                                    # absolute (default: shape/profiled-A)
 assert OBS in ("dpt", "dat")
 
-FIT = ["M_A", "qe_norm", "kF_sf", "s_NN_el", "sabs", "res_norm"]
+FIT = ["M_A_qe", "qe_norm", "kF_sf", "s_NN_el", "sabs", "res_norm"]   # M_A split post-30d12e6
 # clip ranges (physical-ish); Eb_shift/f_NN_cex not fit here
 LO = jnp.array([0.5, 0.3, 0.6, 0.3, 0.3, 0.3])
 HI = jnp.array([2.0, 3.0, 1.6, 3.0, 3.0, 3.0])
