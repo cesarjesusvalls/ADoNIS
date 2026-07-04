@@ -355,8 +355,60 @@ Readings:
    direction noise-chasing after the fit is already statistically perfect; pulls at such χ²
    carry no information (the LM run should arguably early-stop on χ²/ndf<~0.3).
 
+## 14. NEUT variant — second foreign generator, distinct fingerprint
+
+300k NEUT (stock 5.4.0 pure-¹²C card + T2K flux histogram; `run_neut.sh`: neutroot2 → PrepareNEUT
+→ nuisflat GenericVectors; crsdat path fixed to the container install; ~2 h under parallel load).
+CC mode composition: CCQE 100 863, 2p2h 18 217, CC1π(11–13) 63 644, coh 1 072, multi-π 18 654,
+DIS 16 865. Normalisation via NUISANCE per-event `fScaleFactor`. Two slices from the one run
+(`build_fakedata_neut.py` → `fakedata_neut.npz`): **matched** (modes 1,11–13 ≈ QE+RES) and
+**full** (all CC — 2p2h/multi-π/DIS are channels ADoNIS lacks).
+
+**Matched slice, joint fit** (`altgen_fit_joint_neut.png`, `fit_joint_neut.npz`):
+nominal joint χ²/ndf **1.59** (CC0π dpt 2.35, **CC1π pN 2.87** — unlike GENIE, NEUT's CC1π
+disagrees at nominal too) → BFP χ² 16.2/22 = 0.74:
+
+```
+knob      BFP     +/-    pull
+M_A_qe   2.000   0.823   RAIL(hi)   (banana with qe_norm=1.03±0.21: NEUT Q2 shape)
+kF_sf    0.944   0.027   -2.0σ      <- SAME ~0.94 as vs GENIE: two independent foreign
+                                       generators prefer a slightly narrower initial state
+s_NN_el  1.781   0.164   +4.8σ      <- STRONG, well-constrained: NEUT cascade vs INC transport
+sabs     0.582   1.034   -0.4σ      (not railed, weakly constrained)
+res_norm 1.860   0.310   +2.8σ      <- NEUT's matched-slice RES rate genuinely above ADoNIS
+per-dataset at BFP: dpt 0.59, dat 0.38, pN 1.43 (worst, not absorbable), dpTT 0.16, daT 0.64
+```
+
+**Full-CC slice** (`altgen_fit_joint_neutfull.png`, `fit_joint_neutfull.npz`): nominal joint
+χ²/ndf **2.45** (dpt 2.42, dat 3.61, pN 2.65, dpTT 1.18, daT 1.25) — the OPPOSITE nominal response
+to GENIE's +MEC (1.36→0.61): NEUT's 2p2h+multi-π+DIS overshoot ADoNIS everywhere. Fit → 11.2/22 =
+0.51:
+
+```
+knob      BFP     +/-    pull
+M_A_qe   2.000   1.099   RAIL(hi, flat)    qe_norm 0.795±0.169 (banana)
+kF_sf    0.936   0.035   -1.8σ             <- sixth fit, same 0.93-0.94
+s_NN_el  1.005   0.452   +0.0σ             <- the +4.8σ matched-slice pull VANISHES
+sabs     3.000   3.312   RAIL(hi, flat)
+res_norm 1.965   0.459   +2.1σ             <- survives both slices: genuine
+per-dataset at BFP: dpt 0.40, dat 0.33, pN 1.10 (still worst), dpTT 0.15, daT 0.07
+```
+
+Cross-generator fingerprints (matched vs full, both generators — the study's synthesis):
+- **kF_sf ≈ 0.93–0.94 in ALL SIX fits** (GENIE single-obs ×3 / joint / +MEC; NEUT matched / full):
+  the one robust, generator- and channel-composition-independent pull — ADoNIS's initial-state
+  momentum width is slightly wide relative to both foreign implementations.
+- **s_NN_el is NEVER a transport measurement**: +1.7σ (GENIE matched) → 0.1σ (+MEC);
+  +4.8σ (NEUT matched) → 0.0σ (full). In BOTH generators the "FSI-strength pull" evaporates when
+  the sample's channel content is completed — it is a channel-completeness proxy. (This corrects
+  the §14-matched reading above that called it "real"; the full-CC evidence supersedes it.)
+- **res_norm**: GENIE ~1.2–1.3; NEUT ~1.9–2.0 in BOTH slices (+2.1…2.8σ) — a genuine NEUT-vs-ADoNIS
+  RES-sector normalisation difference. CC1π pN keeps a ~1.1–1.4/bin residual in every NEUT fit —
+  a real, not-absorbable RES/initial-state shape difference.
+- Fitted end states: GENIE-matched 0.48, GENIE+MEC 0.14, NEUT-matched 0.74, NEUT-full 0.51 —
+  the 6-knob ADoNIS reweight describes every variant after fitting; what distinguishes the
+  generators is WHERE the knobs land and WHICH residuals persist, not the final χ².
+
 ### Open follow-ups
-- [~] NEUT variant (running): 300k full-CC NEUT (neutroot2→PrepareNEUT→nuisflat pipeline built,
-  smoke-tested; card = stock 5.4.0 pure-¹²C + T2K flux hist; both matched-channel and full-CC
-  slices from one run)
 - DUNE-ND/Ar variant — requires a DUNE-flux/Ar event bank (~21 h regen, deferred)
+- NuWro (third generator, same pipeline) — available in LUCiD if wanted
