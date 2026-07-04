@@ -1,13 +1,13 @@
 """Plot-time consumer of the differentiable EVENT BANK (event_bank.py).  NO JAX cascade here -- everything
-is a cheap re-sum over the stored per-event (kinematics, ragged final state, w0, d^1/d^2/d^3 w/dtheta).
+is a cheap re-sum over the stored per-event records (kinematics, ragged final state, w0, hard-vertex amps2 +
+FSI kind-1 + SF records for the EXACT reweight via bank_reweight).
 
 Pick ANY of these at plot time, no re-running:
   * signal definition  -> a boolean mask over events (topology from the full final state + phase space)
   * observable         -> a per-event value (dpt, dat, p_N, muon kinematics, ...)
   * binning            -> any edges
-  * forward histogram  (sum w0)            : the T2K-style distribution
-  * gradient histogram (sum dw/dtheta_k)   : per-knob Jacobian
-  * curvature          : diagonal 2nd/3rd (stored) + off-diagonal Hessian = sum_i Ji*Jj/w0 (reconstructed)
+  * forward histogram  (sum w0)                     : the T2K-style distribution
+  * reweight/gradient  (bank_reweight.bank_weight)  : exact w(theta), jax-differentiable in every knob
 
 PIDs: proton 2212, neutron 2112, pions {211,111,-211}.
 """
@@ -42,9 +42,8 @@ def load_bank(outdir):
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
     B["n_chunks"] = nchunks
-    from analysis.t2k.differentiability import grad_arrows as GA
-    from analysis.t2k.differentiability.full_knobs import nominal_knobs
-    B["labels"] = [s[2] for s in GA._specs(nominal_knobs())]    # 26 plotted knobs (no pw_norm, no sscat)
+    from analysis.t2k.differentiability.full_knobs import nominal_knobs, knob_specs
+    B["labels"] = [s[2] for s in knob_specs(nominal_knobs())]   # plotted knobs (no pw_norm, no sscat)
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
     return B
 
@@ -141,30 +140,37 @@ def signal_cc1pi(B):
     return mask, lead, single_pip(B)
 
 
-def leading_proton_window(B, pmin, pmax):
-    """Leading proton with momentum in [pmin,pmax) (the T2K CC1pi+Np acceptance picks the leading ACCEPTED p)."""
+def leading_proton_window(B, pmin, pmax, cth=-1.0):
+    """Leading proton with momentum in [pmin,pmax) AND cos(theta)>cth (the T2K CC1pi+Np acceptance picks the
+    leading ACCEPTED proton -- window and forward cut both enter the pick, as in workflow.signal._prot_in_window)."""
     pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]; n = len(B["w0"])
     mom = np.linalg.norm(p4[:, 1:], axis=1)
-    key = np.where((pid == 2212) & (mom >= pmin) & (mom < pmax), mom, -1.0)
+    cz = p4[:, 3] / np.clip(mom, 1e-9, None)
+    key = np.where((pid == 2212) & (mom >= pmin) & (mom < pmax) & (cz > cth), mom, -1.0)
     maxk = np.full(n, -1.0); np.maximum.at(maxk, eidx, key)
     lead = np.zeros((n, 4)); islead = (pid == 2212) & (key == maxk[eidx]); lead[eidx[islead]] = p4[islead]
     return lead, maxk > 0.0
 
 
-# T2K CC1pi+Np STV (PRD 103 112009) -- acceptance windows [MeV] + nuclear masses for the p_N reconstruction
+# T2K CC1pi+Np STV (PRD 103 112009) -- acceptance windows [MeV] + forward cut + nuclear masses for the p_N
+# reconstruction.  All three particles (mu, pi+, leading p) must be forward: cos(theta) > cos(70 deg), as in
+# workflow.config.SignalDef(cth=COS70) / make_plots.block_cc1pi_stv.
 _MU_LO, _MU_HI = 250.0, 7000.0; _PI_LO, _PI_HI = 150.0, 1200.0; _P_LO, _P_HI = 450.0, 1200.0
+_CTH = float(np.cos(np.deg2rad(70.0)))
 _M12C, _M11B = 11174.862, 10252.547
 
 
 def signal_cc1pi_stv(B):
-    """T2K CC1pi+Np STV signal: exactly one pi+ (no other meson) + muon/pion/leading-proton in acceptance.
-    Returns (mask, lead, pip4)."""
+    """T2K CC1pi+Np STV signal: exactly one pi+ (no other meson) + muon/pion/leading-proton in acceptance
+    (momentum windows + cos(theta)>cos70 on all three).  Returns (mask, lead, pip4)."""
     npip, npi0, npim = pion_counts(B); pip = single_pip(B)
-    lead, hasp = leading_proton_window(B, _P_LO, _P_HI)
-    pmu = np.linalg.norm(B["k_mu"][:, 1:].astype(np.float64), axis=1)
-    ppi = np.linalg.norm(pip[:, 1:], axis=1)
+    lead, hasp = leading_proton_window(B, _P_LO, _P_HI, cth=_CTH)
+    kmu = B["k_mu"].astype(np.float64)
+    pmu = np.linalg.norm(kmu[:, 1:], axis=1); cmu = kmu[:, 3] / np.clip(pmu, 1e-9, None)
+    ppi = np.linalg.norm(pip[:, 1:], axis=1); cpi = pip[:, 3] / np.clip(ppi, 1e-9, None)
     mask = ((npip == 1) & (npi0 == 0) & (npim == 0) & hasp
-            & (pmu >= _MU_LO) & (pmu < _MU_HI) & (ppi >= _PI_LO) & (ppi < _PI_HI))
+            & (pmu >= _MU_LO) & (pmu < _MU_HI) & (cmu > _CTH)
+            & (ppi >= _PI_LO) & (ppi < _PI_HI) & (cpi > _CTH))
     return mask, lead, pip
 
 
@@ -203,25 +209,6 @@ def dat_1pi(kmu, lead, pip):
 def hist_forward(values, B, mask, edges, conv=1.0):
     h, _ = np.histogram(values[mask], bins=edges, weights=B["w0"][mask].astype(np.float64))
     return h / np.diff(edges) * conv
-
-
-def hist_gradient(values, B, mask, edges, conv=1.0):
-    """(nbins, nknob) per-bin gradient d(dsigma/dx)/dtheta from the stored D1."""
-    nb = len(edges) - 1; nk = B["D1"].shape[1]; out = np.zeros((nb, nk))
-    idx = np.clip(np.searchsorted(edges, values) - 1, 0, nb - 1)
-    for k in range(nk):
-        out[:, k] = np.bincount(idx[mask], weights=B["D1"][mask, k].astype(np.float64), minlength=nb)
-    return out / np.diff(edges)[:, None] * conv
-
-
-def hist_diag_curv(values, B, mask, edges, order, conv=1.0):
-    """Per-bin diagonal 2nd (order=2) or 3rd (order=3) derivative histogram from stored D2/D3."""
-    D = B["D2"] if order == 2 else B["D3"]
-    nb = len(edges) - 1; nk = D.shape[1]; out = np.zeros((nb, nk))
-    idx = np.clip(np.searchsorted(edges, values) - 1, 0, nb - 1)
-    for k in range(nk):
-        out[:, k] = np.bincount(idx[mask], weights=D[mask, k].astype(np.float64), minlength=nb)
-    return out / np.diff(edges)[:, None] * conv
 
 
 if __name__ == "__main__":
