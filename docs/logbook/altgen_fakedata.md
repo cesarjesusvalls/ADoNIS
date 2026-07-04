@@ -172,22 +172,91 @@ A-priori pull expectations from these differences (stated BEFORE reading the fit
 | knob | BFP | reading vs the §7 expectations |
 |---|---|---|
 | `sabs` | **0.300 = LOWER RAIL** | fit slashes ADoNIS's π-absorption → kills the RES→CC0π feed |
-| `res_norm` | **0.300 = LOWER RAIL** | same direction: ADoNIS(DCC+Oset) puts far more RES-origin events into CC0π-Np than GENIE(BS+hA2018) — the fit can only cut it by railing BOTH RES knobs (~×0.09 combined feed) |
+| `res_norm` | **0.300 = LOWER RAIL** | same direction — but see the §9b cross-check: the RES *rates* agree (7.5% vs 8.4%); the rails are a SHAPE compensation, not a rate mismatch |
 | `s_NN_el` | 2.52 | ADoNIS needs ~2.5× MORE nucleon rescattering to reproduce GENIE's δpT tail-vs-peak — consistent with hA2018 (single effective interaction, more smearing per event) vs INC stepwise transport |
 | `qe_norm` | 1.70 (drifting) | exactly degenerate with profiled A once RES is railed — flat direction, value not meaningful in the shape fit |
 | `M_A` | 0.863 | softer axial Q² — the Nieves-RPA low-Q² screening in GENIE mimics a lower effective M_A, as anticipated |
 | `kF_sf` | 0.932 | slightly narrower initial-state momentum: GENIE's 1-D SF for ¹²C vs ADoNIS's 2-D SF(p,E) peak-width difference, small as expected |
 
-Residual χ²(shape)=3.5 after 6 knobs: the knob space CANNOT fully absorb the foreign-generator
-shape — i.e. the unmodelled-physics residual is visible and finite, not fittable away.
-(Hessian errors: invalid for the railed pair by construction; qe_norm flat — pinv-projected. Full
-table + figure appended when the run's Hessian block lands.)
+Final table (finalize run: warm start at BFP, FD-of-grad Hessian — `jax.hessian` on the full-bank
+graph is OOM-killed on this 16 GB machine; also A_nom=0.875 after the bin-width fix, i.e. ADoNIS
+nominal is ~14% ABOVE GENIE in absolute norm):
+
+```
+knob      nominal   BFP     +/-     pull    flag
+M_A        1.000   0.862   0.794   -0.17
+qe_norm    1.000   2.207  22.906    0.05    (flat: degenerate with profiled A once RES railed)
+kF_sf      1.000   0.939   0.030   -2.02
+s_NN_el    1.000   2.523   0.745   +2.04
+sabs       1.000   0.300   3.859   -0.18    RAIL (subspace-projected sigma; pair-degenerate)
+res_norm   1.000   0.300   4.421   -0.16    RAIL (with sabs — the product is the constrained combo)
+Hessian near-singular (eig ratio -1.8e-4) — errors pinv-projected; rail errors invalid (blueprint)
+```
+
+χ²(shape) 24.8 (ndf 7) → **3.5 (ndf 1)**: the 6 knobs DO absorb most of the foreign-generator δpT
+shape — but only by driving the RES sector to an unphysical corner (both RES knobs railed at 0.3)
+and pulling nucleon FSI +2σ. Figure `output/figures/altgen_fit_dpt_shape.png`; history
+`output/altgen/fit_dpt_shape.npz`.
+
+### 9b. Rail cross-check — the RES rates actually AGREE (rails are a shape compensation)
+
+Direct check of the rail reading: RES-origin fraction of the selected CC0π-Np sample —
+- GENIE (gst `res` flag): **8.4%** of 86304 selected events
+- ADoNIS bank (`channel==1`, w0-weighted): **7.5%** of the signal weight
+
+The RES→CC0π *rates* are nearly identical, so the railed RES knobs are NOT correcting a rate
+mismatch. RES-origin events are δpT-tail-heavy; GENIE's tail/peak ratio is lower than ADoNIS's, and
+the least-bad shape move available to the knob space is: kill the tail-heavy RES component (rails)
+while re-smearing QE with more NN rescattering (s_NN_el +2σ) and narrowing the initial state
+(kF_sf −2σ). **Demonstration outcome: a foreign-generator fit can produce large, confident-looking
+pulls on knobs whose underlying physics agrees between the generators — the pulls are shape
+proxies, not physics measurements.** This is the central caution for fitting real data with any
+single-generator model.
+
+### 9c. δαT (shape): nominal ADoNIS-vs-GENIE χ²/ndf(7) = **0.37** (A_nom=0.818) — no power
+
+The FSI-direction observable δαT already agrees in shape at nominal; the δpT tension has no δαT
+counterpart. The fit (χ² 2.6→0.4) produced NO significant pulls — every σ is enormous
+(qe_norm ±585, res_norm ±2750, sabs ±83; all |pull| < 0.4σ): at T2K-covariance precision δαT does
+not discriminate the AR23-vs-ADoNIS differences, and the BFP values are flat-direction drift.
+Notably `sabs` drifted UP to 2.2 here while the δpT fit railed it DOWN to 0.3 — mutually opposite
+motion of the same knob across observables, in flat directions: a second, independent caution
+against reading single-observable foreign-generator pulls as physics.
+Figure `output/figures/altgen_fit_dat_shape.png`; log 9 h under 10M-bank contention.
+
+### 9d. δpT (ABSOLUTE): χ² 107.8 (ndf 8) → 3.5 (ndf 2)
+
+Same solution as the shape fit: **kF_sf 0.933 (−1.9σ)**, **s_NN_el 2.52 (+1.8σ)**, RES pair railed
+at 0.3, M_A 0.98 (−0.02σ), qe_norm 1.72±1.67 (+0.4σ, absorbing the norm shuffle once RES is
+railed + rescattering moves QE protons out of acceptance). The absolute and shape metrics agree on
+the physics directions; nominal-ADoNIS is ~14% above GENIE absolutely (A_nom=0.875 from the shape
+fit). Figure `output/figures/altgen_fit_dpt_abs.png`.
+
+## 10. Summary of the demonstration (evidence recap)
+
+1. Genuine GENIE 3.04 AR23_20i sample (300k QE+RES, T2K-νμ/¹²C) built and fit with the frozen
+   ADoNIS differentiable bank — full pipeline works end-to-end.
+2. δpT: nominal shape χ²/ndf 3.55; 6 QE+RES knobs absorb most of it (χ² 24.8→3.5) but only via an
+   unphysical corner: RES sector railed + s_NN_el +2σ + kF_sf −2σ.
+3. The rail is NOT a rate difference — RES→CC0π fractions agree (ADoNIS 7.5% vs GENIE 8.4%); it is
+   a shape compensation for the δpT tail (hA2018 vs INC transport shows up exactly there).
+4. δαT carries no discriminating power at this precision, and its (insignificant) drift moves the
+   same knobs the opposite way.
+5. Central lesson for real-data fits: confident-looking pulls from a single observable can be
+   pure shape proxies — cross-observable consistency (δpT vs δαT) and rate-vs-shape decomposition
+   (as in 9b) are the diagnostics that expose them.
 
 ---
 
 ### Status
 - [x] Feasibility scan + LUCiD verified
 - [x] GENIE generation pipeline (flux, decayer/list overrides, gst)
-- [~] 300k CCQERES generation running
-- [~] fit machinery + closure gate running
-- [ ] GENIE fake-data build, fit, physics interpretation
+- [x] 300k CCQERES generated (53 min)
+- [x] fit machinery closure-gated (kF_sf/res_norm recovered; degeneracies characterized)
+- [x] GENIE fake-data build (§6), fits (§9: δpT shape+abs, δαT shape), interpretation (§9b, §10)
+
+### Open follow-ups (not started)
+- Joint δpT+δαT fit (breaks the M_A↔qe_norm and sabs↔res_norm single-observable degeneracies)
+- Add MEC to the GENIE sample (CCNODIS minus COH) → tests the tail attribution in §9b
+- NEUT/NuWro variants (same pipeline, different card) — LUCiD has both
+- DUNE-ND/Ar variant — requires a DUNE-flux/Ar event bank (~21 h regen, deferred)
