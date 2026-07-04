@@ -320,7 +320,43 @@ Readings (vs §7 a-priori expectations and §9/9b):
 Figure `output/figures/altgen_fit_joint.png`; history `output/altgen/fit_joint.npz`;
 log `/tmp/altgen_joint_fit.log`.
 
-### Open follow-ups (not started)
-- Add MEC to the GENIE sample (CCNODIS minus COH) → tests the tail attribution in §9b
-- NEUT/NuWro variants (same pipeline, different card) — LUCiD has both
+## 13. +MEC variant — the tail attribution CONFIRMED, and a deeper result
+
+300k GENIE `CCQERESMEC` (custom list QEL+RES+MEC; smoke-tested; seed 20240704; 53 min). Sample:
+**QE 54.7% / RES 31.1% / MEC 14.2%**. Norm-builder bug found+fixed at source: σ_tot(E)
+reconstruction summed only QE+RES channel XSecs — MEC now included (σ_tot 4.55→5.53e-38/¹²C,
++21%); fix is a no-op for channel-absent samples. Fake data rebuilt
+(`fakedata_qeresmec.npz`: CC0π 89 895 sel, CC1π 6 519 sel).
+
+**Joint fit vs the +MEC fake data** (`altgen_fit_joint_mec.png`, `fit_joint_mec.npz`):
+
+| | QE+RES-only fake | **+MEC fake** |
+|---|---|---|
+| nominal joint χ²/ndf | 1.36 | **0.61** |
+| CC0π dpt nominal /bin | 3.72 | **1.10** |
+| BFP joint χ²/ndf | 0.48 | 0.14 |
+| s_NN_el BFP | 1.66±0.39 (+1.7σ) | **1.06±0.70 (0.1σ) — pull GONE** |
+| kF_sf BFP | 0.925±0.035 | **0.935±0.042 — unchanged** |
+| rails | sabs LOW (0.3) | M_A_qe HIGH (2.0), sabs HIGH (3.0) — noise-chasing at χ²/ndf 0.14, huge σ |
+
+Readings:
+1. **§9b tail attribution confirmed experimentally**: adding GENIE's MEC (a channel ADoNIS does
+   not model) REMOVES the CC0π δpT tension (3.72→1.10/bin) and the s_NN_el pull (1.66→1.06).
+   The "FSI-strength difference" of the matched-channel fit was the missing-MEC tail.
+2. **Deeper result**: nominal ADoNIS (2-D SF with SRC tail + INC cascade, NO explicit MEC channel)
+   agrees BETTER with GENIE's full physics (0.61) than with GENIE's matched QE+RES subset (1.36).
+   The matched-channel comparison is the harsher test, not the fairer one — both generators
+   approximate the same reality, and ADoNIS's SF/cascade covers part of the strength GENIE books
+   as 2p2h. Direct implication for real-data fits: no MEC knob does not mean MEC-blind.
+3. **kF_sf = 0.935 ± 0.042** — identical in EVERY fit of this study (0.925–0.939 across
+   single-obs/joint, shape/abs, ±MEC): the one robust, sample-composition-independent physics
+   pull (GENIE-¹²C 1-D SF vs ADoNIS 2-D SF initial state).
+4. The upper-rail excursions (M_A_qe→2.0, sabs→3.0) occur at χ²/ndf≈0.14 with σ≥1.3 — flat-
+   direction noise-chasing after the fit is already statistically perfect; pulls at such χ²
+   carry no information (the LM run should arguably early-stop on χ²/ndf<~0.3).
+
+### Open follow-ups
+- [~] NEUT variant (running): 300k full-CC NEUT (neutroot2→PrepareNEUT→nuisflat pipeline built,
+  smoke-tested; card = stock 5.4.0 pure-¹²C + T2K flux hist; both matched-channel and full-CC
+  slices from one run)
 - DUNE-ND/Ar variant — requires a DUNE-flux/Ar event bank (~21 h regen, deferred)

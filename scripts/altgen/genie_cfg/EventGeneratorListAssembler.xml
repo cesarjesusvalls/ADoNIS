@@ -15,6 +15,13 @@
      <param type="alg" name="Generator-1">   genie::EventGenerator/RES-CC   </param>
   </param_set>
 
+  <param_set name="CCQERESMEC">
+     <param type="int" name="NGenerators">   3                              </param>
+     <param type="alg" name="Generator-0">   genie::EventGenerator/QEL-CC   </param>
+     <param type="alg" name="Generator-1">   genie::EventGenerator/RES-CC   </param>
+     <param type="alg" name="Generator-2">   genie::EventGenerator/MEC-CC   </param>
+  </param_set>
+
   <param_set name="CCNODIS">
      <param type="int" name="NGenerators">   4                              </param>
      <param type="alg" name="Generator-0">   genie::EventGenerator/QEL-CC   </param>

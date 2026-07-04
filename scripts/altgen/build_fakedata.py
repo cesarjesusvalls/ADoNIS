@@ -60,8 +60,10 @@ def main():
     X = ak.to_numpy(b.XSec).astype(np.float64)
     Ev = ak.to_numpy(b.Ev).astype(np.float64)
     sig_harm = N / np.sum(1.0 / X)                                      # harmonic-mean identity (XSec=total)
-    # flux-reweighted: reconstruct sigma_tot(E) = sigma_QE(E)+sigma_RES(E) from per-channel events.
+    # flux-reweighted: reconstruct sigma_tot(E) as the sum over ALL channels present in the sample
+    # (per-channel mean XSec per E-bin; a channel absent from the run contributes zero).
     qel = ak.to_numpy(b.qel).astype(bool); res = ak.to_numpy(b.res).astype(bool)
+    mec = ak.to_numpy(b.mec).astype(bool); coh = ak.to_numpy(b.coh).astype(bool)
     ebins = np.linspace(Ev.min(), min(Ev.max(), 10.0), 60)
     ec = 0.5 * (ebins[1:] + ebins[:-1])
     def sigE(mask):
@@ -69,11 +71,10 @@ def main():
         num = np.bincount(idx[mask], weights=X[mask], minlength=len(ec))
         cnt = np.bincount(idx[mask], minlength=len(ec))
         return np.where(cnt > 0, num / np.maximum(cnt, 1), 0.0)
-    sQE, sRES = sigE(qel), sigE(res)
     # T2K flux weight per E-bin
     fedges, fval = _flux()
     fj = np.interp(ec, 0.5 * (fedges[1:] + fedges[:-1]), fval)
-    stot = sQE + sRES
+    stot = sigE(qel) + sigE(res) + sigE(mec) + sigE(coh)
     sig_flux = np.sum(stot * fj) / np.sum(fj)
     print(f"[norm] <sigma_tot>_Phi  harmonic={sig_harm:.4f}  flux-reweighted={sig_flux:.4f}  "
           f"[1e-38 cm^2/nucleon]  (ratio {sig_harm/sig_flux:.3f})", flush=True)

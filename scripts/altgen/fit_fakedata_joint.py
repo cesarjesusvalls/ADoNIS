@@ -30,6 +30,8 @@ from analysis.t2k.differentiability import info_content as IC
 
 BANKDIR = os.environ.get("ADONIS_EVENT_BANK", "output/event_bank")
 FAKE = os.environ.get("ADONIS_FAKEDATA", "output/altgen/fakedata_ccqeres.npz")
+TAG = os.environ.get("ADONIS_FAKE_TAG", "")          # npz key suffix ("", "_full")
+LABEL = os.environ.get("ADONIS_FIT_LABEL", "joint")  # output filename label
 
 FIT = ["M_A_qe", "qe_norm", "kF_sf", "s_NN_el", "sabs", "res_norm"]
 LO = np.array([0.5, 0.3, 0.6, 0.3, 0.3, 0.3])
@@ -59,10 +61,10 @@ def main():
     d0 = np.load(FAKE, allow_pickle=True)
     for d in ds:
         if d["channel"] == "CC0pi":
-            d["data"] = np.asarray(d0[f"{d['key']}_dsig"])                    # 1e-38 cm^2/unit/nucleon
+            d["data"] = np.asarray(d0[f"{d['key']}{TAG}_dsig"])               # 1e-38 cm^2/unit/nucleon
         else:
-            d["data"] = np.asarray(d0[f"cc1pi_{d['key']}_dsig_C"]) + d["offset"]  # GENIE-C + frozen H
-    log(f"targets swapped to GENIE (chan frac QE/RES={np.asarray(d0['chan_frac'])[:2]})")
+            d["data"] = np.asarray(d0[f"cc1pi_{d['key']}{TAG}_dsig_C"]) + d["offset"]  # gen-C + frozen H
+    log(f"targets swapped to fake data {FAKE} (tag='{TAG}', label={LABEL})")
 
     # ---- differentiable weights: JB as ARGUMENT (info_content pattern) -------------------------- #
     def wf(theta, JB):
@@ -126,7 +128,7 @@ def main():
     railed = [(abs(th[i] - LO[i]) < 1e-3 or abs(th[i] - HI[i]) < 1e-3) for i in range(NP)]
     _, per_bf = chi2_of(mods)
     ndf = nbins - NP
-    print(f"\n==== JOINT CC0pi+CC1pi fit to GENIE AR23 fake data "
+    print(f"\n==== JOINT CC0pi+CC1pi fit [{LABEL}] to {FAKE} (tag='{TAG}') "
           f"(chi2 {c_nom:.1f} -> {c_cur:.1f}; ndf {nbins} -> {ndf}) ====")
     print(f"{'knob':>20} {'BFP':>8} {'+/-':>8} {'pull':>7} {'flag':>6}")
     for i, k in enumerate(FIT):
@@ -142,7 +144,7 @@ def main():
     for ax, d, mn, mb in zip(axes.flat, ds, mods_nom, mods):
         ctr = 0.5 * (d["edges"][1:] + d["edges"][:-1]) / d["xscale"]
         xed = d["edges"] / d["xscale"]
-        ax.errorbar(ctr, d["data"], yerr=d["sigma"], fmt="o", color="k", ms=4, capsize=2, label="GENIE fake")
+        ax.errorbar(ctr, d["data"], yerr=d["sigma"], fmt="o", color="k", ms=4, capsize=2, label=f"{LABEL} fake data")
         ax.step(xed, np.append(mn, mn[-1]), where="post", color="0.5", ls=":", label="ADoNIS nominal")
         ax.step(xed, np.append(mb, mb[-1]), where="post", color="C0", lw=1.8, label="ADoNIS joint BFP")
         ax.set(xlabel=d["xlabel"], title=d["name"]); ax.set_ylim(bottom=0)
@@ -157,13 +159,13 @@ def main():
     for i, k in enumerate(FIT[::-1]):
         j = NP - 1 - i
         axp.text(pulls[j], i, f"  {th[j]:.2f}", va="center", fontsize=8)
-    fig.suptitle(f"JOINT CC0pi+CC1pi ADoNIS fit to GENIE AR23 fake data  "
+    fig.suptitle(f"JOINT CC0pi+CC1pi ADoNIS fit ({LABEL})  "
                  f"(chi2/ndf {c_nom/nbins:.2f} -> {c_cur/ndf:.2f})")
     fig.tight_layout()
     os.makedirs("output/figures", exist_ok=True)
-    out = "output/figures/altgen_fit_joint.png"
+    out = f"output/figures/altgen_fit_{LABEL}.png"
     fig.savefig(out, dpi=140); plt.close(fig)
-    np.savez("output/altgen/fit_joint.npz", fit=FIT, bfp=th, sig=sig, V=V, chi2_nom=c_nom,
+    np.savez(f"output/altgen/fit_{LABEL}.npz", fit=FIT, bfp=th, sig=sig, V=V, chi2_nom=c_nom,
              chi2_bf=c_cur, nbins=nbins, ndf=ndf, per_nom=per_nom, per_bf=per_bf,
              names=[d["name"] for d in ds])
     log(f"[fig] {out}")
