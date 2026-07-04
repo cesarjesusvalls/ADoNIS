@@ -88,6 +88,22 @@ python -u analysis/t2k/differentiability/validate.py --fisher   # Eb FD eps-scan
 #   (--fisher needs the info_content --set full17 gradient checkpoint)
 ```
 
+### `llh_surface.py` — exact multi-parameter LLH (χ², full cov) surfaces vs the Hessian ellipse at the BFP
+```bash
+python -u analysis/t2k/differentiability/llh_surface.py --gates              # slicing / AD-Hessian-vs-FD / cond
+python -u analysis/t2k/differentiability/llh_surface.py --2d [pairs] [--ng 61] [--obs dpt,dat]
+python -u analysis/t2k/differentiability/llh_surface.py --3d [triples] [--ng 25]
+python -u analysis/t2k/differentiability/llh_surface.py --combo [pairs] [--ng 51]   # CC0π+CC1π + degeneracy overlay
+python analysis/t2k/differentiability/llh_surface.py --plot-only <npz>       # re-render (2D or 3D auto-detected)
+#   pairs: maqe_axial | sabs_selastic | qe_res_norm    triples: ma_axial_resnorm | fsi_trio
+```
+Maps the WHOLE Δχ²(θ) over dense grids (bank sliced to the 340k CC0π-signal events, ~53 ms/exact-reweight) and
+overlays the `jax.hessian` Gaussian ellipse at the BFP.  The ellipse is exact iff the model is linear in θ
+(`qe_norm × res_norm`: residual 1e-12) and fails predictably otherwise — a curved banana (`maqe_axial`) or a
+near-flat plane (`fsi_trio`: cond(H) 8.7e3, the flagged equal-rescale pion-FSI invariance).  `--combo` reuses
+`info_content.build_datasets` (CC1π + frozen free-H) and shows CC1π tightening RES norm 3.2×.  Figures:
+`output/figures/llh_{surface,3d,cc0cc1_norm_degeneracy}*.png`.  Evidence: `docs/logbook/llh_surface.md`.
+
 ### `grad_arrows.py` — walk-time Jacobian figures (fresh proposal+walks, autodiff of model_hist_full)
 ```bash
 CC0PI_N=30000 python analysis/t2k/differentiability/grad_arrows.py              # 1D arrow grids (dpt+dat)

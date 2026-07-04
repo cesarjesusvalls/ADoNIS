@@ -17,9 +17,10 @@ Evidence, not conclusions. Numbers are per-run; figures under `output/figures/ll
   one exact reweight is ~53 ms warm. A 61×61 grid ≈ 3.3 min/pair; a 25³ cube ≈ 14 min. No separability
   approximation — the exact `weight_jit` is evaluated at every grid point.
 - **χ².** Absolute (primary; CLAUDE.md absolute stance) `χ² = rᵀ C⁻¹ r`, r = model−data, over the full T2K
-  STV covariance; shape-profiled (closed-form global A) as a secondary view. Files: `scripts/cc0pi_llh_lib.py`
-  (χ² + robust C⁻¹), `scripts/cc0pi_llh_surface.py` (2D + Hessian), `scripts/cc0pi_llh_3d.py` (3D cube),
-  `scripts/cc0pi_llh_gates.py` (validation).
+  STV covariance; shape-profiled (closed-form global A) as a secondary view. **All of it lives in one module:
+  `analysis/t2k/differentiability/llh_surface.py`** (CLI modes `--gates`/`--2d`/`--3d`/`--combo`/`--plot-only`);
+  T2K data + CC1π/free-H assembly reused from `info_content` (single source of truth). (2026-07 consolidation
+  of the six scratch `scripts/cc0pi_llh*.py` demonstrators into this module.)
 - **Robust covariance.** `robust_cinv` = eigen-floored inverse (floor eigenvalues at `rtol·max(eig)`, an
   SVD/pinv with a relative cutoff), condition number reported — the same robust handling the 2D pcos
   covariance needed. STV blocks are well-conditioned: **cond(dpt)=2.98e3, cond(dat)=14.0, 0 eigs floored.**
@@ -32,7 +33,7 @@ jit **operands** (`weight_jit(JB, θ, grids)`) the result is finite. Fix: the χ
 (JB operand) and are **never** wrapped in an outer `jax.jit` that would recapture JB; speed comes from
 `weight_jit`, and `jax.grad`/`jax.hessian` trace *through* it with JB still an operand.
 
-## Validation gates (`scripts/cc0pi_llh_gates.py`, 1M bank)
+## Validation gates (`llh_surface.py --gates`, 1M bank)
 
 | gate | result |
 |---|---|
@@ -55,7 +56,7 @@ Fast-forwarded onto `origin/main` (info-content + M_A-split + consolidation comm
 
 ## Results — 2D surfaces (CC0π dpt+dat, ng=61, absolute χ²)
 
-`scripts/cc0pi_llh_surface.py` → `output/figures/llh_surface_<pair>_dptdat.png`, npz in `/tmp/adonis_llh/`.
+`llh_surface.py --2d` → `output/figures/llh_surface_<pair>_dptdat.png`, npz in `/tmp/adonis_tune_runs/llh_*`.
 Each figure: (0) true Δχ² heat + true contours (white, Δχ²=1/4/9) + Hessian ellipse (red dashed) at the BFP;
 (1) profiled (min over partner) vs conditional (slice at BFP) vs Gaussian (σ from V₀₀) along p₀; (2) the
 non-Gaussianity residual Δχ²_true − Δχ²_Gauss.
@@ -84,7 +85,7 @@ Evidence:
 
 ## Results — 3D slices (CC0π dpt+dat, ng=25 cube, absolute χ²)
 
-`scripts/cc0pi_llh_3d.py` → `output/figures/llh_3d_<key>.png`. Each figure: the three profiled 2D projections
+`llh_surface.py --3d` → `output/figures/llh_3d_<key>.png`. Each figure: the three profiled 2D projections
 (min over the 3rd param) with the projected Hessian ellipse, plus the normalized 3×3-Hessian eigen-spectrum
 (stiff vs flat directions) — this is the "beyond FD-Hessian-at-BFP" read: a *single* number (a determinant or
 a marginal σ) hides that one eigen-direction is nearly flat.
@@ -113,7 +114,7 @@ the eigen-*direction* is still the robust readout — it is a property of the su
 
 ## Results — CC0π+CC1π combination (5 datasets, absolute χ²)
 
-`scripts/cc0pi_cc1pi_llh.py` builds a combined absolute χ² over the FIVE T2K STV datasets — CC0π dpt, dat
+`llh_surface.py --combo` builds a combined absolute χ² over the FIVE T2K STV datasets — CC0π dpt, dat
 (per-nucleon 1e-38) + CC1π+Np pN, dpTT, daT (nb/CH + **frozen nominal free-H offset**) — all re-summed from
 the ONE bank, dataset assembly REUSED from `info_content.build_datasets` (single source of truth: acceptance,
 units, free-H). The bank is sliced to the UNION of CC0π ∪ CC1π signal events (353,653 = 340,046 CC0π +
@@ -145,12 +146,12 @@ reused unchanged (`--ng 51`, obs_tag `cc0cc1`).
 
 ```
 export ADONIS_EVENT_BANK=/Users/homelab/Lab/Playground/projects/DIFFGEN/ADoNIS/output/event_bank
-python -u scripts/cc0pi_llh_gates.py                 # validation gates
-python -u scripts/cc0pi_llh_surface.py --ng 61       # 3 pairs, 2D (dpt+dat)
-python -u scripts/cc0pi_llh_3d.py --ng 25            # 2 cubes (ma_axial_resnorm, fsi_trio)
-python -u scripts/cc0pi_cc1pi_llh.py --ng 51         # combination (qe_res_norm, maqe_axial)
-python    scripts/cc0pi_cc1pi_compare.py             # degeneracy-breaking overlay
-# figures -> output/figures/llh_*   (gitignored, per-worktree);  npz -> /tmp/adonis_llh/
+M=analysis/t2k/differentiability/llh_surface.py
+python -u $M --gates                 # validation gates
+python -u $M --2d    --ng 61         # 3 pairs, 2D (dpt+dat)
+python -u $M --3d    --ng 25         # 2 cubes (ma_axial_resnorm, fsi_trio)
+python -u $M --combo --ng 51         # combination (qe_res_norm, maqe_axial) + degeneracy overlay
+# figures -> output/figures/llh_*   (gitignored, per-worktree);  npz -> /tmp/adonis_tune_runs/llh_*
 ```
 
 ## TL;DR
