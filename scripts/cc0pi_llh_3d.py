@@ -126,7 +126,8 @@ def make_figure(npz):
         except np.linalg.LinAlgError:
             pass
         aa.plot(bfp[u], bfp[v], "X", color="red", ms=11, mec="k")
-        aa.set_xlabel(texs[u]); aa.set_ylabel(texs[v])
+        aa.set_xlim(a[u].min(), a[u].max()); aa.set_ylim(a[v].min(), a[v].max())   # clamp to cube (clip runaway
+        aa.set_xlabel(texs[u]); aa.set_ylabel(texs[v])                             # flat-direction ellipse)
         aa.set_title(f"profiled $\\Delta\\chi^2$ (min over {texs[rem]})", fontsize=9)
         fig.colorbar(pc, ax=aa, fraction=0.046)
     # eigen-spectrum panel

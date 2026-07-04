@@ -94,11 +94,21 @@ def make_chi2_combined(verbose=True):
                 obs_names=names, conds=conds, nfloored=[0] * len(ds))
 
 
+# CC1pi tightens RES -> zoom the combined norm-pair grid onto the now-narrow constraint (the CC0pi-only range
+# res_norm (0.30,2.80) is far too wide once CC1pi is added).  maqe_axial is QE-only (CC1pi is orthogonal) so
+# its CC0pi range is kept.
+COMB_RANGES = {
+    "qe_res_norm": ((0.76, 1.02), (0.45, 1.45)),
+}
+
+
 def main():
     ng = 51
     if "--ng" in sys.argv: ng = int(sys.argv[sys.argv.index("--ng") + 1])
     keys = [a for a in sys.argv[1:] if a in S.PAIRS]
     if not keys: keys = ["qe_res_norm", "maqe_axial"]                          # norm pair is the headline
+    for k, (r0, r1) in COMB_RANGES.items():                                    # zoom combined grids
+        n0, n1, t0_, t1_, _, _ = S.PAIRS[k]; S.PAIRS[k] = (n0, n1, t0_, t1_, r0, r1)
     t0 = time.time()
     print(f"[comb] pairs={keys} ng={ng}", flush=True)
     C = make_chi2_combined()

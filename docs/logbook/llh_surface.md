@@ -82,6 +82,83 @@ Evidence:
   nominal the projection onto (sabs, s_piN_elastic) is soft but not exactly flat; sabs is nearly unconstrained
   when s_piN_elastic floats (profiled Δχ²(sabs) flat across 0.75–2.3).
 
-## Results — 3D slices  (TODO)
+## Results — 3D slices (CC0π dpt+dat, ng=25 cube, absolute χ²)
 
-## Results — CC0π+CC1π combination  (TODO)
+`scripts/cc0pi_llh_3d.py` → `output/figures/llh_3d_<key>.png`. Each figure: the three profiled 2D projections
+(min over the 3rd param) with the projected Hessian ellipse, plus the normalized 3×3-Hessian eigen-spectrum
+(stiff vs flat directions) — this is the "beyond FD-Hessian-at-BFP" read: a *single* number (a determinant or
+a marginal σ) hides that one eigen-direction is nearly flat.
+
+**`M_A_qe × axial_strength × res_norm`** — BFP (0.911, 0.939, 1.475), interior (no rails), χ²/ndf 1.51,
+cond(H)=194. Normalized-Hessian eigenvalues (small = flat):
+- λ=0.0126 → −0.71·M_A_qe +0.70·axial (the QE-axial banana direction — the soft valley),
+- λ=0.889 → +0.95·res_norm (res_norm nearly its own eigen-direction, moderately stiff),
+- λ=2.099 → the coherent QE-rate direction (all same sign).
+
+The BFP here differs from the 2D `maqe_axial` BFP (1.24, 0.68) because res_norm floats to 1.48 and absorbs
+rate — a concrete example of a BFP moving when a dimension is added.
+
+**`sabs × s_piN_elastic × s_piN_cex`** — BFP (2.40, 0.976, 1.920) with **sabs at the upper rail (2.40)**;
+χ²/ndf 1.78; cond(H)=**8.7e3** (near-singular). Normalized-Hessian eigenvalues:
+- λ=**3.4e-4** → **+0.80·sabs +0.49·s_piN_cex +0.34·s_piN_elastic** — a *same-sign* near-flat direction, i.e.
+  the flagged EXACT pion-FSI invariance (equal rescale of {sabs, s_piN_elastic, s_piN_cex, s_conv}) restricted
+  to these 3 of the 4 knobs. The eigenvalue is ~8000× smaller than the stiff one → an essentially flat plane;
+  the fit slides along it until sabs rails. A Gaussian error from `det(H)`/`inv(H)` is meaningless here.
+- λ=0.154 → −0.75·s_piN_elastic +0.65·s_piN_cex (the elastic↔cex trade), λ=2.846 → the coherent-rate direction.
+
+Rail effect: at the sabs rail the fitted Hessian is not a valid curvature (the minimum is a boundary point);
+the eigen-*direction* is still the robust readout — it is a property of the surface, not of the rail.
+
+
+
+## Results — CC0π+CC1π combination (5 datasets, absolute χ²)
+
+`scripts/cc0pi_cc1pi_llh.py` builds a combined absolute χ² over the FIVE T2K STV datasets — CC0π dpt, dat
+(per-nucleon 1e-38) + CC1π+Np pN, dpTT, daT (nb/CH + **frozen nominal free-H offset**) — all re-summed from
+the ONE bank, dataset assembly REUSED from `info_content.build_datasets` (single source of truth: acceptance,
+units, free-H). The bank is sliced to the UNION of CC0π ∪ CC1π signal events (353,653 = 340,046 CC0π +
+14,637 CC1π) so the exact reweight stays ~57 ms. Covariance conditions: CC1π pN 8.5e2, dpTT 39, daT 6.5.
+Nominal combined χ²/ndf = 1.44 (ndf=28). It exposes the same `make_chi2` interface, so the 2D machinery is
+reused unchanged (`--ng 51`, obs_tag `cc0cc1`).
+
+**Does CC1π break a CC0π degeneracy?** (`output/figures/llh_cc0cc1_norm_degeneracy.png`, from the saved BFP/V):
+
+| pair | dataset | BFP | σ (QE norm, RES norm) | non-Gauss |
+|---|---|---|---|---|
+| `qe_norm × res_norm` | CC0π only | (0.856, 1.428) | (0.067, **0.426**) | 0.00 |
+| `qe_norm × res_norm` | CC0π+CC1π | (0.874, 0.903) | (0.066, **0.135**) | 0.00 |
+| `M_A_qe × axial`     | CC0π only | (1.236, 0.684) | banana (corr −0.97) | 23.5 |
+| `M_A_qe × axial`     | CC0π+CC1π | (1.247, 0.676) | banana (unchanged)  | 37.1 |
+
+- **RES norm: σ 0.43 → 0.13 (3.2× tighter)** and the BFP moves 1.43 → 0.90 — CC1π+Np directly measures the
+  RES channel and collapses the res_norm direction CC0π alone leaves loose (CC0π has only ~6% RES). QE norm is
+  unchanged (0.067 → 0.066): CC0π already pins it, CC1π adds no QE-norm information. Both surfaces stay
+  **exactly Gaussian** (linear norms). This is the headline degeneracy-breaking result.
+- **`M_A_qe × axial` is unchanged by adding CC1π** (BFP 1.236,0.684 → 1.247,0.676; same banana). Expected:
+  M_A_qe/axial are QE-only knobs, so the CC1π (RES) datasets are ≈constant in them — an orthogonal dataset
+  cannot break a degeneracy it has no sensitivity to. (The non-Gauss number rises 23.5 → 37.1 only because the
+  combined χ² has a deeper floor; the banana *shape* is identical.) `qe_res_norm` combined grid is zoomed to
+  the tightened constraint (`COMB_RANGES`); the norm shape-χ² uses a single global A across mixed units and is
+  a documented secondary only.
+
+## Reproduce
+
+```
+export ADONIS_EVENT_BANK=/Users/homelab/Lab/Playground/projects/DIFFGEN/ADoNIS/output/event_bank
+python -u scripts/cc0pi_llh_gates.py                 # validation gates
+python -u scripts/cc0pi_llh_surface.py --ng 61       # 3 pairs, 2D (dpt+dat)
+python -u scripts/cc0pi_llh_3d.py --ng 25            # 2 cubes (ma_axial_resnorm, fsi_trio)
+python -u scripts/cc0pi_cc1pi_llh.py --ng 51         # combination (qe_res_norm, maqe_axial)
+python    scripts/cc0pi_cc1pi_compare.py             # degeneracy-breaking overlay
+# figures -> output/figures/llh_*   (gitignored, per-worktree);  npz -> /tmp/adonis_llh/
+```
+
+## TL;DR
+
+The exact bank reweight lets the *full* Δχ²(θ) surface be mapped, not just its curvature at one point. The
+Gaussian/Hessian ellipse is **exact iff the model is linear in θ** (`qe_norm × res_norm`: residual 1e-12), and
+**fails predictably when it is not**: hard-vertex knobs (`M_A_qe × axial`) make a curved banana the ellipse
+only fits locally, and pion-FSI knobs (`sabs × s_piN_elastic`, `fsi_trio`) form a near-flat valley/plane
+(3×3-Hessian eigenvalue 3.4e-4 along the flagged equal-rescale invariance) where a single Gaussian error is
+meaningless. Adding the CC1π+Np channel tightens RES norm 3.2× but leaves the QE-axial banana untouched.
+

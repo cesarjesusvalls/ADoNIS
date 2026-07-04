@@ -175,7 +175,8 @@ def make_figure(npz):
                 f"area ratio@1$\\sigma$={float(d['ng_area_ratio_1s']):.2f}")
 
     rail = d["rail"]
-    fig.suptitle(f"T2K CC0$\\pi$ [{obs_tag}] exact LLH surface — {tex0} $\\times$ {tex1}   "
+    chan = "CC0$\\pi$+CC1$\\pi$" if str(obs_tag).startswith("cc0cc1") else "CC0$\\pi$"
+    fig.suptitle(f"T2K {chan} [{obs_tag}] exact LLH surface — {tex0} $\\times$ {tex1}   "
                  f"(BFP $\\chi^2$/ndf={float(d['chi2_min'])/int(d['ndf']):.2f}"
                  f"{'  RAIL!' if bool(rail[0]) or bool(rail[1]) else ''})", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
