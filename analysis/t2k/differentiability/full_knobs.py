@@ -32,6 +32,27 @@ _NPW = 14
 _EB_EPS = 1e-2
 
 
+_ISO = {0: "pp", 1: "pn", 2: "nn"}
+
+
+def knob_specs(NOM):
+    """Ordered (knob_name, component_idx|None, display_label, nominal_value) for the PLOTTED/FITTED knobs.
+    pw_norm is excluded (cost); sscat is excluded (dead: superseded by the granular s_piN_*/s_NN_* knobs).
+    Tuple knobs are expanded per component (s_NN_elastic -> [pp]/[pn]/[nn]).  SINGLE SOURCE OF TRUTH for
+    knob metadata -- everything (bank labels, arrow grids, scans, fits) enumerates knobs through this."""
+    out = []
+    for name, val in NOM.items():
+        if name in ("pw_norm", "sscat"):
+            continue
+        if isinstance(val, tuple):
+            for i, vi in enumerate(val):
+                lab = f"{name}[{_ISO[i]}]" if name.startswith("s_NN") else f"{name}[{i}]"
+                out.append((name, i, lab, float(vi)))
+        else:
+            out.append((name, None, name, float(val)))
+    return out
+
+
 def nominal_knobs():
     # M_A is split per channel: M_A_qe (QE dipole mass) and M_A_res (RES/DCC axial dipole mass) are
     # INDEPENDENT knobs (each reweights only its own channel's amps2 record); both nominal 1.0.

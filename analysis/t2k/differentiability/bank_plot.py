@@ -1,13 +1,13 @@
 """Plot-time consumer of the differentiable EVENT BANK (event_bank.py).  NO JAX cascade here -- everything
-is a cheap re-sum over the stored per-event (kinematics, ragged final state, w0, d^1/d^2/d^3 w/dtheta).
+is a cheap re-sum over the stored per-event records (kinematics, ragged final state, w0, hard-vertex amps2 +
+FSI kind-1 + SF records for the EXACT reweight via bank_reweight).
 
 Pick ANY of these at plot time, no re-running:
   * signal definition  -> a boolean mask over events (topology from the full final state + phase space)
   * observable         -> a per-event value (dpt, dat, p_N, muon kinematics, ...)
   * binning            -> any edges
-  * forward histogram  (sum w0)            : the T2K-style distribution
-  * gradient histogram (sum dw/dtheta_k)   : per-knob Jacobian
-  * curvature          : diagonal 2nd/3rd (stored) + off-diagonal Hessian = sum_i Ji*Jj/w0 (reconstructed)
+  * forward histogram  (sum w0)                     : the T2K-style distribution
+  * reweight/gradient  (bank_reweight.bank_weight)  : exact w(theta), jax-differentiable in every knob
 
 PIDs: proton 2212, neutron 2112, pions {211,111,-211}.
 """
@@ -42,9 +42,8 @@ def load_bank(outdir):
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
     B["n_chunks"] = nchunks
-    from analysis.t2k.differentiability import grad_arrows as GA
-    from analysis.t2k.differentiability.full_knobs import nominal_knobs
-    B["labels"] = [s[2] for s in GA._specs(nominal_knobs())]    # 26 plotted knobs (no pw_norm, no sscat)
+    from analysis.t2k.differentiability.full_knobs import nominal_knobs, knob_specs
+    B["labels"] = [s[2] for s in knob_specs(nominal_knobs())]   # plotted knobs (no pw_norm, no sscat)
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
     return B
 
@@ -210,25 +209,6 @@ def dat_1pi(kmu, lead, pip):
 def hist_forward(values, B, mask, edges, conv=1.0):
     h, _ = np.histogram(values[mask], bins=edges, weights=B["w0"][mask].astype(np.float64))
     return h / np.diff(edges) * conv
-
-
-def hist_gradient(values, B, mask, edges, conv=1.0):
-    """(nbins, nknob) per-bin gradient d(dsigma/dx)/dtheta from the stored D1."""
-    nb = len(edges) - 1; nk = B["D1"].shape[1]; out = np.zeros((nb, nk))
-    idx = np.clip(np.searchsorted(edges, values) - 1, 0, nb - 1)
-    for k in range(nk):
-        out[:, k] = np.bincount(idx[mask], weights=B["D1"][mask, k].astype(np.float64), minlength=nb)
-    return out / np.diff(edges)[:, None] * conv
-
-
-def hist_diag_curv(values, B, mask, edges, order, conv=1.0):
-    """Per-bin diagonal 2nd (order=2) or 3rd (order=3) derivative histogram from stored D2/D3."""
-    D = B["D2"] if order == 2 else B["D3"]
-    nb = len(edges) - 1; nk = D.shape[1]; out = np.zeros((nb, nk))
-    idx = np.clip(np.searchsorted(edges, values) - 1, 0, nb - 1)
-    for k in range(nk):
-        out[:, k] = np.bincount(idx[mask], weights=D[mask, k].astype(np.float64), minlength=nb)
-    return out / np.diff(edges)[:, None] * conv
 
 
 if __name__ == "__main__":

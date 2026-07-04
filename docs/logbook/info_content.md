@@ -204,3 +204,15 @@ Fisher is singular; rails flagged.
    session** (not touched here — shared FSI core): is the missing pion total-interaction-probability
    response intended (walk design) or a coverage gap of the kind-1 pion record? Until then, only 3 of the
    4 pion knobs are independent in any fit, exactly.
+
+## Code consolidation (2026-07-04)
+
+All session code moved into `analysis/t2k/differentiability/` (see its `README.md` for usage):
+`scripts/info_content.py` → `info_content.py`; `scripts/{sf_knob_checks,fd_gate_diagnose}.py` →
+`validate.py` (`--sf` / `--fisher`). Module cleanup in the same commit: `bank_arrows_{incl,obs}` merged
+into `bank_arrows` (modes `cc0pi|cc1pi [stv]|incl`); `grad_{2d,all}` merged into `grad_arrows`
+(`--2d`/`--hi-stats`); `closure_full` merged into `closure --full`; knob enumeration moved to
+`full_knobs.knob_specs` (single source; `grad_arrows._specs` kept as alias); stale Taylor-era consumers
+deleted (`bank_taylor`, `bank_showcase`, `bank_validate`, `bank_plot.hist_gradient/hist_diag_curv` — all
+read `D1/D2/D3` fields the full-record bank no longer stores). Earlier `scripts/...` paths in this logbook
+refer to the pre-consolidation locations (git history preserves them).

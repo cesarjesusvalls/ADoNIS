@@ -24,12 +24,12 @@ The CC1pi free-H piece (pi+ always survives, no nuclear FSI) is generated once a
 constant per bin -> its (small) knob dependence is neglected; the Jacobian for CC1pi is carbon-only.
 This is a documented limitation of the demonstrator (logbook), not of the method.
 
-    python -u scripts/info_content.py [--set axial4|full17]
-    python -u scripts/info_content.py --plot-only /tmp/adonis_tune_runs/info_content_<set>.npz
+    python -u analysis/t2k/differentiability/info_content.py [--set axial4|full17]
+    python -u analysis/t2k/differentiability/info_content.py --plot-only /tmp/adonis_tune_runs/info_content_<set>.npz
 """
 import os, sys, time, json
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # repo root
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
