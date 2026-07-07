@@ -16,10 +16,13 @@ TARGET=1000060120          # 12C ion PDG code
 PROBE=14                   # numu
 WORK=/work
 NAME="${NAME:-genie_t2k_12C_ar23_${EGLIST}}"
+# Per-run flux filename so concurrent jobs never clobber a shared histogram
+# (content is deterministic from T2K_nu.dat; the name only isolates the file).
+FLUX="${WORK}/flux_${NAME}.root"
 export GXMLPATH=/genie_cfg:${GXMLPATH:-}
 
-echo "=== [$(date -u +%H:%M:%S)] building flux histogram ==="
-root -l -b -q "/scripts/make_flux_root.C(\"$WORK/T2K_nu.dat\",\"$WORK/t2k_flux.root\",\"t2kflux\")"
+echo "=== [$(date -u +%H:%M:%S)] building flux histogram ($FLUX) ==="
+root -l -b -q "/scripts/make_flux_root.C(\"$WORK/T2K_nu.dat\",\"$FLUX\",\"t2kflux\")"
 
 echo "=== [$(date -u +%H:%M:%S)] gevgen: $NEV numu on 12C, tune $TUNE, list $EGLIST ==="
 cd "$WORK"
@@ -28,7 +31,7 @@ gevgen \
   -p "$PROBE" \
   -t "$TARGET" \
   -e 0,30 \
-  -f "$WORK/t2k_flux.root,t2kflux" \
+  -f "$FLUX,t2kflux" \
   --cross-sections "$GENIE_XSEC_FILE" \
   --tune "$TUNE" \
   --seed "$SEED" \

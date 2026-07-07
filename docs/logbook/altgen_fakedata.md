@@ -412,3 +412,79 @@ Cross-generator fingerprints (matched vs full, both generators — the study's s
 ### Open follow-ups
 - DUNE-ND/Ar variant — requires a DUNE-flux/Ar event bank (~21 h regen, deferred)
 - NuWro (third generator, same pipeline) — available in LUCiD if wanted
+
+## 15. HIGH-STATISTICS regime — turning un-hideable mismatch into a physics signal
+
+Mandate refinement (Remote Control, 2026-07-07). §9–14 all used the **real T2K CC0π-STV
+covariance** (~10% errors) as the error model; under it the 6 knobs absorb the foreign-generator
+mismatch (χ²/ndf → 0.48, 0.14). That absorption is a *large-error artifact*. The real question:
+
+> When a future experiment drives statistical errors to negligible, the best possible agreement is
+> never good if the forward model doesn't contain the fake-data physics. Can we fit so that such
+> "broken" physics becomes **informative** rather than just a failed χ²?
+
+### The mechanism (why this is tractable)
+The 6 knobs span a 6-D manifold in observable space; the foreign generator is a point that generally
+lies OFF it. The best fit projects onto the manifold, leaving an irreducible residual `r_⊥` in the
+knob Jacobian's NULL SPACE (the directions the knobs cannot reach). With `C → α·C` (α→0 = future
+high-stat/high-precision):
+- χ²_min = `r_⊥ᵀ C⁻¹ r_⊥` **grows like 1/α** — does NOT converge to 1 for any structural mismatch.
+- So high stats does not "hide better then plateau"; it PINS the knobs (large-error flat directions
+  freeze) and EXPOSES `r_⊥`, whose direction in observable space is the missing-physics fingerprint.
+- Low-stat regime: knobs move a lot, residual buried. High-stat regime: knobs pinned, residual
+  exposed. The diagnostic turns ON precisely where the worry lives.
+
+This is the high-stat generalization of the region-split rule (`region-split-not-summary-chi2`):
+don't read the summary χ², read WHERE it concentrates — here in eigen-directions, not just bins.
+
+### Why this session is the ideal testbed
+The physics differences are KNOWN and documented (§7/§13/§14): GENIE-matched is missing MEC (δpT
+tail), GENIE+MEC removes it, the initial-state SF difference is *absorbable* (lives in kF_sf). So
+this is a CONTROLLED experiment: verify a high-stat residual diagnostic lights up exactly where the
+known missing physics lives. If it does, the protocol is validated and can be trusted on real data
+where the missing physics is unknown. Deliverable = the protocol, not "ADoNIS fits GENIE".
+
+### Plan (reuses fit_fakedata_joint.py + the frozen bank)
+1. **Statistics ladder**: refit at `C(α)=α·C_T2K`, α down to the MC-stat floor. Plot χ²_min/ndf vs
+   1/α. Adequate model → flat ~1; structural mismatch → linear rise. Crossover α* = the precision at
+   which the missing physics becomes >Nσ. Contrast GENIE-matched (rises) vs +MEC (stays flat).
+2. **Irreducible-residual fingerprint**: at the high-stat BFP whiten `J̃=C^{-1/2}J`, project residual
+   onto the knob null space, un-whiten `r_⊥` per bin/observable. Validate it concentrates in the δpT
+   tail (matched) and nearly vanishes (+MEC).
+3. **Characterize, not just detect**: add a free-form template (MEC-shaped / δpT spline, cf.
+   `cc0pi_q2spline_fit.py`) as extra nuisance directions; show χ²_⊥ collapses and the recovered
+   template matches the known missing channel. Closes detect → measure.
+
+### Scope decision (Remote Control, 2026-07-07)
+Generate ~3M each for **GENIE matched (CCQERES) vs +MEC (CCQERESMEC)** so fake-data central values
+reach ~0.3% (vs the 300k 0.7–1.6% MC floor) and the ladder extends to ~30×-better-than-T2K.
+NEUT/NuWro/DUNE not in this phase.
+
+### Generation (in progress)
+- Wrapper reconstructed (docker-run was never persisted) and smoke-gated at NEV=1000 (gst produced).
+- `run_genie.sh` flux filename parametrized by NAME (`flux_${NAME}.root`) so the two concurrent 3M
+  jobs cannot race on a shared histogram — deterministic content, name only isolates the file.
+- 300k CCQERES gevgen took 52 min (~95 evt/s) → 3M ≈ 8.8 h/job; run in parallel (8 cores, both
+  single-thread under Rosetta).
+- CCQERES 3M: seed 20250707, `NAME=genie_t2k_12C_ar23_CCQERES_3M`, log `gen_ccqeres_3M.log`.
+- CCQERESMEC 3M: seed 20250708, `NAME=genie_t2k_12C_ar23_CCQERESMEC_3M`, log `gen_qeresmec_3M.log`.
+- Measured rate (+1h): ~12–14% each → ~7 h/job wall-clock in parallel (8 cores absorb both single-thread
+  Rosetta jobs; contention penalty negligible vs the 8.8 h single-thread estimate).
+
+### Diagnostic machinery — `scripts/altgen/highstat_diagnostic.py` (built + code-validated on 300k)
+Three deliverables (see the module docstring for the mechanism):
+1. Statistics ladder (analytic: a global covariance scale does not move the argmin, so
+   χ²_min(α)/ndf = χ²_min(1)/ndf · 1/α; validated by ONE warm-started refit from the converged base).
+2. Irreducible-residual fingerprint (block-diagonal whitening + null-space projection at the BFP).
+3. MEC-channel decomposition (below).
+- **Code validation (300k, NIT=3, under-converged — CODE not physics):** nominal matched χ²/ndf =
+  **1.365, bit-matches logbook §12** → dataset assembly + central swap correct. Full pipeline
+  (fit → fingerprint eigh/pinv → null-space decomposition → figure) runs end-to-end, fig produced.
+  Ladder-gate ratio 0.96 & |Δθ|=3.7e-2 are under-convergence artifacts (will tighten at NIT~40).
+- **Methodology fix found via the smoke:** the naive "irreducible residual ∝ raw MEC template" is
+  WRONG by construction — the 6 knobs can partly MIMIC the MEC shape, so the un-absorbable object is
+  the MEC template projected onto the knob NULL SPACE, not the raw template (raw dpt corr was only
+  0.23). Corrected: decompose the KNOWN MEC channel into knob-absorbable vs irreducible in the T2K
+  metric; report the irreducible fraction ("X% of GENIE's MEC channel is un-fakeable by the 6 knobs")
+  and compare *that* to the matched-fit residual. Null-space block unit-tested (H·Hⁱⁿᵛ=I, projector
+  idempotent, irr⊥knob-space, frac∈[0,1]). Real frac_irr_mec + correlations await the converged 3M run.
