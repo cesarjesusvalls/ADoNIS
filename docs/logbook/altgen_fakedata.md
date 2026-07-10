@@ -674,3 +674,23 @@ s_NN_el[pn] 1.25, f_NN_cex 0.40); fit blind, current binning (dat full [0,pi]). 
 to the IDENTICAL point: every knob ≤0.5σ from truth (largest s_NN_el −0.5σ), χ²_data 0.31.
 Eb_shift recovered 2.77±0.57 vs 3.0 — the weakest direction, consistent. Run npz now persists
 binned data/σ/model curves → figures render instantly without bank recompute.
+
+## 18. Q^2-dependent unknown-unknown + the g(Q^2)-nuisance closure (2026-07-10)
+Injected mod: w(Q^2)=1-0.2*exp(-Q^2/0.3 GeV^2) per event (RPA-like; mean suppression 9.4%,
+Q^2 median 0.18). Suite EXPANDED to 9 observables (+CC0pi pmu/cosmu, +CC1pi ppi/cospi = the
+Q^2-carrying kinematics; cosmu forward "spike" verified REAL physics: dsig/dcos rises smoothly
+3.4x over [0.9,1.0], zero pileup at cos=1). Gate I: 7/27 now pass (M_A_qe 0.48 and
+res_axial_strength 0.36 unlocked by the new variables). 7-param closure (no mod): PASS <=0.4 sig.
+- **Naive fits vs the mod (q2mod / closure_q2mod, M0=M2)**: the mod is absorbed INSIDE the manifold
+  — chi2 8.9-10.7, ALL gates silent, zero flags; bias conspiracy across the axial sector
+  (closure_q2mod: M_A_res +1.8σ, res_axial −2.2σ, kF_sf −1.7σ, M_A_qe −1.0σ; FSI knobs unharmed).
+  Unlike the x2 tail (loud/incoherent), a smooth physics-like unknown-unknown defeats residual- and
+  coherence-based defenses: nothing is left in the residuals to test.
+- **THE FIX — flexible Q^2-shape nuisance**: per-event multiplicative g(Q^2;c), 5 knots at
+  Q^2={0.02,0.08,0.18,0.45,1.2}, linear in log Q^2, weak ±0.5 priors, fit jointly (12 params).
+  `p9_closq2_nuis`: **closure RESTORED** — all 7 knobs <=0.4σ of truth (M_A_qe +0.08, M_A_res +0.33,
+  res_axial −0.31, kF_sf −0.02, Eb −0.28, s_NN_el −0.40, f_NN_cex +0.32); errors honestly inflated
+  where g degenerates with axial shape (M_A_qe ±0.022→0.058, res_axial ±0.067→0.110) and barely for
+  kF_sf (±0.009→0.011). **g(Q^2) RECONSTRUCTS the injected w(Q^2)** within errors at every knot
+  (mid-knot 0.878±0.068 vs true 0.890 = 1.8σ DETECTION of the suppression). M0 and M2 identical.
+  chi2_data 0.3. Fig `physfit_fig9_q2nuis.png`; runs p9_* npz (curves persisted).
