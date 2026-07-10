@@ -19,9 +19,8 @@ def log(m): print(f"[{time.time()-t0:6.1f}s] {m}", flush=True)
 
 g2 = np.load("output/altgen/physfit_genie2x.npz", allow_pickle=True)
 geA = np.load("output/altgen/physfit_genie.npz", allow_pickle=True)     # baseline M0/M2 (new binning)
-geB = np.load("output/altgen/physfit_genie_m1.npz", allow_pickle=True)  # baseline M1 (new binning)
 def base_th(key):
-    return np.asarray((geB if key == "M1" else geA)[f"{key}_th"])
+    return np.asarray(geA[f"{key}_th"])
 B = BP.load_bank(os.environ.get("ADONIS_EVENT_BANK", "output/event_bank"))
 JB = BR.to_jax(B); grids = BR.default_grids(); nom = nominal_knobs()
 w0 = np.asarray(BR.weight_jit(JB, nom, grids))
@@ -29,7 +28,7 @@ ds = build_physfit_datasets(B, w0, log)
 eng = Engine(ds, JB, grids, nom)
 th0 = theta_nominal(nom)
 m_nom = eng.model(th0)
-m = {k: eng.model(np.asarray(g2[f"{k}_th"])) for k in ("M0", "M1", "M2")}
+m = {k: eng.model(np.asarray(g2[f"{k}_th"])) for k in ("M0", "M2")}
 relerr = [d["mcerr"] / np.maximum(m_nom[eng.row0[j]:eng.row0[j+1]], 1e-300) for j, d in enumerate(ds)]
 apply_mode(ds, eng, "genie2x")
 
@@ -53,8 +52,6 @@ for j, (ax, d) in enumerate(zip(axs, ds)):
                 label="M0 standard", balpha=0.10)
     stairs_band(ax, d["edges"], m["M2"][seg], relerr[j], C_M2, ls="--", lw=1.6,
                 label="M2 Huber", balpha=0.10)
-    stairs_band(ax, d["edges"], m["M1"][seg], relerr[j], C_M1, ls="-", lw=1.6,
-                label="M1 physical (clean-region)", balpha=0.10)
     ax.set_title(d["name"], fontsize=10); ax.set_ylim(bottom=0)
     ax.set_xlabel(XLAB[d["key"]], fontsize=9)
     if j == 0:
@@ -70,11 +67,11 @@ for c, k in enumerate(sub):
     if PNAMES[k] == "Eb_shift":
         continue
     r = [PNAMES[k]]
-    for key in ("M0", "M2", "M1"):
+    for key in ("M0", "M2"):
         r.append(f"{float(base_th(key)[k]):.2f}"
                  + r"$\rightarrow$" + f"{float(np.asarray(g2[f'{key}_th'])[k]):.2f}")
     rows.append(r)
-tab = axk.table(cellText=rows, colLabels=["knob", "M0", "M2 Huber", "M1 phys"],
+tab = axk.table(cellText=rows, colLabels=["knob", "M0 standard", "M2 Huber"],
                 loc="center", cellLoc="center")
 tab.auto_set_font_size(False); tab.set_fontsize(8); tab.scale(1.08, 1.5)
 axk.set_title("stability: GENIE baseline → GENIE+×2 tail\n(same binning; artifact should NOT move knobs)",
