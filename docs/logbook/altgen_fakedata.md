@@ -667,3 +667,10 @@ M2 Huber IRLS (c=1.345). All fits on the Gate-I subset only, live per-iteration 
 Truth (kF_sf=1.10, M_A_res=0.85) + 1σ jitter: M1 zero false freezes (Qk p 0.92–0.96), zero flags,
 Q_split p=0.23, recovery ≤2.3σ, χ²_data 73.7/95. Gates quiet on healthy noisy data (one seed;
 multi-seed calibration = future work). `physfit_closure_fluct.npz`.
+
+### 5-parameter closure (2026-07-10) — PASS, M0 and M2 (`physfit_closure5.npz`, fig7)
+GENIE fitting parked (user). Inject ALL Gate-I knobs (M_A_res 0.85, kF_sf 1.10, Eb 3 MeV,
+s_NN_el[pn] 1.25, f_NN_cex 0.40); fit blind, current binning (dat full [0,pi]). M0 and M2 converge
+to the IDENTICAL point: every knob ≤0.5σ from truth (largest s_NN_el −0.5σ), χ²_data 0.31.
+Eb_shift recovered 2.77±0.57 vs 3.0 — the weakest direction, consistent. Run npz now persists
+binned data/σ/model curves → figures render instantly without bank recompute.
