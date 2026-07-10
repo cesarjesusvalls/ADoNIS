@@ -694,3 +694,6 @@ res_axial_strength 0.36 unlocked by the new variables). 7-param closure (no mod)
   kF_sf (±0.009→0.011). **g(Q^2) RECONSTRUCTS the injected w(Q^2)** within errors at every knot
   (mid-knot 0.878±0.068 vs true 0.890 = 1.8σ DETECTION of the suppression). M0 and M2 identical.
   chi2_data 0.3. Fig `physfit_fig9_q2nuis.png`; runs p9_* npz (curves persisted).
+- Consistency run (`p9_q2mod_nuis`, no knob injection): PERFECT separation — all 7 knobs at nominal
+  to <=0.05σ, g(Q^2) alone carries the full modification (0.843/0.862/0.887/0.965/1.004 vs true
+  0.813/0.847/0.890/0.955/0.996, all within errors), chi2_data 0.0.
