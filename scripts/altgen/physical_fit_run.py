@@ -94,8 +94,9 @@ def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0, q2mod=
     if mode in ("closure", "q2mod", "closure_q2mod"):
         wev = np.asarray(BR.weight_jit(eng.JB, knobs_of(eng.th0, eng.nom), eng.grids))
         if mode != "q2mod":                                     # injected knob shifts
-            truth, _inj = parse_inject(inject or INJECT, eng.nom)
-            wev = np.asarray(BR.weight_jit(eng.JB, knobs_of(truth, eng.nom), eng.grids))
+            truth_spec, _inj = parse_inject(inject or INJECT, eng.nom)
+            truth = eng.th0.copy(); truth[:NPAR] = truth_spec
+            wev = np.asarray(BR.weight_jit(eng.JB, knobs_of(truth_spec, eng.nom), eng.grids))
             inj_desc = inject or INJECT
         else:
             inj_desc = "asimov"
@@ -150,12 +151,31 @@ def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0, q2mod=
 
 
 class Engine:
-    """Shared differentiable model/Jacobian over the SPEC vector, restricted to a fit subset."""
-    def __init__(self, ds, JB, grids, nom, B=None):
+    """Shared differentiable model/Jacobian over the SPEC vector (optionally extended with a
+    flexible Q^2-shape nuisance: per-event multiplicative spline g(Q^2;c), K knot coefficients
+    linearly interpolated in log(Q^2), clamped beyond the end knots), restricted to a fit subset."""
+    def __init__(self, ds, JB, grids, nom, B=None, q2knots=None):
         self.ds, self.JB, self.grids, self.nom, self.B = ds, JB, grids, nom, B
         self.th0 = theta_nominal(nom)
+        self.prior = PRIOR.copy()
+        self.pnames = list(PNAMES)
+        self.npar = NPAR
+        self.q2knots = q2knots
+        if q2knots is not None:
+            K = len(q2knots)
+            self.q2x = jnp.asarray(np.log(np.asarray(q2knots, float)))
+            self.q2ev = jnp.asarray(np.log(np.clip(event_Q2(B), 1e-4, None)))
+            self.th0 = np.concatenate([self.th0, np.ones(K)])
+            pw = float(os.environ.get("PHYSFIT_Q2NUIS_PRIOR", "0.5"))
+            self.prior = np.concatenate([self.prior, np.full(K, pw)])
+            self.pnames += [f"gQ2[{q:g}]" for q in q2knots]
+            self.npar = NPAR + K
         self.row0 = np.cumsum([0] + [d["nbin"] for d in ds])
-        wf = lambda th, JB: BR.bank_weight(JB, knobs_of(th, nom), grids)
+        def wf(th, JB):
+            w = BR.bank_weight(JB, knobs_of(th[:NPAR], nom), grids)
+            if q2knots is not None:
+                w = w * jnp.interp(self.q2ev, self.q2x, th[NPAR:])
+            return w
         self.wf_jit = jax.jit(wf)
         self.jvp = jax.jit(lambda th, tang, JB: jax.jvp(lambda t: wf(t, JB), (th,), (tang,))[1])
 
@@ -166,7 +186,7 @@ class Engine:
     def jac(self, th, subset):
         J = np.zeros((self.row0[-1], len(subset)))
         for c, k in enumerate(subset):
-            g = np.asarray(self.jvp(jnp.asarray(th), jnp.zeros(NPAR).at[k].set(1.0), self.JB))
+            g = np.asarray(self.jvp(jnp.asarray(th), jnp.zeros(self.npar).at[k].set(1.0), self.JB))
             for j, d in enumerate(self.ds):
                 J[self.row0[j]:self.row0[j+1], c] = IC.bin_w0(d, g)
         return J
@@ -182,7 +202,7 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None):
     data, sigma = eng.data_sigma()
     if mask is None:
         mask = np.ones(len(data), bool)
-    prior_w = 1.0 / PRIOR[subset]**2
+    prior_w = 1.0 / eng.prior[subset]**2
     th = eng.th0.copy(); lam = 1e-3
     def chi2_terms(thv):
         m = eng.model(thv); u = (m - data) / sigma
@@ -207,7 +227,7 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None):
                 lam = max(lam / 3, 1e-8); break
             lam *= 5
         log(f"  [{tag}] it {it:2d} chi2={c_cur:9.2f} (data {c_data:9.2f}) " +
-            " ".join(f"{PNAMES[k]}={th[k]:.3f}" for k in subset))
+            " ".join(f"{eng.pnames[k]}={th[k]:.3f}" for k in subset))
         if np.linalg.norm(dth) < 1e-6 or (c_before - c_cur) / max(c_before, 1e-9) < 1e-3:
             log(f"  [{tag}] converged/plateau at it {it}"); break
     J = eng.jac(th, subset)
@@ -226,7 +246,7 @@ def gate2_Q(eng, th, subset, J, m, mask=None):
     out = {}
     for c, k in enumerate(subset):
         Jk = J[:, c]
-        resp = (np.abs(Jk) * PRIOR[k] > F_RESP * sigma) & mask
+        resp = (np.abs(Jk) * eng.prior[k] > F_RESP * sigma) & mask
         n = int(resp.sum())
         if n < 3:
             out[k] = dict(Q=0.0, ndf=0, p=1.0, I2=0.0, nresp=n); continue
@@ -250,7 +270,7 @@ def gate2_split(eng, th, subset, J, m, mask=None):
     for j, d in enumerate(eng.ds):
         s, e = eng.row0[j], eng.row0[j + 1]
         lo_mask[s:s + d["nbin"] // 2] = True
-    prior_w = np.diag(1.0 / PRIOR[subset]**2)
+    prior_w = np.diag(1.0 / eng.prior[subset]**2)
     est = {}
     for name, msk in (("lo", lo_mask & mask), ("hi", (~lo_mask) & mask)):
         Ji = J[msk]; Ci = 1.0 / sigma[msk]**2
@@ -301,12 +321,17 @@ def main():
     w0 = np.asarray(BR.weight_jit(JB, nom, grids))
     log(f"bank {len(w0)} events | mode={MODE} methods={METHODS} label={LABEL}")
     ds = build_physfit_datasets(B, w0, log)
-    eng = Engine(ds, JB, grids, nom, B=B)
+    q2n = os.environ.get("PHYSFIT_Q2NUIS", "")
+    q2knots = [float(x) for x in q2n.split(",")] if q2n else None
+    eng = Engine(ds, JB, grids, nom, B=B, q2knots=q2knots)
 
-    # ---- Gate-I subset (blind to injection) ------------------------------------------------------- #
+    # ---- Gate-I subset (blind to injection) + all nuisance coefficients --------------------------- #
     g1 = np.load(GATE1_NPZ, allow_pickle=True)
     subset = [int(i) for i in np.where(g1["shrink"] < 0.5)[0]]
-    log(f"Gate-I subset ({len(subset)}): " + " ".join(PNAMES[k] for k in subset))
+    if q2knots:
+        subset = subset + list(range(NPAR, eng.npar))
+        log(f"Q2-shape nuisance ON: {len(q2knots)} knots at {q2knots} (prior ±{eng.prior[-1]:g})")
+    log(f"fit subset ({len(subset)}): " + " ".join(eng.pnames[k] for k in subset))
 
     # ---- fake data -------------------------------------------------------------------------------- #
     truth, inj_desc = apply_mode(ds, eng, MODE, fluct=int(os.environ.get("PHYSFIT_FLUCT", "0")))
@@ -349,7 +374,7 @@ def main():
                         kz = sub[int(np.argmax(np.abs(sp["zk"])))]
                         if kz not in fail:
                             fail.append(kz)
-                    log(f"  [M1x{xr}r{rnd}] Qk fails: {[PNAMES[k] for k in fail]}  "
+                    log(f"  [M1x{xr}r{rnd}] Qk fails: {[eng.pnames[k] for k in fail]}  "
                         f"Q_split={sp['Q']:.1f}/{sp['ndf']} (p={sp['p']:.3g})")
                     if not fail:
                         break
@@ -375,9 +400,9 @@ def main():
             s = np.sqrt(max(R["V"][c, c], 0.0))
             b = (R["th"][k] - truth[k]) / s if s > 0 else 0.0
             qp = R["Qk"][k]["p"] if k in R["Qk"] else float("nan")
-            print(f"{PNAMES[k]:>16} {truth[k]:7.3f} {R['th'][k]:8.3f} {s:7.3f} {b:8.2f}   {qp:.3g}")
+            print(f"{eng.pnames[k]:>16} {truth[k]:7.3f} {R['th'][k]:8.3f} {s:7.3f} {b:8.2f}   {qp:.3g}")
         if R.get("frozen"):
-            print(f"   frozen: {[PNAMES[k] for k in R['frozen']]}")
+            print(f"   frozen: {[eng.pnames[k] for k in R['frozen']]}")
         print(f"   Q_split p={R['split']['p']:.3g}")
         for f in R.get("excised", []):
             print(f"   EXCISED (unknown-unknown candidate) {f['obs']}: [{f['lo']:.0f},{f['hi']:.0f}] "
@@ -390,7 +415,7 @@ def main():
     # persist the BINNED curves too (blueprint: figures re-render without recompute)
     m_nom_full = eng.model(eng.th0)
     np.savez(f"output/altgen/{LABEL}.npz", mode=MODE, inj=inj_desc, truth=truth, subset=subset,
-             pnames=PNAMES, row0=eng.row0, dskeys=[d["key"] for d in ds],
+             pnames=eng.pnames, row0=eng.row0, dskeys=[d["key"] for d in ds],
              data=np.concatenate([d["data"] for d in ds]),
              sigma=np.concatenate([d["sigma"] for d in ds]),
              mcerr=np.concatenate([d["mcerr"] for d in ds]),
