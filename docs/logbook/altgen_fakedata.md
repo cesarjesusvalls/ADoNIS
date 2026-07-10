@@ -636,6 +636,25 @@ spurious flags after fix (a)) → x1 on the clean region: zero Q failures, Q_spl
 Same data: M0 −27σ biases vs M1 exact truth + artifact localized/labeled. The mandate's central
 demonstration on controlled ground truth.
 
+### Step 4 RESULT — GENIE-3M as data: the ladder completes (2026-07-10, `physfit_genie.npz`)
+- **M0 (traditional)**: M_A_res +9.3σ, kF_sf −5.0σ (0.964), s_NN_el[pn] +4.4σ, f_NN_cex +6.3σ —
+  four confident pulls, EVERY one Cochran-Q incoherent (p 1e-16..1e-36). What a standard tune would
+  publish; provably compromises, not measurements. χ²_data 398.
+- **M1 (physical)**: x0 all-frozen → excised 51/100 bins at nominal: dpt [83,782] (−8.7σ, the shape
+  mismatch), ALL 20 dat bins (−4.5σ, the ~20% norm offset), 4 CC1π structures (pN [155,505] −3.6 /
+  [996,1136] +3.6, dpTT [−435,−69] −3.3 / [113,387] −3.1). x1 on the 49 coherent bins (mostly CC1π):
+  ALL knobs coherent (Q_split p=0.166, Qk p 0.02–1) → **M_A_res 0.868±0.039 (−3.4σ, genuine coherent
+  RES-shape difference: GENIE BS softer than ADoNIS DCC), kF_sf 1.031±0.026, s_NN_el[pn] 0.939±0.100,
+  f_NN_cex 0.514±0.057, Eb 1.5±0.8 MeV**. χ²_data(clean) 81.7/49 bins.
+- **M2 (Huber)**: between (M_A_res +6.3σ, kF_sf −5.3σ, all Q-incoherent).
+- **Reinterpretation 1**: the §12–14 "robust kF_sf≈0.93" was NOT a clean measurement — coherent-region
+  value is 1.031±0.026; the 0.93 was largely absorption of the (excised) shape/norm mismatch. The
+  physical fit catches on real foreign data exactly the failure mode it was built for.
+- **Reinterpretation 2 (methodology)**: the whole-dat excision is REPRESENTABLE physics (a coherent
+  norm offset qe_norm could absorb) misclassified as unknown-unknown because Gate I froze the entire
+  degenerate norm group. → v3: fit one representative / the Fisher eigen-combination of each
+  degenerate group before excising. (Not yet implemented.)
+
 ### Step 2/3 machinery — `scripts/altgen/physical_fit_run.py`
 Modes: closure (exact-reweight data at injected θ) / inject2x (Asimov ×2 above threshold, e.g.
 dpt>300 MeV; σ recomputed on injected data). Methods: M0 traditional (LM, χ²_data+prior),

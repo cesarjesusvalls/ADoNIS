@@ -270,6 +270,13 @@ def main():
             d["stat_g"] = np.sqrt(cnt) * scale
         inj_desc = f"genie:{Path(gst).name}"
     refresh_sigma(ds)
+    # optional fluctuation: jitter data by its sigma (null calibration of the gates); sigma unchanged
+    fseed = int(os.environ.get("PHYSFIT_FLUCT", "0"))
+    if fseed:
+        rng = np.random.default_rng(fseed)
+        for d in ds:
+            d["data"] = d["data"] + rng.normal(0.0, d["sigma"])
+        inj_desc += f" +fluct(seed={fseed})"
     log(f"fake data ready: {inj_desc}")
 
     # ---- run methods ------------------------------------------------------------------------------ #
