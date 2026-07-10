@@ -92,12 +92,22 @@ def knobs_of(theta, nom):
     return k
 
 
-def design_edges(values, n_bins, p_hi=99.0):
+def design_edges(values, n_bins, p_hi=99.0, domain=None):
+    """Uniform edges. Bounded observables (domain=(lo,hi), e.g. dat on [0,pi]) are binned over the
+    FULL physical range with no overflow fold — folding a percentile tail into the last bin inflates
+    its dsigma/dx by the width mismatch (visible last-bin jump). Unbounded ones use [min, p99] with
+    the tail folded into the last bin (a genuine overflow-bin convention)."""
     v = np.asarray(values)
-    lo = float(v.min()); hi = float(np.percentile(v, p_hi))
-    edges = np.unique(np.linspace(lo, hi, n_bins + 1))
+    if domain is not None:
+        edges = np.linspace(domain[0], domain[1], n_bins + 1)
+    else:
+        edges = np.unique(np.linspace(float(v.min()), float(np.percentile(v, p_hi)), n_bins + 1))
     edges[0] -= 1e-6; edges[-1] += 1e-6
     return edges
+
+
+# bounded observables: full physical range, no overflow fold
+DOMAINS = {"dat": (0.0, float(np.pi)), "daT": (0.0, 180.0)}
 
 
 def build_physfit_datasets(B, w0, log):
@@ -116,7 +126,7 @@ def build_physfit_datasets(B, w0, log):
     # free-H offsets on OUR edges (theta-independent; enters centrals -> syst sigma, cancels in J)
     edges_by = {}
     for name, mask, vals, dkey, chan in obs_defs:
-        edges_by[dkey] = design_edges(vals[np.asarray(mask, bool)], N_BINS)
+        edges_by[dkey] = design_edges(vals[np.asarray(mask, bool)], N_BINS, domain=DOMAINS.get(dkey))
     fH = IC.freeH_offsets({k: v for k, v in edges_by.items() if k in ("pn", "dptt", "daT")})
     for name, mask, vals, dkey, chan in obs_defs:
         edges = edges_by[dkey]; nb = len(edges) - 1; bw = np.diff(edges)
