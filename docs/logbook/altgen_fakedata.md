@@ -626,8 +626,15 @@ as the real null calibration of the p<0.01 thresholds.
 Two v1 defects found: (a) all-frozen path reported θ/flags at the DISCARDED biased point instead of
 nominal (spurious dat flag); (b) "freeze everything" is correct but blunter than optimal — the clean
 bulk still measures the knobs. → **v2 EXCISE-REFIT**: flag → excise flagged bins → rerun the gated
-fit on the clean region with the full Gate-I subset, iterate to no-new-flags. Expected on inject2x:
-round 0 freezes all + flags dpt>300; round 1 on clean bins recovers nominal ± real errors.
+fit on the clean region with the full Gate-I subset, iterate to no-new-flags.
+
+**Step 3 v2 RESULT — COMPLETE PASS** (`physfit_inject2x_v2.npz`): x0 all-5 frozen (Q_split p=3e-12)
+→ evaluated at nominal → excised EXACTLY the 12 injected bins (dpt [330,823], mean pull +9.0; no
+spurious flags after fix (a)) → x1 on the clean region: zero Q failures, Q_split p=1 →
+**every knob at truth to 0.00σ with real clean-region errors** (kF_sf 1.000±0.008, M_A_res
+1.000±0.016, Eb 0.010±0.362, s_NN_el[pn] 1.000±0.060, f_NN_cex 0.500±0.044), χ²_data(clean)=0.
+Same data: M0 −27σ biases vs M1 exact truth + artifact localized/labeled. The mandate's central
+demonstration on controlled ground truth.
 
 ### Step 2/3 machinery — `scripts/altgen/physical_fit_run.py`
 Modes: closure (exact-reweight data at injected θ) / inject2x (Asimov ×2 above threshold, e.g.
