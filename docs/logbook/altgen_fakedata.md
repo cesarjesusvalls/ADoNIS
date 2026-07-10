@@ -697,3 +697,22 @@ res_axial_strength 0.36 unlocked by the new variables). 7-param closure (no mod)
 - Consistency run (`p9_q2mod_nuis`, no knob injection): PERFECT separation — all 7 knobs at nominal
   to <=0.05σ, g(Q^2) alone carries the full modification (0.843/0.862/0.887/0.965/1.004 vs true
   0.813/0.847/0.890/0.955/0.996, all within errors), chi2_data 0.0.
+
+## 19. Physical outside-manifold unknown-unknown: GENIE 2p2h admixture (2026-07-10)
+Data = ADoNIS nominal + GENIE MEC events only (CCQERESMEC 3M, mec flag, GENIE absolute norm;
+157,206 ev into CC0pi, 253 into CC1pi — no pions => CC1pi = clean control). `p9_mecmix.npz`, fig10.
+Taxonomy demonstrated on BOTH sides now (cf. §18 Q^2 = inside-manifold):
+- **M0**: heavily corrupted — s_NN_el[pn] 0.636 (−23.4σ!), M_A_res −3.9σ, f_NN_cex −3.8σ, Eb +2.6σ;
+  chi2 249 (excess NOT absorbable); every Qk p 1e-4..1e-9 (loudly incoherent).
+- **M2 Huber**: nearly as bad (s_NN_el −17.8σ) — the excess is spread over too many bins for
+  bounded per-bin influence to help.
+- **M1**: all 7 knobs frozen at x0 (Q_split p=9e-9) → 59 bins excised at nominal → clean-region
+  refit: **all knobs ≤1.1σ of truth** (chi2_clean 8.0, Q_split p=0.9, no flags). The excision map =
+  the 2p2h habitat: dpt [206,823] +6.9σ, ALL dat, pmu [250,1435]/[1553,2027]/[2264,2620],
+  forward cosmu [0.2,1]; ZERO CC1pi excisions (no-pion control ✓). The unknown-unknown is
+  localized and characterized (CC0pi-only, dpt-tail-heavy, forward-mu => multi-nucleon channel).
+Coherence evidence at the two points (why gates work HERE and not for Q^2): the MEC excess leaves
+chi2 249 un-absorbable residual with per-knob demand heterogeneity — vs the Q^2 mod's chi2 8.9 with
+LOWER coherence statistic at the biased point than at truth (§18: Q(truth)=278 vs Q(biased)=41 —
+a coherence REGULARIZER would prefer the bias; taxonomy: residual-side defenses only work
+outside the manifold).
