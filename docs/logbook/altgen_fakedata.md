@@ -548,13 +548,31 @@ Two gates on every parameter, then a flagging pass:
   additive/fractional knobs in natural units: Eb_shift ±4 MeV, f_NN_cex ±0.1). Asimov at nominal:
   posterior = (JᵀC⁻¹J + Π⁻¹)⁻¹. Fit only knobs with σ_post < 0.5·σ_prior (sample actually informs
   them); freeze the rest at prior. Uses session A's per-knob jvp Jacobian machinery (info_content).
-- **Gate II — coherence (per-bin pull consistency).** For fitted knob k at the current point: per-bin
-  demand δθ_kb = r_b/J_kb with Fisher weight w_kb=(J_kb/σ_b)², over "responsive" bins
-  (|J_kb|·σ_prior > f·σ_b, f~0.3). Tests: (1) weighted sign-agreement binomial test on J_kb·r_b;
-  (2) split-fit compatibility (fit θ_k separately on two halves of its responsive bins — bulk vs
-  tail — require |Δθ|<2σ). Knobs failing coherence are FROZEN (their motion is not a measurement);
-  refit; iterate to a fixed point. This generalizes region-split-not-summary-chi2 from bins to
-  knob-response space.
+- **Gate II — coherence (v2, refined with the user 2026-07-10).** Per-bin demand estimate
+  δθ_kb = r_b/J_kb, Fisher weight w_kb=(J_kb/σ_b)², responsive bins |J_kb|·σ_prior > f·σ_b (f~0.3).
+  (1) **Per-knob heterogeneity = Cochran's Q**: Q_k = Σ_b w_kb (δθ_kb − δθ̂_k)² ~ χ²(n_resp−1)
+  (+ I² = incoherent variance fraction). This IS the user's requested "how likely is this dial
+  variation given the observed per-bin pulls" — a calibrated LR test of one-shared-shift vs
+  heterogeneous demands (meta-analysis heterogeneity). Supersedes sign-agreement (calibrated,
+  catches magnitude incoherence).
+  (2) **Vector split-fit**: full Gate-I vector fit on disjoint regions (bulk/tail per observable) →
+  Q_split = Δθᵀ(V₁+V₂)⁻¹Δθ ~ χ²(p); catches CROSS-KNOB COMPENSATION that per-knob Q misses (dial A
+  fixes bulk / dial B breaks tail lands the two regions at different points in parameter space);
+  worst eigen-direction names the inconsistent combination. Diagonal errors → disjoint regions
+  independent → exact calibration. NB: at any BFP, Σ_b J_kb r_b/σ_b² = 0 BY CONSTRUCTION (the fit
+  forces half-up/half-down balance) — aggregate demand is useless post-fit; only the demand-field
+  STRUCTURE (Q_k, Q_split) carries the incoherence signal.
+  Knobs/combinations failing coherence are FROZEN (their motion is mismodeling leakage, not
+  measurement); refit; iterate to a fixed point.
+- **Loss-embedding evaluated (user proposal):** literal penalty L = χ² + λ·Incoherence REJECTED for
+  v1 (non-likelihood → invalid Hessian errors; arbitrary λ; penalty active on noise → bias under a
+  CORRECT model; opaque compromises). The principled in-loss variant IS included as a competitor:
+  **M2 = Huber/Tukey robust loss** on r_b/σ_b (bounded influence of any mismodeled region,
+  differentiable, standard constant) — downweights by residual size not demand-coherence, so it is
+  a baseline, not the full answer.
+- **Test matrix:** M0 traditional global χ² (control) / M1 gated fit (Gate I + Q_k + Q_split,
+  freeze+flag) / M2 Huber — identical data and binning, raced through ladder steps 2–4; step 3
+  (known true knobs + known injected artifact) is decisive.
 - **Flagging pass.** At the physical-fit BFP: per-bin standardized residual map; contiguous regions
   >2σ that NO frozen-knob release can coherently fix = unknown-unknown candidates (report location,
   amplitude, and which knobs tried to absorb it).
