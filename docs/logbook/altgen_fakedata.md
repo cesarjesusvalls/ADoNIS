@@ -613,6 +613,22 @@ truth, (0.5σ)²+(0.75σ)²). M1: ZERO false freezes (all Q_k p=1, Q_split p=1),
 noiseless data makes the Q-tests pass trivially — fluctuated closure (data jittered by σ) queued
 as the real null calibration of the p<0.01 thresholds.
 
+### Step 3 RESULT — the decisive test: M1 unbiased, M0 biased up to 27σ (2026-07-10)
+`physfit_inject2x.npz`. Data = nominal Asimov with the 12 dpt bins above 300 MeV ×2 (σ recomputed).
+- **M0 (traditional): every knob corrupted** — kF_sf −11.2σ, s_NN_el[pn] −26.9σ, Eb_shift +8.0σ,
+  M_A_res −2.8σ, f_NN_cex −2.7σ; χ²_data 608 (excess only partially absorbable). Its own Qk p-values
+  (~1e-75) scream incoherence — a traditional fit computes nothing that acts on them.
+- **M1 (physical): REFUSED every pull** — all 5 knobs fail Cochran's Q; Q_split=62.9/5 (p=3e-12) →
+  all frozen → θ=nominal → unbiased by construction; flags = the injected dpt region.
+- **M2 (Huber): bias reduced ~10× but not eliminated** (kF_sf −2.4σ, s_NN_el[pn] −1.8σ,
+  f_NN_cex −1.75σ); still flags dpt [330,823] at +8.3σ. Bounded per-bin influence, but 12 bad bins
+  still drag collectively.
+Two v1 defects found: (a) all-frozen path reported θ/flags at the DISCARDED biased point instead of
+nominal (spurious dat flag); (b) "freeze everything" is correct but blunter than optimal — the clean
+bulk still measures the knobs. → **v2 EXCISE-REFIT**: flag → excise flagged bins → rerun the gated
+fit on the clean region with the full Gate-I subset, iterate to no-new-flags. Expected on inject2x:
+round 0 freezes all + flags dpt>300; round 1 on clean bins recovers nominal ± real errors.
+
 ### Step 2/3 machinery — `scripts/altgen/physical_fit_run.py`
 Modes: closure (exact-reweight data at injected θ) / inject2x (Asimov ×2 above threshold, e.g.
 dpt>300 MeV; σ recomputed on injected data). Methods: M0 traditional (LM, χ²_data+prior),

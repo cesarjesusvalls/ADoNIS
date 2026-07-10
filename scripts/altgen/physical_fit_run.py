@@ -100,23 +100,26 @@ class Engine:
                 np.concatenate([d["sigma"] for d in self.ds]))
 
 
-def lm_fit(eng, subset, tag, huber=False, nit=NIT):
-    """LM on chi2_data(+Huber) + prior penalty over `subset` knobs. Returns th(full), V, chi2s."""
+def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None):
+    """LM on chi2_data(+Huber) + prior penalty over `subset` knobs, restricted to `mask` bins.
+    Returns th(full), V, J(full rows), m(full), chi2s (masked)."""
     data, sigma = eng.data_sigma()
+    if mask is None:
+        mask = np.ones(len(data), bool)
     prior_w = 1.0 / PRIOR[subset]**2
     th = eng.th0.copy(); lam = 1e-3
     def chi2_terms(thv):
         m = eng.model(thv); u = (m - data) / sigma
         hw = np.minimum(1.0, HUBER_C / np.maximum(np.abs(u), 1e-12)) if huber else np.ones_like(u)
-        c_data = float(np.sum(hw * u**2))
+        c_data = float(np.sum((hw * u**2)[mask]))
         c_pri = float(np.sum(prior_w * (thv[subset] - eng.th0[subset])**2))
         return c_data + c_pri, c_data, m, hw
     c_cur, c_data, m, hw = chi2_terms(th)
-    log(f"  [{tag}] start chi2 {c_cur:.1f} (data {c_data:.1f})")
+    log(f"  [{tag}] start chi2 {c_cur:.1f} (data {c_data:.1f}, {int(mask.sum())} bins)")
     for it in range(nit):
         c_before = c_cur
         J = eng.jac(th, subset)
-        W = hw / sigma**2
+        W = np.where(mask, hw / sigma**2, 0.0)
         A = J.T @ (J * W[:, None]) + np.diag(prior_w)
         g = J.T @ (W * (m - data)) + prior_w * (th[subset] - eng.th0[subset])
         for _ in range(12):
@@ -132,20 +135,22 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT):
         if np.linalg.norm(dth) < 1e-6 or (c_before - c_cur) / max(c_before, 1e-9) < 1e-3:
             log(f"  [{tag}] converged/plateau at it {it}"); break
     J = eng.jac(th, subset)
-    W = hw / sigma**2
+    W = np.where(mask, hw / sigma**2, 0.0)
     A = J.T @ (J * W[:, None]) + np.diag(prior_w)
     V = np.linalg.pinv(A, rcond=1e-12)
     return th, V, J, m, c_cur, c_data
 
 
-def gate2_Q(eng, th, subset, J, m):
+def gate2_Q(eng, th, subset, J, m, mask=None):
     """Per-knob Cochran's Q on per-bin demands at the BFP. Returns dict knob->(Q,ndf,p,I2,nresp)."""
     data, sigma = eng.data_sigma()
+    if mask is None:
+        mask = np.ones(len(data), bool)
     r = data - m
     out = {}
     for c, k in enumerate(subset):
         Jk = J[:, c]
-        resp = np.abs(Jk) * PRIOR[k] > F_RESP * sigma
+        resp = (np.abs(Jk) * PRIOR[k] > F_RESP * sigma) & mask
         n = int(resp.sum())
         if n < 3:
             out[k] = dict(Q=0.0, ndf=0, p=1.0, I2=0.0, nresp=n); continue
@@ -159,9 +164,11 @@ def gate2_Q(eng, th, subset, J, m):
     return out
 
 
-def gate2_split(eng, th, subset, J, m):
+def gate2_split(eng, th, subset, J, m, mask=None):
     """Vector split-fit: one-step GN estimates on low/high-half regions (per observable), prior-anchored."""
     data, sigma = eng.data_sigma()
+    if mask is None:
+        mask = np.ones(len(data), bool)
     r = data - m
     lo_mask = np.zeros(len(data), bool)
     for j, d in enumerate(eng.ds):
@@ -169,7 +176,7 @@ def gate2_split(eng, th, subset, J, m):
         lo_mask[s:s + d["nbin"] // 2] = True
     prior_w = np.diag(1.0 / PRIOR[subset]**2)
     est = {}
-    for name, msk in (("lo", lo_mask), ("hi", ~lo_mask)):
+    for name, msk in (("lo", lo_mask & mask), ("hi", (~lo_mask) & mask)):
         Ji = J[msk]; Ci = 1.0 / sigma[msk]**2
         Ai = Ji.T @ (Ji * Ci[:, None]) + prior_w
         Vi = np.linalg.pinv(Ai, rcond=1e-12)
@@ -187,14 +194,16 @@ def gate2_split(eng, th, subset, J, m):
                 th_lo=est["lo"][0], th_hi=est["hi"][0])
 
 
-def flags(eng, m):
-    """Contiguous runs of >=2 bins with |r/sigma|>2 at the BFP."""
+def flags(eng, m, mask=None):
+    """Contiguous runs of >=2 bins with |r/sigma|>2 at the BFP (excised bins never re-flagged)."""
     data, sigma = eng.data_sigma()
+    if mask is None:
+        mask = np.ones(len(data), bool)
     pull = (data - m) / sigma
     out = []
     for j, d in enumerate(eng.ds):
         s = eng.row0[j]; p = pull[s:s + d["nbin"]]
-        bad = np.abs(p) > 2.0
+        bad = (np.abs(p) > 2.0) & mask[s:s + d["nbin"]]
         i = 0
         while i < len(bad):
             if bad[i]:
@@ -202,7 +211,8 @@ def flags(eng, m):
                 while k + 1 < len(bad) and bad[k + 1]:
                     k += 1
                 if k - i + 1 >= 2:
-                    out.append(dict(obs=d["name"], lo=float(d["edges"][i]), hi=float(d["edges"][k + 1]),
+                    out.append(dict(obs=d["name"], j=j, i0=i, i1=k,
+                                    lo=float(d["edges"][i]), hi=float(d["edges"][k + 1]),
                                     nbins=k - i + 1, mean_pull=float(np.mean(p[i:k + 1]))))
                 i = k + 1
             else:
@@ -272,28 +282,49 @@ def main():
             results[meth] = dict(th=th, V=V, sub=subset, chi2=c, chi2_data=cd,
                                  Qk=gate2_Q(eng, th, subset, J, m),
                                  split=gate2_split(eng, th, subset, J, m), flags=flags(eng, m))
-        else:  # M1: iterate freeze on Gate II failures
-            sub = list(subset); frozen = []
-            for rnd in range(4):
-                th, V, J, m, c, cd = lm_fit(eng, sub, f"M1r{rnd}")
-                Qk = gate2_Q(eng, th, sub, J, m)
-                sp = gate2_split(eng, th, sub, J, m)
-                fail = [k for k in sub if Qk[k]["p"] < P_GATE]
-                # split failure: freeze the knob with the largest |z| if the vector splits
-                if sp["p"] < P_GATE:
-                    kz = sub[int(np.argmax(np.abs(sp["zk"])))]
-                    if kz not in fail:
-                        fail.append(kz)
-                log(f"  [M1r{rnd}] Qk fails: {[PNAMES[k] for k in fail]}  "
-                    f"Q_split={sp['Q']:.1f}/{sp['ndf']} (p={sp['p']:.3g})")
-                if not fail:
-                    break
-                for k in fail:
-                    sub.remove(k); frozen.append(k)
-                if not sub:
-                    log("  [M1] all knobs frozen"); break
+        else:  # M1: gated fit with EXCISE-REFIT — freeze incoherent knobs; flag+excise bad regions;
+               # refit the clean bins with the FULL Gate-I subset (knobs may become coherent once the
+               # mismodeled region is removed) until no new flags.
+            mask = np.ones(eng.row0[-1], bool)
+            excised = []
+            fl = []
+            for xr in range(3):
+                sub = list(subset); frozen = []
+                for rnd in range(4):
+                    if not sub:
+                        # all frozen -> evaluate at NOMINAL (not the discarded biased point)
+                        th = eng.th0.copy(); m = eng.model(th)
+                        V = np.zeros((0, 0)); J = np.zeros((eng.row0[-1], 0))
+                        dd, ss = eng.data_sigma()
+                        cd = float(np.sum((((m - dd) / ss)**2)[mask])); c = cd
+                        Qk = {}; sp = dict(Q=float("nan"), ndf=0, p=float("nan"), zk=np.array([]))
+                        log(f"  [M1x{xr}] all knobs frozen -> evaluated at nominal")
+                        break
+                    th, V, J, m, c, cd = lm_fit(eng, sub, f"M1x{xr}r{rnd}", mask=mask)
+                    Qk = gate2_Q(eng, th, sub, J, m, mask=mask)
+                    sp = gate2_split(eng, th, sub, J, m, mask=mask)
+                    fail = [k for k in sub if Qk[k]["p"] < P_GATE]
+                    # split failure: freeze the knob with the largest |z| if the vector splits
+                    if sp["p"] < P_GATE:
+                        kz = sub[int(np.argmax(np.abs(sp["zk"])))]
+                        if kz not in fail:
+                            fail.append(kz)
+                    log(f"  [M1x{xr}r{rnd}] Qk fails: {[PNAMES[k] for k in fail]}  "
+                        f"Q_split={sp['Q']:.1f}/{sp['ndf']} (p={sp['p']:.3g})")
+                    if not fail:
+                        break
+                    for k in fail:
+                        sub.remove(k); frozen.append(k)
+                fl = flags(eng, m, mask=mask)
+                if not fl:
+                    log(f"  [M1x{xr}] no flags on the clean region -> converged"); break
+                for f in fl:
+                    excised.append(f)
+                    mask[eng.row0[f["j"]] + f["i0"]: eng.row0[f["j"]] + f["i1"] + 1] = False
+                log(f"  [M1x{xr}] excised {sum(f['nbins'] for f in fl)} bins "
+                    f"({int((~mask).sum())} total) -> refit clean region")
             results[meth] = dict(th=th, V=V, sub=sub, frozen=frozen, chi2=c, chi2_data=cd,
-                                 Qk=Qk, split=sp, flags=flags(eng, m))
+                                 Qk=Qk, split=sp, flags=fl, excised=excised)
 
     # ---- report ----------------------------------------------------------------------------------- #
     print(f"\n==== PHYSICAL-FIT run [{LABEL}] mode={MODE} ({inj_desc}) ====")
@@ -308,10 +339,13 @@ def main():
         if R.get("frozen"):
             print(f"   frozen: {[PNAMES[k] for k in R['frozen']]}")
         print(f"   Q_split p={R['split']['p']:.3g}")
+        for f in R.get("excised", []):
+            print(f"   EXCISED (unknown-unknown candidate) {f['obs']}: [{f['lo']:.0f},{f['hi']:.0f}] "
+                  f"{f['nbins']} bins mean pull {f['mean_pull']:+.1f}")
         for f in R["flags"]:
             print(f"   FLAG {f['obs']}: [{f['lo']:.0f},{f['hi']:.0f}] {f['nbins']} bins mean pull {f['mean_pull']:+.1f}")
         if not R["flags"]:
-            print("   FLAGS: none")
+            print("   FLAGS: none (clean region)")
 
     np.savez(f"output/altgen/{LABEL}.npz", mode=MODE, inj=inj_desc, truth=truth, subset=subset,
              pnames=PNAMES,
