@@ -593,3 +593,22 @@ bins/obs, stat ⊕ 5% uncorrelated syst (§16 style), 5 observables (CC0π dpt/d
 Success criterion (user): identify understandable physics from parameter pulls WITHOUT bias from
 the non-representable component. Step 3 is the decisive test (known ground truth + known injected
 "unknown unknown").
+
+### Step 1 RESULT — Gate I table (2026-07-10, `physfit_gate1.npz`, `scripts/altgen/physical_fit.py`)
+27 knobs × 100 bins (5 obs × 20 uniform-p99 bins, overflow folded), σ² = (5%·d)² + ADoNIS-MC²,
+Asimov at nominal, 20% priors (Eb_shift ±4 MeV, f_NN_cex ±0.1). **5/27 pass (shrinkage<0.5):**
+Eb_shift 0.06, kF_sf 0.07, s_NN_el[pn] 0.34, f_NN_cex 0.44, M_A_res 0.50(borderline).
+**Key observation:** M_A_qe(0.65)/qe_norm(0.88)/res_norm(0.82)/axial_strength(0.75)/sf_norm(0.76)
+freeze NOT from insensitivity but from mutual degeneracy — the marginalized posterior punishes each
+member of a collinear group individually. These are exactly the knobs the unphysical §16 fit railed:
+Gate I removes that freedom a priori. (Future v2: fit Fisher eigen-combinations instead of freezing
+group members; not v1.) Consequence: closure injections must live in the passing set →
+step 2 injects kF_sf=1.10, M_A_res=0.85 (blind to the fit).
+
+### Step 2/3 machinery — `scripts/altgen/physical_fit_run.py`
+Modes: closure (exact-reweight data at injected θ) / inject2x (Asimov ×2 above threshold, e.g.
+dpt>300 MeV; σ recomputed on injected data). Methods: M0 traditional (LM, χ²_data+prior),
+M1 physical (M0 → Gate II: per-knob Cochran Q [resp. bins |J|·prior>0.3σ, p<0.01] + vector
+split-fit Q_split [one-step GN, lo/hi half-bins per obs, prior-anchored → conservative; worst-|z|
+knob frozen on failure] → freeze → refit ≤4 rounds → FLAG contiguous ≥2-bin |pull|>2 runs),
+M2 Huber IRLS (c=1.345). All fits on the Gate-I subset only, live per-iteration logging.
