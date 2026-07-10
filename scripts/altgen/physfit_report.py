@@ -31,6 +31,19 @@ def load(name):
     return np.load(f"output/altgen/{name}.npz", allow_pickle=True)
 
 
+def _step_xy(edges, y):
+    return np.repeat(edges, 2)[1:-1], np.repeat(y, 2)
+
+
+def stairs_band(ax, edges, y, rel, color, label=None, ls="-", lw=1.5, alpha=1.0, band=True, balpha=0.16):
+    """Histogram-step model curve over the bin edges + ADoNIS-MC relative-error band."""
+    xs, ys = _step_xy(edges, y)
+    ax.plot(xs, ys, color=color, ls=ls, lw=lw, alpha=alpha, label=label, zorder=2)
+    if band:
+        ax.fill_between(xs, np.repeat(y * (1 - rel), 2), np.repeat(y * (1 + rel), 2),
+                        color=color, alpha=balpha, lw=0, zorder=1)
+
+
 def snapshot(ds):
     return [{k: (v.copy() if isinstance(v, np.ndarray) else v) for k, v in d.items()} for d in ds]
 
@@ -58,8 +71,13 @@ def main():
     log("evaluating model curves at saved BFPs")
     m_nom = eng.model(th0)
     m_M0_2x = eng.model(np.asarray(i2["M0_th"]))
+    m_M2_2x = eng.model(np.asarray(i2["M2_th"]))
     m_M0_ge = eng.model(np.asarray(ge["M0_th"]))
     m_M1_ge = eng.model(np.asarray(ge["M1_th"]))
+    m_M2_ge = eng.model(np.asarray(ge["M2_th"]))
+    # per-bin RELATIVE bank-MC error (same reweighted events -> same relative error for every curve)
+    relerr = [d["mcerr"] / np.maximum(seg_ := m_nom[eng.row0[j]:eng.row0[j+1]], 1e-300)
+              for j, d in enumerate(ds)]
     snap = snapshot(ds)
     row0 = eng.row0
 
@@ -119,8 +137,10 @@ def main():
             ha="right", va="top", fontsize=8, color="0.35")
     a1.errorbar(x, d["data"], xerr=xe, yerr=d["sigma"], fmt="o", color="k", ms=3.5, lw=0.8,
                 capsize=0, label="fake data (Asimov, ×2 above 300 MeV)", zorder=3)
-    a1.plot(x, seg(m_nom, jdpt), color=C_NOM, ls=":", lw=1.8, label="ADoNIS truth/nominal (= M1 result)")
-    a1.plot(x, seg(m_M0_2x, jdpt), color=C_M0, lw=1.7, label="M0 traditional best fit")
+    stairs_band(a1, d["edges"], seg(m_nom, jdpt), relerr[jdpt], C_NOM, ls=":",
+                label="ADoNIS truth/nominal (= M1 result)")
+    stairs_band(a1, d["edges"], seg(m_M0_2x, jdpt), relerr[jdpt], C_M0, label="M0 traditional best fit")
+    stairs_band(a1, d["edges"], seg(m_M2_2x, jdpt), relerr[jdpt], C_M2, label="M2 Huber best fit")
     a1.set(xlabel=r"$\delta p_T$ [MeV/c]", ylabel=r"$d\sigma/dx$ [$10^{-38}$/nucleon]",
            title="Step 3 — the artifact drags the traditional fit")
     a1.set_ylim(bottom=0); a1.legend(fontsize=8)
@@ -161,19 +181,39 @@ def main():
     axs = [fig.add_subplot(gs[i // 3, i % 3]) for i in range(5)]
     for j, (ax, d) in enumerate(zip(axs, ds)):
         x = 0.5 * (d["edges"][1:] + d["edges"][:-1]); xe = 0.5 * np.diff(d["edges"])
+        clean = np.ones(d["nbin"], bool)
         for f in [f_ for f_ in fl_nom if f_["j"] == j]:
             ax.axvspan(d["edges"][f["i0"]], d["edges"][f["i1"] + 1], color="#f0e0e0", zorder=0)
+            clean[f["i0"]:f["i1"] + 1] = False
         ax.errorbar(x, d["data"], xerr=xe, yerr=d["sigma"], fmt="o", color="k", ms=2.8, lw=0.7,
                     capsize=0, zorder=3, label="GENIE 3M data")
-        ax.plot(x, seg(m_nom, j), color=C_NOM, ls=":", lw=1.6, label="ADoNIS nominal")
-        ax.plot(x, seg(m_M1_ge, j), color=C_M1, lw=1.6, label="M1 clean-region fit")
+        stairs_band(ax, d["edges"], seg(m_nom, j), relerr[j], C_NOM, ls=":", lw=1.3,
+                    label="ADoNIS nominal", balpha=0.12)
+        stairs_band(ax, d["edges"], seg(m_M2_ge, j), relerr[j], C_M2, lw=1.3,
+                    label="M2 Huber fit", balpha=0.12)
+        # M1: dashed/faint everywhere (extrapolation), solid overlay on the CLEAN (fitted) runs
+        stairs_band(ax, d["edges"], seg(m_M1_ge, j), relerr[j], C_M1, ls="--", lw=1.2, alpha=0.5,
+                    label="M1 extrapolation (excised)", balpha=0.10)
+        m1j = seg(m_M1_ge, j); lab = "M1 clean-region fit"
+        i = 0
+        while i < d["nbin"]:
+            if clean[i]:
+                k = i
+                while k + 1 < d["nbin"] and clean[k + 1]:
+                    k += 1
+                stairs_band(ax, d["edges"][i:k + 2], m1j[i:k + 1], relerr[j][i:k + 1], C_M1,
+                            lw=1.8, label=lab, band=False)
+                lab = None
+                i = k + 1
+            else:
+                i += 1
         XLAB = {"dpt": r"$\delta p_T$ [MeV/c]", "dat": r"$\delta\alpha_T$ [rad]",
                 "pn": r"$p_N$ [MeV/c]", "dptt": r"$\delta p_{TT}$ [MeV/c]",
                 "daT": r"$\delta\alpha_T$ [deg]"}
         ax.set_title(d["name"], fontsize=10); ax.set_ylim(bottom=0)
         ax.set_xlabel(XLAB[d["key"]], fontsize=9)
         if j == 0:
-            ax.legend(fontsize=7.5)
+            ax.legend(fontsize=6.8)
         for s in ("top", "right"):
             ax.spines[s].set_visible(False)
     axs[0].text(0.03, 0.05, "shaded = excised\n(unknown-unknown\ncandidates)", fontsize=7.5,
@@ -182,8 +222,9 @@ def main():
     axk = fig.add_subplot(gs[1, 2])
     subg = [int(k) for k in ge["subset"]]
     yy = np.arange(len(subg))
-    for key, lab, col, mk, dy in [("M0", "M0 traditional", C_M0, "s", -0.16),
-                                  ("M1", "M1 physical", C_M1, "o", 0.16)]:
+    for key, lab, col, mk, dy in [("M0", "M0 traditional", C_M0, "s", -0.22),
+                                  ("M2", "M2 Huber", C_M2, "^", 0.0),
+                                  ("M1", "M1 physical", C_M1, "o", 0.22)]:
         th = np.asarray(ge[f"{key}_th"]); V = np.asarray(ge[f"{key}_V"])
         sig = np.sqrt(np.abs(np.diag(V)))
         val = np.array([(th[k] - th0[k]) / PRIOR[k] for k in subg])
@@ -276,17 +317,23 @@ fluctuations (orange), M1 shows zero false freezes (Cochran-Q p = 0.92-0.96), ze
 Q_split p = 0.23 — the gates stay quiet on healthy noisy data (single-seed null calibration)."""))
         figpage(pdf, f"{OUTFIG}/physfit_fig3_inject2x.png", W("""
 FIG 3 — Step 3, the decisive controlled test. Data = ADoNIS Asimov with all dpt bins above 300 MeV
-multiplied by 2 (an injected "unknown unknown"; truth = all knobs nominal). Left: the traditional
-fit (red) is dragged by the artifact across the whole spectrum. Right: parameter biases — M0
+multiplied by 2 (an injected "unknown unknown"; truth = all knobs nominal). Model curves are
+histogram steps over the analysis bins; shaded bands = the ADoNIS bank's own per-bin MC-stat
+uncertainty. Left: the traditional fit (red) is dragged by the artifact across the whole spectrum;
+M2 (orange) partially resists. Right: parameter biases — M0
 corrupts every knob (kF_sf -11 sigma, s_NN_el[pn] -27 sigma, Eb_shift +8 sigma); M2 (Huber) reduces
 but does not eliminate the bias; M1 refuses every incoherent pull (all Cochran-Q fail, Q_split
 p = 3e-12), excises exactly the 12 injected bins, refits the clean region, and lands on truth to
 0.00 sigma with real uncertainties. Same data, three answers — only one of them is physics."""))
         figpage(pdf, f"{OUTFIG}/physfit_fig4_genie.png", W("""
 FIG 4 — Step 4, genuine foreign physics: GENIE 3.04 (AR23_20i, QE+RES, 3M events, T2K-numu/12C) as
-data at its own statistical precision (+5% syst). Shaded = the 51/100 bins M1 excised at nominal:
-most of dpt (the initial-state/FSI shape difference), ALL of dat (the ~20% normalization offset),
-and four CC1pi structures. On the coherent remainder M1 measures M_A_res = 0.868 +- 0.039 — a
+data at its own statistical precision (+5% syst). Model curves are histogram steps with the ADoNIS
+bank MC-stat band. Shaded = the 51/100 bins M1 excised at nominal: most of dpt (the
+initial-state/FSI shape difference), ALL of dat (the ~20% normalization offset), and four CC1pi
+structures. M1 is drawn SOLID where it was fitted (clean region) and DASHED where it merely
+extrapolates into excised regions — the residual there is the flagged mismodeling, deliberately
+NOT chased by the fit (M0/M2 do chase it, corrupting their parameters).
+On the coherent remainder M1 measures M_A_res = 0.868 +- 0.039 — a
 genuine, coherent RES-shape difference (GENIE Berger-Sehgal softer than ADoNIS DCC) — with kF_sf =
 1.031 +- 0.026, s_NN_el[pn] = 0.939 +- 0.100, f_NN_cex = 0.514 +- 0.057. Bottom-right: every M0
 pull is Cochran-Q incoherent (p = 1e-16..1e-36); M1's are coherent (Q_split p = 0.17).
