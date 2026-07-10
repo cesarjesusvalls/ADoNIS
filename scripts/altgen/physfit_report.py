@@ -140,7 +140,7 @@ def main():
     stairs_band(a1, d["edges"], seg(m_nom, jdpt), relerr[jdpt], C_NOM, ls=":",
                 label="ADoNIS truth/nominal (= M1 result)")
     stairs_band(a1, d["edges"], seg(m_M0_2x, jdpt), relerr[jdpt], C_M0, label="M0 traditional best fit")
-    stairs_band(a1, d["edges"], seg(m_M2_2x, jdpt), relerr[jdpt], C_M2, label="M2 Huber best fit")
+    stairs_band(a1, d["edges"], seg(m_M2_2x, jdpt), relerr[jdpt], C_M2, ls="--", label="M2 Huber best fit")
     a1.set(xlabel=r"$\delta p_T$ [MeV/c]", ylabel=r"$d\sigma/dx$ [$10^{-38}$/nucleon]",
            title="Step 3 — the artifact drags the traditional fit")
     a1.set_ylim(bottom=0); a1.legend(fontsize=8)
@@ -189,10 +189,10 @@ def main():
                     capsize=0, zorder=3, label="GENIE 3M data")
         stairs_band(ax, d["edges"], seg(m_nom, j), relerr[j], C_NOM, ls=":", lw=1.3,
                     label="ADoNIS nominal", balpha=0.12)
-        stairs_band(ax, d["edges"], seg(m_M2_ge, j), relerr[j], C_M2, lw=1.3,
+        stairs_band(ax, d["edges"], seg(m_M2_ge, j), relerr[j], C_M2, ls="--", lw=1.4,
                     label="M2 Huber fit", balpha=0.12)
-        # M1: dashed/faint everywhere (extrapolation), solid overlay on the CLEAN (fitted) runs
-        stairs_band(ax, d["edges"], seg(m_M1_ge, j), relerr[j], C_M1, ls="--", lw=1.2, alpha=0.5,
+        # M1: dash-dot/faint everywhere (extrapolation), solid overlay on the CLEAN (fitted) runs
+        stairs_band(ax, d["edges"], seg(m_M1_ge, j), relerr[j], C_M1, ls="-.", lw=1.1, alpha=0.45,
                     label="M1 extrapolation (excised)", balpha=0.10)
         m1j = seg(m_M1_ge, j); lab = "M1 clean-region fit"
         i = 0
