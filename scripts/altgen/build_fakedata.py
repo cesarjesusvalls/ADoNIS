@@ -44,7 +44,10 @@ def load_t2k(obs):
     return edges, data, derr, cov
 
 
-def main():
+def extract_cc0pi(GST):
+    """Load a gst, apply the CC0pi-Np topological+acceptance selection, and return per-event
+    observables + absolute normalisation. SINGLE SOURCE OF TRUTH for the CC0pi selection --
+    reused by the fake-data builder (main) and the adaptive-binning design script."""
     print(f"[load] gst {GST}", flush=True)
     t = uproot.open(GST)["gst"]
     b = t.arrays(["cc", "qel", "res", "mec", "coh", "Ev", "XSec",
@@ -121,9 +124,21 @@ def main():
     den = np.sqrt(pxl**2 + pyl**2) * np.clip(np.sqrt(dvx**2 + dvy**2), 1e-9, None)
     dat = np.arccos(np.clip(num / den, -1.0, 1.0))
 
+    return dict(b=b, N=N, sig_harm=sig_harm, sig_flux=sig_flux, per_event=per_event,
+                sel=sel, dpt=dpt, dat=dat, cc=cc, pmu=pmu, cthmu=cthmu,
+                pxl=pxl, pyl=pyl, pzl=pzl,
+                chan_frac=np.array([float(ak.mean(b.qel)), float(ak.mean(b.res)),
+                                    float(ak.mean(b.mec)), float(ak.mean(b.coh))]))
+
+
+def main():
+    E = extract_cc0pi(GST)
+    b = E["b"]; N = E["N"]; per_event = E["per_event"]; sel = E["sel"]
+    dpt = E["dpt"]; dat = E["dat"]; sig_harm = E["sig_harm"]; sig_flux = E["sig_flux"]
+    cc = E["cc"]; pmu = E["pmu"]; cthmu = E["cthmu"]
+    pxl = E["pxl"]; pyl = E["pyl"]; pzl = E["pzl"]
     out = {"gst": GST, "N_gen": N, "sig_tot_harm": sig_harm, "sig_tot_flux": sig_flux,
-           "chan_frac": np.array([float(ak.mean(b.qel)), float(ak.mean(b.res)),
-                                  float(ak.mean(b.mec)), float(ak.mean(b.coh))])}
+           "chan_frac": E["chan_frac"]}
     for obs, val in (("dpt", dpt), ("dat", dat)):
         edges, tdata, tderr, tcov = load_t2k(obs)
         v = val[sel]

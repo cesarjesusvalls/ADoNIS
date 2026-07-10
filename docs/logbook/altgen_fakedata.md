@@ -488,3 +488,46 @@ Three deliverables (see the module docstring for the mechanism):
   metric; report the irreducible fraction ("X% of GENIE's MEC channel is un-fakeable by the 6 knobs")
   and compare *that* to the matched-fit residual. Null-space block unit-tested (H·Hⁱⁿᵛ=I, projector
   idempotent, irr⊥knob-space, frac∈[0,1]). Real frac_irr_mec + correlations await the converged 3M run.
+
+## 16. GENIE as data at GENIE's OWN precision (mandate refinement, Remote Control 2026-07-08)
+
+Redirection: NOT the T2K covariance — treat GENIE-3M as a measurement with its OWN precision.
+Final config (after iteration with the user): **20 bins/observable** (dpt, dat), error model =
+GENIE stat ⊕ **5% uncorrelated bin-by-bin syst** ⊕ ADoNIS-bank-MC (quadrature, diagonal).
+`scripts/altgen/fit_genie_precision.py` (live per-iteration progress; early nominal-overlay figure;
+plateau early-stop). 3M generation: both samples completed in ~7 h wall (parallel, ~2× the
+single-thread estimate of 8.8 h avoided); fake datasets rebuilt at 3M
+(`fakedata_{ccqeres,qeresmec}_3M.npz`; CC0π 862k sel, CC1π 74k sel; QE/RES = 0.638/0.362 ✓ vs 300k).
+
+Bugs found en route (all flagged by the user's normalization instinct):
+- **1000× units bug**: GENIE dpt dsig was per-MeV while the model conv is per-GeV (dat unaffected —
+  no unit factor). Symptom: dpt χ²/bin 272 vs dat 8.4 + qe_norm railed at 0.3 fighting a factor it
+  can't reach. Fixed (bw/1000 for dpt, as build_fakedata always did).
+- **bin-(−1) clip bug**: overflow-fold clipped values exactly onto edges[0] → searchsorted−1 = −1 →
+  bincount throws. Fixed: clip strictly inside the range (eps), identical for GENIE and ADoNIS.
+- **Real ~18–20% norm offset** (not a bug): ADoNIS QE+RES sits above GENIE-matched — the §13
+  "ADoNIS SF+cascade carries strength GENIE books as 2p2h" difference; absorbed by qe_norm≈0.78.
+
+Binning studies (equal-count vs uniform): equal-count (20 quantile bins) buries the dpt tail in one
+[0.5,1.5] GeV bin → χ²/ndf 40.3→6.56 (qe_norm 0.82, sabs+res_norm railed low). **Uniform** 20 bins
+over [0,p99] + overflow fold resolves the tail and is the fairer test:
+
+**RESULT (uniform, stat+5%+MC): χ²/ndf 65.9 → 7.41** (`altgen_genieprec_20uni.png/.npz`):
+```
+M_A_qe   2.000±0.249  RAIL(hi)     qe_norm 0.776±0.071 (-3.1σ)   kF_sf 0.939±0.013 (-4.7σ)
+s_NN_el  1.865±0.224  (+3.9σ)      sabs    0.300 RAIL(lo)        res_norm 0.300 RAIL(lo)
+per-dataset χ²/nbin:  dpt 90.4 → 10.99      dat 21.7 → 1.61
+```
+- **dat is fittable** (21.7→1.6): its ~20% nominal gap was normalization → absorbed.
+- **dpt is NOT fittable** (90→11): coherent S-shaped post-fit residual (peak −6σ…, mid +3…+6σ,
+  tail −2σ), 3 knobs railed — the ADoNIS(2D-SF+SRC+INC) vs GENIE(1D-SF+hA2018) initial-state/FSI
+  difference is NOT representable in the 6-knob space. At T2K's correlated ~10% this was χ²/ndf 1.4.
+- ADoNIS-bank floor at 20 bins: 1.0–2.6% MC/bin (effN 1.9k–9.4k) — subdominant to the 5% syst
+  ("more ADoNIS" not needed at this binning; it WAS the floor at the 775-bin/3% design: 5.9%/bin).
+
+**Honest mandate assessment (2026-07-08):** the pulls deliver understandable physics ONLY for
+differences the knob space can represent (kF_sf≈0.93–0.94 in every fit = initial-state width;
+qe_norm = the 2p2h-bookkeeping offset). The LARGEST difference (dpt shape) breaks the pulls
+(3 rails, thrashing) and migrates into the irreducible residual. A clean demonstration still
+requires the controlled closure (matched vs +MEC = known-injected difference) — machinery built
+(§15) but not yet run at GENIE precision. → superseded by the PHYSICAL-FIT program (§17).

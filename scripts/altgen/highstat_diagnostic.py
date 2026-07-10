@@ -110,7 +110,7 @@ def main():
             r = m - d["data"]; c = float(r @ d["Cinv"] @ r) / alpha; per.append(c); tot += c
         return tot, per
 
-    def lm_fit(alpha=1.0, th0=None, nit=NIT):
+    def lm_fit(alpha=1.0, th0=None, nit=NIT, tag=""):
         """Levenberg-Marquardt on the exact bank reweight at covariance scale alpha."""
         th = np.ones(NP) if th0 is None else th0.copy()
         mods = model_bins(th); c_cur, _ = chi2_of(mods, alpha); lam = 1e-3
@@ -126,8 +126,10 @@ def main():
                 if c_try < c_cur:
                     th, mods, c_cur = th_try, mods_try, c_try; lam = max(lam/3, 1e-8); break
                 lam *= 5
+            log(f"    [{tag} a={alpha:.2f}] it {it:2d} chi2={c_cur:8.2f} lam={lam:.1e} " +
+                " ".join(f"{k}={th[i]:.3f}" for i, k in enumerate(FIT)))
             if np.linalg.norm(dth) < 1e-6:
-                break
+                log(f"    [{tag} a={alpha:.2f}] converged (step<1e-6) at it {it}"); break
         return th, mods, c_cur
 
     def fingerprint(th, mods):
@@ -156,7 +158,7 @@ def main():
         set_centrals(ds, npz)
         mods_nom = model_bins(np.ones(NP)); c_nom, per_nom = chi2_of(mods_nom)
         log(f"[{tag_name}] NOMINAL chi2/ndf = {c_nom/nbins:.3f}  (chi2={c_nom:.1f}, nbins={nbins})")
-        th, mods, c_bf = lm_fit(alpha=1.0)          # converged base fit (NIT)
+        th, mods, c_bf = lm_fit(alpha=1.0, tag=tag_name)   # converged base fit (NIT)
         log(f"[{tag_name}] BFP chi2/ndf = {c_bf/ndf:.3f}  th=" +
             " ".join(f"{k}={th[i]:.3f}" for i, k in enumerate(FIT)))
         ct, cr, ci, stdres = fingerprint(th, mods)
@@ -170,7 +172,7 @@ def main():
     # If the argmin is truly covariance-scale-invariant, refitting the CONVERGED BFP under C->alpha*C
     # must not move it. chi2/ndf must equal base/alpha; theta must be unchanged.
     set_centrals(ds, npz_m)
-    th_a, _, c_a = lm_fit(alpha=LADDER_CHECK_ALPHA, th0=results["matched"]["th"], nit=VALID_NIT)
+    th_a, _, c_a = lm_fit(alpha=LADDER_CHECK_ALPHA, th0=results["matched"]["th"], nit=VALID_NIT, tag="ladder")
     dmax = float(np.max(np.abs(th_a - results["matched"]["th"])))
     expect = results["matched"]["c_bf"] / LADDER_CHECK_ALPHA
     log(f"[ladder-gate] refit matched @ alpha={LADDER_CHECK_ALPHA}: |dtheta|_max={dmax:.2e} "
