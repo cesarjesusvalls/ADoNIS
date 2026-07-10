@@ -73,6 +73,55 @@ def refresh_sigma(ds):
         d["sigma"] = np.sqrt(var); d["Cinv"] = np.diag(1.0 / np.maximum(var, 1e-300))
 
 
+def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0):
+    """Construct the fake data in-place on `ds` (single source of truth for all consumers).
+    Returns (truth theta vector, description)."""
+    truth = eng.th0.copy(); inj_desc = "asimov"
+    if mode == "closure":
+        truth, _inj = parse_inject(inject or INJECT, eng.nom)
+        w_inj = np.asarray(BR.weight_jit(eng.JB, knobs_of(truth, eng.nom), eng.grids))
+        for d in ds:
+            d["data"] = IC.bin_w(d, w_inj)
+        inj_desc = inject or INJECT
+    elif mode == "inject2x":
+        obs, thr = (inj2x or INJ2X).split(">"); thr = float(thr)
+        for d in ds:
+            if d["key"] == obs.strip():
+                hit = d["edges"][:-1] >= thr
+                d["data"] = d["data"] * np.where(hit, 2.0, 1.0)
+                log(f"  x2 injection: {d['name']} bins with edge>={thr} ({int(hit.sum())} bins)")
+        inj_desc = inj2x or INJ2X
+    elif mode == "genie":
+        # GENIE 3M as data on the physfit binning: same extraction as build_fakedata (single source
+        # of truth), identical overflow clipping; data sigma additionally carries GENIE Poisson stat.
+        from build_fakedata import extract_cc0pi, extract_cc1pi
+        gst = gst or os.environ.get("ADONIS_GST", "output/altgen/genie_t2k_12C_ar23_CCQERES_3M.gst.root")
+        E = extract_cc0pi(gst); E1 = extract_cc1pi(E)
+        gvals = {"dpt": E["dpt"][E["sel"]], "dat": E["dat"][E["sel"]],
+                 "pn": E1["vals1"]["pn"], "dptt": E1["vals1"]["dptt"], "daT": E1["vals1"]["daT"]}
+        for d in ds:
+            edges = d["edges"]; eps = (edges[-1] - edges[0]) * 1e-12
+            vc = np.clip(gvals[d["key"]], edges[0] + eps, edges[-1] - eps)
+            cnt, _ = np.histogram(vc, bins=edges)
+            if d["key"] in ("dpt", "dat"):
+                bw_unit = np.diff(edges) / (1000.0 if d["key"] == "dpt" else 1.0)
+                scale = E["per_event"] / bw_unit
+                d["data"] = cnt * scale                            # 1e-38/unit/nucleon
+            else:
+                scale = E1["per_event_nb_CH"] / np.diff(edges)
+                d["data"] = cnt * scale + d["offset"]              # GENIE-C + frozen free-H (nb/CH)
+            d["stat_g"] = np.sqrt(cnt) * scale
+        inj_desc = f"genie:{Path(gst).name}"
+    refresh_sigma(ds)
+    # optional fluctuation: jitter data by its sigma (null calibration of the gates); sigma unchanged
+    if fluct:
+        rng = np.random.default_rng(fluct)
+        for d in ds:
+            d["data"] = d["data"] + rng.normal(0.0, d["sigma"])
+        inj_desc += f" +fluct(seed={fluct})"
+    return truth, inj_desc
+
+
 class Engine:
     """Shared differentiable model/Jacobian over the SPEC vector, restricted to a fit subset."""
     def __init__(self, ds, JB, grids, nom):
@@ -233,50 +282,7 @@ def main():
     log(f"Gate-I subset ({len(subset)}): " + " ".join(PNAMES[k] for k in subset))
 
     # ---- fake data -------------------------------------------------------------------------------- #
-    truth = eng.th0.copy(); inj_desc = "asimov"
-    if MODE == "closure":
-        truth, inj = parse_inject(INJECT, nom)
-        w_inj = np.asarray(BR.weight_jit(JB, knobs_of(truth, nom), grids))
-        for j, d in enumerate(ds):
-            d["data"] = IC.bin_w(d, w_inj)
-        inj_desc = INJECT
-    elif MODE == "inject2x":
-        obs, thr = INJ2X.split(">"); thr = float(thr)
-        for d in ds:
-            if d["key"] == obs.strip():
-                hit = d["edges"][:-1] >= thr
-                d["data"] = d["data"] * np.where(hit, 2.0, 1.0)
-                log(f"  x2 injection: {d['name']} bins with edge>={thr} ({int(hit.sum())} bins)")
-        inj_desc = INJ2X
-    elif MODE == "genie":
-        # GENIE 3M as data on the physfit binning: same extraction as build_fakedata (single source
-        # of truth), identical overflow clipping; data sigma additionally carries GENIE Poisson stat.
-        from build_fakedata import extract_cc0pi, extract_cc1pi
-        gst = os.environ.get("ADONIS_GST", "output/altgen/genie_t2k_12C_ar23_CCQERES_3M.gst.root")
-        E = extract_cc0pi(gst); E1 = extract_cc1pi(E)
-        gvals = {"dpt": E["dpt"][E["sel"]], "dat": E["dat"][E["sel"]],
-                 "pn": E1["vals1"]["pn"], "dptt": E1["vals1"]["dptt"], "daT": E1["vals1"]["daT"]}
-        for d in ds:
-            edges = d["edges"]; eps = (edges[-1] - edges[0]) * 1e-12
-            vc = np.clip(gvals[d["key"]], edges[0] + eps, edges[-1] - eps)
-            cnt, _ = np.histogram(vc, bins=edges)
-            if d["key"] in ("dpt", "dat"):
-                bw_unit = np.diff(edges) / (1000.0 if d["key"] == "dpt" else 1.0)
-                scale = E["per_event"] / bw_unit
-                d["data"] = cnt * scale                            # 1e-38/unit/nucleon
-            else:
-                scale = E1["per_event_nb_CH"] / np.diff(edges)
-                d["data"] = cnt * scale + d["offset"]              # GENIE-C + frozen free-H (nb/CH)
-            d["stat_g"] = np.sqrt(cnt) * scale
-        inj_desc = f"genie:{Path(gst).name}"
-    refresh_sigma(ds)
-    # optional fluctuation: jitter data by its sigma (null calibration of the gates); sigma unchanged
-    fseed = int(os.environ.get("PHYSFIT_FLUCT", "0"))
-    if fseed:
-        rng = np.random.default_rng(fseed)
-        for d in ds:
-            d["data"] = d["data"] + rng.normal(0.0, d["sigma"])
-        inj_desc += f" +fluct(seed={fseed})"
+    truth, inj_desc = apply_mode(ds, eng, MODE, fluct=int(os.environ.get("PHYSFIT_FLUCT", "0")))
     log(f"fake data ready: {inj_desc}")
 
     # ---- run methods ------------------------------------------------------------------------------ #
