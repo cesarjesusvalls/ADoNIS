@@ -605,6 +605,14 @@ Gate I removes that freedom a priori. (Future v2: fit Fisher eigen-combinations 
 group members; not v1.) Consequence: closure injections must live in the passing set →
 step 2 injects kF_sf=1.10, M_A_res=0.85 (blind to the fit).
 
+### Step 2 RESULT — closure PASSED, all methods (2026-07-10, `physfit_closure.npz`)
+Inject kF_sf=1.10, M_A_res=0.85 (Gate-I passers; fit blind). M0/M1/M2 all: exact recovery
+(kF_sf 1.100±0.008, M_A_res 0.851±0.013; non-injected knobs at truth ≤0.05σ), χ²_data=0.00
+(noiseless Asimov + exact reweight; residual χ²=0.81 = exactly the prior penalty of the injected
+truth, (0.5σ)²+(0.75σ)²). M1: ZERO false freezes (all Q_k p=1, Q_split p=1), zero flags. Caveat:
+noiseless data makes the Q-tests pass trivially — fluctuated closure (data jittered by σ) queued
+as the real null calibration of the p<0.01 thresholds.
+
 ### Step 2/3 machinery — `scripts/altgen/physical_fit_run.py`
 Modes: closure (exact-reweight data at injected θ) / inject2x (Asimov ×2 above threshold, e.g.
 dpt>300 MeV; σ recomputed on injected data). Methods: M0 traditional (LM, χ²_data+prior),
