@@ -531,3 +531,47 @@ qe_norm = the 2p2h-bookkeeping offset). The LARGEST difference (dpt shape) break
 (3 rails, thrashing) and migrates into the irreducible residual. A clean demonstration still
 requires the controlled closure (matched vs +MEC = known-injected difference) — machinery built
 (§15) but not yet run at GENIE precision. → superseded by the PHYSICAL-FIT program (§17).
+
+## 17. PHYSICAL-FIT program (mandate restated, Remote Control 2026-07-10) — PLAN
+
+Problem statement (user): any forward model (ACHILLES/ADoNIS) is approximate — (a) tunable-parameter
+uncertainty, (b) computational simplifications (impulse approx., nuclear-model gaps), (c) unknown
+unknowns (e.g. 2p2h historically). How do we learn from data WITHOUT being biased by (b)/(c)?
+Core requirement: a fit whose parameter motion is only accepted when it is PHYSICALLY INFORMED —
+i.e. the bins a knob touches must pull it COHERENTLY. A knob pulled up by half its bins and down by
+the other half (net ≠ 0 because a tail dominates) is NOT a measurement; it is mismodeling leaking
+into a dial. Regions that no coherent variation can fix get FLAGGED as unknown-unknown candidates.
+
+### Methodology design (v1)
+Two gates on every parameter, then a flagging pass:
+- **Gate I — informativeness (Asimov Fisher).** All knobs get uncorrelated priors (20% multiplicative;
+  additive/fractional knobs in natural units: Eb_shift ±4 MeV, f_NN_cex ±0.1). Asimov at nominal:
+  posterior = (JᵀC⁻¹J + Π⁻¹)⁻¹. Fit only knobs with σ_post < 0.5·σ_prior (sample actually informs
+  them); freeze the rest at prior. Uses session A's per-knob jvp Jacobian machinery (info_content).
+- **Gate II — coherence (per-bin pull consistency).** For fitted knob k at the current point: per-bin
+  demand δθ_kb = r_b/J_kb with Fisher weight w_kb=(J_kb/σ_b)², over "responsive" bins
+  (|J_kb|·σ_prior > f·σ_b, f~0.3). Tests: (1) weighted sign-agreement binomial test on J_kb·r_b;
+  (2) split-fit compatibility (fit θ_k separately on two halves of its responsive bins — bulk vs
+  tail — require |Δθ|<2σ). Knobs failing coherence are FROZEN (their motion is not a measurement);
+  refit; iterate to a fixed point. This generalizes region-split-not-summary-chi2 from bins to
+  knob-response space.
+- **Flagging pass.** At the physical-fit BFP: per-bin standardized residual map; contiguous regions
+  >2σ that NO frozen-knob release can coherently fix = unknown-unknown candidates (report location,
+  amplitude, and which knobs tried to absorb it).
+Diagonal error model required for per-bin coherence to be rigorous → primary config: 20 uniform
+bins/obs, stat ⊕ 5% uncorrelated syst (§16 style), 5 observables (CC0π dpt/dat ⊕ CC1π pN/dpTT/daT).
+
+### Validation ladder (blueprint order)
+1. **Build** `physical_fit.py` (Gates I+II + flagging on the differentiable bank; live progress).
+2. **Closure**: ADoNIS Asimov + injected shifts in Gate-I-passing knobs (e.g. M_A_qe·1.2,
+   res_norm·0.8) → physical fit must recover them (blind), no false freezes, no flags.
+3. **Unphysical injection**: ADoNIS Asimov with bins ×2 above a kinematic threshold (e.g.
+   δp_T > 0.3 GeV) → traditional global-χ² fit biases the knobs; physical fit must (a) keep knob
+   estimates unbiased, (b) freeze/reject the incoherent pulls, (c) flag exactly the injected region.
+4. **GENIE fake data** (the §16 samples, matched + MEC): does the physical fit isolate the
+   representable differences (kF_sf, norm) while flagging the dpt-shape region instead of railing
+   sabs/res_norm/M_A_qe?
+
+Success criterion (user): identify understandable physics from parameter pulls WITHOUT bias from
+the non-representable component. Step 3 is the decisive test (known ground truth + known injected
+"unknown unknown").
