@@ -112,6 +112,11 @@ def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0):
                 d["data"] = cnt * scale + d["offset"]              # GENIE-C + frozen free-H (nb/CH)
             d["stat_g"] = np.sqrt(cnt) * scale
         inj_desc = f"genie:{Path(gst).name}"
+    elif mode == "genie2x":
+        # GENIE data PLUS the x2 tail artifact on top (recursive; each pass refreshes sigma)
+        truth, d1 = apply_mode(ds, eng, "genie", gst=gst)
+        _, d2 = apply_mode(ds, eng, "inject2x", inj2x=inj2x)
+        return truth, f"{d1} + {d2}"
     refresh_sigma(ds)
     # optional fluctuation: jitter data by its sigma (null calibration of the gates); sigma unchanged
     if fluct:
@@ -360,12 +365,20 @@ def main():
         if not R["flags"]:
             print("   FLAGS: none (clean region)")
 
+    # persist the BINNED curves too (blueprint: figures re-render without recompute)
+    m_nom_full = eng.model(eng.th0)
     np.savez(f"output/altgen/{LABEL}.npz", mode=MODE, inj=inj_desc, truth=truth, subset=subset,
-             pnames=PNAMES,
+             pnames=PNAMES, row0=eng.row0, dskeys=[d["key"] for d in ds],
+             data=np.concatenate([d["data"] for d in ds]),
+             sigma=np.concatenate([d["sigma"] for d in ds]),
+             mcerr=np.concatenate([d["mcerr"] for d in ds]),
+             model_nom=m_nom_full,
+             **{f"{d['key']}_edges": d["edges"] for d in ds},
              **{f"{m}_th": R["th"] for m, R in results.items()},
              **{f"{m}_V": R["V"] for m, R in results.items()},
              **{f"{m}_sub": np.array(R["sub"]) for m, R in results.items()},
-             **{f"{m}_chi2data": R["chi2_data"] for m, R in results.items()})
+             **{f"{m}_chi2data": R["chi2_data"] for m, R in results.items()},
+             **{f"{m}_model": eng.model(R["th"]) for m, R in results.items()})
     log(f"[out] output/altgen/{LABEL}.npz")
     log("done")
 
