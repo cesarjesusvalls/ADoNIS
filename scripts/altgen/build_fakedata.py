@@ -131,6 +131,55 @@ def extract_cc0pi(GST):
                                     float(ak.mean(b.mec)), float(ak.mean(b.coh))]))
 
 
+def extract_cc1pi(E):
+    """CC1pi+Np STV selection + observables from an extract_cc0pi() dict. SINGLE SOURCE OF TRUTH --
+    reused by the fake-data builder (main) and physical_fit_run mode=genie. Mirrors
+    bank_plot.signal_cc1pi_stv exactly; observables via the imported validated bank_plot formulas.
+    Returns vals1 {pn,dptt,daT} (selected events) + per_event_nb_CH."""
+    from analysis.t2k.differentiability import bank_plot as BPX
+    b = E["b"]; cc = E["cc"]; pmu = E["pmu"]; cthmu = E["cthmu"]
+    pxl = E["pxl"]; pyl = E["pyl"]; pzl = E["pzl"]; per_event = E["per_event"]
+    CTH70 = float(np.cos(np.deg2rad(70.0)))
+
+    npip = ak.to_numpy(b.nfpip); npi0 = ak.to_numpy(b.nfpi0); npim = ak.to_numpy(b.nfpim)
+    nk = ak.to_numpy(b.nfkp + b.nfkm + b.nfk0)
+    # single pi+ 4-vector (events with exactly one pi+)
+    ispip = b.pdgf == 211
+    pip_px = ak.to_numpy(ak.fill_none(ak.firsts(b.pxf[ispip]), 0.0)) * 1e3
+    pip_py = ak.to_numpy(ak.fill_none(ak.firsts(b.pyf[ispip]), 0.0)) * 1e3
+    pip_pz = ak.to_numpy(ak.fill_none(ak.firsts(b.pzf[ispip]), 0.0)) * 1e3
+    pip_E  = ak.to_numpy(ak.fill_none(ak.firsts(b.Ef[ispip]), 0.0)) * 1e3
+    ppi = np.sqrt(pip_px**2 + pip_py**2 + pip_pz**2)
+    cpi = np.where(ppi > 0, pip_pz / np.maximum(ppi, 1e-9), 0.0)
+    # leading proton WITHIN the [450,1200) window (T2K CC1pi picks leading ACCEPTED proton)
+    pmev = b.pf * 1e3
+    inwin = (b.pdgf == 2212) & (pmev >= 450.0) & (pmev < 1200.0)
+    pf_w = b.pf[inwin]
+    jw = ak.argmax(pf_w, axis=1, keepdims=True)
+    lw_px = ak.to_numpy(ak.fill_none(ak.firsts(b.pxf[inwin][jw]), 0.0)) * 1e3
+    lw_py = ak.to_numpy(ak.fill_none(ak.firsts(b.pyf[inwin][jw]), 0.0)) * 1e3
+    lw_pz = ak.to_numpy(ak.fill_none(ak.firsts(b.pzf[inwin][jw]), 0.0)) * 1e3
+    lw_E  = ak.to_numpy(ak.fill_none(ak.firsts(b.Ef[inwin][jw]), 0.0)) * 1e3
+    lwp = np.sqrt(lw_px**2 + lw_py**2 + lw_pz**2)
+    clw = np.where(lwp > 0, lw_pz / np.maximum(lwp, 1e-9), 0.0)
+    hasw = ak.to_numpy(ak.num(pf_w) > 0)
+    Emu = ak.to_numpy(b.El) * 1e3
+    sel1 = (cc & (npip == 1) & (npi0 == 0) & (npim == 0) & (nk == 0) & hasw
+            & (pmu >= 250.0) & (pmu < 7000.0) & (cthmu > CTH70)
+            & (ppi >= 150.0) & (ppi < 1200.0) & (cpi > CTH70) & (clw > CTH70))
+    print(f"\n[sel CC1pi] 1pi+(no other meson)={int((cc&(npip==1)&(npi0==0)&(npim==0)&(nk==0)).sum())}"
+          f"  +p-window={int((cc&(npip==1)&(npi0==0)&(npim==0)&(nk==0)&hasw).sum())}"
+          f"  +acceptance={int(sel1.sum())}", flush=True)
+    kmu4 = np.stack([Emu, pxl, pyl, pzl], axis=1)[sel1]
+    lead4 = np.stack([lw_E, lw_px, lw_py, lw_pz], axis=1)[sel1]
+    pip4 = np.stack([pip_E, pip_px, pip_py, pip_pz], axis=1)[sel1]
+    vals1 = {"pn":   np.asarray(BPX.pN_1pi(kmu4, lead4, pip4)),
+             "dptt": np.asarray(BPX.dptt_1pi(kmu4, lead4, pip4)),
+             "daT":  np.degrees(np.asarray(BPX.dat_1pi(kmu4, lead4, pip4)))}
+    per_event_nb_CH = per_event * 12.0 * 1e-5      # 1e-38 cm^2/nucleon -> nb per C(==C-part of CH)
+    return dict(sel1=sel1, vals1=vals1, per_event_nb_CH=per_event_nb_CH)
+
+
 def main():
     E = extract_cc0pi(GST)
     b = E["b"]; N = E["N"]; per_event = E["per_event"]; sel = E["sel"]
@@ -156,54 +205,13 @@ def main():
             print(f"[{edges[i]:8.3f},{edges[i+1]:8.3f}] {cnt[i]:8d} {dsig[i]:10.4f} "
                   f"{tdata[i]:10.4f} {dsig[i]/max(tdata[i],1e-9):7.3f}")
     # ================= CC1pi+Np STV fake datasets (pN, dpTT, daT) =============================== #
-    # Mirror bank_plot.signal_cc1pi_stv exactly: exactly one pi+ (no pi0/pi-; kaon veto for the
-    # no-other-meson clause), leading proton in [450,1200)+cos70, muon/pion windows + cos70.
-    # Observables via the VALIDATED bank_plot formulas (imported, not transcribed) on (n,4) MeV
-    # 4-vectors. Units: nb/unit per CH -- GENIE-C part only; the frozen ADoNIS free-H offset is
-    # added by the fit (identically to the model, so H cancels in residuals). load_cc1pi gives
-    # the T2K edges/cov in the same nb/CH convention.
-    from analysis.t2k.differentiability import bank_plot as BPX
+    # Selection + observables factored into extract_cc1pi (single source of truth). Units: nb/unit
+    # per CH -- GENIE-C part only; the frozen ADoNIS free-H offset is added by the fit (identically
+    # to the model, so H cancels in residuals). load_cc1pi gives T2K edges/cov in nb/CH.
     from analysis.t2k.differentiability.info_content import load_cc1pi
-    CTH70 = float(np.cos(np.deg2rad(70.0)))
-
-    npip = ak.to_numpy(b.nfpip); npi0 = ak.to_numpy(b.nfpi0); npim = ak.to_numpy(b.nfpim)
-    nk = ak.to_numpy(b.nfkp + b.nfkm + b.nfk0)
-    # single pi+ 4-vector (events with exactly one pi+)
-    ispip = b.pdgf == 211
-    pip_px = ak.to_numpy(ak.fill_none(ak.firsts(b.pxf[ispip]), 0.0)) * 1e3
-    pip_py = ak.to_numpy(ak.fill_none(ak.firsts(b.pyf[ispip]), 0.0)) * 1e3
-    pip_pz = ak.to_numpy(ak.fill_none(ak.firsts(b.pzf[ispip]), 0.0)) * 1e3
-    pip_E  = ak.to_numpy(ak.fill_none(ak.firsts(b.Ef[ispip]), 0.0)) * 1e3
-    ppi = np.sqrt(pip_px**2 + pip_py**2 + pip_pz**2)
-    cpi = np.where(ppi > 0, pip_pz / np.maximum(ppi, 1e-9), 0.0)
-    # leading proton WITHIN the [450,1200) window (T2K CC1pi picks leading ACCEPTED proton)
-    pmev = b.pf * 1e3
-    inwin = (b.pdgf == 2212) & (pmev >= 450.0) & (pmev < 1200.0)
-    pf_w = b.pf[inwin]
-    jw = ak.argmax(pf_w, axis=1, keepdims=True)
-    lw_px = ak.to_numpy(ak.fill_none(ak.firsts(b.pxf[inwin][jw]), 0.0)) * 1e3
-    lw_py = ak.to_numpy(ak.fill_none(ak.firsts(b.pyf[inwin][jw]), 0.0)) * 1e3
-    lw_pz = ak.to_numpy(ak.fill_none(ak.firsts(b.pzf[inwin][jw]), 0.0)) * 1e3
-    lw_E  = ak.to_numpy(ak.fill_none(ak.firsts(b.Ef[inwin][jw]), 0.0)) * 1e3
-    lwp = np.sqrt(lw_px**2 + lw_py**2 + lw_pz**2)
-    clw = np.where(lwp > 0, lw_pz / np.maximum(lwp, 1e-9), 0.0)
-    hasw = ak.to_numpy(ak.num(pf_w) > 0)
-    # muon E for the 4-vector (El is total energy, GeV)
-    Emu = ak.to_numpy(b.El) * 1e3
-    sel1 = (cc & (npip == 1) & (npi0 == 0) & (npim == 0) & (nk == 0) & hasw
-            & (pmu >= 250.0) & (pmu < 7000.0) & (cthmu > CTH70)
-            & (ppi >= 150.0) & (ppi < 1200.0) & (cpi > CTH70) & (clw > CTH70))
-    print(f"\n[sel CC1pi] 1pi+(no other meson)={int((cc&(npip==1)&(npi0==0)&(npim==0)&(nk==0)).sum())}"
-          f"  +p-window={int((cc&(npip==1)&(npi0==0)&(npim==0)&(nk==0)&hasw).sum())}"
-          f"  +acceptance={int(sel1.sum())}", flush=True)
-    kmu4 = np.stack([Emu, pxl, pyl, pzl], axis=1)[sel1]
-    lead4 = np.stack([lw_E, lw_px, lw_py, lw_pz], axis=1)[sel1]
-    pip4 = np.stack([pip_E, pip_px, pip_py, pip_pz], axis=1)[sel1]
-    vals1 = {"pn":   np.asarray(BPX.pN_1pi(kmu4, lead4, pip4)),
-             "dptt": np.asarray(BPX.dptt_1pi(kmu4, lead4, pip4)),
-             "daT":  np.degrees(np.asarray(BPX.dat_1pi(kmu4, lead4, pip4)))}
+    E1 = extract_cc1pi(E)
+    vals1 = E1["vals1"]; per_event_nb_CH = E1["per_event_nb_CH"]
     NAME1 = {"pn": "pN", "dptt": "dpTT", "daT": "daT"}
-    per_event_nb_CH = per_event * 12.0 * 1e-5      # 1e-38 cm^2/nucleon -> nb per C(==C-part of CH)
     for dkey, v in vals1.items():
         edges, tdata, tcov = load_cc1pi(NAME1[dkey])
         cnt, _ = np.histogram(v, bins=edges)

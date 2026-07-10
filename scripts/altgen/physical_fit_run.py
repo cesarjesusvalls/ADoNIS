@@ -65,9 +65,11 @@ def parse_inject(s, nom):
 
 
 def refresh_sigma(ds):
-    """Recompute sigma/Cinv from the CURRENT d['data'] (syst part) + fixed MC part."""
+    """Recompute sigma/Cinv from the CURRENT d['data'] (syst part) + fixed MC part (+ GENIE stat)."""
     for d in ds:
         var = (SYST * d["data"])**2 + d["mcerr"]**2
+        if "stat_g" in d:
+            var = var + d["stat_g"]**2
         d["sigma"] = np.sqrt(var); d["Cinv"] = np.diag(1.0 / np.maximum(var, 1e-300))
 
 
@@ -236,6 +238,27 @@ def main():
                 d["data"] = d["data"] * np.where(hit, 2.0, 1.0)
                 log(f"  x2 injection: {d['name']} bins with edge>={thr} ({int(hit.sum())} bins)")
         inj_desc = INJ2X
+    elif MODE == "genie":
+        # GENIE 3M as data on the physfit binning: same extraction as build_fakedata (single source
+        # of truth), identical overflow clipping; data sigma additionally carries GENIE Poisson stat.
+        from build_fakedata import extract_cc0pi, extract_cc1pi
+        gst = os.environ.get("ADONIS_GST", "output/altgen/genie_t2k_12C_ar23_CCQERES_3M.gst.root")
+        E = extract_cc0pi(gst); E1 = extract_cc1pi(E)
+        gvals = {"dpt": E["dpt"][E["sel"]], "dat": E["dat"][E["sel"]],
+                 "pn": E1["vals1"]["pn"], "dptt": E1["vals1"]["dptt"], "daT": E1["vals1"]["daT"]}
+        for d in ds:
+            edges = d["edges"]; eps = (edges[-1] - edges[0]) * 1e-12
+            vc = np.clip(gvals[d["key"]], edges[0] + eps, edges[-1] - eps)
+            cnt, _ = np.histogram(vc, bins=edges)
+            if d["key"] in ("dpt", "dat"):
+                bw_unit = np.diff(edges) / (1000.0 if d["key"] == "dpt" else 1.0)
+                scale = E["per_event"] / bw_unit
+                d["data"] = cnt * scale                            # 1e-38/unit/nucleon
+            else:
+                scale = E1["per_event_nb_CH"] / np.diff(edges)
+                d["data"] = cnt * scale + d["offset"]              # GENIE-C + frozen free-H (nb/CH)
+            d["stat_g"] = np.sqrt(cnt) * scale
+        inj_desc = f"genie:{Path(gst).name}"
     refresh_sigma(ds)
     log(f"fake data ready: {inj_desc}")
 
