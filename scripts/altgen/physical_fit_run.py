@@ -73,16 +73,38 @@ def refresh_sigma(ds):
         d["sigma"] = np.sqrt(var); d["Cinv"] = np.diag(1.0 / np.maximum(var, 1e-300))
 
 
-def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0):
+def event_Q2(B):
+    """Per-event Q^2 [GeV^2] from the bank 4-vectors (MeV). Junk rows (zero-weight padding) -> 0."""
+    kmu = np.asarray(B["k_mu"], float); knu = np.asarray(B["k_nu"], float)
+    bad = ~np.isfinite(kmu).all(axis=1) | (np.abs(kmu) > 1e6).any(axis=1)
+    q = knu - np.where(bad[:, None], knu, kmu)
+    Q2 = (q[:, 1]**2 + q[:, 2]**2 + q[:, 3]**2 - q[:, 0]**2) / 1e6
+    return np.clip(Q2, 0.0, None)
+
+
+def wq2_of(B, amp, lam):
+    """The injected unknown-unknown: w(Q^2) = 1 - amp*exp(-Q^2/lam); w(0)=1-amp, ->1 at high Q^2."""
+    return 1.0 - amp * np.exp(-event_Q2(B) / lam)
+
+
+def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0, q2mod=None):
     """Construct the fake data in-place on `ds` (single source of truth for all consumers).
     Returns (truth theta vector, description)."""
     truth = eng.th0.copy(); inj_desc = "asimov"
-    if mode == "closure":
-        truth, _inj = parse_inject(inject or INJECT, eng.nom)
-        w_inj = np.asarray(BR.weight_jit(eng.JB, knobs_of(truth, eng.nom), eng.grids))
+    if mode in ("closure", "q2mod", "closure_q2mod"):
+        wev = np.asarray(BR.weight_jit(eng.JB, knobs_of(eng.th0, eng.nom), eng.grids))
+        if mode != "q2mod":                                     # injected knob shifts
+            truth, _inj = parse_inject(inject or INJECT, eng.nom)
+            wev = np.asarray(BR.weight_jit(eng.JB, knobs_of(truth, eng.nom), eng.grids))
+            inj_desc = inject or INJECT
+        else:
+            inj_desc = "asimov"
+        if mode != "closure":                                   # the Q^2 unknown-unknown
+            amp, lam = q2mod or tuple(float(x) for x in os.environ.get("PHYSFIT_Q2MOD", "0.2,0.3").split(","))
+            wev = wev * wq2_of(eng.B, amp, lam)
+            inj_desc += f" x wQ2(amp={amp},lam={lam}GeV2)"
         for d in ds:
-            d["data"] = IC.bin_w(d, w_inj)
-        inj_desc = inject or INJECT
+            d["data"] = IC.bin_w(d, wev)
     elif mode == "inject2x":
         obs, thr = (inj2x or INJ2X).split(">"); thr = float(thr)
         for d in ds:
@@ -129,8 +151,8 @@ def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0):
 
 class Engine:
     """Shared differentiable model/Jacobian over the SPEC vector, restricted to a fit subset."""
-    def __init__(self, ds, JB, grids, nom):
-        self.ds, self.JB, self.grids, self.nom = ds, JB, grids, nom
+    def __init__(self, ds, JB, grids, nom, B=None):
+        self.ds, self.JB, self.grids, self.nom, self.B = ds, JB, grids, nom, B
         self.th0 = theta_nominal(nom)
         self.row0 = np.cumsum([0] + [d["nbin"] for d in ds])
         wf = lambda th, JB: BR.bank_weight(JB, knobs_of(th, nom), grids)
@@ -279,7 +301,7 @@ def main():
     w0 = np.asarray(BR.weight_jit(JB, nom, grids))
     log(f"bank {len(w0)} events | mode={MODE} methods={METHODS} label={LABEL}")
     ds = build_physfit_datasets(B, w0, log)
-    eng = Engine(ds, JB, grids, nom)
+    eng = Engine(ds, JB, grids, nom, B=B)
 
     # ---- Gate-I subset (blind to injection) ------------------------------------------------------- #
     g1 = np.load(GATE1_NPZ, allow_pickle=True)

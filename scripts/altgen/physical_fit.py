@@ -111,22 +111,42 @@ DOMAINS = {"dat": (0.0, float(np.pi)), "daT": (0.0, 180.0)}
 
 
 def build_physfit_datasets(B, w0, log):
-    """5 observables, uniform-p99 bins (overflow folded), diagonal syst+MC errors, Asimov centrals."""
+    """9 observables, uniform bins (p99+overflow fold, or full range for bounded), diagonal syst+MC
+    errors, Asimov centrals. Muon/pion kinematics carry the Q^2 information the STV variables
+    integrate out. NB: the new CC1pi kinematics (ppi/cospi) get offset=0 (no free-H term) — valid
+    for closure-type modes where data and model share the bank (any offset cancels identically);
+    NOT valid for GENIE mode without extending freeH_offsets."""
     ds = []
     lead0, _ = BP.leading_proton(B); sig0 = BP.signal_cc0pi(B)[0]
     kmu = B["k_mu"].astype(np.float64)
     mask1, lead1, pip1 = BP.signal_cc1pi_stv(B)
+    # muon kinematics (junk zero-weight padding rows -> harmless clipped values)
+    kmu_ok = np.where(np.isfinite(kmu) & (np.abs(kmu) < 1e6), kmu, 0.0)
+    pmu = np.sqrt(np.sum(kmu_ok[:, 1:]**2, axis=1))
+    cmu = kmu_ok[:, 3] / np.maximum(pmu, 1e-9)
+    # pion kinematics (CC1pi single pi+)
+    pip_ok = np.where(np.isfinite(pip1) & (np.abs(pip1) < 1e6), pip1, 0.0)
+    ppi = np.sqrt(np.sum(np.asarray(pip_ok)[:, 1:]**2, axis=1))
+    cpi = np.asarray(pip_ok)[:, 3] / np.maximum(ppi, 1e-9)
     obs_defs = [
-        ("CC0pi dpt",  sig0,  np.asarray(BP.dpt(B, lead0)),  "dpt",  "cc0pi"),
-        ("CC0pi dat",  sig0,  np.asarray(BP.dat(B, lead0)),  "dat",  "cc0pi"),
-        ("CC1pi pN",   mask1, np.asarray(BP.pN_1pi(kmu, lead1, pip1)),               "pn",   "cc1pi"),
-        ("CC1pi dpTT", mask1, np.asarray(BP.dptt_1pi(kmu, lead1, pip1)),             "dptt", "cc1pi"),
-        ("CC1pi daT",  mask1, np.degrees(np.asarray(BP.dat_1pi(kmu, lead1, pip1))),  "daT",  "cc1pi"),
+        ("CC0pi dpt",   sig0,  np.asarray(BP.dpt(B, lead0)),  "dpt",   "cc0pi"),
+        ("CC0pi dat",   sig0,  np.asarray(BP.dat(B, lead0)),  "dat",   "cc0pi"),
+        ("CC0pi pmu",   sig0,  pmu,                           "pmu",   "cc0pi"),
+        ("CC0pi cosmu", sig0,  cmu,                           "cosmu", "cc0pi"),
+        ("CC1pi pN",    mask1, np.asarray(BP.pN_1pi(kmu, lead1, pip1)),               "pn",    "cc1pi"),
+        ("CC1pi dpTT",  mask1, np.asarray(BP.dptt_1pi(kmu, lead1, pip1)),             "dptt",  "cc1pi"),
+        ("CC1pi daT",   mask1, np.degrees(np.asarray(BP.dat_1pi(kmu, lead1, pip1))),  "daT",   "cc1pi"),
+        ("CC1pi ppi",   mask1, ppi,                           "ppi",   "cc1pi"),
+        ("CC1pi cospi", mask1, cpi,                           "cospi", "cc1pi"),
     ]
     # free-H offsets on OUR edges (theta-independent; enters centrals -> syst sigma, cancels in J)
     edges_by = {}
     for name, mask, vals, dkey, chan in obs_defs:
-        edges_by[dkey] = design_edges(vals[np.asarray(mask, bool)], N_BINS, domain=DOMAINS.get(dkey))
+        v = vals[np.asarray(mask, bool)]
+        dom = DOMAINS.get(dkey)
+        if dkey in ("cosmu", "cospi"):                  # bounded above at 1, cut below by acceptance
+            dom = (float(v.min()), 1.0)
+        edges_by[dkey] = design_edges(v, N_BINS, domain=dom)
     fH = IC.freeH_offsets({k: v for k, v in edges_by.items() if k in ("pn", "dptt", "daT")})
     for name, mask, vals, dkey, chan in obs_defs:
         edges = edges_by[dkey]; nb = len(edges) - 1; bw = np.diff(edges)
@@ -134,12 +154,18 @@ def build_physfit_datasets(B, w0, log):
         vc = np.clip(vals, edges[0] + eps, edges[-1] - eps)      # overflow fold
         sel, bidx, nbA = IC._bin(mask, vc, edges); assert nbA == nb
         if chan == "cc0pi":
-            _, conv, _, _ = IC.load_cc0pi(dkey)
+            if dkey in ("dpt", "dat"):
+                _, conv, _, _ = IC.load_cc0pi(dkey)
+            else:
+                # base 1e-38/nucleon per NATIVE unit (dat conv is per rad = per native);
+                # pmu binned in MeV but displayed per GeV/c -> x1000 (same convention as dpt)
+                _, conv0, _, _ = IC.load_cc0pi("dat")
+                conv = conv0 * (1000.0 if dkey == "pmu" else 1.0)
             scale_bin = conv / bw
             offset = np.zeros(nb)
         else:
             scale_bin = 1.0 / bw
-            offset = fH[dkey]
+            offset = fH[dkey] if dkey in fH else np.zeros(nb)   # new CC1pi kin: no free-H (closure-safe)
         d = dict(name=name, key=dkey, sel_idx=sel, binidx=bidx, nbin=nb, scale_bin=scale_bin,
                  offset=offset, edges=edges)
         central = IC.bin_w(d, w0)                                 # Asimov central (incl. free-H)
