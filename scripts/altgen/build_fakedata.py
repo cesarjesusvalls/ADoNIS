@@ -177,7 +177,9 @@ def extract_cc1pi(E):
              "dptt": np.asarray(BPX.dptt_1pi(kmu4, lead4, pip4)),
              "daT":  np.degrees(np.asarray(BPX.dat_1pi(kmu4, lead4, pip4)))}
     per_event_nb_CH = per_event * 12.0 * 1e-5      # 1e-38 cm^2/nucleon -> nb per C(==C-part of CH)
-    return dict(sel1=sel1, vals1=vals1, per_event_nb_CH=per_event_nb_CH)
+    # pion kinematics of the SELECTED events (for the extended physfit suite)
+    return dict(sel1=sel1, vals1=vals1, per_event_nb_CH=per_event_nb_CH,
+                ppi=ppi[sel1], cospi=cpi[sel1])
 
 
 def main():

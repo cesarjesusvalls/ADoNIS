@@ -106,6 +106,45 @@ def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0, q2mod=
             inj_desc += f" x wQ2(amp={amp},lam={lam}GeV2)"
         for d in ds:
             d["data"] = IC.bin_w(d, wev)
+    elif mode in ("mecmix", "closure_mecmix"):
+        # ADoNIS prediction (nominal or injected knobs) PLUS GENIE's MEC component only — a
+        # physically-motivated OUTSIDE-MANIFOLD unknown-unknown (ADoNIS has no 2p2h channel;
+        # only the missing channel is foreign, QE/RES stay ADoNIS). GENIE absolute normalization.
+        import awkward as ak
+        from build_fakedata import extract_cc0pi, extract_cc1pi
+        if mode == "closure_mecmix":
+            truth_spec, _inj = parse_inject(inject or INJECT, eng.nom)
+            truth = eng.th0.copy(); truth[:NPAR] = truth_spec
+            wev = np.asarray(BR.weight_jit(eng.JB, knobs_of(truth_spec, eng.nom), eng.grids))
+            inj_desc = inject or INJECT
+        else:
+            wev = np.asarray(BR.weight_jit(eng.JB, knobs_of(eng.th0[:NPAR], eng.nom), eng.grids))
+            inj_desc = "asimov"
+        for d in ds:
+            d["data"] = IC.bin_w(d, wev)
+        gst = gst or os.environ.get("ADONIS_GST", "output/altgen/genie_t2k_12C_ar23_CCQERESMEC_3M.gst.root")
+        scale = float(os.environ.get("PHYSFIT_MECSCALE", "1.0"))
+        E = extract_cc0pi(gst); E1 = extract_cc1pi(E)
+        mec = np.asarray(ak.to_numpy(E["b"].mec)).astype(bool)
+        sel0 = np.asarray(E["sel"]) & mec
+        m1 = mec[np.asarray(E1["sel1"])]
+        log(f"  MEC admixture: CC0pi {int(sel0.sum())} ev, CC1pi {int(m1.sum())} ev, scale={scale}")
+        mvals = {"dpt": E["dpt"][sel0], "dat": E["dat"][sel0],
+                 "pmu": E["pmu"][sel0], "cosmu": E["cthmu"][sel0],
+                 "pn": E1["vals1"]["pn"][m1], "dptt": E1["vals1"]["dptt"][m1],
+                 "daT": E1["vals1"]["daT"][m1], "ppi": E1["ppi"][m1], "cospi": E1["cospi"][m1]}
+        for d in ds:
+            edges = d["edges"]; eps = (edges[-1] - edges[0]) * 1e-12
+            vc = np.clip(mvals[d["key"]], edges[0] + eps, edges[-1] - eps)
+            cnt, _ = np.histogram(vc, bins=edges)
+            if d["key"] in ("dpt", "dat", "pmu", "cosmu"):
+                bw_unit = np.diff(edges) / (1000.0 if d["key"] in ("dpt", "pmu") else 1.0)
+                sc = E["per_event"] / bw_unit                     # 1e-38/unit/nucleon
+            else:
+                sc = E1["per_event_nb_CH"] / np.diff(edges)       # nb/unit/CH
+            d["data"] = d["data"] + scale * cnt * sc
+            d["stat_g"] = scale * np.sqrt(cnt) * sc
+        inj_desc += f" + GENIE-MEC(x{scale})"
     elif mode == "inject2x":
         obs, thr = (inj2x or INJ2X).split(">"); thr = float(thr)
         for d in ds:
