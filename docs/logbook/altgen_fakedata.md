@@ -662,3 +662,8 @@ M1 physical (M0 → Gate II: per-knob Cochran Q [resp. bins |J|·prior>0.3σ, p<
 split-fit Q_split [one-step GN, lo/hi half-bins per obs, prior-anchored → conservative; worst-|z|
 knob frozen on failure] → freeze → refit ≤4 rounds → FLAG contiguous ≥2-bin |pull|>2 runs),
 M2 Huber IRLS (c=1.345). All fits on the Gate-I subset only, live per-iteration logging.
+
+### Fluctuated closure (null calibration, seed 20260710) — PASS
+Truth (kF_sf=1.10, M_A_res=0.85) + 1σ jitter: M1 zero false freezes (Qk p 0.92–0.96), zero flags,
+Q_split p=0.23, recovery ≤2.3σ, χ²_data 73.7/95. Gates quiet on healthy noisy data (one seed;
+multi-seed calibration = future work). `physfit_closure_fluct.npz`.
