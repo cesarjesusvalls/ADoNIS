@@ -34,37 +34,13 @@ N_BINS = int(os.environ.get("ADONIS_NBINS", "20"))
 SYST = float(os.environ.get("ADONIS_SYST", "0.05"))
 LABEL = os.environ.get("ADONIS_LABEL", "physfit_gate1")
 
-# ---- knob spec: (key, tuple_idx|None, label, prior_width_in_knob_units) -------------------------- #
-# 20% multiplicative for nominal-1 knobs; natural units otherwise (Eb_shift MeV, f_NN_cex fraction).
-SPEC = [
-    ("M_A_qe",             None, "M_A_qe",            0.20),
-    ("M_A_res",            None, "M_A_res",           0.20),
-    ("axial_strength",     None, "gA_qe",             0.20),
-    ("vector_strength",    None, "gV_qe",             0.20),
-    ("mu_p",               None, "mu_p",              0.20),
-    ("mu_n",               None, "mu_n",              0.20),
-    ("gep",                None, "GEp",               0.20),
-    ("gen",                None, "GEn",               0.20),
-    ("res_axial_strength", None, "gA_res",            0.20),
-    ("pion_pole",          None, "pion_pole",         0.20),
-    ("qe_norm",            None, "qe_norm",           0.20),
-    ("res_norm",           None, "res_norm",          0.20),
-    ("kF_sf",              None, "kF_sf",             0.20),
-    ("Eb_shift",           None, "Eb_shift[MeV]",     4.00),
-    ("sf_norm",            None, "sf_norm",           0.20),
-    ("src_tail",           None, "src_tail",          0.20),
-    ("sabs",               None, "sabs",              0.20),
-    ("s_piN_elastic",      None, "s_piN_el",          0.20),
-    ("s_piN_cex",          None, "s_piN_cex",         0.20),
-    ("s_conv",             None, "s_conv",            0.20),
-    ("s_NN_elastic",       0,    "s_NN_el[pp]",       0.20),
-    ("s_NN_elastic",       1,    "s_NN_el[pn]",       0.20),
-    ("s_NN_elastic",       2,    "s_NN_el[nn]",       0.20),
-    ("s_NN_inelastic",     0,    "s_NN_inel[pp]",     0.20),
-    ("s_NN_inelastic",     1,    "s_NN_inel[pn]",     0.20),
-    ("s_NN_inelastic",     2,    "s_NN_inel[nn]",     0.20),
-    ("f_NN_cex",           None, "f_NN_cex",          0.10),
-]
+# ---- knob spec: enumerated through the SINGLE SOURCE OF TRUTH (full_knobs.knob_specs), which drops
+# sscat (dead) and pw_norm (dormant DCC infra) and expands the tuple knobs. We attach only the fit-local
+# PRIOR policy here: 20% multiplicative default; natural units for the non-multiplicative knobs. -------- #
+from analysis.t2k.differentiability.full_knobs import knob_specs as _knob_specs
+_PRIOR_POLICY = {"Eb_shift": 4.0, "f_NN_cex": 0.10}     # everything else: 20% multiplicative
+SPEC = [(name, idx, lab, _PRIOR_POLICY.get(name, 0.20))
+        for (name, idx, lab, _nom) in _knob_specs(nominal_knobs())]
 NPAR = len(SPEC)
 PNAMES = [f"{k}[{i}]" if i is not None else k for k, i, *_ in SPEC]
 PRIOR = np.array([s[3] for s in SPEC])
