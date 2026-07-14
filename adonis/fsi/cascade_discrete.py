@@ -103,6 +103,17 @@ def pion_branch_reweight(brec, sabs, sscat):
     return jnp.prod(jnp.where(valid, br, 1.0), axis=1)
 
 
+def _match_dtype(a, g):
+    """Promote the survival pair (a, g) to a common dtype BEFORE exponentiating.
+
+    The bank stores `a` as float32 while `g` inherits float64 from the knob vector, so `exp(-a)` would be
+    a float32 exp and `exp(-a/g)` a float64 one.  At nominal g == 1 exactly, so the two are mathematically
+    identical -- yet they differ by the float32 rounding of exp, which breaks the reweight's NOMINAL
+    IDENTITY by ~9e-4 per event (measured on the bank).  Exponentiate both in the same dtype."""
+    dt = jnp.result_type(a, g)
+    return jnp.asarray(a, dt), jnp.asarray(g, dt)
+
+
 def fsi_pion_reweight(brec, s_abs, s_el, s_cex, s_conv):
     """GRANULAR pion FSI reweight -- BRANCH x SURVIVAL, one slot per IN-SLAB CANDIDATE STEP (hit or not).
 
@@ -127,21 +138,31 @@ def fsi_pion_reweight(brec, s_abs, s_el, s_cex, s_conv):
     hitf = hh.astype(bool)
     sa = jnp.where(hitf, sa, 1.0); ss_el = jnp.where(hitf, ss_el, 1.0)
     ss = jnp.where(hitf, ss, 1.0); si = jnp.where(hitf, si, 0.0)
-    # (1) branch, at the struck candidate (only meaningful on a hit)
-    ss_cex = jnp.clip(ss - ss_el, 0.0, None)
-    D0 = sa + ss + si
-    D = s_abs * sa + s_el * ss_el + s_cex * ss_cex + s_conv * si
+
+    def _sigma_ratio(sa_, ss_el_, ss_, si_):
+        """D/D0 = sum_i s_i f_i, written as 1 + sum_i (s_i - 1) f_i.
+
+        Algebraically identical, but EXACTLY 1 at nominal in ANY precision (every (s_i - 1) is 0),
+        whereas D/D0 is only 1 up to the rounding of D and D0.  Defensive: the bank stores these sigmas
+        as float32 and exp(-a/g) amplifies a g that is off by even 1 ulp.  (Under the production
+        jax_enable_x64 both forms give max|w-1| = 0 exactly; this one holds in float32 too.)"""
+        D0 = jnp.clip(sa_ + ss_ + si_, 1e-12, None)
+        fa = sa_ / D0
+        fel = ss_el_ / D0
+        fcex = jnp.clip(ss_ - ss_el_, 0.0, None) / D0
+        fconv = si_ / D0
+        return 1.0 + (s_abs - 1.0) * fa + (s_el - 1.0) * fel + (s_cex - 1.0) * fcex + (s_conv - 1.0) * fconv
+
+    # (1) branch, at the struck candidate (only meaningful on a hit): s_realized * D0/D
     s_real = jnp.where(code == 0, s_el, jnp.where(code == 1, s_cex, jnp.where(code == 2, s_abs, s_conv)))
-    branch = s_real * D0 / jnp.clip(D, 1e-12, None)
-    # (2) survival, at the closest in-slab candidate: sigma_tot scale g = D_c/D0_c
-    ss_cex_c = jnp.clip(ss_c - ss_el_c, 0.0, None)
-    D0_c = jnp.clip(sa_c + ss_c + si_c, 1e-12, None)
-    D_c = s_abs * sa_c + s_el * ss_el_c + s_cex * ss_cex_c + s_conv * si_c
-    g = jnp.clip(D_c / D0_c, 1e-6, None)
+    branch = s_real / jnp.clip(_sigma_ratio(sa, ss_el, ss, si), 1e-12, None)
+    # (2) survival, at the CLOSEST in-slab candidate: sigma_tot -> g*sigma_tot maps a -> a/g
+    g = jnp.clip(_sigma_ratio(sa_c, ss_el_c, ss_c, si_c), 1e-6, None)
+    a, g = _match_dtype(a, g)                    # same dtype for both exps (see _match_dtype)
     p0 = jnp.clip(jnp.exp(-a), 1e-6, 1.0 - 1e-6)
     pk = jnp.clip(jnp.exp(-a / g), 1e-6, 1.0 - 1e-6)
-    surv = jnp.where(hh, pk / p0, (1.0 - pk) / (1.0 - p0))
-    per = jnp.where(hh, surv * branch, surv)
+    surv = jnp.where(hitf, pk / p0, (1.0 - pk) / (1.0 - p0))
+    per = jnp.where(hitf, surv * branch, surv)
     return jnp.prod(jnp.where(valid, per, 1.0), axis=1)
 
 
@@ -158,7 +179,12 @@ def fsi_nucleon_reweight(srec, s_el, s_inel):
     se = jnp.asarray(s_el); si = jnp.asarray(s_inel)
     valid = jnp.arange(a_nom.shape[1])[None, :] < ns[:, None]
     se_i = se[iso]; si_i = si[iso]                                # per-candidate per-iso scales
-    g = jnp.clip(se_i * (1.0 - finel) + si_i * finel, 1e-6, None)
+    # g = se*(1-finel) + si*finel, written as 1 + (se-1)*(1-finel) + (si-1)*finel: algebraically
+    # identical but EXACTLY 1 at nominal in any precision.  The record is stored/used as float32 (see
+    # bank_reweight.to_jax), where the naive form leaves g off 1 by ~1 ulp and exp(-a/g) amplifies it
+    # into a max|w-1| ~ 9e-4 nominal-identity violation on the bank.  Same trick as fsi_pion_reweight.
+    g = jnp.clip(1.0 + (se_i - 1.0) * (1.0 - finel) + (si_i - 1.0) * finel, 1e-6, None)
+    a_nom, g = _match_dtype(a_nom, g)
     p0 = jnp.clip(jnp.exp(-a_nom), 1e-6, 1.0 - 1e-6)
     pk = jnp.clip(jnp.exp(-a_nom / g), 1e-6, 1.0 - 1e-6)
     s_real = jnp.where(inel, si_i, se_i)
@@ -593,8 +619,11 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     cidx = jnp.argmin(perp2_is, axis=1)
     has_slab = jnp.any(cand, axis=1)
     perp2_c = jnp.where(has_slab, perp2_is[ar, cidx], 1e6)
-    sa_c = sa[ar, cidx]; si_c = si[ar, cidx]; sig_c = sig[ar, cidx]
-    ss_c = sig_c - sa_c - si_c
+    sa_c = sa[ar, cidx]; si_c = si[ar, cidx]
+    # ss DIRECTLY at the candidate -- NOT sig_c - sa_c - si_c.  That subtraction is a cancellation
+    # (~10 out of ~200) and, once stored as float32, can round to ss_c < ss_el_c, so clip(ss_c-ss_el_c,0)
+    # truncates and g drifts off 1 at nominal -- which exp(-a/g) amplifies.  ss is already computed.
+    ss_c = ss[ar, cidx]
     ss_el_c = sig_io.reshape(n, A, 3)[ar, cidx][ar, ch]          # elastic (out==in) part at the candidate
     W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
     kf_p_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoP))
@@ -719,7 +748,7 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & interacted[:, None])
     d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
     pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
-    ss_j = sig_j - sa_j - si_j
+    ss_j = ss[ar, j]                                            # direct (see ss_c: no sig-sa-si cancellation)
     ss_el_j = sig_io_j[ar, ch]                                  # elastic (out==in) scatter sigma at the hit
     # GRANULAR kind-1 channel code {0 elastic, 1 charge-exchange, 2 absorption, 3 conversion} (was the
     # 3-code {0 scatter,1 abs,2 conv}).  Scatter splits into elastic/cex by the sampled out-pion charge
