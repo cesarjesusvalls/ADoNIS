@@ -1,0 +1,51 @@
+# ACHILLES cascade: pi+ on 12C, BROAD tagged beam 50-1000 MeV/c (spans the T2K-soft region AND opens piN->etaN' above ~680 MeV/c -> makes s_conv reachable).
+# achilles:cascade image, /achilles/bin/achilles-cascade, Mode: CrossSection.  KickMomentum is a RANGE:
+# the beam pion |p| is drawn uniform in [80,500] MeV per event (RunCascade.cc:250) and sigma(p) is
+# extracted by BINNING the incoming |p| (analysis/paper/fig3 make.py), NOT a per-point scan.  Only
+# REACTED events are written; GenCrossSection's 4th field = n_tried (uniform in p) gives the bin
+# normalization.  radius=10 fm beam disk -> piR^2=3141.6 mb.  ACHILLES SIGSEGVs mid-run -> use --seeds N.
+#   python -m analysis.utils.run_achilles configs/achilles/run_cascade_pip_C.yml --seeds 8
+Initialize:
+  seed: 123456789
+
+Nucleus:
+  Name: 12C
+  Binding: 8.6
+  Fermi Momentum: 225
+  Density:
+    ProtonFile: data/densities/c12.prova.txt
+    NeutronFile: data/densities/c12.prova.txt
+    FilePotential: data/realOP_12C_EDAI.dat
+    Function: configuration
+    Configs: data/configurations/QMC_configs.out.gz
+  FermiGas:
+    Type: Local
+    Params: []
+  Potential: 
+    Name: Schroedinger
+    r0: 0.16
+    Mode: 3
+
+Cascade:
+  Mode: CrossSection
+  # Virtual-Resonances interaction set (the validated transparency cascade, docs/logbook/
+  # cascade_transport_residual.md): NucleonNucleon GiBUU/Decay + PionInteraction (MesonBaryon DCC
+  # hard-scatter + PionAbsorptionOneStep Oset) + ConstantInteraction (strange-baryon zeros).
+  # hA_Rules.yml REQUIRES NucleonNucleon ResonanceMode:Decay when MesonBaryon/PionAbsorptionOneStep
+  # are present -- the GeantInteraction set the image rejects.
+  Interactions: !include "data/default/VirtResInteractions.yml"
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+  Params:
+    radius: 10
+
+KickMomentum: [50, 1000]   # broad TAGGED beam: uniform in |p|, sigma(p) by binning the incoming |p|)
+NEvents: 500000
+PID: 211
+
+Output:
+  Format: NuHepMC
+  Name: /out/run_cascade_pip_C_broad.hepmc

@@ -218,7 +218,15 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             p4_2 = jnp.where(is_N[:, None], p4n, jnp.where(is_pi[:, None], p4p, p4))
             pos_2 = jnp.where(is_N[:, None], posn, jnp.where(is_pi[:, None], posp, pos))
             fz_2 = jnp.where(is_N, fzn, fz)                           # only the nucleon updates fz
-            nsc_2 = jnp.where(is_pi, nscp, nsc)                       # only the pion updates nsc
+            # nsc = POST-PAULI interaction count of this particle.  The pion path is unchanged (nscp).
+            # The NUCLEON now counts too: _nucleon_step already computes the realized (post-Pauli)
+            # elastic `_do` and inelastic `nstat[5]`, but the pool discarded them, so a nucleon's nsc
+            # was always 0.  A nucleon-beam CROSS-SECTION run needs exactly this: ACHILLES counts a
+            # reaction only inside `if(hit)` AFTER Pauli blocking (Cascade.cc:903), so the kind-1 `hh`
+            # flag (pre-Pauli) would OVER-count.  Readers of nsc take it from the primary PION terminal
+            # (pterm["nsc"]), which is untouched.
+            n_react = is_N & (_do.astype(bool) | nstat[5])            # realized elastic OR inelastic
+            nsc_2 = jnp.where(is_pi, nscp, nsc + n_react.astype(jnp.int32))
             # nucleon charge can now change: NN elastic charge-exchange / inelastic leading channel charge
             # (qln from _nucleon_step; == incident charge when no scatter).  Pion charge oscillates (chp).
             chg_2 = jnp.where(is_N, qln, jnp.where(is_pi, chp, chg))
