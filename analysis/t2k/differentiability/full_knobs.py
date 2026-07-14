@@ -23,6 +23,7 @@ from adonis.analysis.sf_reweight import sf_grids, sf_reweight, removal_from_stru
 import adonis.fsi.cascade_full as _CF
 
 _NPW = 14
+_DELTA_WAVE = 5     # DCC partial-wave index of the P33 Delta(1232) (tests: test_res_strength_reweight)
 # Eb_shift nominal: a negligible epsilon (NOT 0).  The SF removal-energy reweight S(p,E-Eb)/S(p,E) has a
 # coherent non-differentiable corner at Eb=0 (every event sits at the ratio=1 symmetric point, and the
 # down-shift direction hits the clamped low-E rise of the heavy-tailed SF).  Anchoring the nominal at a
@@ -74,6 +75,7 @@ def build_hv_sf(qe, res, sf, with_pw=True):
         qe_gmp=build_qe_ff_records(*qa, "gmp"), qe_gmn=build_qe_ff_records(*qa, "gmn"),
         qe_gep=build_qe_ff_records(*qa, "gep"), qe_gen=build_qe_ff_records(*qa, "gen"),
         res_ma=build_res_ma_records(*ra, ip, pp), res_pp=build_res_pionpole_records(*ra, ip, pp),
+        res_delta=build_res_pw_records(*ra, ip, pp, _DELTA_WAVE),   # P33 Delta(1232) strength knob
         res_pw=[build_res_pw_records(*ra, ip, pp, w) for w in range(_NPW)] if with_pw else None)
     grids = sf_grids(sf)
     SF = dict(grids=grids,
@@ -91,7 +93,8 @@ def _hv_qe(k, HV):
 
 def _hv_res(k, HV):
     w = (ma_reweight(HV["res_ma"], k["M_A_res"]) * strength_reweight(HV["res_ma"], k["res_axial_strength"])
-         * strength_reweight(HV["res_pp"], k["pion_pole"]))
+         * strength_reweight(HV["res_pp"], k["pion_pole"])
+         * strength_reweight(HV["res_delta"], k.get("delta_strength", 1.0)))   # optional Delta-strength knob
     if HV.get("res_pw") is None:                              # pw records skipped (with_pw=False) -> no-op
         return w
     pw = jnp.asarray(k["pw_norm"])

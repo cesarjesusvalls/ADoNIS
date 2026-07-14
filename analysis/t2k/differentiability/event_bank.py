@@ -92,7 +92,8 @@ def run():
         hv = dict(qe_ma=qe_ma, res_ma=res_ma, qe_vec=hv_qeonly(HV["qe_vec"]),
                   qe_gmp=hv_qeonly(HV["qe_gmp"]), qe_gmn=hv_qeonly(HV["qe_gmn"]),
                   qe_gep=hv_qeonly(HV["qe_gep"]), qe_gen=hv_qeonly(HV["qe_gen"]),
-                  res_pp=hv_resonly(HV["res_pp"]))
+                  res_pp=hv_resonly(HV["res_pp"]),
+                  res_delta=hv_resonly(HV["res_delta"]))    # P33 Delta(1232) strength record
         hv_save = {f"hv_{name}_{abc}": comp[i].astype(np.float32)
                    for name, comp in hv.items() for i, abc in enumerate(["a", "b", "c", "Q2"][:len(comp)])}
 
@@ -119,6 +120,12 @@ def run():
                  k_mu=np.concatenate([np.asarray(qe["k_mu"]), np.asarray(res["k_mu"])]).astype(np.float32),
                  fs_off=merge_off(offq, offr), fs_pid=np.concatenate([fpq, fpr]),
                  fs_chg=np.concatenate([fcq, fcr]), fs_p4=np.concatenate([fp4q, fp4r]),
+                 # raw RES vertex kinematics (RES rows real, QE rows zero-padded) -> ANY future RES
+                 # hard-vertex knob's amps2 record is buildable at load with NO further regen:
+                 res_p_N=np.concatenate([np.zeros((nq, 4), np.float32), np.asarray(res["p_N"], np.float32)]),
+                 res_p_pi=np.concatenate([np.zeros((nq, 4), np.float32), np.asarray(res["p_pi"], np.float32)]),
+                 res_ipid=np.concatenate([np.zeros(nq, np.int32), np.asarray(res["ipid"], np.int32)]),
+                 res_ppid=np.concatenate([np.zeros(nq, np.int32), np.asarray(res["ppid"], np.int32)]),
                  **hv_save, **fsi_save)
         del qe, res, HV, SF, recq, recr, ntq, ntr; gc.collect()
         log(f"chunk {c+1}/{n_chunks}: written")

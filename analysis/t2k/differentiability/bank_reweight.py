@@ -31,6 +31,8 @@ def bank_weight(B, knobs, grids):
           * strength_reweight(ma("qe_gmp"), k["mu_p"]) * strength_reweight(ma("qe_gmn"), k["mu_n"])
           * strength_reweight(ma("qe_gep"), k["gep"]) * strength_reweight(ma("qe_gen"), k["gen"])
           * strength_reweight(ma("res_pp"), k["pion_pole"]))
+    if "hv_res_delta_a" in B:                      # optional P33 Delta-strength knob (banks that carry it)
+        hv = hv * strength_reweight(ma("res_delta"), k.get("delta_strength", 1.0))
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
     fsi = pool_fsi_reweight(rec, k["sabs"], 1.0, s_piN_elastic=k["s_piN_elastic"], s_piN_cex=k["s_piN_cex"],
                             s_conv=k["s_conv"], s_NN_elastic=k["s_NN_elastic"], s_NN_inelastic=k["s_NN_inelastic"],
