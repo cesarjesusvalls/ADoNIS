@@ -200,9 +200,33 @@ Fisher is singular; rails flagged.
    D = s_abs·sa + s_el·ss_el + s_cex·ss_cex + s_conv·si — under a common rescale s of all four, D = s·D0
    and the factor is exactly 1 at ANY s. The pion record reweights the branch split conditional on a hit,
    but NOT the hit/no-hit probability (no survival factor). The nucleon reweight DOES carry the total-σ
-   response (exp(−a/g)/exp(−a) hit factor + (1−pk)/(1−p0) no-hit factor). **Open question for the main
-   session** (not touched here — shared FSI core): is the missing pion total-interaction-probability
-   response intended (walk design) or a coverage gap of the kind-1 pion record? Until then, only 3 of the
+   response (exp(−a/g)/exp(−a) hit factor + (1−pk)/(1−p0) no-hit factor).
+
+   > **ANSWERED (2026-07-14, main session): COVERAGE GAP, not walk design.** In-walk gate — scale ALL
+   > FOUR pion σ by a common s = 1.2 *inside the walk* (patched `oset_xsec.abs_cross_section`,
+   > `cascade_mb.jax_channel_sigmas_resolved`, `jax_conversion_sigma`; same generator, seeds, config),
+   > and compare with what the reweight predicts for that same s. 5275 live RES events on C:
+   >
+   > | | mean π interactions/event | absorbed hits | branch frac |
+   > |---|---|---|---|
+   > | nominal walk | 0.6673 | 1161 | 0.3298 |
+   > | **reweight** @ s=1.2 | **0.6673** (w ≡ 1, max\|w−1\| = 8.9e−16) | 1161 | — |
+   > | **in-walk** σ×1.2 | **0.7448 (+11.6%)** | 1285 (+10.7%) | 0.3271 |
+   >
+   > The walk's pion interaction probability is `prob = exp(−π·perp²/σ_tot)`, `σ_tot = sa+ss+si`
+   > (`cascade_discrete._pion_step`) — it DOES respond to a σ scale; the reweight cannot express that.
+   > The branch fraction is unchanged (0.3298 → 0.3271), confirming the mechanism: the common factor
+   > cancels in `sa/σ_tot`, so 100% of the missing response is the hit/no-hit probability.
+   >
+   > ⇒ **`sabs`/`s_piN_elastic`/`s_piN_cex`/`s_conv` are BRANCH-ONLY knobs today**: they redistribute
+   > channels among interactions that already happened and cannot change how many happen. Their Gate-I
+   > sensitivity is *understated*, and the flat direction is a record artifact, not physics. A π⁺–C
+   > transparency sample cannot constrain the σ_π magnitudes until this is fixed.
+   > **Fix** = mirror the nucleon record: log every pion CANDIDATE (not just realized hits) with its
+   > `a = π·perp²/σ_tot`; reweight gains `g = D/D0`, hit factor `(pk/p0)·(s_real·D0/D)`, no-hit factor
+   > `(1−pk)/(1−p0)`. Needs a record-schema change + bank regen (~21 h).
+
+   Until then, only 3 of the
    4 pion knobs are independent in any fit, exactly.
 
 ## Code consolidation (2026-07-04)
