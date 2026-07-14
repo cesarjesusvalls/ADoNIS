@@ -104,19 +104,44 @@ def pion_branch_reweight(brec, sabs, sscat):
 
 
 def fsi_pion_reweight(brec, s_abs, s_el, s_cex, s_conv):
-    """GRANULAR per-hit pion FSI reweight.  brec = (code4 (n,K) {0 el,1 cex,2 abs,3 conv}, sa, ss_el, ss,
-    si (n,K), nh (n,)) with ss = total scatter sigma, ss_el = elastic part (ss_cex = ss - ss_el).
-    Per hit the realized-channel likelihood ratio is exactly  s_realized * D0/D,  with
-      D0 = sa + ss + si,  D = s_abs*sa + s_el*ss_el + s_cex*(ss-ss_el) + s_conv*si.
-    Pure in the scales; == 1 at all-nominal; reduces BIT-EXACTLY to pion_branch_reweight(.,sabs,sscat) when
-    s_el=s_cex=sscat, s_abs=sabs, s_conv=1 (s_realized*D0/D == the old num/den * D0/Dk)."""
-    code, sa, ss_el, ss, si, nh = brec
-    valid = jnp.arange(sa.shape[1])[None, :] < nh[:, None]
+    """GRANULAR pion FSI reweight -- BRANCH x SURVIVAL, one slot per IN-SLAB CANDIDATE STEP (hit or not).
+
+    brec = (code4 {0 el,1 cex,2 abs,3 conv}, sa, ss_el, ss, si  [at the STRUCK candidate, branch factor],
+            hh (hit flag), a (= pi*perp2/(sigma_tot*MB_TO_FM2) at the CLOSEST in-slab candidate),
+            sa_c, ss_el_c, ss_c, si_c [at that candidate, for the sigma_tot response], np_ (n,) slot count).
+
+    A sigma scale moves TWO things and the reweight must carry both (the nucleon reweight always did;
+    the pion one carried only the first -- see docs/logbook/info_content.md):
+      (1) BRANCH, given an interaction:  s_realized * D0/D,
+          D0 = sa+ss+si,  D = s_abs*sa + s_el*ss_el + s_cex*(ss-ss_el) + s_conv*si.
+      (2) SURVIVAL -- WHETHER it interacts.  The walk draws the hit with prob = exp(-a) per candidate
+          (_pion_step), and sigma_tot -> g*sigma_tot maps a -> a/g, so with g = D_c/D0_c at that candidate
+            hit  : pk/p0        no-hit : (1-pk)/(1-p0),     p0 = exp(-a), pk = exp(-a/g).
+    Under a COMMON rescale s: g = s, the branch factor is 1 but the survival factor is NOT -- which is the
+    whole point (a common rescale changes the mean free path).  == 1 at all-nominal (g=1 -> pk=p0)."""
+    code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c, np_ = brec
+    valid = jnp.arange(sa.shape[1])[None, :] < np_[:, None]
+    # On a NO-HIT slot the branch stats are taken at j = argmin over an all-inf metric -> meaningless (and
+    # possibly non-finite).  jnp.where picks the right VALUE, but a non-finite untaken branch still poisons
+    # the reverse-mode GRADIENT (nan * 0 = nan), so neutralize the branch inputs off-hit up front.
+    hitf = hh.astype(bool)
+    sa = jnp.where(hitf, sa, 1.0); ss_el = jnp.where(hitf, ss_el, 1.0)
+    ss = jnp.where(hitf, ss, 1.0); si = jnp.where(hitf, si, 0.0)
+    # (1) branch, at the struck candidate (only meaningful on a hit)
     ss_cex = jnp.clip(ss - ss_el, 0.0, None)
     D0 = sa + ss + si
     D = s_abs * sa + s_el * ss_el + s_cex * ss_cex + s_conv * si
     s_real = jnp.where(code == 0, s_el, jnp.where(code == 1, s_cex, jnp.where(code == 2, s_abs, s_conv)))
-    per = s_real * D0 / jnp.clip(D, 1e-12, None)
+    branch = s_real * D0 / jnp.clip(D, 1e-12, None)
+    # (2) survival, at the closest in-slab candidate: sigma_tot scale g = D_c/D0_c
+    ss_cex_c = jnp.clip(ss_c - ss_el_c, 0.0, None)
+    D0_c = jnp.clip(sa_c + ss_c + si_c, 1e-12, None)
+    D_c = s_abs * sa_c + s_el * ss_el_c + s_cex * ss_cex_c + s_conv * si_c
+    g = jnp.clip(D_c / D0_c, 1e-6, None)
+    p0 = jnp.clip(jnp.exp(-a), 1e-6, 1.0 - 1e-6)
+    pk = jnp.clip(jnp.exp(-a / g), 1e-6, 1.0 - 1e-6)
+    surv = jnp.where(hh, pk / p0, (1.0 - pk) / (1.0 - p0))
+    per = jnp.where(hh, surv * branch, surv)
     return jnp.prod(jnp.where(valid, per, 1.0), axis=1)
 
 
@@ -559,6 +584,18 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     j = jnp.argmin(metric, axis=1)
     has_hit = jnp.isfinite(metric[ar, j]) & alive
     sa_j = sa[ar, j]; si_j = si[ar, j]; sig_j = sig[ar, j]
+    # CLOSEST in-slab candidate (mirrors _nucleon_step's perp2_c/sig_c).  The pion's INTERACTION
+    # PROBABILITY is prob = exp(-pi*perp2/(sigma_tot*MB_TO_FM2)) -- it responds to a sigma scale, but the
+    # per-hit branch record (sa_j..si_j, taken at the STRUCK candidate) cannot express that: under a common
+    # rescale the branch LR is identically 1.  These are the sufficient statistics for the hit/no-hit
+    # factor, recorded on EVERY in-slab step (hit or not), exactly as the nucleon record does.
+    perp2_is = jnp.where(cand, perp2, jnp.inf)
+    cidx = jnp.argmin(perp2_is, axis=1)
+    has_slab = jnp.any(cand, axis=1)
+    perp2_c = jnp.where(has_slab, perp2_is[ar, cidx], 1e6)
+    sa_c = sa[ar, cidx]; si_c = si[ar, cidx]; sig_c = sig[ar, cidx]
+    ss_c = sig_c - sa_c - si_c
+    ss_el_c = sig_io.reshape(n, A, 3)[ar, cidx][ar, ch]          # elastic (out==in) part at the candidate
     W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
     kf_p_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoP))
     kf_n_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoN))
@@ -692,5 +729,6 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
                       jnp.where(out_ch == ch, 0, 1))).astype(jnp.int32)
     return ((p_pi, pos, dhat, ch, nsc, alive), escaping, is_abs, is_conv,
             (s1_p4, s1_pos, s1_fz, s1_q, s1_al), (s2_p4, s2_pos, s2_fz, s2_q, s2_al), consumed,
-            jax.lax.stop_gradient((has_hit, code4, sa_j, ss_el_j, ss_j, si_j)))
+            jax.lax.stop_gradient((has_hit, code4, sa_j, ss_el_j, ss_j, si_j,
+                                   perp2_c, sa_c, ss_el_c, ss_c, si_c)))
 

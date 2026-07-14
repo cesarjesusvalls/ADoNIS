@@ -11,7 +11,7 @@ from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
 from adonis.fsi import cascade_full as CF
 from adonis.xsec.spectral import SpectralFunction
 
-tg = resolve_targets("C")[0][0]; MS = 600; P = 12; KP, KN = 32, 256
+tg = resolve_targets("C")[0][0]; MS = 600; P = 12; KP, KN = 64, 256
 sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
 a = gen_events("res", 6000, 0, sf_n=sf_n, sf_p=sf_p, n_neutron=tg.A - tg.Z, n_proton=tg.Z)
 w = np.asarray(a["w"]); s = w > 0; m = int(s.sum())

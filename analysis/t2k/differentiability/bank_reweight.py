@@ -13,7 +13,8 @@ from adonis.fsi.cascade_full import pool_fsi_reweight
 from adonis.xsec.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets
 
-_FSI_F = ("bc", "sa", "ss_el", "ss", "si", "nh", "hh", "a", "iso", "finel", "inel", "swap", "ns")
+_FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "nh",
+          "hh", "a", "iso", "finel", "inel", "swap", "ns")
 
 
 def default_grids():

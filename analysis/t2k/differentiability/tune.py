@@ -97,7 +97,11 @@ import adonis.fsi.cascade_full as _CF
 # ceiling): with the M=1 serial pool the per-event nstep is the SUM of all particles' steps, so the physics
 # bound is path_budget_R*radius, not a small step cap (a 600 cap wrongly trips the runaway guard at M=1).
 POOLCFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=100000, path_budget_R=3.0, engine="pool", **k)
-REC_CAPS = (32, 64)            # pion hits<=32, nucleon candidate steps<=64 per event (measured ns_max~43)
+REC_CAPS = (96, 64)            # pion IN-SLAB CANDIDATE steps<=96 (was hits<=32: the pion record now logs
+                               # every candidate step, hit or not, to carry the sigma_tot/mean-free-path
+                               # response -- measured mean 4.8, max 31 over 5.3k events, so 96 leaves tail
+                               # headroom for a 1M-event bank), nucleon candidate steps<=64 (ns_max~43).
+                               # build_walk ASSERTS on overflow, it never truncates -- keep the headroom.
 _P_BUF = 12
 
 

@@ -191,10 +191,27 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             #   nucleon: record every in-slab candidate step (perp2_c<1e5) -> hit flag + a_nom=pi b^2/sigma.
             # Computed ONLY when with_rec (the differentiable/tuning path) -> forward generation pays nothing.
             if with_rec:
-                p_hh, p_bc, p_sa, p_ss_el, p_ss, p_si = pstat         # _pion_step stats (code4 + ss_el,ss)
+                (p_hh, p_bc, p_sa, p_ss_el, p_ss, p_si,               # branch stats @ the STRUCK candidate
+                 p_perp2_c, p_sa_c, p_ss_el_c, p_ss_c, p_si_c) = pstat   # survival stats @ the CLOSEST one
                 n_hh, n_perp2, n_sig, n_iso, n_finel, n_inel, n_swap = nstat  # _nucleon_step granular stats
                 a_nom = jnp.pi * n_perp2 / jnp.clip(n_sig * MB_TO_FM2, 1e-12, None)
-                rec_slot = (is_pi & p_hh, p_bc, p_sa, p_ss_el, p_ss, p_si,   # pion hit mask + granular stats
+                p_sig_c = jnp.clip(p_sa_c + p_ss_c + p_si_c, 1e-12, None)
+                p_a_nom = jnp.pi * p_perp2_c / jnp.clip(p_sig_c * MB_TO_FM2, 1e-12, None)
+                # PION: record every IN-SLAB CANDIDATE step (perp2_c < 1e5), not just the hits -- the no-hit
+                # steps are exactly where the sigma_tot (mean-free-path) response lives.  Mirrors the nucleon.
+                # NON-FINITE sigma is EXCLUDED, and that is not a patch: the Oset absorption sigma is NaN
+                # whenever the pion has E < m_pi (ReducedHalfWidth re-derives |p| as sqrt(E^2-m^2), and the
+                # RES pion is built with the mpi0 KINEMATIC mass while the cascade uses the per-charge
+                # PHYSICAL mass -> negative under the root for |p| < ~35 MeV/c).  The WALK then cannot
+                # interact there (prob = exp(-pi b^2/NaN) = NaN, and `u < NaN` is False), and it cannot
+                # interact at ANY theta either -- scaling NaN is still NaN.  Such a candidate carries zero
+                # theta-dependence, so recording it would inject NaN into the weight for no physics.
+                # (ACHILLES has the identical re-derivation + PID mass, so the FORWARD behaviour is
+                # faithful; the soft-pion sigma itself is a separate open question -- see logbook.)
+                p_fin = jnp.isfinite(p_a_nom) & jnp.isfinite(p_sa_c) & jnp.isfinite(p_ss_c) \
+                    & jnp.isfinite(p_si_c) & jnp.isfinite(p_ss_el_c)
+                rec_slot = (is_pi & (p_perp2_c < 1e5) & p_fin, p_bc, p_sa, p_ss_el, p_ss, p_si,
+                            p_hh, p_a_nom, p_sa_c, p_ss_el_c, p_ss_c, p_si_c,
                             is_N & (n_perp2 < 1e5), n_hh, a_nom, n_iso, n_finel, n_inel, n_swap)  # nucleon
             consumed = consumedN | consumedP                          # only the active species adds bits
             p4_2 = jnp.where(is_N[:, None], p4n, jnp.where(is_pi[:, None], p4p, p4))
@@ -278,7 +295,8 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
                   "gtime": stack["gtime"] + stack["alive"].astype(jnp.int32)}   # absolute time advances in lockstep
         terminal = T(terms)
         if with_rec:                                                 # per-slot (n,M) kind-1 record this step
-            rk = ("pi_hh", "pi_bc", "pi_sa", "pi_ss_el", "pi_ss", "pi_si",
+            rk = ("pi_m", "pi_bc", "pi_sa", "pi_ss_el", "pi_ss", "pi_si",          # pi_m = slot mask
+                  "pi_hh", "pi_a", "pi_sa_c", "pi_ss_el_c", "pi_ss_c", "pi_si_c",  # survival stats
                   "nu_m", "nu_hh", "nu_a", "nu_iso", "nu_finel", "nu_inel", "nu_swap")
             rec = {k: T(v) for k, v in zip(rk, scanned[4])}
         if with_seg:                                                 # per-slot (n,M) SEGMENT record this step
@@ -379,10 +397,16 @@ def _rec_scatter(bufs, cnt, mask, vals, cap):
 
 def _empty_fsi_record(n, Kp, Kn):
     """Per-event kind-1 FSI reweight buffers (defaults give per-slot LR=1).  bc is the granular pion channel
-    code {0 el,1 cex,2 abs,3 conv}; ss_el = elastic part of the total scatter sigma ss (ss_cex = ss-ss_el)."""
+    code {0 el,1 cex,2 abs,3 conv}; ss_el = elastic part of the total scatter sigma ss (ss_cex = ss-ss_el).
+    PION slots are per IN-SLAB CANDIDATE STEP (hit or not) -- pi_hh/pi_a/*_c carry the sigma_tot (hit/no-hit)
+    response, without which a common rescale of the four pion sigmas is a spurious flat direction.
+    Defaults: a=50 (p0->0 => no-hit factor 1), sa_c/ss_c=1, si_c=0 => g=1 at nominal."""
     return dict(bc=jnp.zeros((n, Kp), jnp.int32), sa=jnp.ones((n, Kp)),
                 ss_el=jnp.ones((n, Kp)), ss=jnp.ones((n, Kp)),
-                si=jnp.zeros((n, Kp)), nh=jnp.zeros(n, jnp.int32),
+                si=jnp.zeros((n, Kp)),
+                pi_hh=jnp.zeros((n, Kp), bool), pi_a=jnp.full((n, Kp), 50.0),
+                sa_c=jnp.ones((n, Kp)), ss_el_c=jnp.ones((n, Kp)), ss_c=jnp.ones((n, Kp)),
+                si_c=jnp.zeros((n, Kp)), nh=jnp.zeros(n, jnp.int32),
                 hh=jnp.zeros((n, Kn), bool), a=jnp.full((n, Kn), 50.0),
                 iso=jnp.zeros((n, Kn), jnp.int32), finel=jnp.zeros((n, Kn)),
                 inel=jnp.zeros((n, Kn), bool), swap=jnp.zeros((n, Kn), bool), ns=jnp.zeros(n, jnp.int32))
@@ -398,7 +422,8 @@ def pool_fsi_reweight(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None
     s_el = sscat if s_piN_elastic is None else s_piN_elastic
     s_cex = sscat if s_piN_cex is None else s_piN_cex
     wp = fsi_pion_reweight((record["bc"], record["sa"], record["ss_el"], record["ss"], record["si"],
-                           record["nh"]), sabs, s_el, s_cex, s_conv)
+                           record["pi_hh"], record["pi_a"], record["sa_c"], record["ss_el_c"],
+                           record["ss_c"], record["si_c"], record["nh"]), sabs, s_el, s_cex, s_conv)
     nse = jnp.broadcast_to(jnp.asarray(sscat), (3,)) if s_NN_elastic is None else jnp.asarray(s_NN_elastic)
     nsi = jnp.broadcast_to(jnp.asarray(sscat), (3,)) if s_NN_inelastic is None else jnp.asarray(s_NN_inelastic)
     wn = fsi_nucleon_reweight((record["hh"], record["a"], record["iso"], record["finel"], record["inel"],
@@ -513,14 +538,19 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         prim = jnp.where(anyp & (prim == FATE_NONE), stk2["fate"][ar, j], prim)
         if with_rec:
             rec = extra
-            (bc, sa, ss_el, ss, si), nh, op = _rec_scatter(
-                [rb["bc"], rb["sa"], rb["ss_el"], rb["ss"], rb["si"]], rb["nh"], rec["pi_hh"],
-                [rec["pi_bc"], rec["pi_sa"], rec["pi_ss_el"], rec["pi_ss"], rec["pi_si"]], Kp)
+            (bc, sa, ss_el, ss, si, pi_hh, pi_a, sa_c, ss_el_c, ss_c, si_c), nh, op = _rec_scatter(
+                [rb["bc"], rb["sa"], rb["ss_el"], rb["ss"], rb["si"],
+                 rb["pi_hh"], rb["pi_a"], rb["sa_c"], rb["ss_el_c"], rb["ss_c"], rb["si_c"]],
+                rb["nh"], rec["pi_m"],
+                [rec["pi_bc"], rec["pi_sa"], rec["pi_ss_el"], rec["pi_ss"], rec["pi_si"],
+                 rec["pi_hh"], rec["pi_a"], rec["pi_sa_c"], rec["pi_ss_el_c"], rec["pi_ss_c"],
+                 rec["pi_si_c"]], Kp)
             (hh, a, iso, finel, inel, swap), ns, on = _rec_scatter(
                 [rb["hh"], rb["a"], rb["iso"], rb["finel"], rb["inel"], rb["swap"]], rb["ns"], rec["nu_m"],
                 [rec["nu_hh"], rec["nu_a"], rec["nu_iso"], rec["nu_finel"], rec["nu_inel"], rec["nu_swap"]], Kn)
-            rb = dict(bc=bc, sa=sa, ss_el=ss_el, ss=ss, si=si, nh=nh, hh=hh, a=a,
-                      iso=iso, finel=finel, inel=inel, swap=swap, ns=ns)
+            rb = dict(bc=bc, sa=sa, ss_el=ss_el, ss=ss, si=si,
+                      pi_hh=pi_hh, pi_a=pi_a, sa_c=sa_c, ss_el_c=ss_el_c, ss_c=ss_c, si_c=si_c,
+                      nh=nh, hh=hh, a=a, iso=iso, finel=finel, inel=inel, swap=swap, ns=ns)
             rofl = (rofl + op + on).astype(rofl.dtype)
         if do_log:
             seg = extra

@@ -32,7 +32,8 @@ from adonis.fsi.mb import cascade_mb
 from adonis.xsec.spectral import SpectralFunction
 
 S = float(os.environ.get("SCALE", "1.20"))          # common scale on ALL FOUR pion sigmas
-NEV, MS, P, KP, KN = 6000, 600, 12, 32, 256
+NEV = int(os.environ.get("NEV", "6000"))
+MS, P, KP, KN = 600, 12, 256, 256              # KP: slots are now in-slab CANDIDATE steps
 
 tg = resolve_targets("C")[0][0]
 sf_n = SpectralFunction(tg.spectral_n); sf_p = SpectralFunction(tg.spectral_p)
@@ -71,16 +72,20 @@ def run(tag):
 
 
 def stats(rec, label):
+    """nh is now the count of IN-SLAB CANDIDATE STEP slots; the INTERACTIONS are the pi_hh flags."""
     nh = rec["nh"]; K = rec["sa"].shape[1]
     valid = np.arange(K)[None, :] < nh[:, None]
+    hit = rec["pi_hh"] & valid
     code = rec["bc"]
-    n_hit = int(valid.sum())
-    out = dict(mean_nh=float(nh.mean()), hits=n_hit,
-               f_abs=float(((code == 2) & valid).sum()) / max(n_hit, 1),
-               n_abs=int(((code == 2) & valid).sum()),
-               ev_any=float((nh > 0).mean()))
-    print(f"  {label:>26}: mean nh = {out['mean_nh']:.4f} | events w/ >=1 hit = {out['ev_any']:.4f} "
-          f"| hits = {out['hits']} | absorbed hits = {out['n_abs']} (branch frac {out['f_abs']:.4f})")
+    n_hit = int(hit.sum())
+    per_ev = hit.sum(axis=1)
+    out = dict(mean_nh=float(per_ev.mean()), hits=n_hit, per_ev=per_ev,
+               f_abs=float(((code == 2) & hit).sum()) / max(n_hit, 1),
+               n_abs=int(((code == 2) & hit).sum()),
+               ev_any=float((per_ev > 0).mean()), slots=float(nh.mean()))
+    print(f"  {label:>26}: mean interactions = {out['mean_nh']:.4f} | events w/ >=1 hit = {out['ev_any']:.4f} "
+          f"| hits = {out['hits']} | absorbed = {out['n_abs']} (branch frac {out['f_abs']:.4f}) "
+          f"| rec slots/ev {out['slots']:.1f}")
     return out
 
 
@@ -109,14 +114,26 @@ print(f"  per-event weight: mean = {wr.mean():.8f}  min = {wr.min():.8f}  max = 
       f"  max|w-1| = {np.abs(wr - 1).max():.3e}")
 
 # reweighted prediction of the interaction rate vs what the walk actually did
-pred_nh = float((wr * rec0["nh"]).sum() / wr.sum())
+pred_nh = float((wr * s0["per_ev"]).sum() / wr.sum())
 print(f"\n== VERDICT ==")
 print(f"  mean pion interactions/event   nominal walk : {s0['mean_nh']:.4f}")
 print(f"                                 REWEIGHT pred: {pred_nh:.4f}   (w == 1 => identical to nominal)")
 print(f"                                 IN-WALK x{S} : {sS['mean_nh']:.4f}")
 d = 100 * (sS["mean_nh"] - pred_nh) / max(pred_nh, 1e-12)
-print(f"  reweight vs in-walk discrepancy: {d:+.2f}%")
+# bootstrap the DISCREPANCY over events (both estimators share the same event set + seeds, so resample
+# the event index jointly -- that keeps the positive correlation and gives the SE of the DIFFERENCE).
+rng = np.random.default_rng(0)
+n0, nS_, ww = s0["per_ev"].astype(float), sS["per_ev"].astype(float), np.asarray(wr, float)
+bs = []
+for _ in range(400):
+    k = rng.integers(0, len(n0), len(n0))
+    p = float((ww[k] * n0[k]).sum() / ww[k].sum())
+    bs.append(100 * (nS_[k].mean() - p) / max(p, 1e-12))
+se = float(np.std(bs))
+print(f"  reweight vs in-walk discrepancy: {d:+.2f}%  +/- {se:.2f}% (bootstrap, 400x)  "
+      f"-> {abs(d)/max(se,1e-9):.1f} sigma")
 print(f"  absorbed hits   nominal {s0['n_abs']}  ->  in-walk x{S}: {sS['n_abs']}  "
       f"({100*(sS['n_abs']/max(s0['n_abs'],1)-1):+.1f}%)")
-print("\n  GATE:", "PASS (reweight reproduces the in-walk scale)" if abs(d) < 1.0 else
-      "FAIL -- the pion reweight does NOT express an interaction-probability change")
+ok = abs(d) < max(2.0 * se, 1.0)
+print("\n  GATE:", "PASS (reweight reproduces the in-walk scale within MC error)" if ok else
+      f"FAIL -- residual {d:+.2f}% is {abs(d)/max(se,1e-9):.1f} sigma: a SYSTEMATIC, not noise")

@@ -11,11 +11,16 @@ N, KP, KN = 200, 16, 64
 
 def _record(seed=0):
     rng = np.random.default_rng(seed)
-    nh = rng.integers(0, 6, N)                                   # pion hits per event
+    nh = rng.integers(0, 12, N)                                  # pion IN-SLAB CANDIDATE STEPS per event
     ns = rng.integers(0, 30, N)                                  # nucleon candidate steps per event
     bc = rng.integers(0, 4, (N, KP)).astype(np.int32)           # granular channel 0 el/1 cex/2 abs/3 conv
     sa = rng.uniform(0.2, 3.0, (N, KP)); ss = rng.uniform(0.2, 3.0, (N, KP)); si = rng.uniform(0.0, 0.5, (N, KP))
     ss_el = ss * rng.uniform(0.0, 1.0, (N, KP))                 # elastic part (<= total scatter)
+    pi_hh = rng.random((N, KP)) < 0.35                          # did this candidate step interact?
+    pi_a = rng.uniform(0.05, 3.0, (N, KP))                      # a = pi*perp2/(sigma_tot*MB_TO_FM2)
+    sa_c = rng.uniform(0.2, 3.0, (N, KP)); ss_c = rng.uniform(0.2, 3.0, (N, KP))
+    si_c = rng.uniform(0.0, 0.5, (N, KP))
+    ss_el_c = ss_c * rng.uniform(0.0, 1.0, (N, KP))             # sigma decomposition at the CLOSEST candidate
     hh = rng.random((N, KN)) < 0.3                              # scattered?
     a = rng.uniform(0.05, 3.0, (N, KN))                        # a_nom = pi b^2 / sigma_tot
     iso = rng.integers(0, 3, (N, KN)).astype(np.int32)          # nucleon pair-iso pp/pn/nn
@@ -23,7 +28,10 @@ def _record(seed=0):
     inel = rng.random((N, KN)) < finel                         # realized inelastic (only matters at a hit)
     swap = rng.random((N, KN)) < 0.5                           # NN-elastic charge-exchange swap bit
     return dict(bc=jnp.asarray(bc), sa=jnp.asarray(sa), ss_el=jnp.asarray(ss_el), ss=jnp.asarray(ss),
-                si=jnp.asarray(si), nh=jnp.asarray(nh.astype(np.int32)), hh=jnp.asarray(hh),
+                si=jnp.asarray(si), pi_hh=jnp.asarray(pi_hh), pi_a=jnp.asarray(pi_a),
+                sa_c=jnp.asarray(sa_c), ss_el_c=jnp.asarray(ss_el_c), ss_c=jnp.asarray(ss_c),
+                si_c=jnp.asarray(si_c),
+                nh=jnp.asarray(nh.astype(np.int32)), hh=jnp.asarray(hh),
                 a=jnp.asarray(a), iso=jnp.asarray(iso), finel=jnp.asarray(finel), inel=jnp.asarray(inel),
                 swap=jnp.asarray(swap), ns=jnp.asarray(ns.astype(np.int32)))
 
@@ -41,7 +49,8 @@ def test_granular_nominal_identity():
 def test_factorization():
     r = _record(2)
     w = np.asarray(pool_fsi_reweight(r, 1.3, 0.7))
-    wp = np.asarray(fsi_pion_reweight((r["bc"], r["sa"], r["ss_el"], r["ss"], r["si"], r["nh"]),
+    wp = np.asarray(fsi_pion_reweight((r["bc"], r["sa"], r["ss_el"], r["ss"], r["si"], r["pi_hh"],
+                                       r["pi_a"], r["sa_c"], r["ss_el_c"], r["ss_c"], r["si_c"], r["nh"]),
                                       1.3, 0.7, 0.7, 1.0))     # back-compat: s_el=s_cex=sscat, s_conv=1
     wn = np.asarray(nucleon_scat_reweight((r["hh"], r["a"], r["ns"]), 0.7))
     assert np.allclose(w, wp * wn, atol=1e-12)
@@ -96,15 +105,25 @@ def test_backcompat_default_equals_explicit():
     assert np.allclose(w0, w1, atol=1e-12)
 
 
-def test_cex_knob_affects_hits_not_nohits():
-    """s_piN_cex enters the total-sigma normalization D at EVERY hit (correct likelihood-ratio behavior),
-    so it changes any event WITH a pion hit, but leaves no-hit events (nh==0) exactly unchanged."""
+def test_cex_knob_affects_any_candidate_step():
+    """s_piN_cex enters D at every hit (branch) AND g at every in-slab candidate (survival), so it moves any
+    event with >=1 recorded pion candidate step and leaves events with NO pion record exactly unchanged."""
     r = _record(5)
     base = np.asarray(pool_fsi_reweight(r, 1.0, 1.0))
     bumped = np.asarray(pool_fsi_reweight(r, 1.0, 1.0, s_piN_cex=1.5))
     nh = np.asarray(r["nh"])
-    assert np.all(np.abs(bumped - base)[nh == 0] < 1e-12)       # no pion hit -> identity
-    assert np.any(np.abs(bumped - base)[nh > 0] > 1e-9)         # any hit -> changed (D coupling)
+    assert np.all(np.abs(bumped - base)[nh == 0] < 1e-12)       # no pion record at all -> identity
+    assert np.any(np.abs(bumped - base)[nh > 0] > 1e-9)
+
+
+def test_common_rescale_is_NOT_flat():
+    """REGRESSION (docs/logbook/info_content.md): a common rescale of the four pion sigmas must change the
+    MEAN FREE PATH, so the reweight must NOT be identically 1.  Before the survival factor existed it was
+    (per = s*D0/(s*D0) = 1) -- a spurious exact flat direction."""
+    r = _record(6)
+    w = np.asarray(pool_fsi_reweight(r, 1.2, 1.0, s_piN_elastic=1.2, s_piN_cex=1.2, s_conv=1.2))
+    nh = np.asarray(r["nh"])
+    assert np.abs(w - 1.0)[nh > 0].max() > 1e-6, "common pion-sigma rescale is still a flat direction"
 
 
 def test_autodiff_equals_fd():

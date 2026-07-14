@@ -52,7 +52,8 @@ def run():
     os.makedirs(outdir, exist_ok=True)
     log(f"event_bank (full records): N={N_TOTAL} in {n_chunks} chunk(s) of {CHUNK} -> {outdir}")
     POOL = T.POOLCFG; CAPS = T.REC_CAPS
-    FSI_F = ("bc", "sa", "ss_el", "ss", "si", "nh", "hh", "a", "iso", "finel", "inel", "swap", "ns")
+    FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "nh",
+             "hh", "a", "iso", "finel", "inel", "swap", "ns")
 
     def compact_fs(nt):
         al = np.asarray(nt["alive"]); chg = np.asarray(nt["charge"]); spc = np.asarray(nt["species"])
@@ -105,7 +106,7 @@ def run():
         for field in FSI_F:
             arr = fcat(field)
             dt = (np.int16 if field in ("nh", "ns") else (np.int8 if field in ("bc", "iso")
-                  else (bool if field in ("hh", "inel", "swap") else np.float32)))
+                  else (bool if field in ("hh", "inel", "swap", "pi_hh") else np.float32)))
             fsi_save[f"f_{field}"] = arr.astype(dt)
 
         offq, fpq, fcq, fp4q, dq = compact_fs(ntq[0]); offr, fpr, fcr, fp4r, dr = compact_fs(ntr[0])
