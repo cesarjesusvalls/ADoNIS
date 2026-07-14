@@ -1,0 +1,100 @@
+"""Validation figure for the tagged-beam samples: ADoNIS vs ACHILLES sigma(p), ratio panel + chi2/ndf.
+
+One column per beam (pi+ / p / n on 12C), two rows of observables:
+    row 1: sigma_reaction(p)
+    row 2: sigma_absorption(p)     [pi+]      |  sigma_pion-production(p)  [p, n]
+Both sides use the SAME in-medium cross sections and the SAME CrossSection-mode beam geometry, so this is
+a pure TRANSPORT comparison -- the cascade's own validation, with no hard vertex and no spectral function
+anywhere in it.
+
+Usage:  python -m analysis.beams.make_figs [--nbins 15]
+"""
+import argparse
+import sys
+from pathlib import Path
+
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from analysis.beams import beam_bank as BB, achilles_beam as AB       # noqa: E402
+from analysis.paper import style                                       # noqa: E402
+
+BEAMS = ("pip", "prot", "neut")
+TITLE = {"pip": "$\\pi^+$ + $^{12}$C", "prot": "p + $^{12}$C", "neut": "n + $^{12}$C"}
+SECOND = {"pip": "absorption", "prot": "$\\pi$ production", "neut": "$\\pi$ production"}
+
+
+def adonis_sigma(beam, nbins):
+    B = BB.load(f"output/beam_{beam}_C")
+    man = B["manifest"]
+    p = np.asarray(B["beam_p"], float)
+    edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
+    idx = np.clip(np.digitize(p, edges) - 1, 0, nbins - 1)
+    ntry = np.bincount(idx, minlength=nbins).astype(float)
+    react = np.asarray(B["reacted"], float)
+    second = np.asarray(B["absorbed"], float) if man["species"] == "PION" \
+        else (np.asarray(B["n_pi_out"]) > 0).astype(float)
+    nr = np.bincount(idx, weights=react, minlength=nbins)
+    ns = np.bincount(idx, weights=second, minlength=nbins)
+    PIR2 = man["pir2_mb"]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sr, ss = PIR2 * nr / ntry, PIR2 * ns / ntry
+        er, es = PIR2 * np.sqrt(nr) / ntry, PIR2 * np.sqrt(ns) / ntry
+    return edges, sr, ss, er, es
+
+
+def chi2(a, b, ea, eb):
+    m = np.isfinite(a) & np.isfinite(b) & ((ea > 0) | (eb > 0)) & (a + b > 0)
+    if not m.any():
+        return np.nan, 0
+    d = (a[m] - b[m]) ** 2 / (ea[m] ** 2 + eb[m] ** 2)
+    return float(d.sum()), int(m.sum())
+
+
+def main(nbins=15):
+    style.use()
+    fig, axes = plt.subplots(4, 3, figsize=(13.5, 10.5), sharex="col",
+                             gridspec_kw={"height_ratios": [3, 1.2, 3, 1.2], "hspace": 0.08, "wspace": 0.22})
+    for c, beam in enumerate(BEAMS):
+        try:
+            edges, ar, as_, aer, aes = adonis_sigma(beam, nbins)
+        except Exception as e:                                   # bank not built yet
+            for r in range(4):
+                axes[r, c].text(.5, .5, f"{beam}: {e}", ha="center", va="center", fontsize=7,
+                                transform=axes[r, c].transAxes)
+            continue
+        hr, hs, her, hes, _nr, _ns, ntried = AB.sigma_of_p(beam, edges)
+        cen = 0.5 * (edges[:-1] + edges[1:])
+        for row, (A, EA, H, EH, lab) in enumerate(((ar, aer, hr, her, "reaction"),
+                                                   (as_, aes, hs, hes, SECOND[beam]))):
+            ax, rx = axes[2 * row, c], axes[2 * row + 1, c]
+            ax.errorbar(cen, H, yerr=EH, fmt="o", ms=3, color=style.C_ACHILLES, label="ACHILLES", zorder=3)
+            ax.errorbar(cen, A, yerr=EA, fmt="s", ms=3, color=style.C_ADONIS, label="ADoNIS", zorder=4)
+            x2, nd = chi2(A, H, EA, EH)
+            ax.set_ylabel(f"$\\sigma_{{\\rm {lab.split()[0]}}}$ [mb]")
+            if row == 0:
+                ax.set_title(f"{TITLE[beam]}   (ACHILLES {int(ntried):,} tried)", fontsize=9)
+            ax.legend(loc="best", fontsize=7)
+            ax.text(.03, .90, f"$\\chi^2$/ndf = {x2/max(nd,1):.2f}  ({nd} bins)", transform=ax.transAxes,
+                    fontsize=7.5)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                r = A / H
+                er = np.abs(r) * np.sqrt((EA / np.where(A > 0, A, np.nan)) ** 2
+                                         + (EH / np.where(H > 0, H, np.nan)) ** 2)
+            rx.errorbar(cen, r, yerr=er, fmt="o", ms=3, color="k")
+            rx.axhline(1.0, color=style.C_ACHILLES, lw=.8)
+            rx.axhspan(0.99, 1.01, color=style.C_ACHILLES, alpha=.12, lw=0)   # the 1% target band
+            rx.set_ylim(0.8, 1.2); rx.set_ylabel("ADO/ACH", fontsize=7)
+            if row == 1:
+                rx.set_xlabel("tagged beam $|p|$ [MeV/c]")
+    fig.suptitle("Tagged-beam validation: ADoNIS vs ACHILLES on $^{12}$C  —  pure TRANSPORT "
+                 "(no hard vertex, no spectral function).  Band = $\\pm$1%", fontsize=10)
+    style.save(fig, "beams_validation")
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(); ap.add_argument("--nbins", type=int, default=15)
+    main(**vars(ap.parse_args()))
