@@ -200,8 +200,13 @@ if __name__ == "__main__":
     ap.add_argument("--pmax", type=float, required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--chunk", type=int, default=50_000,
+                    help="events per chunk.  The DENSE record buffers (n x 96 pion + n x 256 nucleon "
+                         "slots) are allocated per chunk BEFORE the ragged compaction, so peak memory "
+                         "scales with THIS, not with the bank size.  250k thrashed a 16 GB box "
+                         "(6.6 GB RSS, 8.2/9.2 GB swap); 50k is comfortable.")
     a = ap.parse_args()
     out = a.out or f"output/beam_{a.beam}_C"
     t0 = time.time()
-    build(a.beam, n=a.n, pmin=a.pmin, pmax=a.pmax, seed=a.seed, outdir=out,
+    build(a.beam, n=a.n, pmin=a.pmin, pmax=a.pmax, seed=a.seed, outdir=out, chunk=a.chunk,
           log=lambda s: print(f"[{time.time()-t0:7.1f}s] {s}", flush=True))
