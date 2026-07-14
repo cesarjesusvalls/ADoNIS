@@ -29,14 +29,23 @@ def load_bank(outdir):
     man = json.load(open(f"{outdir}/manifest.json"))
     nchunks = man["n_chunks"]; files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
     perev = {}; fs_pid = []; fs_chg = []; fs_p4 = []; offs = [np.array([0], np.int64)]
+    ev_off = 0                       # events seen so far -> shifts each chunk's ragged indices
     for f in files:
         d = np.load(f)
         for key in d.files:
             if key in _FS:
                 continue
-            perev.setdefault(key, []).append(d[key])
+            v = d[key]
+            if key in ("f_p_eidx", "f_n_eidx"):
+                # PER-SLOT event index of the ragged FSI record: each chunk numbers its events from 0, so
+                # it must be shifted into the global event numbering before concatenation (exactly what
+                # fs_off does for the ragged final state).  Without this, every chunk after the first
+                # would silently attribute its FSI slots to the wrong events.
+                v = v.astype(np.int64) + ev_off
+            perev.setdefault(key, []).append(v)
         fs_pid.append(d["fs_pid"]); fs_chg.append(d["fs_chg"]); fs_p4.append(d["fs_p4"])
         offs.append(offs[-1][-1] + d["fs_off"][1:])
+        ev_off += len(d["w0"])
     B = {k: np.concatenate(v) for k, v in perev.items()}
     B["w0"] = B["w0"] / nchunks
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)

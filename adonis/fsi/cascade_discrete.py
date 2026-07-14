@@ -114,24 +114,43 @@ def _match_dtype(a, g):
     return jnp.asarray(a, dt), jnp.asarray(g, dt)
 
 
-def fsi_pion_reweight(brec, s_abs, s_el, s_cex, s_conv):
-    """GRANULAR pion FSI reweight -- BRANCH x SURVIVAL, one slot per IN-SLAB CANDIDATE STEP (hit or not).
+def _dense_prod(per, count):
+    """Per-event product of a DENSE (n, K) slot factor, masking the unused tail slots."""
+    valid = jnp.arange(per.shape[1])[None, :] < count[:, None]
+    return jnp.prod(jnp.where(valid, per, 1.0), axis=1)
 
-    brec = (code4 {0 el,1 cex,2 abs,3 conv}, sa, ss_el, ss, si  [at the STRUCK candidate, branch factor],
-            hh (hit flag), a (= pi*perp2/(sigma_tot*MB_TO_FM2) at the CLOSEST in-slab candidate),
-            sa_c, ss_el_c, ss_c, si_c [at that candidate, for the sigma_tot response], np_ (n,) slot count).
 
-    A sigma scale moves TWO things and the reweight must carry both (the nucleon reweight always did;
-    the pion one carried only the first -- see docs/logbook/info_content.md):
-      (1) BRANCH, given an interaction:  s_realized * D0/D,
-          D0 = sa+ss+si,  D = s_abs*sa + s_el*ss_el + s_cex*(ss-ss_el) + s_conv*si.
+def _ragged_prod(per, eidx, n_events):
+    """Per-event product of a RAGGED (M,) slot factor: exp(segment-sum of log).
+
+    Every slot factor is a likelihood ratio, hence strictly positive, so the log is safe.  At nominal
+    every factor is EXACTLY 1 -> log 0 -> segment-sum 0 -> exp(0) = 1, so the nominal identity stays
+    bit-exact under this reduction (a plain scatter-multiply does not exist in XLA).
+
+    The log-sum ACCUMULATES in the default float dtype (float64 under jax_enable_x64) even though the bank
+    stores the slot sigmas as float32: summing ~2M logs in float32 would throw away precision the dense
+    float32 product does not have to spend.  Cost is transient only -- nothing is stored at this width."""
+    acc = jnp.result_type(float)                 # float64 when x64 is on, float32 otherwise
+    lp = jnp.log(jnp.clip(per, 1e-300, None)).astype(acc)
+    return jnp.exp(jnp.zeros(n_events, acc).at[eidx].add(lp))
+
+
+# ---- PER-SLOT likelihood ratios: the physics, written ONCE.  Shape-agnostic -- the same function serves
+# the dense in-engine record (n, K) and the ragged bank record (M,); only the reduction differs. --------- #
+def pion_slot_factor(code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c,
+                     s_abs, s_el, s_cex, s_conv):
+    """Per-slot pion FSI likelihood ratio -- BRANCH x SURVIVAL.  One slot = one IN-SLAB CANDIDATE STEP
+    (hit or not), the closest in-slab nucleon at that step.
+
+    A sigma scale moves TWO things and the reweight must carry both (the nucleon record always did; the
+    pion one carried only the first until 2026-07-14 -- see docs/logbook/info_content.md):
+      (1) BRANCH, given an interaction:  s_realized * D0/D,   D0 = sa+ss+si,
+          D = s_abs*sa + s_el*ss_el + s_cex*(ss-ss_el) + s_conv*si   [at the STRUCK candidate]
       (2) SURVIVAL -- WHETHER it interacts.  The walk draws the hit with prob = exp(-a) per candidate
-          (_pion_step), and sigma_tot -> g*sigma_tot maps a -> a/g, so with g = D_c/D0_c at that candidate
-            hit  : pk/p0        no-hit : (1-pk)/(1-p0),     p0 = exp(-a), pk = exp(-a/g).
-    Under a COMMON rescale s: g = s, the branch factor is 1 but the survival factor is NOT -- which is the
-    whole point (a common rescale changes the mean free path).  == 1 at all-nominal (g=1 -> pk=p0)."""
-    code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c, np_ = brec
-    valid = jnp.arange(sa.shape[1])[None, :] < np_[:, None]
+          (_pion_step), and sigma_tot -> g*sigma_tot maps a -> a/g, so with g = D_c/D0_c at the CLOSEST
+          candidate:   hit: pk/p0    no-hit: (1-pk)/(1-p0),    p0 = exp(-a), pk = exp(-a/g).
+    Under a COMMON rescale s the branch factor is 1 but the survival factor is NOT -- which is the whole
+    point (a common rescale changes the mean free path).  == 1 at all-nominal (g = 1 -> pk = p0)."""
     # On a NO-HIT slot the branch stats are taken at j = argmin over an all-inf metric -> meaningless (and
     # possibly non-finite).  jnp.where picks the right VALUE, but a non-finite untaken branch still poisons
     # the reverse-mode GRADIENT (nan * 0 = nan), so neutralize the branch inputs off-hit up front.
@@ -143,66 +162,83 @@ def fsi_pion_reweight(brec, s_abs, s_el, s_cex, s_conv):
         """D/D0 = sum_i s_i f_i, written as 1 + sum_i (s_i - 1) f_i.
 
         Algebraically identical, but EXACTLY 1 at nominal in ANY precision (every (s_i - 1) is 0),
-        whereas D/D0 is only 1 up to the rounding of D and D0.  Defensive: the bank stores these sigmas
-        as float32 and exp(-a/g) amplifies a g that is off by even 1 ulp.  (Under the production
-        jax_enable_x64 both forms give max|w-1| = 0 exactly; this one holds in float32 too.)"""
+        whereas D/D0 is only 1 up to the rounding of D and D0.  The bank stores these sigmas as float32
+        and exp(-a/g) amplifies a g that is off by even 1 ulp."""
         D0 = jnp.clip(sa_ + ss_ + si_, 1e-12, None)
-        fa = sa_ / D0
-        fel = ss_el_ / D0
         fcex = jnp.clip(ss_ - ss_el_, 0.0, None) / D0
-        fconv = si_ / D0
-        return 1.0 + (s_abs - 1.0) * fa + (s_el - 1.0) * fel + (s_cex - 1.0) * fcex + (s_conv - 1.0) * fconv
+        return (1.0 + (s_abs - 1.0) * (sa_ / D0) + (s_el - 1.0) * (ss_el_ / D0)
+                + (s_cex - 1.0) * fcex + (s_conv - 1.0) * (si_ / D0))
 
-    # (1) branch, at the struck candidate (only meaningful on a hit): s_realized * D0/D
     s_real = jnp.where(code == 0, s_el, jnp.where(code == 1, s_cex, jnp.where(code == 2, s_abs, s_conv)))
     branch = s_real / jnp.clip(_sigma_ratio(sa, ss_el, ss, si), 1e-12, None)
-    # (2) survival, at the CLOSEST in-slab candidate: sigma_tot -> g*sigma_tot maps a -> a/g
     g = jnp.clip(_sigma_ratio(sa_c, ss_el_c, ss_c, si_c), 1e-6, None)
     a, g = _match_dtype(a, g)                    # same dtype for both exps (see _match_dtype)
     p0 = jnp.clip(jnp.exp(-a), 1e-6, 1.0 - 1e-6)
     pk = jnp.clip(jnp.exp(-a / g), 1e-6, 1.0 - 1e-6)
     surv = jnp.where(hitf, pk / p0, (1.0 - pk) / (1.0 - p0))
-    per = jnp.where(hitf, surv * branch, surv)
-    return jnp.prod(jnp.where(valid, per, 1.0), axis=1)
+    return jnp.where(hitf, surv * branch, surv)
 
 
-def fsi_nucleon_reweight(srec, s_el, s_inel):
-    """GRANULAR per-candidate nucleon FSI reweight.  srec = (hh (n,K) hit, a_nom (n,K)=pi b^2/(sigma_tot fm^2),
-    iso (n,K) {0 pp,1 pn,2 nn}, finel (n,K)=sigma_in/sigma_tot, inel (n,K) realized-inelastic, ns (n,)).
-    s_el,s_inel are length-3 (per-iso) scales.  At each candidate the total-sigma scale is
-      g = s_el[iso]*(1-finel) + s_inel[iso]*finel    (sigma_tot(s)=g*sigma_tot_0),
-    so a_nom(s)=a_nom/g; the Gaussian hit factor is exp(-a_nom/g)/exp(-a_nom) for a hit (else the no-hit
-    complement), and a HIT carries the el/inel sub-branch factor s_realized/g (s_realized=s_inel[iso] if
-    inel else s_el[iso]).  ==1 at all-nominal; reduces BIT-EXACTLY to nucleon_scat_reweight(.,sscat) when
-    s_el=s_inel=sscat (g=sscat, s_realized/g=1)."""
-    hh, a_nom, iso, finel, inel, ns = srec
+def nucleon_slot_factor(hh, a_nom, iso, finel, inel, s_el, s_inel):
+    """Per-slot nucleon FSI likelihood ratio.  One slot = one in-slab candidate step; iso {0 pp,1 pn,2 nn};
+    finel = sigma_in/sigma_tot there.  sigma_tot(s) = g*sigma_tot_0 with
+      g = s_el[iso]*(1-finel) + s_inel[iso]*finel,
+    so a -> a/g; a hit carries the Gaussian ratio exp(-a/g)/exp(-a) times the el/inel sub-branch
+    s_realized/g, a no-hit carries the complement (1-pk)/(1-p0).  == 1 at all-nominal."""
     se = jnp.asarray(s_el); si = jnp.asarray(s_inel)
-    valid = jnp.arange(a_nom.shape[1])[None, :] < ns[:, None]
     se_i = se[iso]; si_i = si[iso]                                # per-candidate per-iso scales
-    # g = se*(1-finel) + si*finel, written as 1 + (se-1)*(1-finel) + (si-1)*finel: algebraically
-    # identical but EXACTLY 1 at nominal in any precision.  The record is stored/used as float32 (see
-    # bank_reweight.to_jax), where the naive form leaves g off 1 by ~1 ulp and exp(-a/g) amplifies it
-    # into a max|w-1| ~ 9e-4 nominal-identity violation on the bank.  Same trick as fsi_pion_reweight.
+    # 1 + (se-1)(1-finel) + (si-1)finel: EXACTLY 1 at nominal in any precision (see pion _sigma_ratio).
     g = jnp.clip(1.0 + (se_i - 1.0) * (1.0 - finel) + (si_i - 1.0) * finel, 1e-6, None)
     a_nom, g = _match_dtype(a_nom, g)
     p0 = jnp.clip(jnp.exp(-a_nom), 1e-6, 1.0 - 1e-6)
     pk = jnp.clip(jnp.exp(-a_nom / g), 1e-6, 1.0 - 1e-6)
     s_real = jnp.where(inel, si_i, se_i)
     hit_f = (pk / p0) * (s_real / g)                             # hit: Gaussian ratio x el/inel sub-branch
-    br = jnp.where(valid, jnp.where(hh, hit_f, (1.0 - pk) / (1.0 - p0)), 1.0)
-    return jnp.prod(br, axis=1)
+    return jnp.where(hh, hit_f, (1.0 - pk) / (1.0 - p0))
+
+
+def nncex_slot_factor(hh, iso, inel, swap, f_cex):
+    """Per-slot NN-elastic charge-exchange FRACTION ratio (ACHILLES value 0.5).  Only pn ELASTIC hits carry
+    a meaningful swap: f_cex/0.5 if swapped else (1-f_cex)/0.5.  pp/nn swaps are no-ops (same species)."""
+    pn_el = hh & (~inel) & (iso == 1)
+    return jnp.where(pn_el, jnp.where(swap, f_cex / 0.5, (1.0 - f_cex) / 0.5), 1.0)
+
+
+# ---- DENSE wrappers (in-engine record, (n, K) + per-event count) ------------------------------------- #
+def fsi_pion_reweight(brec, s_abs, s_el, s_cex, s_conv):
+    """brec = (code4, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c, np_ (n,)).  See pion_slot_factor."""
+    code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c, np_ = brec
+    return _dense_prod(pion_slot_factor(code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c,
+                                        s_abs, s_el, s_cex, s_conv), np_)
+
+
+def fsi_nucleon_reweight(srec, s_el, s_inel):
+    """srec = (hh, a_nom, iso, finel, inel, ns (n,)).  See nucleon_slot_factor."""
+    hh, a_nom, iso, finel, inel, ns = srec
+    return _dense_prod(nucleon_slot_factor(hh, a_nom, iso, finel, inel, s_el, s_inel), ns)
 
 
 def fsi_nncex_reweight(srec, f_cex):
-    """NN-elastic charge-exchange FRACTION reweight (ACHILLES value 0.5).  srec = (hh, iso, inel, swap (n,K),
-    ns (n,)).  Only pn elastic hits (iso==1, hh & ~inel) carry a meaningful swap; per such hit the realized
-    branch likelihood ratio is f_cex/0.5 if swapped else (1-f_cex)/0.5.  ==1 at f_cex=0.5.  pp/nn swaps are
-    no-ops (same species) -> not reweighted."""
+    """srec = (hh, iso, inel, swap, ns (n,)).  See nncex_slot_factor."""
     hh, iso, inel, swap, ns = srec
-    valid = jnp.arange(iso.shape[1])[None, :] < ns[:, None]
-    pn_el = hh & (~inel) & (iso == 1)
-    br = jnp.where(valid & pn_el, jnp.where(swap, f_cex / 0.5, (1.0 - f_cex) / 0.5), 1.0)
-    return jnp.prod(br, axis=1)
+    return _dense_prod(nncex_slot_factor(hh, iso, inel, swap, f_cex), ns)
+
+
+# ---- RAGGED wrappers (bank record: flat (M,) slots + per-slot event index) ---------------------------- #
+def fsi_pion_reweight_flat(brec, eidx, n_events, s_abs, s_el, s_cex, s_conv):
+    code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c = brec
+    return _ragged_prod(pion_slot_factor(code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c,
+                                         s_abs, s_el, s_cex, s_conv), eidx, n_events)
+
+
+def fsi_nucleon_reweight_flat(srec, eidx, n_events, s_el, s_inel):
+    hh, a_nom, iso, finel, inel = srec
+    return _ragged_prod(nucleon_slot_factor(hh, a_nom, iso, finel, inel, s_el, s_inel), eidx, n_events)
+
+
+def fsi_nncex_reweight_flat(srec, eidx, n_events, f_cex):
+    hh, iso, inel, swap = srec
+    return _ragged_prod(nncex_slot_factor(hh, iso, inel, swap, f_cex), eidx, n_events)
 
 
 def nucleon_scat_reweight(srec, sscat):

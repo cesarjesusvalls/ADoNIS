@@ -146,3 +146,25 @@ def test_granular_autodiff_equals_fd():
     eps = 1e-4
     g_fd = np.array([float((loss(th0.at[d].add(eps)) - loss(th0.at[d].add(-eps))) / (2 * eps)) for d in range(3)])
     assert np.allclose(g_ad, g_fd, rtol=1e-4, atol=1e-6), f"ad={g_ad} fd={g_fd}"
+
+
+def test_ragged_equals_dense():
+    """The BANK stores the kind-1 record ragged (compact_fsi_record: flat slots + per-slot event index),
+    the in-engine record is dense (n, K).  Same per-slot physics, different reduction -> the two must give
+    the same weight.  Also pins the nominal identity under the exp(sum(log)) reduction."""
+    import numpy as _np
+    from adonis.fsi.cascade_full import compact_fsi_record
+    r = _record(13)
+    dense = {k: _np.asarray(v) for k, v in r.items()}
+    flat = compact_fsi_record(dense)
+    Rd = {k: jnp.asarray(v) for k, v in dense.items()}
+    Rf = {k: jnp.asarray(v) for k, v in flat.items()}
+    Rf["n_events"] = N
+    for kw in ({}, dict(s_piN_cex=0.7), dict(s_NN_elastic=(1.2, 0.8, 1.1)), dict(f_NN_cex=0.4),
+               dict(s_piN_elastic=1.2, s_piN_cex=1.2, s_conv=1.2)):
+        sabs = kw.pop("sabs", 1.2 if kw else 1.0)
+        wd = _np.asarray(pool_fsi_reweight(Rd, sabs, 1.0, **kw))
+        wf = _np.asarray(pool_fsi_reweight(Rf, sabs, 1.0, **kw))   # dispatches on "p_eidx"
+        assert _np.allclose(wf, wd, rtol=1e-7, atol=1e-9), f"ragged != dense for {kw}"
+    wn = _np.asarray(pool_fsi_reweight(Rf, 1.0, 1.0))
+    assert _np.abs(wn - 1.0).max() < 1e-12, "ragged nominal identity broken"

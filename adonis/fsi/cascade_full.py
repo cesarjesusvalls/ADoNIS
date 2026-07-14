@@ -29,7 +29,8 @@ import os
 import jax, jax.numpy as jnp
 from adonis.fsi.cascade_discrete import (_CH_PID, sample_nucleons, MB_TO_FM2, pion_branch_reweight,
                                          fsi_pion_reweight, nucleon_scat_reweight, fsi_nucleon_reweight,
-                                         fsi_nncex_reweight)
+                                         fsi_nncex_reweight, fsi_pion_reweight_flat,
+                                         fsi_nucleon_reweight_flat, fsi_nncex_reweight_flat)
 
 PION, NUCLEON = 0, 1
 FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
@@ -421,6 +422,10 @@ def pool_fsi_reweight(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None
     nucleon s_NN_elastic/s_NN_inelastic each a length-3 per-iso {pp,pn,nn} scale (default = sscat each)."""
     s_el = sscat if s_piN_elastic is None else s_piN_elastic
     s_cex = sscat if s_piN_cex is None else s_piN_cex
+    if "p_eidx" in record:                       # RAGGED (bank) record -> same physics, ragged reduction
+        return pool_fsi_reweight_flat(record, sabs, sscat, s_piN_elastic=s_piN_elastic,
+                                      s_piN_cex=s_piN_cex, s_conv=s_conv, s_NN_elastic=s_NN_elastic,
+                                      s_NN_inelastic=s_NN_inelastic, f_NN_cex=f_NN_cex)
     wp = fsi_pion_reweight((record["bc"], record["sa"], record["ss_el"], record["ss"], record["si"],
                            record["pi_hh"], record["pi_a"], record["sa_c"], record["ss_el_c"],
                            record["ss_c"], record["si_c"], record["nh"]), sabs, s_el, s_cex, s_conv)
@@ -430,6 +435,51 @@ def pool_fsi_reweight(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None
                               record["ns"]), nse, nsi)
     wc = fsi_nncex_reweight((record["hh"], record["iso"], record["inel"], record["swap"], record["ns"]),
                             f_NN_cex)                            # NN charge-exchange fraction (nominal 0.5)
+    return wp * wn * wc
+
+
+# ---- RAGGED (bank) record --------------------------------------------------------------------------- #
+# The in-engine record MUST be dense (n, K): XLA needs static shapes inside the jitted walk.  But the tail
+# slots are pure padding -- mean occupancy is 2.3/96 for pions and 10.6/64 for nucleons, i.e. the dense
+# bank is ~97% zeros.  compact_fsi_record() drops the padding at WRITE time into flat (M,) slot arrays
+# plus a per-slot event index (exactly how the bank already stores the ragged final state: fs_* + _eidx).
+# 1.87M-event bank: ~8.4 GB dense -> ~2 GB ragged, and every Jacobian jvp touches 40x fewer slots.
+_P_SLOT = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
+_N_SLOT = ("hh", "a", "iso", "finel", "inel", "swap")
+
+
+def compact_fsi_record(rec):
+    """Dense (n, K) kind-1 record -> ragged: flat slot arrays + per-slot event index (p_eidx / n_eidx).
+    Pure numpy (called once, at bank-write time).  Physics-preserving: it only drops the padding."""
+    import numpy as _np
+    out = {}
+    for names, cnt, tag in ((_P_SLOT, "nh", "p"), (_N_SLOT, "ns", "n")):
+        c = _np.asarray(rec[cnt])
+        K = _np.asarray(rec[names[0]]).shape[1]
+        keep = _np.arange(K)[None, :] < c[:, None]                # the used slots, per event
+        out[f"{tag}_eidx"] = _np.repeat(_np.arange(len(c), dtype=_np.int32), c)
+        for f in names:
+            out[f] = _np.asarray(rec[f])[keep]
+        assert len(out[f"{tag}_eidx"]) == int(keep.sum())
+    return out
+
+
+def pool_fsi_reweight_flat(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None, s_conv=1.0,
+                           s_NN_elastic=None, s_NN_inelastic=None, f_NN_cex=0.5):
+    """pool_fsi_reweight on a RAGGED record (compact_fsi_record output + n_events).  Same per-slot physics
+    (cascade_discrete.*_slot_factor), ragged reduction.  record["n_events"] gives the event count."""
+    R = record
+    n = int(R["n_events"])
+    s_el = sscat if s_piN_elastic is None else s_piN_elastic
+    s_cex = sscat if s_piN_cex is None else s_piN_cex
+    wp = fsi_pion_reweight_flat((R["bc"], R["sa"], R["ss_el"], R["ss"], R["si"], R["pi_hh"], R["pi_a"],
+                                 R["sa_c"], R["ss_el_c"], R["ss_c"], R["si_c"]),
+                                R["p_eidx"], n, sabs, s_el, s_cex, s_conv)
+    nse = jnp.broadcast_to(jnp.asarray(sscat), (3,)) if s_NN_elastic is None else jnp.asarray(s_NN_elastic)
+    nsi = jnp.broadcast_to(jnp.asarray(sscat), (3,)) if s_NN_inelastic is None else jnp.asarray(s_NN_inelastic)
+    wn = fsi_nucleon_reweight_flat((R["hh"], R["a"], R["iso"], R["finel"], R["inel"]),
+                                   R["n_eidx"], n, nse, nsi)
+    wc = fsi_nncex_reweight_flat((R["hh"], R["iso"], R["inel"], R["swap"]), R["n_eidx"], n, f_NN_cex)
     return wp * wn * wc
 
 

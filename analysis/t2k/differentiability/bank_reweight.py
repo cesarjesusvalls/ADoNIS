@@ -13,8 +13,10 @@ from adonis.fsi.cascade_full import pool_fsi_reweight
 from adonis.xsec.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets
 
-_FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "nh",
-          "hh", "a", "iso", "finel", "inel", "swap", "ns")
+# RAGGED kind-1 FSI record (see cascade_full.compact_fsi_record): flat per-slot arrays + a per-slot event
+# index.  The dense (n, K) layout was ~97% padding; this is ~40x fewer slots to store AND to reweight.
+_FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "p_eidx",
+          "hh", "a", "iso", "finel", "inel", "swap", "n_eidx")
 
 
 def default_grids():
@@ -35,6 +37,7 @@ def bank_weight(B, knobs, grids):
     if "hv_res_delta_a" in B:                      # optional P33 Delta-strength knob (banks that carry it)
         hv = hv * strength_reweight(ma("res_delta"), k.get("delta_strength", 1.0))
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
+    rec["n_events"] = len(B["w0"])               # ragged reduction needs the event count
     fsi = pool_fsi_reweight(rec, k["sabs"], 1.0, s_piN_elastic=k["s_piN_elastic"], s_piN_cex=k["s_piN_cex"],
                             s_conv=k["s_conv"], s_NN_elastic=k["s_NN_elastic"], s_NN_inelastic=k["s_NN_inelastic"],
                             f_NN_cex=k["f_NN_cex"])

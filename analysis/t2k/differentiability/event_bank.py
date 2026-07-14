@@ -98,16 +98,27 @@ def run():
         hv_save = {f"hv_{name}_{abc}": comp[i].astype(np.float32)
                    for name, comp in hv.items() for i, abc in enumerate(["a", "b", "c", "Q2"][:len(comp)])}
 
-        # FSI record: concatenate recq (QE) + recr (RES) per field
+        # FSI record: concatenate recq (QE) + recr (RES) per field, then COMPACT to the ragged layout.
+        # The dense (n, K) record is ~97% padding (pion occupancy 2.3/96, nucleon 10.6/64); storing it
+        # dense costs ~8.4 GB at 1.87M events.  compact_fsi_record drops the padding into flat (M,) slot
+        # arrays + a per-slot event index -- the same ragged layout the bank already uses for the final
+        # state (fs_* + fs_off).  Physics-identical (only padding is removed), ~4x smaller than the OLD
+        # bank, and every Jacobian jvp then touches 40x fewer slots.
         def fcat(field):
-            a = np.asarray(recq[field]); b = np.asarray(recr[field])
-            return np.concatenate([a, b])
-        fsi_save = {}
-        for field in FSI_F:
-            arr = fcat(field)
-            dt = (np.int16 if field in ("nh", "ns") else (np.int8 if field in ("bc", "iso")
-                  else (bool if field in ("hh", "inel", "swap", "pi_hh") else np.float32)))
+            return np.concatenate([np.asarray(recq[field]), np.asarray(recr[field])])
+        dense = {f: fcat(f) for f in FSI_F}
+        flat = CF.compact_fsi_record(dense)
+        fsi_save = {"f_p_eidx": flat["p_eidx"].astype(np.int32),
+                    "f_n_eidx": flat["n_eidx"].astype(np.int32)}
+        for field, arr in flat.items():
+            if field.endswith("_eidx"):
+                continue
+            dt = (np.int8 if field in ("bc", "iso")
+                  else (bool if field in ("hh", "inel", "swap", "pi_hh") else np.float32))
             fsi_save[f"f_{field}"] = arr.astype(dt)
+        log(f"chunk {c+1}: FSI record compacted -> pion {len(flat['p_eidx'])} slots, "
+            f"nucleon {len(flat['n_eidx'])} slots (dense would be "
+            f"{dense['sa'].shape[0]*dense['sa'].shape[1] + dense['a'].shape[0]*dense['a'].shape[1]})")
 
         offq, fpq, fcq, fp4q, dq = compact_fs(ntq[0]); offr, fpr, fcr, fp4r, dr = compact_fs(ntr[0])
         if dq + dr:
