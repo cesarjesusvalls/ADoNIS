@@ -21,6 +21,7 @@ from adonis.xsec.form_factors import nucleon_ff, _TCUT as _FF_TCUT
 _I = 1j
 _XMN = C.mN                                  # constants%mqe = 0.5(mp+mn)
 _COUPL_CC = C.Vud * C.ee * _I / (C.sw * np.sqrt(2.0) * 2.0)
+_COUPL_EM = _I * C.ee          # photon (ACHILLES LeptonicCurrent.cc:121, pid == 22: coupl = i*ee)
 
 # Pauli matrices
 _SIG = np.stack([
@@ -78,18 +79,44 @@ def _spinors(p3, E):
 
 
 def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scale=1.0, vector_scale=1.0,
-                            ff_scale=None):
+                            ff_scale=None, probe="CC", is_proton=None):
     """All (...,4) MeV.  p_in_nuc OFF-SHELL struck nucleon (E=mN-removal); p_out_nuc outgoing
     (mp-on-shell energy).  Returns H (...,4combo,4mu) matching ACHILLES cur(i+2*(j-1)).
     axial_scale (scalar or (...,)) multiplies FA and FAP (FAP ~ FA): the M_A reweight hook;
     vector_scale multiplies F1 and F2 (the overall vector current): the vector-strength reweight hook.
-    amps2 is QUADRATIC in EACH, so 3 evals give the exact per-event decomposition.  Default 1.0 = nominal."""
+    amps2 is QUADRATIC in EACH, so 3 evals give the exact per-event decomposition.  Default 1.0 = nominal.
+
+    probe:
+      "CC" (default) -- nu n -> mu- p.  The ISOVECTOR combination with the W coupling, and the axial
+            current.  UNCHANGED, bit-for-bit.
+      "EM" -- e N -> e' N  (inclusive (e,e')).  ACHILLES LeptonicCurrent.cc:120 (pid == 22):
+                coupl = i*ee
+                proton : {F1p, coupl}, {F2p, coupl}    <- NO FA entry
+                neutron: {F1n, coupl}, {F2n, coupl}    <- NO FA entry
+            so the photon couples to the struck nucleon's OWN form factors (NOT the isovector
+            difference F1p - F1n), and CouplingsFF leaves FA = FAP = 0 -- the EM current is purely
+            vector.  Protons AND neutrons are both struck (incoherently); `is_proton` (bool, broadcast
+            over the event axis) selects which nucleon's form factors each event uses.
+            vector_scale still multiplies F1/F2, so the vector-strength / mu_p / mu_n / gep / gen
+            reweights work unchanged on an (e,e') sample -- which is exactly why it can break the
+            axial-vs-vector degeneracy that a nu-only fit cannot."""
     q = p_in_lep - p_out_lep
     Q2_FF = -(q[..., 0] ** 2 - jnp.sum(q[..., 1:] ** 2, axis=-1)) / 1e6     # GeV^2, ORIGINAL q
     ff = nucleon_ff(Q2_FF, ff_scale=ff_scale)
     asc = jnp.asarray(axial_scale); vsc = jnp.asarray(vector_scale)
-    F1 = _COUPL_CC * (ff["F1p"] - ff["F1n"]) * vsc; F2 = _COUPL_CC * (ff["F2p"] - ff["F2n"]) * vsc
-    FA = _COUPL_CC * ff["FA"] * asc;                FAP = _COUPL_CC * ff["FAP"] * asc
+    if probe == "CC":
+        F1 = _COUPL_CC * (ff["F1p"] - ff["F1n"]) * vsc; F2 = _COUPL_CC * (ff["F2p"] - ff["F2n"]) * vsc
+        FA = _COUPL_CC * ff["FA"] * asc;                FAP = _COUPL_CC * ff["FAP"] * asc
+    elif probe == "EM":
+        if is_proton is None:
+            raise ValueError("probe='EM' needs is_proton (the struck nucleon species, per event)")
+        isp = jnp.asarray(is_proton)
+        f1 = jnp.where(isp, ff["F1p"], ff["F1n"])          # the struck nucleon's OWN form factors
+        f2 = jnp.where(isp, ff["F2p"], ff["F2n"])
+        F1 = _COUPL_EM * f1 * vsc; F2 = _COUPL_EM * f2 * vsc
+        FA = jnp.zeros_like(F1); FAP = jnp.zeros_like(F1)  # photon: no axial current
+    else:
+        raise ValueError(f"probe must be 'CC' or 'EM', got {probe!r}")
 
     # current_init_had: q(1)=omega+E_in; p1 on-shell at xmn; q(1)-=p1(1)
     p3_in = p_in_nuc[..., 1:]
