@@ -32,7 +32,8 @@ from analysis.t2k.differentiability import info_content as IC
 BANKDIR = os.environ.get("ADONIS_EVENT_BANK", "output/event_bank")
 N_BINS = int(os.environ.get("ADONIS_NBINS", "20"))
 SYST = float(os.environ.get("ADONIS_SYST", "0.05"))
-LABEL = os.environ.get("ADONIS_LABEL", "physfit_gate1")
+OBS = os.environ.get("PHYSFIT_OBS", "all")               # observable subset (see OBS_SUBSETS)
+LABEL = os.environ.get("ADONIS_LABEL", "physfit_gate1" if OBS == "all" else f"physfit_gate1_{OBS}")
 
 # ---- knob spec: enumerated through the SINGLE SOURCE OF TRUTH (full_knobs.knob_specs), which drops
 # sscat (dead) and pw_norm (dormant DCC infra) and expands the tuple knobs. We attach only the fit-local
@@ -85,13 +86,47 @@ def design_edges(values, n_bins, p_hi=99.0, domain=None):
 # bounded observables: full physical range, no overflow fold
 DOMAINS = {"dat": (0.0, float(np.pi)), "daT": (0.0, 180.0)}
 
+# ---- observed multiplicities (CC-inclusive) ------------------------------------------------------- #
+# Sample: CC inclusive under the T2K MUON acceptance only (p_mu > MU_LO, cos_mu > COSMU) -- NOT
+# bank_plot.acceptance(), which is the CC0pi signal cut and carries a leading-proton window that would
+# make N_p = 0 unreachable.  The exclusive selections cannot host these: N_pi+- is 0 by construction in
+# CC0pi and 1 in CC1pi, so the multiplicities only carry information in the inclusive sample.
+#   N_p     : protons above P_THR_MULT (detection threshold), no upper bound
+#   N_pi+-  : pi+ and pi- counted together in one sample, no threshold
+# Integer edges; the top bin is an overflow (the generic clip in build_physfit_datasets folds it).
+# Occupancies at nominal (1.87M bank): N_p 22/63/11/3/1%, N_pi+- 85/15/0.1%.
+P_THR_MULT = float(os.environ.get("ADONIS_PMULT_THR", "300.0"))     # MeV/c, proton detection threshold
+MULT_EDGES = {
+    "n_p":     np.arange(-0.5, 5.0, 1.0),      # 0,1,2,3,>=4
+    "n_chpi":  np.arange(-0.5, 3.0, 1.0),      # 0,1,>=2
+}
 
-def build_physfit_datasets(B, w0, log):
+# ---- observable subsets (paper section 3: "what is worth fitting, per observable class") ----------
+# Single source of truth for BOTH the per-subset Gate-I Fisher and any subset-restricted fit: values
+# are dkeys of build_physfit_datasets' obs_defs.  "kin9" is the frozen 9-observable suite whose J is
+# persisted (physfit_gate1.npz); every kinematic subset is a ROW SLICE of that J -- no bank pass.
+# "mult" adds rows, so "full" requires its own Gate-I run.  ("all" = kin9, kept for back-compat with
+# the persisted p9_*/physfit_* labels -- do NOT redefine it to include the multiplicities.)
+OBS_SUBSETS = {
+    "lepton":    ["pmu", "cosmu"],                                  # what a lepton-only analysis sees
+    "leptonhad": ["pmu", "cosmu", "ppi", "cospi"],                  # + the hadron (pion) kinematics
+    "tki":       ["dpt", "dat", "pn", "dptt", "daT"],               # transverse-kinematic imbalance
+    "mult":      ["n_p", "n_chpi"],                                 # observed multiplicities (inclusive)
+    "kin9":      ["dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT", "ppi", "cospi"],
+}
+OBS_SUBSETS["all"] = list(OBS_SUBSETS["kin9"])                      # back-compat alias
+OBS_SUBSETS["full"] = OBS_SUBSETS["kin9"] + OBS_SUBSETS["mult"]     # everything (needs its own run)
+
+
+def build_physfit_datasets(B, w0, log, obs=None):
     """9 observables, uniform bins (p99+overflow fold, or full range for bounded), diagonal syst+MC
     errors, Asimov centrals. Muon/pion kinematics carry the Q^2 information the STV variables
     integrate out. NB: the new CC1pi kinematics (ppi/cospi) get offset=0 (no free-H term) — valid
     for closure-type modes where data and model share the bank (any offset cancels identically);
-    NOT valid for GENIE mode without extending freeH_offsets."""
+    NOT valid for GENIE mode without extending freeH_offsets.
+
+    obs: list of dkeys to keep (see OBS_SUBSETS); None = all 9. Binning is defined per observable, so
+    a subset is exactly the corresponding subset of the full-suite datasets (bin edges are identical)."""
     ds = []
     lead0, _ = BP.leading_proton(B); sig0 = BP.signal_cc0pi(B)[0]
     kmu = B["k_mu"].astype(np.float64)
@@ -115,15 +150,34 @@ def build_physfit_datasets(B, w0, log):
         ("CC1pi ppi",   mask1, ppi,                           "ppi",   "cc1pi"),
         ("CC1pi cospi", mask1, cpi,                           "cospi", "cc1pi"),
     ]
+    # observed multiplicities, CC-inclusive under the MUON acceptance only (see MULT_EDGES above).
+    # Acceptance constants come from the tune module (single source of truth for the T2K cuts).
+    _T = BP._tune()
+    inc = (pmu > _T.MU_LO) & (cmu > _T.COSMU)
+    npip, _npi0, npim = BP.pion_counts(B)
+    obs_defs += [
+        ("Incl N_p",     inc, BP.n_protons(B, pmin=P_THR_MULT).astype(float), "n_p",    "incl"),
+        ("Incl N_pi+-",  inc, (npip + npim).astype(float),                    "n_chpi", "incl"),
+    ]
+    if obs is not None:
+        keep = set(obs)
+        unknown = keep - {d[3] for d in obs_defs}
+        if unknown:
+            raise KeyError(f"unknown observable key(s): {sorted(unknown)}")
+        obs_defs = [d for d in obs_defs if d[3] in keep]
     # free-H offsets on OUR edges (theta-independent; enters centrals -> syst sigma, cancels in J)
     edges_by = {}
     for name, mask, vals, dkey, chan in obs_defs:
+        if dkey in MULT_EDGES:                          # integer multiplicity bins (top bin = overflow)
+            edges_by[dkey] = MULT_EDGES[dkey]
+            continue
         v = vals[np.asarray(mask, bool)]
         dom = DOMAINS.get(dkey)
         if dkey in ("cosmu", "cospi"):                  # bounded above at 1, cut below by acceptance
             dom = (float(v.min()), 1.0)
         edges_by[dkey] = design_edges(v, N_BINS, domain=dom)
-    fH = IC.freeH_offsets({k: v for k, v in edges_by.items() if k in ("pn", "dptt", "daT")})
+    fH_edges = {k: v for k, v in edges_by.items() if k in ("pn", "dptt", "daT")}
+    fH = IC.freeH_offsets(fH_edges) if fH_edges else {}   # skip the free-H generation when unused
     for name, mask, vals, dkey, chan in obs_defs:
         edges = edges_by[dkey]; nb = len(edges) - 1; bw = np.diff(edges)
         eps = (edges[-1] - edges[0]) * 1e-12
@@ -138,6 +192,12 @@ def build_physfit_datasets(B, w0, log):
                 _, conv0, _, _ = IC.load_cc0pi("dat")
                 conv = conv0 * (1000.0 if dkey == "pmu" else 1.0)
             scale_bin = conv / bw
+            offset = np.zeros(nb)
+        elif chan == "incl":
+            # sigma per multiplicity bin, same absolute units as the CC0pi rows (1e-38/nucleon);
+            # the bin "width" is 1 count, so scale_bin is just the conversion.  Carbon bank -> no free-H.
+            _, conv0, _, _ = IC.load_cc0pi("dat")
+            scale_bin = conv0 / bw
             offset = np.zeros(nb)
         else:
             scale_bin = 1.0 / bw
@@ -160,10 +220,11 @@ def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 
+    obs = OBS_SUBSETS[OBS] if OBS != "all" else None
     B = BP.load_bank(BANKDIR); JB = BR.to_jax(B); grids = BR.default_grids(); nom = nominal_knobs()
     w0 = np.asarray(BR.weight_jit(JB, nom, grids))
-    log(f"bank {len(w0)} events | {NPAR} knobs | {N_BINS} bins/obs | syst {SYST:.0%}")
-    ds = build_physfit_datasets(B, w0, log)
+    log(f"bank {len(w0)} events | {NPAR} knobs | {N_BINS} bins/obs | syst {SYST:.0%} | obs set '{OBS}'")
+    ds = build_physfit_datasets(B, w0, log, obs=obs)
     nbins = sum(d["nbin"] for d in ds)
     log(f"{len(ds)} datasets, {nbins} bins")
 
@@ -196,10 +257,22 @@ def main():
     nfit = int((shrink < 0.5).sum())
     print(f"\n{nfit}/{NPAR} knobs pass Gate I (shrinkage < 0.5)")
 
+    # ---- degeneracy structure: eigen-spectrum of the PRIOR-SCALED Fisher (dimensionless, so knobs in
+    # natural units are commensurate with the multiplicative ones). Small eigenvalue = flat direction. --
+    Fs = F * PRIOR[:, None] * PRIOR[None, :]
+    evals, evecs = np.linalg.eigh(Fs)
+    corr = V / np.outer(sig_post, sig_post)                     # posterior correlation matrix
+    print(f"\n---- Fisher eigen-spectrum (prior-scaled; lambda < 1 = prior-dominated) ----")
+    for i in np.argsort(evals)[::-1]:
+        top = np.argsort(np.abs(evecs[:, i]))[::-1][:3]
+        comp = ", ".join(f"{evecs[t, i]:+.2f} {PNAMES[t]}" for t in top)
+        print(f"  lambda {evals[i]:10.3g}   {comp}")
+
     os.makedirs("output/altgen", exist_ok=True)
     np.savez(f"output/altgen/{LABEL}.npz", J=J, sigma=sigma, F=F, V=V, prior=PRIOR,
              sig_post=sig_post, shrink=shrink, pnames=PNAMES, nbins=nbins,
-             row0=row0, dsnames=[d["name"] for d in ds],
+             fisher_evals=evals, fisher_evecs=evecs, corr=corr, obs_set=OBS,
+             row0=row0, dsnames=[d["name"] for d in ds], dskeys=[d["key"] for d in ds],
              **{f"{d['key']}_edges": d["edges"] for d in ds},
              **{f"{d['key']}_central": d["data"] for d in ds},
              **{f"{d['key']}_sigma": d["sigma"] for d in ds})

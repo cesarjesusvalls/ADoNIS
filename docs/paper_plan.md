@@ -19,13 +19,89 @@ resolvable above the errors).
 | # | Section | Status | Assets / pointers | To do |
 |---|---|---|---|---|
 | 1 | **Validation: ADoNIS reproduces ACHILLES** — T2K CC0π, CC1π, particle multiplicities | machinery exists; figures to assemble | `analysis/t2k/differentiability/make_plots.py`, `bank_matrix.py` (matrix + multiplicity + nucleon-momentum from the 1.87M bank) | pick the informative subset; produce clean side-by-side ADoNIS-vs-ACHILLES + ratio panels with χ²/ndf |
-| 2 | **Compact "we have gradient information for all knobs"** | machinery exists | `grad_arrows.py`, `grad_all.py` (exact per-bin ∂(dσ/dx)/∂θ for all 27 knobs, autodiff) | one compact figure (e.g. per-knob gradient-arrow grid, or a 27×N_bins sensitivity heatmap) |
-| 3 | **Fisher information per observable subset** → what is worth fitting | table ready + Fisher engine ready | 27-knob table (below); `physical_fit.py` Gate I (Asimov Fisher) on the 9-observable suite; `info_content.py` | run Gate I on subsets: **lepton-only** (p_μ, cosθ_μ), **lepton+hadron kin**, **TKI** (δp_T/δα_T/pN/δp_TT/δα_T), **multiplicities**, **all combined**; show which knobs pass (shrinkage<0.5) per subset + the degeneracy structure |
+| 2 | **Compact "we have gradient information for all knobs"** | ✅ figure-complete | `analysis/paper/sec2_gradients/make.py` → `sec2_gradients_all27` (27×188 signed-log pull heatmap), `sec2_gradient_reach` | fold into the paper |
+| 3 | **Fisher information per observable subset** → what is worth fitting | ✅ figure-complete | `analysis/paper/sec3_fisher/make.py` → `sec3_shrinkage_subsets`, `sec3_failure_modes`, `sec3_degeneracy`; engine = `physical_fit.py` Gate I with `PHYSFIT_OBS` | fold into the paper |
 | 4 | **Closures** with Fisher-selected parameters | ✅ figure-complete | `physfit_fig7_closure5.png` (5-param, ≤0.5σ), 7-param on the 9-obs suite (`p9_closure.npz`, ≤0.4σ); `scripts/altgen/physfit_closure5_fig.py` | fold into the paper; optionally a fluctuated closure (null calibration) |
 | 5 | **Fitting data not described by the model** (unknown unknowns) | ✅ figure-complete | `physfit_fig1–10`, `output/reports/physical_fit_report.pdf`; scripts in `scripts/altgen/physical_fit_run.py` + fig scripts | assemble into the paper narrative (taxonomy: inside=Q²-nuisance, outside=coherence/excise; precision frontier) |
 
-**Gap = sections 1–2** (validation + the compact gradient figure). Sections 3–5 are analytically done;
-3 needs the per-subset Fisher run, 4–5 need write-up.
+**Gap = section 1** (the ADoNIS-vs-ACHILLES validation figures). 2–5 are figure-complete; 4–5 need write-up.
+
+## Section 3 result (2026-07-14): Gate I per observable subset
+
+One bank pass produces `J` (27 knobs × 188 bins, 11 datasets) → `output/altgen/physfit_gate1_full.npz`;
+every subset is a **row slice** of it, so the subset study is exact and free. Sections 2 and 3 share this
+one Jacobian. Observable subsets live in `physical_fit.OBS_SUBSETS` (single source of truth, also used to
+pick the released knobs in a subset-restricted fit).
+
+**Which knobs each observable class measures** (shrinkage σ_post/σ_prior < 0.5, syst 5%):
+
+| subset | #FIT | knobs |
+|---|---|---|
+| lepton (p_μ, cosθ_μ) | 2 | `kF_sf`, `Eb_shift` |
+| lepton + pion kin | 4 | + `M_A_res`, `res_axial_strength` |
+| TKI | 5 | `M_A_res`, `kF_sf`, `Eb_shift`, `s_NN_elastic[pn]`, `f_NN_cex` |
+| multiplicities alone | 0 | — (`kF_sf`, `s_NN_elastic[pn]` reach 0.51, just short) |
+| all 9 kinematic | 7 | + `M_A_qe` |
+| ALL 11 (kin + mult) | **8** | + `s_NN_elastic[pp]` |
+
+- A **lepton-only** analysis measures *only the initial state*: the entire hard vertex and all of FSI are
+  invisible to it. Pion kinematics unlock the RES vertex; TKI unlocks nucleon FSI; `M_A_qe` needs the
+  full combination.
+- The **multiplicities measure nothing on their own** but are not redundant: added to the 9 kinematic
+  observables they push `s_NN_elastic[pp]` over the line (0.51 → 0.47) and sharpen the nucleon-FSI block
+  (`f_NN_cex` 0.39 → 0.27, `s_NN_elastic[pn]` 0.31 → 0.25). They buy *nucleon FSI*, as expected from
+  counting knocked-out nucleons.
+
+**"Freeze" hides two physically opposite failure modes** — reported separately (`sec3_failure_modes`),
+since they demand opposite responses:
+- **DEGENERATE** (raw shrinkage < 0.5, marginalized > 0.5): the data sees the knob clearly, another knob
+  spends the sensitivity. `qe_norm` is the extreme case — raw **0.034** (one of the most sensitive knobs
+  in the registry) → marginalized **0.86**, a 25× penalty, because `axial_strength`/`vector_strength`/
+  `sf_norm` can each spell "scale the QE rate" (posterior corr. −0.50/−0.31/−0.22). `res_norm` likewise
+  (raw 0.052 → 0.71) against `sf_norm` (corr. **−0.78**). *A better observable can recover these.*
+- **INVISIBLE** (raw > 1): no information at this precision, and no re-parameterization helps.
+  `s_conv` (raw 13.8), `pion_pole` (4.0), `gen` (2.6), `s_NN_inelastic[pn/nn]`.
+
+Precision-relative by construction: at `ADONIS_SYST=0.15` only 4 knobs pass instead of 8
+(`physfit_gate1_s15.npz`) — measurability is a property of the knob **and** the dataset's precision.
+
+### Why five knobs carry *no* information (INVISIBLE), measured
+
+Gate I is given nothing but the Jacobian, and it independently reproduces known physics: every
+zero-information knob multiplies a term that is negligible or kinematically shut at T2K. Two mechanisms.
+
+**(a) Amplitude terms that barely contribute.** `amps2(s) = a + b·s + c·s²` exactly, so the fractional
+sensitivity is `(b+2c)/(a+b+c)` — computed per event, weighted over the bank:
+
+| knob | \|∂ln amps²/∂θ\| | a 20% prior move buys | for scale |
+|---|---|---|---|
+| `gen` (G_E^n) | **0.012** | 0.25% on σ | `gep` 0.226, `mu_p` 0.441 |
+| `pion_pole` | **0.045** | 0.9% on σ | `M_A_res` 1.086, `vector_strength` 0.955 |
+
+Against a 5% systematic those are ≲0.05σ per bin. Interpretation (standard, not separately verified here):
+G_E^n is small (Galster) *and* enters τ-suppressed relative to G_M at T2K Q²; the pseudoscalar/pion-pole
+term contracts with the lepton tensor ∝ m_ℓ², i.e. helicity-suppressed for ν_μ (it would matter for ν_τ).
+
+**(b) FSI channels that barely fire.** The knob's leverage is proportional to the channel's share of the
+total cross section, and that share is set by a threshold the T2K final state does not reach:
+
+| knob | channel | measured in the 1.87M bank |
+|---|---|---|
+| `s_conv` | πN→ηN′ (m_η = 548 MeV) | **430 / 624,652 pion hits** (0.07%); mean σ_conv/σ_tot = 7×10⁻⁴ |
+| `s_NN_inelastic[nn]` | nn→NΔ→NNπ | mean `finel` = σ_inel/σ_tot = **1.5%**; 1,906 realized |
+| `s_NN_inelastic[pn]` | pn→NΔ→NNπ | mean `finel` = **1.3%**; 8,178 realized |
+| `s_NN_inelastic[pp]` | pp→NΔ→NNπ | mean `finel` = **2.6%**; 19,157 realized |
+
+- πN→ηN′ needs √s ≥ m_η + m_N = 1487 MeV ⇒ **p_π ≳ 680 MeV/c** on a nucleon at rest; T2K pions are
+  mostly < 400 MeV/c, so the channel is closed except in the rare tail.
+- `s_NN_inelastic[iso]` enters *only* through `g = s_el·(1−finel) + s_inel·finel` (`fsi_nucleon_reweight`),
+  so its leverage **is** `finel` ≈ 1–3%: NN→NNπ needs ~290 MeV of nucleon KE and the FSI nucleons are
+  mostly below it. A 20% scale moves σ_tot by ~0.3–0.5%.
+- The measured realized-inelastic ordering (pp 19157 > pn 8178 > nn 1906) reproduces the failure ordering
+  exactly (raw shrinkage 1.00 < 2.51 < 3.87).
+
+These are structural, not fixable by a better observable *of this sample*: unlike the DEGENERATE knobs, no
+re-parameterization recovers them at T2K kinematics.
 
 ## The 27 fittable knobs (canonical registry = `full_knobs.knob_specs`)
 Also a standalone table in the paper. All are multiplicative scale = 1.0 nominal unless noted;
