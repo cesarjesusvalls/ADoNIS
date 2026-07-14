@@ -20,8 +20,9 @@ The Gate-I Jacobian is computed **once** over the full observable set and persis
 **row slice** of it, so the subset study costs no bank pass.
 
 ```bash
-# one bank pass: J (27 knobs x 188 bins), 11 datasets  -> output/altgen/physfit_gate1_full.npz
-PHYSFIT_OBS=full ADONIS_LABEL=physfit_gate1_full python -u scripts/altgen/physical_fit.py
+# one bank pass: J (27 knobs x 188 bins), 11 datasets  -> output/altgen/physfit_gate1_full_v2.npz
+ADONIS_EVENT_BANK=output/event_bank_v2 PHYSFIT_OBS=full ADONIS_LABEL=physfit_gate1_full_v2 \
+  python -u scripts/altgen/physical_fit.py
 
 # all subset figures from that one npz (seconds, no bank)
 python -m analysis.paper.sec3_fisher.make

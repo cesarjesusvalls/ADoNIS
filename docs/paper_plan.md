@@ -33,24 +33,44 @@ every subset is a **row slice** of it, so the subset study is exact and free. Se
 one Jacobian. Observable subsets live in `physical_fit.OBS_SUBSETS` (single source of truth, also used to
 pick the released knobs in a subset-restricted fit).
 
-**Which knobs each observable class measures** (shrinkage σ_post/σ_prior < 0.5, syst 5%):
+**Which knobs each observable class measures** (shrinkage σ_post/σ_prior < 0.5, syst 5%).
+Bank: `output/event_bank_v2` (1,874,385 ev, ragged record, pion SURVIVAL factor); npz `physfit_gate1_full_v2`.
 
 | subset | #FIT | knobs |
 |---|---|---|
 | lepton (p_μ, cosθ_μ) | 2 | `kF_sf`, `Eb_shift` |
-| lepton + pion kin | 4 | + `M_A_res`, `res_axial_strength` |
+| lepton + pion kin | 3 | + `M_A_res` |
 | TKI | 5 | `M_A_res`, `kF_sf`, `Eb_shift`, `s_NN_elastic[pn]`, `f_NN_cex` |
-| multiplicities alone | 0 | — (`kF_sf`, `s_NN_elastic[pn]` reach 0.51, just short) |
-| all 9 kinematic | 7 | + `M_A_qe` |
-| ALL 11 (kin + mult) | **8** | + `s_NN_elastic[pp]` |
+| multiplicities alone | 1 | `Eb_shift` |
+| all 9 kinematic | 8 | + `M_A_qe`, `res_axial_strength`, `s_piN_elastic` |
+| ALL 11 (kin + mult) | **10** | + `sabs`, `s_NN_elastic[pp]` |
 
 - A **lepton-only** analysis measures *only the initial state*: the entire hard vertex and all of FSI are
   invisible to it. Pion kinematics unlock the RES vertex; TKI unlocks nucleon FSI; `M_A_qe` needs the
   full combination.
-- The **multiplicities measure nothing on their own** but are not redundant: added to the 9 kinematic
-  observables they push `s_NN_elastic[pp]` over the line (0.51 → 0.47) and sharpen the nucleon-FSI block
-  (`f_NN_cex` 0.39 → 0.27, `s_NN_elastic[pn]` 0.31 → 0.25). They buy *nucleon FSI*, as expected from
-  counting knocked-out nucleons.
+- The **multiplicities measure almost nothing on their own** but are not redundant: added to the 9
+  kinematic observables they push `sabs` (0.52 → 0.38) and `s_NN_elastic[pp]` (0.51 → 0.47) over the line
+  and sharpen the nucleon-FSI block (`f_NN_cex` 0.37 → 0.27, `s_NN_elastic[pn]` 0.36 → 0.29). They buy
+  *FSI*, as expected from counting knocked-out nucleons and surviving pions.
+
+> **The 8 → 10 change (2026-07-14) is a BUG FIX, not a re-tune.** The pion FSI reweight used to be
+> branch-only: it could not express a change in the pion *interaction probability*, so `sabs`,
+> `s_piN_elastic`, `s_piN_cex` and `s_conv` could only redistribute channels among interactions that had
+> already happened, and a common rescale of the four was an EXACT per-event identity (the "pion-FSI flat
+> direction" of `docs/logbook/info_content.md` — an artifact of the record, not physics). With the
+> survival factor added (commit e656504, gated by `scripts/_pion_inwalk_gate.py`: reweight-vs-in-walk
+> +11.6% → +0.45% ± 0.37%):
+>
+> | knob | raw (before → after) | marginalized (before → after) | |
+> |---|---|---|---|
+> | `sabs` | 0.331 → 0.208 | 0.68 → **0.38** | freeze → **FIT** |
+> | `s_piN_elastic` | 0.441 → 0.347 | 0.78 → **0.42** | freeze → **FIT** |
+> | `s_piN_cex` | 0.449 → 0.372 | 0.85 → 0.85 | still degenerate |
+> | `s_conv` | 13.6 → 11.4 | 1.00 → 1.00 | still invisible |
+>
+> The raw sensitivities rose (the knobs now move the rate, not just the branch), but the *marginalized*
+> ones rose far more — that is the flat direction dying. Nothing outside the pion block moved (all within
+> noise), so the fix is surgical. Pion absorption and π–N elastic scattering are now measurable at T2K.
 
 **"Freeze" hides two physically opposite failure modes** — reported separately (`sec3_failure_modes`),
 since they demand opposite responses:
@@ -83,7 +103,10 @@ G_E^n is small (Galster) *and* enters τ-suppressed relative to G_M at T2K Q²; 
 term contracts with the lepton tensor ∝ m_ℓ², i.e. helicity-suppressed for ν_μ (it would matter for ν_τ).
 
 **(b) FSI channels that barely fire.** The knob's leverage is proportional to the channel's share of the
-total cross section, and that share is set by a threshold the T2K final state does not reach:
+total cross section, and that share is set by a threshold the T2K final state does not reach. (NB: `sabs`
+and `s_piN_elastic` are NOT in this list any more — they were only ever "degenerate" because the reweight
+was branch-only; see the 8 → 10 note above. `s_conv` and the NN-inelastic knobs remain genuinely invisible,
+and no reweight fix can change that: a closed channel is a closed channel.)
 
 | knob | channel | measured in the 1.87M bank |
 |---|---|---|

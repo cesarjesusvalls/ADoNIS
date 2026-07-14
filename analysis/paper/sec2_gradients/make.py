@@ -1,6 +1,6 @@
 """Paper section 2 -- "we have exact gradient information for all 27 knobs".
 
-The object is the SAME Jacobian section 3 gates on (physfit_gate1_full.npz): J_ik = d(dsigma/dx)_i/dtheta_k
+The object is the SAME Jacobian section 3 gates on (physfit_gate1_full_v2.npz): J_ik = d(dsigma/dx)_i/dtheta_k
 for every knob k and every bin i, obtained by ONE jax.jvp per knob through bank_reweight.weight_jit --
 autodiff through the frozen walk, not finite differences, not a surrogate.  Sections 2 and 3 therefore
 cost a single bank pass between them.
@@ -30,7 +30,7 @@ DSLABEL = {"dpt": "CC0$\\pi$\n$\\delta p_T$", "dat": "CC0$\\pi$\n$\\delta\\alpha
            "cospi": "CC1$\\pi$\n$\\cos\\theta_\\pi$", "n_p": "incl\n$N_p$", "n_chpi": "incl\n$N_{\\pi^\\pm}$"}
 
 
-def main(label="physfit_gate1_full"):
+def main(label="physfit_gate1_full_v2"):
     style.use()
     d = np.load(style.ALTGEN / f"{label}.npz", allow_pickle=True)
     J, sigma, prior = d["J"], d["sigma"], d["prior"]

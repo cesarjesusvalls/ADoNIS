@@ -13,10 +13,10 @@ we report both axes:
   raw < 0.5, marg > 0.5  -> DEGENERATE (seen clearly, cannot be disentangled -- a better observable can fix it)
   raw > 0.5              -> INVISIBLE  (the sample carries no information at this precision -- nothing can)
 
-Everything is a row slice of ONE persisted Jacobian (physfit_gate1_full.npz: 27 knobs x all datasets),
+Everything is a row slice of ONE persisted Jacobian (physfit_gate1_full_v2.npz: 27 knobs x all datasets),
 so every subset is exact and costs no bank pass.
 
-Usage:  python -m analysis.paper.sec3_fisher.make [label]      (default label: physfit_gate1_full)
+Usage:  python -m analysis.paper.sec3_fisher.make [label]      (default label: physfit_gate1_full_v2)
 """
 import sys
 from pathlib import Path
@@ -48,7 +48,7 @@ def gate1(J, sigma, prior, rows):
     return marg, raw, F
 
 
-def main(label="physfit_gate1_full"):
+def main(label="physfit_gate1_full_v2"):
     style.use()
     d = np.load(style.ALTGEN / f"{label}.npz", allow_pickle=True)
     J, sigma, prior = d["J"], d["sigma"], d["prior"]
