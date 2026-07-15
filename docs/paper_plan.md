@@ -18,13 +18,30 @@ resolvable above the errors).
 
 | # | Section | Status | Assets / pointers | To do |
 |---|---|---|---|---|
-| 1 | **Validation: ADoNIS reproduces ACHILLES** — T2K CC0π, CC1π, particle multiplicities | machinery exists; figures to assemble | `analysis/t2k/differentiability/make_plots.py`, `bank_matrix.py` (matrix + multiplicity + nucleon-momentum from the 1.87M bank) | pick the informative subset; produce clean side-by-side ADoNIS-vs-ACHILLES + ratio panels with χ²/ndf |
+| 1 | **Validation: ADoNIS reproduces ACHILLES** — T2K CC0π, CC1π, multiplicities + tagged beams | ✅ figure-complete | `analysis/paper/sec1_validation/make.py` → `sec1_cc0pi`, `sec1_cc1pi`, `sec1_multiplicity`, `beams_validation` | fold into the paper |
 | 2 | **Compact "we have gradient information for all knobs"** | ✅ figure-complete | `analysis/paper/sec2_gradients/make.py` → `sec2_gradients_all27` (27×188 signed-log pull heatmap), `sec2_gradient_reach` | fold into the paper |
 | 3 | **Fisher information per observable subset** → what is worth fitting | ✅ figure-complete | `analysis/paper/sec3_fisher/make.py` → `sec3_shrinkage_subsets`, `sec3_failure_modes`, `sec3_degeneracy`; engine = `physical_fit.py` Gate I with `PHYSFIT_OBS` | fold into the paper |
 | 4 | **Closures** with Fisher-selected parameters | ✅ figure-complete | `physfit_fig7_closure5.png` (5-param, ≤0.5σ), 7-param on the 9-obs suite (`p9_closure.npz`, ≤0.4σ); `scripts/altgen/physfit_closure5_fig.py` | fold into the paper; optionally a fluctuated closure (null calibration) |
 | 5 | **Fitting data not described by the model** (unknown unknowns) | ✅ figure-complete | `physfit_fig1–10`, `output/reports/physical_fit_report.pdf`; scripts in `scripts/altgen/physical_fit_run.py` + fig scripts | assemble into the paper narrative (taxonomy: inside=Q²-nuisance, outside=coherence/excise; precision frontier) |
 
-**Gap = section 1** (the ADoNIS-vs-ACHILLES validation figures). 2–5 are figure-complete; 4–5 need write-up.
+**All five sections are figure-complete.** 4–5 still need paper write-up.
+
+## Section 1 figures (2026-07-15)
+
+`analysis/paper/sec1_validation/make.py` — one script, ADoNIS-vs-ACHILLES overlay + ratio + χ²/ndf for
+**every observable the analysis uses**, each from the same source the Fisher uses (ADoNIS: the frozen
+event bank via `build_physfit_datasets`, i.e. the identical 11 datasets and bin edges; ACHILLES: the rich
+oracle `t2k_cc1pi_rich_ach_FSI_proc.npz`, STV formulas reused verbatim). CC0π is topological on both sides
+(the only definition the oracle can express; Gate I's primary-pion choice differs by the rare cascade
+pion, ~1–3%). All fed to the one validated `plotting.chi2_ratio_panel`.
+
+- `sec1_cc0pi` — δp_T (χ²/ndf 1.79), δα_T (1.17), p_μ (0.62), cosθ_μ (1.53)
+- `sec1_cc1pi` — p_N (0.95), δp_TT (0.58), δα_T (0.84), p_π (0.80), cosθ_π (1.22)
+- `sec1_multiplicity` — N_p (0.34), N_π± (0.58)
+- `beams_validation` — π⁺/p/n reaction + (absorption | π-production); reaction χ²/ndf 0.67/0.69/1.29
+
+Every neutrino ratio sits in the ±5% band; every beam reaction ratio in ±1%. The only >1.5 is CC0π δp_T
+(1.79), driven by the thin high-δp_T tail. `python -m analysis.paper.sec1_validation.make [--no-beams]`.
 
 ## Section 3 result (2026-07-14): Gate I per observable subset
 
