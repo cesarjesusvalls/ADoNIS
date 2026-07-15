@@ -87,6 +87,11 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     ns = np.bincount(idx, weights=second, minlength=nbins)
     mcerr = PIR2 * np.concatenate([np.sqrt(nr), np.sqrt(ns)]) / np.maximum(np.concatenate([n_tried] * 2), 1)
     sig = np.sqrt((syst * central) ** 2 + mcerr ** 2)
+    # EMPTY bins (no counts -> central 0 and mcerr 0) carry no information: the pion-production observable
+    # is EXACTLY zero below the NN->NNpi threshold, so those bins have sigma 0 and would put inf/NaN into
+    # the Fisher.  Give them infinite error (zero weight) instead -- J is 0 there anyway.
+    empty = (central == 0) & (mcerr == 0)
+    sig = np.where(empty, np.inf, sig)
 
     jvp = jax.jit(lambda th, tang: jax.jvp(w_of, (th,), (tang,))[1])
     NPAR = PF.NPAR

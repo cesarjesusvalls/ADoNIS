@@ -126,6 +126,38 @@ and no reweight fix can change that: a closed channel is a closed channel.)
 These are structural, not fixable by a better observable *of this sample*: unlike the DEGENERATE knobs, no
 re-parameterization recovers them at T2K kinematics.
 
+### Knob × sample: complementary tagged beams (2026-07-15)
+
+The T2K verdicts are conditional on the T2K observable set. Two failure modes are curable by a different
+**sample**: DEGENERATE knobs (a pure-FSI hadron beam has no competing hard-vertex/SF knobs) and INVISIBLE
+knobs (the beam energy opens a channel that is shut at T2K). Fisher is additive, so each beam is just extra
+rows of J: `F = F_T2K + Σ_beam F_beam` (`analysis/beams/beam_fisher.py`).
+
+Three tagged beams on ¹²C (`analysis/beams/beam_bank.py`, 500k each; ACHILLES oracles
+`configs/achilles/run_cascade_{pip_C_broad,prot_C,neut_C}.yml`), validated as pure transport
+(`analysis/beams/make_figs.py` → `output/paper/beams_validation.png`): reaction χ²/ndf π⁺ 0.67 / p 0.69 /
+n 1.29, all within ±1%; the pion-production observable matches ACHILLES through the NN→NNπ threshold
+turn-on (p 0.45, n 1.23). π⁺ absorption drifts ~10–15% high above 700 MeV/c (thin stats; the known
+cascade absorption residual).
+
+| sample | #FIT | knob gained vs T2K | why |
+|---|---|---|---|
+| T2K alone | 10 | — | |
+| T2K + π⁺ | 11 | **`s_conv`** (1.00 → 0.49) | p_π up to 1 GeV/c opens πN→ηN′ |
+| T2K + p | 11 | **`s_NN_inelastic[pp]`** (0.75 → 0.50) | KE > 290 MeV opens NN→NNπ (pp) |
+| T2K + n | 12 | **`s_NN_elastic[nn]`** (0.78→0.48), **`s_NN_inelastic[nn]`** (0.93→0.47) | the nn isospin channel |
+| **ALL** | **14** | + all of the above; `sabs` 0.38→**0.13**, `s_piN_elastic` 0.42→**0.16** | |
+
+Each beam rescues exactly the knob its kinematics targets, and nothing else moves. What stays INVISIBLE
+even with all three beams is the right set — every hard-vertex / vector knob (`gen`, `pion_pole`, `mu_p`,
+`mu_n`, `vector_strength`, `qe_norm`, `sf_norm`, `axial_strength`): a hadron beam has no leptonic probe, so
+it cannot touch them. That is precisely the gap **(e,e')** fills (`docs/logbook/electron_scattering.md`) —
+a purely-vector photon probe for the QE vector current + spectral function.
+
+This whole result exists only because of the pion **survival** fix (commit e656504): with the old
+branch-only reweight, a common pion-σ rescale left w ≡ 1, so a π–C reaction sample could not constrain the
+σ magnitudes at all.
+
 ## The 27 fittable knobs (canonical registry = `full_knobs.knob_specs`)
 Also a standalone table in the paper. All are multiplicative scale = 1.0 nominal unless noted;
 reweight mechanism in the last column (R1 σ-scale, R2 amps² quadratic, R3 density-ratio, R4 branch).

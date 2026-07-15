@@ -74,7 +74,7 @@ def main(nbins=15):
             ax.errorbar(cen, H, yerr=EH, fmt="o", ms=3, color=style.C_ACHILLES, label="ACHILLES", zorder=3)
             ax.errorbar(cen, A, yerr=EA, fmt="s", ms=3, color=style.C_ADONIS, label="ADoNIS", zorder=4)
             x2, nd = chi2(A, H, EA, EH)
-            ax.set_ylabel(f"$\\sigma_{{\\rm {lab.split()[0]}}}$ [mb]")
+            ax.set_ylabel(f"$\\sigma$ [mb] — {lab}")
             if row == 0:
                 ax.set_title(f"{TITLE[beam]}   (ACHILLES {int(ntried):,} tried)", fontsize=9)
             ax.legend(loc="best", fontsize=7)
