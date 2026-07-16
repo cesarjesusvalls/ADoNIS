@@ -45,6 +45,8 @@ def run():
     N_TOTAL = int(os.environ.get("CC0PI_N", "100000"))
     CHUNK = min(int(os.environ.get("CHUNK", str(N_TOTAL))), N_TOTAL)
     n_chunks = int(np.ceil(N_TOTAL / CHUNK))
+    SEED0 = int(os.environ.get("SEED0", "0"))   # per-shard seed offset: each SLURM array task owns a
+    #   disjoint seed range (seed = SEED0 + c) so shards produce INDEPENDENT events (default 0 = original).
     sf = SpectralFunction(resolve_targets("C")[0][0].spectral_n)
     NOM = nominal_knobs()
     t0 = time.time()
@@ -70,8 +72,8 @@ def run():
 
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, caps=list(CAPS))
     for c in range(n_chunks):
-        qe = qe_xsec.sample_importance(CHUNK, seed=c); qw = np.asarray(qe["w"]) / CHUNK
-        res = res_xsec.generate(CHUNK, seed=c, return_events=True)["events"]; rw = np.asarray(res["w"])
+        qe = qe_xsec.sample_importance(CHUNK, seed=SEED0 + c); qw = np.asarray(qe["w"]) / CHUNK
+        res = res_xsec.generate(CHUNK, seed=SEED0 + c, return_events=True)["events"]; rw = np.asarray(res["w"])
         HV, SF = build_hv_sf(qe, res, sf, with_pw=False)
         kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)
         nq = len(qw); nr = len(rw)

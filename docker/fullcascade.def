@@ -1,0 +1,56 @@
+Bootstrap: docker
+From: alpine:3.20
+
+# Apptainer translation of docker/Dockerfile.fullcascade for S3DF (no Docker).
+# Builds the MAIN achilles binary with the IN-EVENT cascade (Cascade: Run: True) working -- the
+# neutrino QE+RES+FSI generator used for the FSI oracle (run_T2K_C_fsi_gauss). Same registry fix as
+# cascade.def, plus force-linking the cascade interactions into the main `achilles` target.
+# Build context = the fork checkout at commit 7054913f, passed via %files.
+#   apptainer build --fakeroot fullcascade.sif docker/fullcascade.def
+
+%files
+    /sdf/data/neutrino/cjesus/ADoNIS/software/Achilles-src /achilles_src
+
+%post
+    set -e
+    apk update && apk add g++ gcc musl-dev cmake hdf5-dev make git gfortran python3
+
+    # --- interaction-registry fix (identical to Dockerfile.fullcascade) ----------------------------
+    python3 - <<'PYEOF'
+cm = "/achilles_src/src/Achilles/CMakeLists.txt"
+s = open(cm).read()
+# (a) standalone achilles-cascade fix (as in cascade.def)
+s = s.replace("PUBLIC event_gen docopt::docopt cmake_git_version_tracking)",
+              "PUBLIC event_gen docopt::docopt cmake_git_version_tracking dl plugin_manager AchillesCascadeInteractions)")
+s = s.replace("    list(APPEND achilles_targets achilles-cascade)",
+              "    target_link_options(achilles-cascade PRIVATE \"LINKER:--no-as-needed\")\n    list(APPEND achilles_targets achilles-cascade)")
+# (b) MAIN achilles binary: force-link the cascade interactions + --no-as-needed
+s = s.replace("PUBLIC event_gen docopt::docopt dl cmake_git_version_tracking plugin_manager)",
+              "PUBLIC event_gen docopt::docopt dl cmake_git_version_tracking plugin_manager AchillesCascadeInteractions)")
+s = s.replace("list(APPEND achilles_targets achilles plugin_manager)",
+              "target_link_options(achilles PRIVATE \"LINKER:--no-as-needed\")\n    list(APPEND achilles_targets achilles plugin_manager)")
+open(cm, "w").write(s)
+assert 'target_link_options(achilles PRIVATE' in open(cm).read(), "main achilles patch failed"
+assert 'plugin_manager AchillesCascadeInteractions)' in open(cm).read(), "main link patch failed"
+mn = "/achilles_src/src/Achilles/CascadeMain.cc"
+s = open(mn).read()
+s = s.replace('#include "Achilles/Version.hh"',
+              '#include "Achilles/Version.hh"\n#include "Plugins/Manager/PluginManager.hh"')
+s = s.replace("    achilles::CascadeTest::RunCascade(runcard);",
+              "    achilles::Plugin::Manager plugin_manager;\n    achilles::CascadeTest::RunCascade(runcard);")
+open(mn, "w").write(s)
+print("patched CMakeLists (main achilles + achilles-cascade) + CascadeMain")
+PYEOF
+
+    cmake -S achilles_src -B achilles \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DACHILLES_ENABLE_CASCADE_TEST=ON \
+        -DCMAKE_CXX_FLAGS="-fno-visibility-inlines-hidden"
+    cmake --build achilles -j
+
+%runscript
+    cd /achilles && exec ./bin/achilles "$@"
+
+%labels
+    org.adonis.role achilles-fullcascade (in-event QE+RES+FSI neutrino generator)
+    org.adonis.source Achilles-adonis @ 7054913f

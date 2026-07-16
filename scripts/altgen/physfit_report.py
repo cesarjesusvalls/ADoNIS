@@ -65,7 +65,11 @@ def main():
     B = BP.load_bank(os.environ.get("ADONIS_EVENT_BANK", "output/event_bank"))
     JB = BR.to_jax(B); grids = BR.default_grids(); nom = nominal_knobs()
     w0 = np.asarray(BR.weight_jit(JB, nom, grids))
-    ds = build_physfit_datasets(B, w0, log)
+    # honor PHYSFIT_OBS (cf. physical_fit_run.py): the genie section can only fill the "tki" keys,
+    # and the saved run npzs must share this row structure.
+    from physical_fit import OBS_SUBSETS
+    _obs = os.environ.get("PHYSFIT_OBS", "")
+    ds = build_physfit_datasets(B, w0, log, obs=OBS_SUBSETS[_obs] if _obs else None)
     eng = Engine(ds, JB, grids, nom)
     th0 = theta_nominal(nom)
     log("evaluating model curves at saved BFPs")

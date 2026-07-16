@@ -359,7 +359,12 @@ def main():
     B = BP.load_bank(BANKDIR); JB = BR.to_jax(B); grids = BR.default_grids(); nom = nominal_knobs()
     w0 = np.asarray(BR.weight_jit(JB, nom, grids))
     log(f"bank {len(w0)} events | mode={MODE} methods={METHODS} label={LABEL}")
-    ds = build_physfit_datasets(B, w0, log)
+    # PHYSFIT_OBS: restrict the datasets to an OBS_SUBSETS key (build_physfit_datasets with obs=None
+    # builds ALL observables incl. the multiplicities, but the GENIE-based modes can only fill the
+    # keys their extractor provides: genie -> "tki", mecmix -> "kin9").
+    from physical_fit import OBS_SUBSETS
+    _obs = os.environ.get("PHYSFIT_OBS", "")
+    ds = build_physfit_datasets(B, w0, log, obs=OBS_SUBSETS[_obs] if _obs else None)
     q2n = os.environ.get("PHYSFIT_Q2NUIS", "")
     q2knots = [float(x) for x in q2n.split(",")] if q2n else None
     eng = Engine(ds, JB, grids, nom, B=B, q2knots=q2knots)
