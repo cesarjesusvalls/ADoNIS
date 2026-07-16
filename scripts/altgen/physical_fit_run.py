@@ -44,6 +44,10 @@ INJECT = os.environ.get("PHYSFIT_INJECT", "M_A_qe=1.2,res_norm=0.8")
 INJ2X = os.environ.get("PHYSFIT_2X", "dpt>300")
 LABEL = os.environ.get("ADONIS_LABEL", f"physfit_{MODE}")
 NIT = int(os.environ.get("ALTGEN_NIT", "12"))
+# LM step-length scale: <1 = shorter damped steps.  Full steps can overshoot into local minima under
+# strong nonlinearity (kF_sf/Eb corners of the prior); 0.5 with a higher NIT is the robust setting
+# established by the coverage-toy campaign.  Default 1.0 preserves historical behaviour.
+STEP_SCALE = float(os.environ.get("PHYSFIT_STEP_SCALE", "1.0"))
 F_RESP = 0.3            # responsive-bin threshold: |J_bk|*prior_k > F_RESP*sigma_b
 P_GATE = 0.01           # Gate II p-value threshold (Q_k and Q_split)
 HUBER_C = 1.345
@@ -258,8 +262,14 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None):
         A = J.T @ (J * W[:, None]) + np.diag(prior_w)
         g = J.T @ (W * (m - data)) + prior_w * (th[subset] - eng.th0[subset])
         for _ in range(12):
-            dth = np.linalg.solve(A + lam * np.diag(np.maximum(np.diag(A), 1e-12)), -g)
+            dth = STEP_SCALE * np.linalg.solve(A + lam * np.diag(np.maximum(np.diag(A), 1e-12)), -g)
             th_try = th.copy(); th_try[subset] = th[subset] + dth
+            # box constraint: Eb_shift >= eps.  sf_reweight clamps Eb<0 -> 0, so below zero the model
+            # is EXACTLY flat (zero gradient) -- an absorbing trap for LM.  Projecting onto the
+            # boundary keeps the one-sided gradient alive (validated by the coverage-toy campaign).
+            for _k in subset:
+                if eng.pnames[_k] == "Eb_shift":
+                    th_try[_k] = max(th_try[_k], 1e-2)
             c_try, cd_try, m_try, hw_try = chi2_terms(th_try)
             if c_try < c_cur:
                 th, c_cur, c_data, m, hw = th_try, c_try, cd_try, m_try, hw_try

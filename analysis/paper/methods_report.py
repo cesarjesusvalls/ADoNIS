@@ -117,7 +117,7 @@ td.n{font-variant-numeric:tabular-nums;white-space:nowrap;}
 
 def spine():
     nodes = [
-        ("frozen bank", "QE+RES sampled once from the bit-exact generators; weights in absolute nb (1.87M ev)"),
+        ("frozen bank", "QE+RES sampled once from the bit-exact generators; weights in absolute nb (18.3M ev)"),
         ("θ-indep. walk", "pool cascade at nominal → ragged kind-1 FSI records + amps² (a,b,c) hard-vertex records"),
         ("reweight w(θ)", "w₀·norm·hv·fsi·sf; =1 at nominal, exact at any θ; JAX-differentiable"),
         ("Jacobian J", "one jax.jvp per knob through weight_jit → 27 knobs × 188 bins"),
@@ -135,7 +135,7 @@ def spine():
 READINESS = [
     ("1", "Validation: ADoNIS reproduces ACHILLES",
      "sec1_cc0pi · sec1_cc1pi · sec1_multiplicity · beams_validation", "ok", "figure-complete",
-     "11 ν obs χ²/ndf ≤ 1.79 (±5%); 3 beams reaction ≤ 1.29 (±1%)"),
+     "9 kin obs χ²/ndf ≤ 1.83 (±5%); mult tails 4.6–5.5 @10M stats; beams reaction 1.4/4.1/2.2"),
     ("2", "Gradient information for all 27 knobs", "sec2_gradients_all27 · sec2_gradient_reach",
      "ok", "figure-complete", "exact per-bin ∂(dσ/dx)/∂θ, autodiff, all 27"),
     ("3", "Fisher information per observable subset",
@@ -180,8 +180,8 @@ BODY = f"""
   <h3>Frozen absolute proposal</h3>
   <p>QE and RES events are sampled <b>once</b> from the bit-exact ACHILLES-faithful generators
   (<code>adonis/xsec</code>: spectral function, amps², flux). Weights <code>w₀</code> are absolute nb —
-  no fitted normalization anywhere. The frozen set is <code>output/event_bank_v2</code> (1,874,385 ev =
-  1.0M QE + 0.87M RES).</p>
+  no fitted normalization anywhere. The frozen set is <code>output/event_bank_v2</code> (18,276,613 ev =
+  9.75M QE + 8.53M RES; 40 seed-sharded SLURM jobs, merged).</p>
 
   <h3>θ-independent walk + records</h3>
   <p>The pool cascade (<code>adonis/fsi/cascade_full.run_cascade_pool</code>) runs at nominal cross
@@ -223,7 +223,7 @@ BODY = f"""
   datasets and bin edges Gate I uses. Per-event observable values (STV formulas
   <code>bank_plot.dpt/dat/pN_1pi/dptt_1pi/dat_1pi</code>) + weight <code>w₀</code>, masked by
   <code>signal_cc0pi(topological)</code> / <code>signal_cc1pi_stv</code> / muon-acceptance.</p>
-  <p><b>ACHILLES side.</b> The rich oracle <code>t2k_cc1pi_rich_ach_FSI_proc.npz</code> (2M ev). The
+  <p><b>ACHILLES side.</b> The rich oracle <code>t2k_cc1pi_rich_ach_FSI_proc.npz</code> (10M ev, 50 independent seeds). The
   <b>same STV formulas</b> are applied to the oracle's own 4-vectors (muon, leading proton, π⁺); only the
   per-event extraction differs (bank ragged final state vs the oracle's top-K padded arrays). Weight =
   <code>w · weight_to_nb</code> (= w here; already absolute nb).</p>
@@ -240,10 +240,10 @@ BODY = f"""
   on both sides — the only definition the oracle can express, and what an experiment measures. Gate I uses
   the primary-pion-absorbed definition internally; the two differ only by the rare cascade-created
   surviving pion (~1–3% at T2K).</div>
-  {figure("paper/sec1_cc0pi.png", "<b>CC0π kinematics.</b> δp_T (χ²/ndf 1.79), δα_T (1.17), p_μ (0.62), cosθ_μ (1.53). ADoNIS points on the ACHILLES step+stat-band; ratio in the ±5% band. δp_T is driven by the thin high-tail bins; peak and bulk are exact.")}
-  {figure("paper/sec1_cc1pi.png", "<b>CC1π STV kinematics.</b> p_N (0.95), δp_TT (0.58), δα_T (0.84), p_π (0.80), cosθ_π (1.22). T2K CC1π+Np acceptance (momentum windows + cosθ&gt;cos70° on μ/π/leading-p).")}
-  {figure("paper/sec1_multiplicity.png", "<b>CC-inclusive multiplicities.</b> N_p&gt;300 MeV/c (0.34) and N_π± (0.58), under muon-only acceptance. Integer bins with a top overflow bin.")}
-  {figure("paper/beams_validation.png", "<b>Tagged beams, pure transport.</b> π⁺/p/n on 12C, reaction (top) + absorption|π-production. Reaction χ²/ndf 0.67/0.69/1.29, ratios in ±1%. π-production matches through the NN→NNπ threshold turn-on. π⁺ absorption drifts ~10–15% high above 700 MeV/c (thin stats + known absorption residual).")}
+  {figure("paper/sec1_cc0pi.png", "<b>CC0π kinematics.</b> δp_T (χ²/ndf 1.82), δα_T (1.16), p_μ (1.08), cosθ_μ (1.21). ADoNIS points on the ACHILLES step+stat-band; ratio in the ±5% band. δp_T is driven by the thin high-tail bins; peak and bulk are exact.")}
+  {figure("paper/sec1_cc1pi.png", "<b>CC1π STV kinematics.</b> p_N (0.72), δp_TT (1.83), δα_T (0.71), p_π (0.90), cosθ_π (1.31). T2K CC1π+Np acceptance (momentum windows + cosθ&gt;cos70° on μ/π/leading-p).")}
+  {figure("paper/sec1_multiplicity.png", "<b>CC-inclusive multiplicities.</b> N_p&gt;300 MeV/c (5.46) and N_π± (4.58) — at 10M statistics the percent-level high-multiplicity tails (N_p≥3 +2–5%, N_π±=2 +7%) become statistically resolved; bulk bins agree to &lt;1%. Integer bins with a top overflow bin.")}
+  {figure("paper/beams_validation.png", "<b>Tagged beams, pure transport.</b> π⁺/p/n on 12C, reaction (top) + absorption|π-production. Reaction χ²/ndf 1.37/4.07/2.17, ratios within ±1–2% (2.5–4.0M ACHILLES tried/beam). π-production matches through the NN→NNπ threshold turn-on. π⁺ absorption drifts ~10–15% high above 700 MeV/c (thin stats + known absorption residual).")}
 </section>
 
 <section class="sec">
@@ -334,6 +334,37 @@ BODY = f"""
   {figure("figures/physfit_fig4_genie.png", "<b>GENIE-3M as data.</b> Foreign-generator mismatch; M1 excise-refit recovers the on-manifold parameters with the artifact confined.")}
   {figure("figures/physfit_fig9_q2nuis.png", "<b>Inside-manifold Q²-distortion + nuisance.</b> The flexible g(Q²;c) nuisance recovers truth and reconstructs the injected w(Q²) — perfect knob/nuisance separation.")}
   {figure("figures/physfit_fig10_mecmix.png", "<b>2p2h/MEC admixture.</b> M0 corrupted (−23σ); M1 recovers truth and maps the 2p2h kinematic habitat.")}
+</section>
+
+<section class="sec">
+  <div class="sechead"><h2>Appendix — fit diagnostics: landscape, trajectory, coverage</h2></div>
+  <div class="reading">
+  <p><b>What.</b> Three stress tests of the §4 closure-fit machinery on the 10M bank, run as SLURM
+  campaigns: (i) the LM/Gauss–Newton landscape around the best fit, with the EXACT χ² (one full bank
+  reweight per grid point, 36 pair grids) overlaid on the quadratic expansion; (ii) a 479-toy coverage
+  ensemble — each toy throws truth from the ~20% knob priors (Eb_shift from its half-normal: the knob is
+  one-sided, the ACHILLES-faithful clamped SF makes Eb&lt;0 non-smooth) and fluctuates the Asimov data by
+  its per-bin σ (stat ⊕ 5% syst), then refits; (iii) the postfit χ² and pull distributions of that
+  ensemble against their asymptotic expectations.</p>
+  <p><b>Findings.</b> (1) The landscape is quadratic to RMS(Δχ²) ≤ 0.4 inside 3σ for all pairs except
+  the two thin degeneracy valleys — M_A_res×res_axial_strength (2.3) and s_NN_elastic[1]×f_NN_cex (1.5)
+  — and the one-sided Eb_shift row (~0.6). (2) Postfit χ² follows χ²(n_bins) over the converged 95.8%; pulls (converged toys, N=459,
+  σ error ±0.03) are unit-normal for 6/9 knobs (0.97–1.06). The two knobs of the most non-quadratic
+  valley — M_A_res (σ_pull 1.59) and res_axial_strength (1.69) — have Hessian errors underestimated by
+  ~60%: use profile-likelihood errors for that pair. Eb_shift keeps its boundary asymmetry
+  (μ=−0.9, σ=2.8). (3) 4.2% of toys fail to converge (χ²
+  ≳ 260) — all with Eb truths far up the half-normal tail (median Eb* 6.6 MeV vs 2.7 for converged):
+  the fit stalls in an FSI-compensation valley. Short damped steps (PHYSFIT_STEP_SCALE=0.5) plus an
+  Eb≥ε box constraint (below zero the clamped model is exactly flat — an absorbing trap) are the
+  robust optimizer settings, adopted for the §4/§5 fits; no multi-start anywhere.</p>
+  <p class="deffile mono">scripts/altgen/physfit_traj.py · physfit_traj_fig.py · physfit_coverage.py ·
+  physfit_coverage_fig.py</p>
+  </div>
+  {figure("figures/physfit_traj_closure5_params_vs_iter.png", "<b>Fit trajectory.</b> All 9 Gate-I knobs vs LM/GN iteration (short steps, STEP_SCALE=0.55): smooth convergence onto the injected truth within the final ±1σ bands; χ² 2585 → 2.3 in ~10 iterations.")}
+  {figure("figures/physfit_traj_closure5_corner.png", "<b>Landscape corner.</b> GN quadratic Δχ² bands (1/2/3σ), −∇χ² streamlines, the actual fit path (blue), and the EXACT Δχ² contours (dashed red; 25–31² full-model grids per pair). The exact contours confirm the quadratic everywhere except the two thin valleys and the one-sided Eb direction.")}
+  {figure("figures/physfit_traj_closure5_quadfidelity.png", "<b>Quadratic fidelity.</b> RMS(Δχ²_exact − Δχ²_quad) inside the 3σ region per knob pair (1σ = 2.3 on this scale).")}
+  {figure("figures/coverage_chi2_total.png", "<b>Coverage: postfit χ².</b> Total (data+prior) χ² over the toy ensemble vs χ²(n_bins=188); KS p ≈ 0.26. Tail entries are large-Eb-truth toys (see text).")}
+  {figure("figures/coverage_pulls.png", "<b>Coverage: pulls.</b> (θ_fit−θ*)/σ_fit per knob vs N(0,1). Unit-normal for 6/9 knobs; the M_A_res/res_axial valley pair runs ~60% wide (profile-likelihood errors recommended); Eb_shift shows its boundary asymmetry.")}
 </section>
 
 <section class="sec">
