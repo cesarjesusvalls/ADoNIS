@@ -68,30 +68,37 @@ def main(nbins=15):
             continue
         hr, hs, her, hes, _nr, _ns, ntried = AB.sigma_of_p(beam, edges)
         cen = 0.5 * (edges[:-1] + edges[1:])
+        # SAME visual conventions as the neutrino panels (adonis/workflow/plotting.chi2_ratio_panel):
+        # ACHILLES = grey step + stat band, ADoNIS = blue squares, ratio ACH/ADO = red dots on a green band.
         for row, (A, EA, H, EH, lab) in enumerate(((ar, aer, hr, her, "reaction"),
                                                    (as_, aes, hs, hes, SECOND[beam]))):
             ax, rx = axes[2 * row, c], axes[2 * row + 1, c]
-            ax.errorbar(cen, H, yerr=EH, fmt="o", ms=3, color=style.C_ACHILLES, label="ACHILLES", zorder=3)
-            ax.errorbar(cen, A, yerr=EA, fmt="s", ms=3, color=style.C_ADONIS, label="ADoNIS", zorder=4)
+            ax.fill_between(edges, np.append(H - EH, (H - EH)[-1]), np.append(H + EH, (H + EH)[-1]),
+                            step="post", color="0.55", alpha=0.55, lw=0, label="ACH stat")
+            ax.step(edges, np.append(H, H[-1]), where="post", color="0.3", lw=1.3, label="ACHILLES")
+            ax.errorbar(cen, A, yerr=EA, fmt="s", color="C0", ms=3, capsize=2, lw=0.9, label="ADoNIS")
             x2, nd = chi2(A, H, EA, EH)
             ax.set_ylabel(f"$\\sigma$ [mb] — {lab}")
             if row == 0:
                 ax.set_title(f"{TITLE[beam]}   (ACHILLES {int(ntried):,} tried)", fontsize=9)
-            ax.legend(loc="best", fontsize=7)
-            ax.text(.03, .90, f"$\\chi^2$/ndf = {x2/max(nd,1):.2f}  ({nd} bins)", transform=ax.transAxes,
-                    fontsize=7.5)
+            ax.set_ylim(bottom=0)
+            ax.text(.03, .90, f"$\\chi^2$/ndf {x2/max(nd,1):.2f}", transform=ax.transAxes, fontsize=8)
+            if row == 0 and c == 0:
+                ax.legend(fontsize=7)
             with np.errstate(divide="ignore", invalid="ignore"):
-                r = A / H
+                r = H / A                                                     # ACH/ADO, as in the nu panels
                 er = np.abs(r) * np.sqrt((EA / np.where(A > 0, A, np.nan)) ** 2
                                          + (EH / np.where(H > 0, H, np.nan)) ** 2)
-            rx.errorbar(cen, r, yerr=er, fmt="o", ms=3, color="k")
-            rx.axhline(1.0, color=style.C_ACHILLES, lw=.8)
-            rx.axhspan(0.99, 1.01, color=style.C_ACHILLES, alpha=.12, lw=0)   # the 1% target band
-            rx.set_ylim(0.8, 1.2); rx.set_ylabel("ADO/ACH", fontsize=7)
+            m = np.isfinite(r) & (A > 0) & (H > 0)
+            rx.axhspan(0.95, 1.05, color="green", alpha=0.12)
+            rx.axhline(1.0, ls="--", color="green", lw=0.7)
+            rx.errorbar(cen[m], r[m], yerr=er[m], fmt="o", color="C3", ms=3, capsize=2, lw=0.8)
+            rx.set_ylim(0.8, 1.2)
+            rx.text(0.04, 0.78, f"{x2/max(nd,1):.1f}", transform=rx.transAxes, fontsize=9)
             if row == 1:
                 rx.set_xlabel("tagged beam $|p|$ [MeV/c]")
     fig.suptitle("Tagged-beam validation: ADoNIS vs ACHILLES on $^{12}$C  —  pure TRANSPORT "
-                 "(no hard vertex, no spectral function).  Band = $\\pm$1%", fontsize=10)
+                 "(no hard vertex, no spectral function).  Band = $\\pm$5%", fontsize=10)
     style.save(fig, "beams_validation")
 
 
