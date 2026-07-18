@@ -85,7 +85,7 @@ def _panel_grid(specs, ado, ach, achw, title, fname):
         ref = {"values": np.asarray(ach[hk]), "w": achw}
         ad = {"values": np.asarray(ado[ak]), "w": np.asarray(ado["w"])}
         chi2_ratio_panel(ax[0, c], ax[1, c], np.asarray(edges), ref, ad, label=label,
-                         ado_label="ADoNIS", ref_label="ACHILLES")
+                         ado_label="ADoNIS", ref_label="ACHILLES", ratio_ylim=(0.8, 1.2))
         if c == 0:
             ax[0, c].legend(fontsize=7)
     fig.suptitle(title, fontsize=12)
