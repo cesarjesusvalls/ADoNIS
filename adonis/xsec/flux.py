@@ -10,6 +10,7 @@ J_beam (the event.Weight() beam factor) = (delta * m_flux(E_GeV)) / flux_integra
 """
 from __future__ import annotations
 
+import os as _os
 from pathlib import Path
 import numpy as np
 
@@ -18,19 +19,48 @@ from adonis.xsec.spectral import _polint
 _ACH = Path(__file__).resolve().parents[2].parent / "Achilles"
 from adonis.constants import MASS_PDG_MUON as M_MU, MASS_PDG_PROTON as M_P
 
+# Default flux table, overridable so a whole generation runs a non-T2K beam without threading a flux
+# argument through every generator (mirror of BEAM_MODE).  ADONIS_FLUX_FILE is a path relative to the
+# sibling Achilles/ dir, e.g. "flux/minerva_numu_fhc.dat".  Unset -> byte-identical T2K behaviour.
+# Read at CONSTRUCTION time (not import) so a caller that sets the env after importing this module
+# still gets the right beam (the workflow CLI does exactly that).
+def _default_flux():
+    return _os.environ.get("ADONIS_FLUX_FILE", "flux/T2K_nu.dat")
+
+
+def _parse_spectrum(path):
+    """Parse an ACHILLES Spectrum flux table -> (edges[GeV] (nbin+1,), heights (nbin,)).  Handles the
+    release layouts (header/non-numeric lines skipped).  Column count doesn't disambiguate: both
+    T2K and MINERvA have 4 cols.  The tell is column 0 -- a sequential 0-based INDEX (T2K) vs the
+    lower edge (MINERvA):
+      * T2K_nu.dat:          idx  elo  ehi  flux             -> cols [1],[2],[3]
+      * MINERvA_*.dat:       elo  ehi  value  error          -> cols [0],[1],[2]  (error dropped)
+      * 3-col spectrum:      elo  ehi  value                 -> cols [0],[1],[2]
+    Contiguous bins assumed (ehi[i] == elo[i+1]); the final edge is the last ehi."""
+    rows = []
+    for ln in path.read_text().splitlines():
+        try:
+            nums = [float(x) for x in ln.split()]
+        except ValueError:
+            continue
+        if len(nums) >= 3:
+            rows.append(nums)
+    if not rows:
+        raise ValueError(f"no numeric flux rows parsed from {path}")
+    col0_is_index = all(abs(r[0] - i) < 1e-9 for i, r in enumerate(rows))   # 0,1,2,... -> T2K layout
+    o = 1 if col0_is_index else 0                                           # column offset
+    los = [r[o] for r in rows]; his = [r[o + 1] for r in rows]; hts = [r[o + 2] for r in rows]
+    edges = np.array(los + his[-1:])
+    return edges, np.array(hts)
+
 
 class T2KFlux:
-    def __init__(self, filename="flux/T2K_nu.dat"):
-        path = _ACH / filename
-        lines = path.read_text().splitlines()
-        edges, heights = [], []
-        for ln in lines[2:]:                       # 2 header lines
-            t = ln.split()
-            if len(t) < 4:
-                continue
-            edges.append(float(t[1])); heights.append(float(t[3]))
-        edges.append(float(lines[-1].split()[2]))  # final ehi
-        self.edges = np.array(edges); self.heights0 = np.array(heights)
+    """Piecewise-constant Spectrum flux with ACHILLES-faithful beam sampling.  Despite the name it
+    reads ANY spectrum table; the no-arg constructor uses DEFAULT_FLUX (T2K unless ADONIS_FLUX_FILE)."""
+
+    def __init__(self, filename=None):
+        path = _ACH / (filename if filename is not None else _default_flux())
+        self.edges, self.heights0 = _parse_spectrum(path)
         self.flux_integral = float(np.sum(np.diff(self.edges) * self.heights0))
         # padded bin centres + heights for the linear interpolator
         centres = [self.edges[0]] + [(self.edges[i] + self.edges[i - 1]) / 2 for i in range(1, len(self.edges))] + [self.edges[-1]]

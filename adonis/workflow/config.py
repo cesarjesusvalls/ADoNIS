@@ -81,9 +81,19 @@ class TrackingConfig:
     max_steps: int = 260
 
 
+# flux key -> ACHILLES Spectrum table (relative to the sibling Achilles/ dir).  The generators read
+# the actual table via adonis.xsec.flux.DEFAULT_FLUX (env ADONIS_FLUX_FILE); a run must export that to
+# the file below so the bank name (this key) and the physics agree.  See _resolve_flux() in the CLI.
+FLUX_FILES = {
+    "t2k":        "flux/T2K_nu.dat",
+    "minerva":    "flux/minerva_numu_fhc.dat",
+    "microboone": "flux/microboone_numu.dat",
+}
+
+
 @dataclass
 class GenConfig:
-    flux: str = "t2k"           # beam flux (bank-name + physics key); only "t2k" wired today (T2KFlux)
+    flux: str = "t2k"           # beam flux key (bank-name + physics); see FLUX_FILES
     material: str = "C"
     n_per_seed: int = 30000
     n_seeds: int = 56
@@ -100,9 +110,14 @@ class GenConfig:
         bad = set(self.channels) - {"res", "qe"}
         if bad:
             raise ValueError(f"channels: {sorted(bad)} not in {{'res','qe'}}")
-        if self.flux != "t2k":          # only the T2K flux is wired into the xsec generators today
-            raise NotImplementedError(f"flux {self.flux!r} not supported (only 't2k'); "
-                                      "wire it into adonis.xsec.{qe,res}_xsec before using it here")
+        if self.flux not in FLUX_FILES:
+            raise ValueError(f"flux {self.flux!r} not in {sorted(FLUX_FILES)}")
+        # guard against a mislabelled bank: if ADONIS_FLUX_FILE is set it MUST match this key's table.
+        import os
+        want = FLUX_FILES[self.flux]
+        have = os.environ.get("ADONIS_FLUX_FILE")
+        if have is not None and have != want:
+            raise ValueError(f"flux key {self.flux!r} expects ADONIS_FLUX_FILE={want!r} but env has {have!r}")
 
 
 def load_gen_config(path) -> GenConfig:
