@@ -367,7 +367,8 @@ def _sample_shared(n, rng, flux, maxE):
     I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, mNf ** 2), 1e-12, None)
     density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
     J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
-    valid = ((dp > 0) & (emax > 0) & (s > Smin) & (s23max > s23min) & (energy < emax) & (energy > 2.5)
+    valid = ((dp > 0) & (emax > 0) & (s > Smin) & (s23max > s23min) & (energy < emax)
+             & (energy > imp.energy[0])          # SF grid start (0 for Ar, 2.5 for C); NOT hardcoded 2.5
              & (_sqlam(s, s23, mpi ** 2) > 0) & (_sqlam(s23, M_MU ** 2, mNf ** 2) > 0))
     return dict(k_nu=k_nu, p_struck=p_struck, k_mu=k_mu, p_N=p_N, p_pi=p_pi,
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, valid=valid)
@@ -419,7 +420,7 @@ def _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton):
     n = len(s["valid"]); v = s["valid"]
     iw = n_neutron if ipid == 2112 else n_proton                # target species count (importance: |p|^2 S)
     a2 = np.zeros(n)
-    idx = np.where(v & (s["energy"] > 2.5) & (s["energy"] < 400) & (s["J"] > 0))[0]
+    idx = np.where(v & (s["energy"] > sf_n.energy[0]) & (s["energy"] < 400) & (s["J"] > 0))[0]
     if len(idx):
         a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
                                         s["p_N"][idx], s["p_pi"][idx], itiz, ppid)

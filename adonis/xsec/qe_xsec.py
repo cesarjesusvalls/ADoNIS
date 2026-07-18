@@ -141,7 +141,11 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     det_e = Enu ** 2 + mom_s ** 2 + 2 * pvec[:, 2] * Enu + (M_MU + M_P) ** 2
     emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom_s), 400.0)
-    valid = (s > (M_MU + M_P) ** 2) & (lam > 0) & (E_rm > 2.5) & (E_rm < emax)
+    # Lower removal-energy bound = the SF's OWN grid start (NOT a hardcoded 2.5, which was the carbon
+    # pke12 grid start: a no-op for C but for Ar (pke40 grid from 0) it wrongly discarded ~0.7% of the
+    # spectral strength in [0, 2.5] MeV that ACHILLES keeps -- ACHILLES samples E_rm from 0 with no floor
+    # (HadronicMapper.cc), the SF's own 0-outside-grid does the flooring).  Fixes the ~1% Ar QE deficit.
+    valid = (s > (M_MU + M_P) ** 2) & (lam > 0) & (E_rm > sf.energy[0]) & (E_rm < emax)
     d = me_cross_section(jnp.asarray(k_nu), jnp.asarray(k_mu), jnp.asarray(p_struck),
                          jnp.asarray(p_out), spin_avg=0.5, had_mass=MASS_PDG_NEUTRON)
     me = np.asarray(d["me_xsec"])
