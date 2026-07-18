@@ -28,8 +28,9 @@ COS20 = np.cos(20.0 * np.pi / 180.0)
 
 # CC0pi muon/proton acceptance windows per experiment: (p_lo, p_hi|None, cos_lo).
 CC0PI_CUTS = {
-    "t2k":     dict(mu=(250.0, None, -0.6), prot=(450.0, 1000.0, 0.4)),       # arXiv:1802.05078
-    "minerva": dict(mu=(1500.0, 10000.0, COS20), prot=(450.0, 1200.0, COS70)),
+    "t2k":       dict(mu=(250.0, None, -0.6), prot=(450.0, 1000.0, 0.4)),       # arXiv:1802.05078
+    "minerva":   dict(mu=(1500.0, 10000.0, COS20), prot=(450.0, 1200.0, COS70)),
+    "microboone": dict(mu=(100.0, None, -1.0), prot=(300.0, 1200.0, -1.0)),     # ~4pi Ar acceptance (CC0pi-Np)
 }
 
 
@@ -42,6 +43,7 @@ def cc0pi(path, experiment="t2k", **_):
     cuts = CC0PI_CUTS[experiment]
     (mu_lo, mu_hi, mu_cos), (p_lo, p_hi, p_cos) = cuts["mu"], cuts["prot"]
     dpt, dat, q2, wv, pn, w, proc = [], [], [], [], [], [], []
+    pmu_t, pmu_l, cmu_l, pmu_m = [], [], [], []
     for evt in parse_events(Path(path)):
         mu = None; protons = []; n_meson = 0; nu = None; pstr = None
         for pid, status, p4 in evt["parts"]:
@@ -79,8 +81,11 @@ def cc0pi(path, experiment="t2k", **_):
         dpL = 0.5 * R - (M_A1 ** 2 + dptmag ** 2) / (2.0 * max(R, 1.0))
         pn.append(float(np.sqrt(max(dptmag ** 2 + dpL ** 2, 0.0))))
         w.append(evt["w"] or 1.0); proc.append(evt["proc"] or 0)
+        pmu_t.append(float(np.hypot(mu[1], mu[2]))); pmu_l.append(float(mu[3]))
+        cmu_l.append(float(mu[3] / pmu)); pmu_m.append(float(pmu))
     return dict(dpt=np.array(dpt), dalphat=np.array(dat), Q2=np.array(q2), W=np.array(wv),
-                pn=np.array(pn), w=np.array(w), proc=np.array(proc, np.int64))
+                pn=np.array(pn), w=np.array(w), proc=np.array(proc, np.int64),
+                pmu=np.array(pmu_m), pmu_T=np.array(pmu_t), pmu_L=np.array(pmu_l), cos_mu=np.array(cmu_l))
 
 
 # --------------------------------------------------------------------------- CC1pi+ STV
@@ -246,7 +251,28 @@ def res_w(path, **_):
                 n_pi=np.array(npi_l), prot_ok=np.array(pok_l))
 
 
-CHANNELS = {"cc0pi": cc0pi, "cc1pi": cc1pi, "cc1pi_rich": cc1pi_rich, "res_w": res_w}
+def cc_incl(path, **_):
+    """CC-inclusive: any charged-current muon event.  Muon kinematics only (pmu, cosθμ, pT, p||) --
+    the MicroBooNE-style broad-acceptance observable.  No hadronic requirement."""
+    pmu_m, cmu, pmu_t, pmu_l, enu, w = [], [], [], [], [], []
+    for evt in parse_events(Path(path)):
+        mu = None; nu = None
+        for pid, status, p4 in evt["parts"]:
+            if pid == NU_MU and (nu is None or p4[0] > nu[0]):
+                nu = np.asarray(p4)
+            if status == 1 and pid == MU:
+                mu = np.asarray(p4)
+        if mu is None:
+            continue
+        pm = _mom(mu)
+        pmu_m.append(float(pm)); cmu.append(float(mu[3] / pm))
+        pmu_t.append(float(np.hypot(mu[1], mu[2]))); pmu_l.append(float(mu[3]))
+        enu.append(float(nu[0]) if nu is not None else np.nan); w.append(evt["w"] or 1.0)
+    return dict(pmu=np.array(pmu_m), cos_mu=np.array(cmu), pmu_T=np.array(pmu_t),
+                pmu_L=np.array(pmu_l), Enu=np.array(enu), w=np.array(w))
+
+
+CHANNELS = {"cc0pi": cc0pi, "cc1pi": cc1pi, "cc1pi_rich": cc1pi_rich, "res_w": res_w, "cc_incl": cc_incl}
 
 
 def main(argv=None):
