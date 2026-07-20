@@ -207,3 +207,51 @@ def jax_conversion_sigma(W, pion_in_idx_arr, nuc_idx_arr):
                        for i in range(3) for nu in range(2)], axis=0)      # (6, N)
     sel = (pion_in_idx_arr * 2 + nuc_idx_arr).astype(_jnp.int32)
     return _jnp.take_along_axis(flat, sel[None, :], axis=0)[0]
+
+
+# --- eta propagation: piN->etaN production (eta piece of the conversion), etaN->etaN elastic,
+# etaN->piN back-conversion.  ACHILLES propagates the eta produced by conversion and lets it
+# re-interact (GetAllCSW(eta_channel, W)); a large fraction back-convert to a pion near the N(1535). -- #
+def _jax_grid_eta():
+    """numpy-cached eta grids: (Wprod, sig_pi2eta (3,2,nW)), (Wel, sig_el (nW,)),
+    (Wbc, sig_bc (2,3,nW))."""
+    if "eta_prodW_np" not in _JGRID:
+        from adonis.fsi.mb.anl_xsec import (eta_production_sigma_grid, eta_elastic_sigma_grid,
+                                            eta_backconv_sigma_grid)
+        Wp, sp = eta_production_sigma_grid()
+        We, se = eta_elastic_sigma_grid()
+        Wb, sb = eta_backconv_sigma_grid()
+        _JGRID["eta_prodW_np"] = np.asarray(Wp); _JGRID["eta_prod_np"] = np.asarray(sp)
+        _JGRID["eta_elW_np"] = np.asarray(We); _JGRID["eta_el_np"] = np.asarray(se)
+        _JGRID["eta_bcW_np"] = np.asarray(Wb); _JGRID["eta_bc_np"] = np.asarray(sb)
+    g = _JGRID
+    return ((_jnp.asarray(g["eta_prodW_np"]), _jnp.asarray(g["eta_prod_np"])),
+            (_jnp.asarray(g["eta_elW_np"]), _jnp.asarray(g["eta_el_np"])),
+            (_jnp.asarray(g["eta_bcW_np"]), _jnp.asarray(g["eta_bc_np"])))
+
+
+def jax_pi_to_eta_sigma(W, pion_in_idx_arr, nuc_idx_arr):
+    """piN -> etaN production sigma [mb] (N,) -- the eta piece of the pion conversion (morphable),
+    <= total jax_conversion_sigma (rest is KLambda/KSigma, terminal)."""
+    (jW, jsig), _, _ = _jax_grid_eta()
+    flat = _jnp.stack([_jnp.interp(W, jW, jsig[i, nu], left=0.0, right=0.0)
+                       for i in range(3) for nu in range(2)], axis=0)      # (6, N)
+    sel = (pion_in_idx_arr * 2 + nuc_idx_arr).astype(_jnp.int32)
+    return _jnp.take_along_axis(flat, sel[None, :], axis=0)[0]
+
+
+def jax_eta_elastic_sigma(W):
+    """etaN -> etaN elastic sigma [mb] (N,); nucleon-independent (pure I=1/2)."""
+    _, (jW, jsig), _ = _jax_grid_eta()
+    return _jnp.interp(W, jW, jsig, left=0.0, right=0.0)
+
+
+def jax_eta_backconv_sigma(W, nuc_idx_arr):
+    """etaN -> piN back-conversion sigma per out-pion charge (N,3) [mb]: out-pion 0=pi+,1=pi0,2=pi-,
+    for the struck nucleon nuc_idx (0 p, 1 n).  Sum over axis -1 = total back-conversion (the si that
+    REGENERATES a pion)."""
+    _, _, (jW, jsig) = _jax_grid_eta()                        # jsig (2 nuc, 3 pi, nW)
+    all_np = _jnp.stack([_jnp.stack(
+        [_jnp.interp(W, jW, jsig[nu, o], left=0.0, right=0.0) for o in range(3)], axis=-1)
+        for nu in range(2)], axis=0)                          # (2 nuc, N, 3)
+    return _jnp.take_along_axis(all_np, nuc_idx_arr.astype(_jnp.int32)[None, :, None], axis=0)[0]  # (N,3)

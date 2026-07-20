@@ -113,7 +113,10 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
         O = {k: np.asarray(v) for k, v in out.items()}
         prim_fate = np.asarray(prim_fate)
         is_prim = (O["origin"] == CF._ORIG_PRIM_PI)
-        pi_alive = (O["species"] == CF.PION) & O["alive"]
+        # charge==3 tags an ETA meson (propagated after piN->etaN conversion; routed through the PION
+        # species slot).  A surviving eta is NOT a pion -> excluded from pi_alive so an eta that escapes
+        # counts as "no surviving pion" (absorbed), while one that back-converts regenerates a real pion.
+        pi_alive = (O["species"] == CF.PION) & (O["charge"] != 3) & O["alive"]
 
         # ---- REACTION (post-Pauli), mirroring ACHILLES `if(hit)` --------------------------------- #
         if species == "PION":

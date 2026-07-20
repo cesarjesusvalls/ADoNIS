@@ -218,9 +218,11 @@ _CG_KSIG = {(km, sb): (-_CG_PIN[(sb, km)][0], _CG_PIN[(sb, km)][1])
             for km in (+1, -1) for sb in (+2, 0, -2) if (sb, km) in _CG_PIN}
 
 
-def _sigma_cf(amps, Wt, cg_pair):
-    """sigma(W) [mb] for one (charge-in -> charge-out) pair: cg_pair = (c_half, c_three2)
-    PRODUCTS of initial x final CGs."""
+def _sigma_cf_masses(amps, Wt, cg_pair, mM, mB):
+    """sigma(W) [mb] for one (charge-in -> charge-out) pair with EXPLICIT initial-channel PF masses.
+    ACHILLES CalcCrossSectionW_grid uses mM=Mass_m[iMB_i], mB=Mass_b[iMB_i] -- the INITIAL channel
+    (ANL-code) masses -- for ALL final channels of that initial state.  cg_pair = (c_half, c_three2)
+    PRODUCTS of initial x final isospin CGs."""
     cg = {1: cg_pair[0], 3: cg_pair[1]}
     by_lj = {}
     for k, name in enumerate(WAVES):
@@ -232,9 +234,14 @@ def _sigma_cf(amps, Wt, cg_pair):
         for twoI, k in waves.items():
             amp += cg.get(twoI, 0.0) * amps[:, k]
         s += (twoJ + 1.0) * np.abs(amp) ** 2
-    PF = (Wt ** 2 - _MM_ANL ** 2 - _MB_ANL ** 2) ** 2 - 4.0 * _MM_ANL ** 2 * _MB_ANL ** 2
+    PF = (Wt ** 2 - mM ** 2 - mB ** 2) ** 2 - 4.0 * mM ** 2 * mB ** 2
     pref = np.where(PF > 0, HBARC ** 2 * 10.0 * 2.0 * np.pi * 4.0 * Wt ** 2 / np.clip(PF, 1e-9, None), 0.0)
     return pref * s
+
+
+def _sigma_cf(amps, Wt, cg_pair):
+    """piN-initial conversion sigma (PF uses the piN ANL-code masses Mass_m[0]/Mass_b[0])."""
+    return _sigma_cf_masses(amps, Wt, cg_pair, _MM_ANL, _MB_ANL)
 
 
 def conversion_sigma_grid():
@@ -273,3 +280,51 @@ def conversion_sigma_grid():
                         cf = _CG_KSIG[(km, sb)]
                         out[pi_idx, nuc_idx] += _sigma_cf(amps, Wg, (ci[0] * cf[0], ci[1] * cf[1]))
     return Wg, out
+
+
+# --- eta N INITIAL cross sections (the BACK-conversion path: ACHILLES propagates the eta produced by
+# piN->etaN and lets it re-interact via GetAllCSW(eta_channel, W) -- etaN->etaN elastic and etaN->piN,
+# which REGENERATES a pion.  eta is isoscalar => etaN is pure I=1/2 (initial CG = 1); the PF uses the
+# INITIAL etaN ANL-code masses Mass_m[1]=548.0, Mass_b[1]=938.5). -------------------------------------- #
+_MM_ETA, _MB_ETA = 548.0, 938.5            # ACHILLES Mass_m[1], Mass_b[1] (etaN initial, ANL-code masses)
+
+
+def eta_production_sigma_grid():
+    """W grid + piN -> etaN production sigma [mb] ONLY (the eta piece of the total conversion), shape
+    (3 pion, 2 nucleon, nW).  This is the fraction of a pion conversion that produces an eta (which is
+    then propagated & can back-convert), as opposed to the KLambda/KSigma finals (terminal).  Same
+    piN-initial PF (Mass_m[0]/Mass_b[0]) as conversion_sigma_grid, restricted to the eta final."""
+    Wt, amps = load_anl(0, 1)                                  # piN -> etaN amplitudes
+    out = np.zeros((3, 2, len(Wt)))
+    for pi_idx, tm in ((0, +2), (1, 0), (2, -2)):
+        for nuc_idx, tb in ((0, +1), (1, -1)):
+            if abs(tm + tb) > 1:                               # etaN is I=1/2 -> |2*I3| <= 1
+                continue
+            ci = _CG_PIN[(tm, tb)]
+            out[pi_idx, nuc_idx] = _sigma_cf(amps, Wt, (ci[0] * 1.0, 0.0))
+    return Wt, out
+
+
+def eta_elastic_sigma_grid():
+    """W grid + etaN -> etaN elastic sigma [mb].  Pure I=1/2 (initial & final CG = 1); identical for
+    proton and neutron.  ANL_1-1 amplitudes, etaN-initial PF masses."""
+    Wt, amps = load_anl(1, 1)
+    return Wt, _sigma_cf_masses(amps, Wt, (1.0, 0.0), _MM_ETA, _MB_ETA)
+
+
+def eta_backconv_sigma_grid():
+    """W grid + etaN -> piN back-conversion sigma [mb], shape (2 nucleon, 3 out-pion).  nucleon 0=p 1=n;
+    out-pion 0=pi+ 1=pi0 2=pi-.  Initial etaN is pure I=1/2 (CG=1); the outgoing piN carries its charge
+    Clebsch (only the I=1/2 piece survives -> c_three_final is multiplied by the zero initial c_three).
+    Charge conservation fixes the outgoing nucleon: 2*I3(N_out) = 2*I3(N_in) - 2*I3(pi_out).  ANL_1-0
+    amplitudes, etaN-initial PF masses."""
+    Wt, amps = load_anl(1, 0)
+    out = np.zeros((2, 3, len(Wt)))
+    for nuc_idx, tb in ((0, +1), (1, -1)):                     # incoming nucleon 2*I3 (p=+1, n=-1)
+        for pi_idx, tm in ((0, +2), (1, 0), (2, -2)):          # outgoing pion 2*I3 (pi+=+2, pi0=0, pi-=-2)
+            tb_out = tb - tm                                    # outgoing nucleon 2*I3 (I3(eta)=0)
+            if tb_out not in (+1, -1):                          # charge-forbidden final state
+                continue
+            c_half_f = _CG_PIN[(tm, tb_out)][0]                # final piN I=1/2 Clebsch
+            out[nuc_idx, pi_idx] = _sigma_cf_masses(amps, Wt, (c_half_f, 0.0), _MM_ETA, _MB_ETA)
+    return Wt, out

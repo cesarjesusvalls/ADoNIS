@@ -572,6 +572,8 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     assert cfg.algo == "step", "pool pion step implements the 'step' algo (production path) only"
     n, A = nisp.shape; ar = jnp.arange(n)
     p_pi = p4
+    is_eta = (ch == 3)                     # meson-track species: pion charge 0/1/2, or 3 = eta (propagated
+    #                                        after piN->etaN conversion so it can back-convert etaN->piN)
     # ----- escape (Cascade.cc:532-553): beam pion (nsc==0) -> z>=radius PLANE; scattered -> sphere -----
     # The POOL has no early-exit "inert" skip (unlike _propagate_discrete's while_loop), so a pion that
     # has LEFT the nucleus (|pos|>radius, moving outward -> rho=0 ahead, can never re-enter) must be
@@ -614,13 +616,19 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
                        jnp.clip(rho_t, 1e-9, None)), 0.0, None)
         K_ = Wl.shape[1]
         nuc_i = jnp.where(nip, 0, 1).astype(jnp.int32)
-        sio = cascade_mb.jax_channel_sigmas_resolved(Wl.reshape(-1),
-                  jnp.broadcast_to(ch[:, None], (n, K_)).reshape(-1),
-                  nuc_i.reshape(-1)).reshape(n, K_, 3)
+        ch_pi = jnp.clip(ch, 0, 2)                              # eta slots reuse pi+ table (unused for eta)
+        Wf = Wl.reshape(-1); nuf = nuc_i.reshape(-1); chf = jnp.broadcast_to(ch_pi[:, None], (n, K_)).reshape(-1)
+        sio = cascade_mb.jax_channel_sigmas_resolved(Wf, chf, nuf).reshape(n, K_, 3)
         ssl = jnp.clip(jnp.sum(sio, axis=-1), 0.0, None)
-        sil = jnp.clip(cascade_mb.jax_conversion_sigma(Wl.reshape(-1),
-                  jnp.broadcast_to(ch[:, None], (n, K_)).reshape(-1),
-                  nuc_i.reshape(-1)).reshape(n, K_), 0.0, None)
+        sil = jnp.clip(cascade_mb.jax_conversion_sigma(Wf, chf, nuf).reshape(n, K_), 0.0, None)
+        # --- ETA meson track (ch==3): no Oset absorption; elastic etaN->etaN is "scatter"; back-conversion
+        # etaN->piN is "conversion" (regenerates a pion).  Blend by the per-event species (is_eta). --------
+        ssl_eta = jnp.clip(cascade_mb.jax_eta_elastic_sigma(Wf).reshape(n, K_), 0.0, None)
+        sil_eta = jnp.clip(jnp.sum(cascade_mb.jax_eta_backconv_sigma(Wf, nuf).reshape(n, K_, 3), -1), 0.0, None)
+        ise = is_eta[:, None]
+        sal = jnp.where(ise, 0.0, sal)
+        ssl = jnp.where(ise, ssl_eta, ssl)
+        sil = jnp.where(ise, sil_eta, sil)
         return sal, ssl, sil, sio, Wl
 
     if cfg.fast_xsec:
@@ -660,7 +668,7 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     # (~10 out of ~200) and, once stored as float32, can round to ss_c < ss_el_c, so clip(ss_c-ss_el_c,0)
     # truncates and g drifts off 1 at nominal -- which exp(-a/g) amplifies.  ss is already computed.
     ss_c = ss[ar, cidx]
-    ss_el_c = sig_io.reshape(n, A, 3)[ar, cidx][ar, ch]          # elastic (out==in) part at the candidate
+    ss_el_c = sig_io.reshape(n, A, 3)[ar, cidx][ar, jnp.clip(ch, 0, 2)]   # elastic part (eta: ch clipped, unused)
     W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
     kf_p_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoP))
     kf_n_j = _kf_local(_rho_species(rnuc[ar, j], rgrid, rhoN))
@@ -721,14 +729,19 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
         abs_blocked = abs_blocked & False
     is_abs = chose_abs & ~abs_blocked & has_mode
     # ----- scatter: out-pion charge, DCC angle, per-species Pauli recoil -----
+    # ETA elastic (etaN->etaN): the meson stays an eta (out_ch=3), isotropic CM angle, no charge exchange
+    # (recoil = struck nucleon).  PION scatter: DCC out-charge + angle as before.
     sig_io_j = sig_io.reshape(n, A, 3)[ar, j]
     probs = sig_io_j / jnp.clip(jnp.sum(sig_io_j, axis=1, keepdims=True), 1e-12, None)
     u = _ev_uniform(kf, (1,))
     out_ch = jnp.clip(jnp.sum((u > jnp.cumsum(probs, axis=1)).astype(jnp.int32), axis=1), 0, 2).astype(jnp.int32)
+    out_ch = jnp.where(is_eta, jnp.int32(3), out_ch)          # eta elastic -> stays eta
     nuc_idx = jnp.where(nisp[ar, j], 0, 1)
-    chan_idx = ch * 6 + nuc_idx * 3 + out_ch
-    cos_cm = cascade_mb.jax_sample_cos_cm(W_j, _ev_uniform(ka), chan_idx)
-    _rec_is_p = (struck_p + out_ch - ch) == 1                  # recoil nucleon charge (charge-exchange)
+    chan_idx = jnp.clip(ch, 0, 2) * 6 + nuc_idx * 3 + jnp.clip(out_ch, 0, 2)
+    u_ang = _ev_uniform(ka)
+    cos_cm = jnp.where(is_eta, 2.0 * u_ang - 1.0,             # eta: isotropic; pion: DCC angular table
+                       cascade_mb.jax_sample_cos_cm(W_j, u_ang, chan_idx))
+    _rec_is_p = jnp.where(is_eta, struck_p == 1, (struck_p + out_ch - ch) == 1)   # recoil nucleon charge
     kf_rec_pi = jnp.where(_rec_is_p, kf_p_j, kf_n_j)
     m_rec_pi = jnp.where(_rec_is_p, _MP_PHYS, _MN_PHYS)        # recoil nucleon mass PHYSICAL per-species
 
@@ -739,42 +752,69 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     p_out, blocked = jax.vmap(scat_one)(p_pi, pN_j, out_ch, kf_rec_pi, m_rec_pi, cos_cm, sk)   # sk (n,2) per-event
     if not cfg.pauli:
         blocked = blocked & False
-    # ----- conversion (piN -> etaN'): emit the N' baryon (eta neutral -> q_bary = q_pi + q_struck) -----
+    # ----- conversion: pion<->eta MORPH (+ pion->K terminal) -----------------------------------------
+    # A pion conversion (piN->etaN) now emits a propagating eta (meson spawn, charge idx 3) with prob
+    # si_eta/si_total; the rest (KLambda/KSigma) stays terminal.  An eta conversion (etaN->piN) emits a
+    # REGENERATED pion (charge sampled from the per-charge back-conversion sigma).  The recoil N' baryon
+    # is emitted (as before) in either morph direction.  ACHILLES propagates the eta the same way, which
+    # is why ~1/3 of high-|p| conversions do NOT end up absorbed (the eta back-converts to a pion).
     is_conv = chose_conv
-    q_bary = (1 - ch) + struck_p
-    eta_ok = is_conv & ((q_bary == 0) | (q_bary == 1))
+    nuc_idx_j = nuc_idx                                        # struck-nucleon index (0 p, 1 n)
+    bc_j = cascade_mb.jax_eta_backconv_sigma(W_j, nuc_idx_j)   # (n,3) etaN->pi_c N sigma per out-pion
+    pbc = bc_j / jnp.clip(jnp.sum(bc_j, axis=1, keepdims=True), 1e-12, None)
+    u_out = _ev_fold_uniform(ka, 331)
+    out_pi_idx = jnp.clip(jnp.sum((u_out[:, None] > jnp.cumsum(pbc, axis=1)).astype(jnp.int32), axis=1),
+                          0, 2).astype(jnp.int32)
+    si_eta_j = cascade_mb.jax_pi_to_eta_sigma(W_j, jnp.clip(ch, 0, 2), nuc_idx_j)   # piN->etaN piece (n,)
+    frac_morph = jnp.where(is_eta, 1.0, si_eta_j / jnp.clip(si_j, 1e-12, None))     # eta piece of the conv
+    chose_morph = is_conv & (_ev_fold_uniform(ka, 332) < frac_morph)
+    m_out = jnp.where(is_eta, _CH_MASS[out_pi_idx], _CH_MASS[3])   # outgoing meson mass (eta->pion; pi->eta)
+    meson_q = jnp.where(is_eta, out_pi_idx, 3).astype(jnp.int32)
+    # recoil baryon charge (eta neutral): pi->eta q_bary=(1-ch)+struck_p; eta->pi q_bary=struck_p-(1-out_pi_idx)
+    q_bary = jnp.where(is_eta, struck_p - (1 - out_pi_idx), (1 - ch) + struck_p)
+    morph_ok = chose_morph & ((q_bary == 0) | (q_bary == 1))
+    # CM two-body (meson m_out + nucleon M_N), isotropic direction:
     Pcv = p_pi + pN_j
     scv = Pcv[:, 0] ** 2 - jnp.sum(Pcv[:, 1:] ** 2, axis=1)
-    rscv = jnp.sqrt(jnp.clip(scv, (M_N + _M_ETA) ** 2, None))
-    EN = (scv + M_N ** 2 - _M_ETA ** 2) / (2.0 * rscv)
+    rscv = jnp.sqrt(jnp.clip(scv, (M_N + m_out) ** 2, None))
+    EN = (scv + M_N ** 2 - m_out ** 2) / (2.0 * rscv)          # recoil baryon CM energy
+    Em = rscv - EN                                            # outgoing meson CM energy
     pst = jnp.sqrt(jnp.clip(EN ** 2 - M_N ** 2, 0.0, None))
     ccv = 2.0 * _ev_fold_uniform(ka, 211) - 1.0
     scv_ = jnp.sqrt(jnp.clip(1 - ccv ** 2, 0.0, None)); phcv = 2 * jnp.pi * _ev_fold_uniform(ka, 212)
     dcv = jnp.stack([scv_ * jnp.cos(phcv), scv_ * jnp.sin(phcv), ccv], axis=1)
     beta = Pcv[:, 1:] / Pcv[:, [0]]; b2 = jnp.sum(beta ** 2, axis=1); gcv = 1 / jnp.sqrt(jnp.clip(1 - b2, 1e-12, None))
-    Ncm = jnp.concatenate([EN[:, None], pst[:, None] * dcv], axis=1)
-    bpcv = jnp.sum(beta * Ncm[:, 1:], axis=1)
-    p3cv = Ncm[:, 1:] + ((gcv - 1) * bpcv / jnp.clip(b2, 1e-30, None) + gcv * Ncm[:, 0])[:, None] * beta
-    p_bary = jnp.concatenate([(gcv * (Ncm[:, 0] + bpcv))[:, None], p3cv], axis=1)
+
+    def _boost_cm(Ecm, p3cm):                                 # boost a CM 4-vec (Ecm, p3cm) by beta
+        bp = jnp.sum(beta * p3cm, axis=1)
+        p3 = p3cm + ((gcv - 1) * bp / jnp.clip(b2, 1e-30, None) + gcv * Ecm)[:, None] * beta
+        return jnp.concatenate([(gcv * (Ecm + bp))[:, None], p3], axis=1)
+    p_bary = _boost_cm(EN, pst[:, None] * dcv)
+    p_meson = _boost_cm(Em, -pst[:, None] * dcv)               # the propagated eta / regenerated pion
     is_scat = has_hit & ~chose_abs & ~chose_conv & ~blocked
     p_rec = (p_pi + pN_j) - p_out
     q_rec = struck_p + out_ch - ch
     rcand = jnp.where(is_conv[:, None], p_bary, p_rec)
-    q_rcand = jnp.where(is_conv, q_bary, q_rec)
     fz_rec = _formation_zone(p_pi, rcand)
     # ----- spawns: slot1 = abs nucleon A | scatter recoil | conv baryon ; slot2 = abs nucleon B -----
     # Both absorption nucleons (A,B) carry their TRUE charge (abs_qa/abs_qb) and full 4-vec; neutron
     # products re-cascade (ACHILLES particles_out[0],[1]) instead of being dropped.
-    s1_p4 = jnp.where(is_abs[:, None], abs_pa, jnp.where(is_scat[:, None], p_rec, jnp.where(eta_ok[:, None], p_bary, 0.0)))
-    s1_q = jnp.where(is_abs, abs_qa, jnp.where(is_scat, q_rec, jnp.where(eta_ok, q_bary, 0))).astype(jnp.int32)
+    s1_p4 = jnp.where(is_abs[:, None], abs_pa, jnp.where(is_scat[:, None], p_rec, jnp.where(morph_ok[:, None], p_bary, 0.0)))
+    s1_q = jnp.where(is_abs, abs_qa, jnp.where(is_scat, q_rec, jnp.where(morph_ok, q_bary, 0))).astype(jnp.int32)
     s1_pos = jnp.where(is_abs[:, None], pos_hit, npos[ar, j])
-    s1_fz = jnp.where(is_abs, _formation_zone(p_pi, abs_pa), jnp.where(is_scat | eta_ok, fz_rec, 0.0))
-    s1_al = (jnp.linalg.norm(s1_p4[:, 1:], axis=1) > 1.0) & (is_abs | is_scat | eta_ok)
+    s1_fz = jnp.where(is_abs, _formation_zone(p_pi, abs_pa), jnp.where(is_scat | morph_ok, fz_rec, 0.0))
+    s1_al = (jnp.linalg.norm(s1_p4[:, 1:], axis=1) > 1.0) & (is_abs | is_scat | morph_ok)
     s2_p4 = jnp.where(is_abs[:, None], abs_pb, 0.0)
     s2_q = jnp.where(is_abs, abs_qb, 0).astype(jnp.int32)
     s2_pos = pos_hit
     s2_fz = _formation_zone(p_pi, abs_pb)
     s2_al = (jnp.linalg.norm(s2_p4[:, 1:], axis=1) > 1.0) & is_abs
+    # ----- meson spawn (eta from pi conversion, or pion regenerated by eta back-conversion) -----
+    sm_p4 = jnp.where(morph_ok[:, None], p_meson, 0.0)
+    sm_q = jnp.where(morph_ok, meson_q, 0).astype(jnp.int32)
+    sm_pos = npos[ar, j]
+    sm_fz = jnp.zeros_like(s1_fz)                             # mesons carry no formation zone (ACHILLES)
+    sm_al = morph_ok & (jnp.linalg.norm(sm_p4[:, 1:], axis=1) > 1.0)
     # ----- pion state update (scatter continues; abs/conv removed) -----
     p_pi = jnp.where(is_scat[:, None], p_out, p_pi)
     ch = jnp.where(is_scat, out_ch, ch)
@@ -785,7 +825,11 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
     pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
     ss_j = ss[ar, j]                                            # direct (see ss_c: no sig-sa-si cancellation)
-    ss_el_j = sig_io_j[ar, ch]                                  # elastic (out==in) scatter sigma at the hit
+    ss_el_j = sig_io_j[ar, jnp.clip(ch, 0, 2)]                  # elastic (out==in) scatter sigma at the hit
+    # ETA-track steps are NOT recorded in the pion kind-1 FSI reweight (their sa/ss/si carry the eta
+    # sigmas, not pion ones -> a pion knob must not scale them).  Excluding via perp2_c>1e5 makes the
+    # eta path forward-faithful and gradient-neutral for the pion FSI knobs.
+    perp2_c = jnp.where(is_eta, 1e6, perp2_c)
     # GRANULAR kind-1 channel code {0 elastic, 1 charge-exchange, 2 absorption, 3 conversion} (was the
     # 3-code {0 scatter,1 abs,2 conv}).  Scatter splits into elastic/cex by the sampled out-pion charge
     # (out_ch==ch -> elastic).  ss_el recorded alongside ss (total scatter) -> ss_cex = ss - ss_el; this
@@ -793,7 +837,8 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     code4 = jnp.where(chose_abs, 2, jnp.where(chose_conv, 3,
                       jnp.where(out_ch == ch, 0, 1))).astype(jnp.int32)
     return ((p_pi, pos, dhat, ch, nsc, alive), escaping, is_abs, is_conv,
-            (s1_p4, s1_pos, s1_fz, s1_q, s1_al), (s2_p4, s2_pos, s2_fz, s2_q, s2_al), consumed,
+            (s1_p4, s1_pos, s1_fz, s1_q, s1_al), (s2_p4, s2_pos, s2_fz, s2_q, s2_al),
+            (sm_p4, sm_pos, sm_fz, sm_q, sm_al), consumed,
             jax.lax.stop_gradient((has_hit, code4, sa_j, ss_el_j, ss_j, si_j,
                                    perp2_c, sa_c, ss_el_c, ss_c, si_c)))
 

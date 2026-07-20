@@ -184,7 +184,7 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kN, dt_evt=_dt_e)
             # PION branch (charge = pion index 0/1/2); scatter continues, abs/conv removed.
-            (p4p, posp, _dp, chp, nscp, alnP), escP, is_abs, is_conv, s1, s2, consumedP, pstat = _pion_step(
+            (p4p, posp, _dp, chp, nscp, alnP), escP, is_abs, is_conv, s1, s2, smes, consumedP, pstat = _pion_step(
                 p4, pos, dhat, chg, nsc, is_pi, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kP, dt_evt=_dt_e)
             # kind-1 FSI reweight sufficient statistics (mirrors the legacy brec/srec per-step records):
@@ -256,9 +256,12 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             nuc2 = tuple(jnp.where(is_pi, s2k, dk) if s2k.ndim == 1
                          else jnp.where(is_pi[:, None], s2k, dk)
                          for s2k, dk in zip(s2, _dead(n)))
-            pio = tuple(jnp.where(is_N, pk, dk) if pk.ndim == 1
-                        else jnp.where(is_N[:, None], pk, dk)
-                        for pk, dk in zip(pinN, _dead(n)))
+            # pion daughter meson slot: nucleon inelastic pion (pinN) for a nucleon slot; for a PION slot
+            # it carries the eta (piN->etaN conversion) or the regenerated pion (etaN->piN back-conversion)
+            # emitted by _pion_step -- so the eta propagates & can back-convert (ACHILLES-faithful).
+            pio = tuple(jnp.where(is_N, pk, jnp.where(is_pi, mk, dk)) if pk.ndim == 1
+                        else jnp.where(is_N[:, None], pk, jnp.where(is_pi[:, None], mk, dk))
+                        for pk, mk, dk in zip(pinN, smes, _dead(n)))
             seg_slot = None
             if with_seg:
                 # per-slot SEGMENT record: channel + segment-start |p| + product (pid,|p|) set, mirroring

@@ -161,9 +161,12 @@ def _sample_fermi_nucleon(kf, key, mass=M_N):
     return jnp.concatenate([E[None], p3])
 
 
-# charge <-> index:  0:pi+ (211), 1:pi0 (111), 2:pi- (-211)
-_CH_PID = jnp.array([211, 111, -211])
-_CH_MASS = jnp.array([ox.M_PIP, ox.M_PI0, ox.M_PIP])
+# meson charge/species <-> index:  0:pi+ (211), 1:pi0 (111), 2:pi- (-211), 3:eta (221).
+# Index 3 tags the eta produced by piN->etaN conversion, which the pool propagates as a meson (routed
+# to _pion_step, species=PION) so it can back-convert etaN->piN and regenerate a pion (ACHILLES).
+_M_ETA_PHYS = 547.862                                 # eta mass [MeV] (PDG; ACHILLES ParticleInfo)
+_CH_PID = jnp.array([211, 111, -211, 221])
+_CH_MASS = jnp.array([ox.M_PIP, ox.M_PI0, ox.M_PIP, _M_ETA_PHYS])
 _QE_IN = jnp.array([0, 0, 0, 1, 1, 1, 2, 2, 2])      # index into pi+/0/- for QE_CHANNELS in
 _QE_OUT = jnp.array([0, 1, 2, 0, 1, 2, 0, 1, 2])     # ... out
 
