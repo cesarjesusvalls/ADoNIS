@@ -242,11 +242,16 @@ def _propagate_scan(pos0, p_pi0, charge_idx0, cfg: RealCascadeConfig, key, protf
         kS, kang = jax.random.split(kS)
         cos_cm = cascade_mb.jax_sample_cos_cm(W, jax.random.uniform(kang, (n,)))
 
-        def scat_one(p_pi_i, pN_i, out_i, kf_i, k, cc):
-            p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k, cos_cm=cc)
+        # recoil nucleon OUTGOING charge (pion charge-exchange aware): q_N_out = q_pi_in + q_N_in - q_pi_out,
+        # pion charge = 1-idx.  PHYSICAL per-species recoil mass (was the avg-M_N default). [audit 2026-07-20]
+        _rec_is_p = (bg_is_p.astype(jnp.int32) + out_ch - ch) == 1
+        m_rec = jnp.where(_rec_is_p, _MP_PHYS, _MN_PHYS)
+
+        def scat_one(p_pi_i, pN_i, out_i, kf_i, mrec, k, cc):
+            p_out = _two_body_cm_scatter(p_pi_i, pN_i, _CH_MASS[out_i], k, cos_cm=cc, m_recoil=mrec)
             p_rec = (p_pi_i + pN_i) - p_out
             return p_out, jnp.linalg.norm(p_rec[1:]) < kf_i
-        p_out, blocked = jax.vmap(scat_one)(p_pi, p_N, out_ch, kf, jax.random.split(kS, n), cos_cm)
+        p_out, blocked = jax.vmap(scat_one)(p_pi, p_N, out_ch, kf, m_rec, jax.random.split(kS, n), cos_cm)
 
         do_scatter = scatters & ~blocked
         p_pi = jnp.where(do_scatter[:, None], p_out, p_pi)

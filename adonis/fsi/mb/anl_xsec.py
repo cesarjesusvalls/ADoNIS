@@ -56,7 +56,11 @@ def load_anl(i=0, f=0, root=None):
     return W, amps
 
 
-def _pcm2(W, mM=M_PI, mB=M_N):
+def _pcm2(W, mM=138.5, mB=938.5):
+    # ANL-code flux masses (ACHILLES MesonBaryonAmplitudes.hh:110-111 Mass_m[0]=138.5, Mass_b[0]=938.5),
+    # NOT the physical PDG masses -- using mpip/mp here inflates the near-threshold piN normalization by
+    # up to ~38% (matches the _MM_ANL/_MB_ANL convention already used for the eta/conversion grids below).
+    # [audit 2026-07-20; see docs constants registry]
     PF = (W ** 2 - mM ** 2 - mB ** 2) ** 2 - 4.0 * mM ** 2 * mB ** 2
     return PF                                            # ACHILLES "PF" (= 4 W^2 p_cm^2)
 

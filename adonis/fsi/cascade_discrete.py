@@ -18,6 +18,7 @@ weight, so d/d(knob) E[obs] is exact and the sampled final state is preserved.
 """
 from __future__ import annotations
 
+import os
 import gzip
 from dataclasses import dataclass
 from pathlib import Path
@@ -365,7 +366,10 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
              (pi4,pipos,pifz,pich,pial), consumed', (has_hit, perp2_c, sig_c)."""
     n, A = nisp.shape; ar = jnp.arange(n)
     outward = jnp.sum(pos * dhat, axis=1) > 0
-    escaping = (jnp.linalg.norm(pos, axis=1) > radius) & outward
+    if os.environ.get("ADONIS_NUC_ZPLANE") == "1":
+        escaping = (pos[:, 2] >= radius)                               # ABLATION: ACHILLES external_test z-plane
+    else:
+        escaping = (jnp.linalg.norm(pos, axis=1) > radius) & outward
     # ACHILLES Cascade::Escaped (every step, ungated): captured if E - mN_avg - 10 < 0.  CRITICAL mass
     # convention: E uses the PHYSICAL per-species mass (the escaping particle's 4-vec; neutron E with
     # mn=939.565), while the subtracted threshold uses the AVERAGE mN (Constant::mN=938.919).  ADoNIS
@@ -395,15 +399,22 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     in_slab = (par > 0) & (par <= _dstep[:, None]) & (~consumed) & alive[:, None]
     Pp = p4[:, None, :] + nmom
     s = Pp[:, :, 0] ** 2 - jnp.sum(Pp[:, :, 1:] ** 2, axis=2)
-    sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
     same_iso = isp[:, None] == nisp
     # ACHILLES NNElastic.cc:184 uses the PER-PAIR average physical mass (mp for pp, mn for nn, avg for
     # pn) in threshold/plab + the low-plab mn/threshold terms -- not the global average.
-    _m_pair_gev = 0.5 * (jnp.where(isp, _MP_PHYS, _MN_PHYS)[:, None]
-                         + jnp.where(nisp, _MP_PHYS, _MN_PHYS)) / 1000.0
+    _m1_mev = jnp.where(isp, _MP_PHYS, _MN_PHYS)[:, None]           # (n,1) beam nucleon PHYSICAL mass
+    _m2_mev = jnp.where(nisp, _MP_PHYS, _MN_PHYS)                   # (n,A) struck nucleon PHYSICAL mass
+    _m_pair_gev = 0.5 * (_m1_mev + _m2_mev) / 1000.0
+    # sqrts floor: PHYSICAL per-pair threshold (m1+m2)^2 so near-threshold thr can reach 0 (matching
+    # ACHILLES NNElastic.cc:185-186), NOT pinned above the avg-mass floor (which caps the divergent low-p
+    # pp sigma: 2*mN=1877.84 > 2*mp=1876.54).  [audit 2026-07-20; see docs constants registry]
+    sqrts = jnp.sqrt(jnp.clip(s, (_m1_mev + _m2_mev) ** 2, None))
     sig_el = jnp.clip(nn_elastic_sigma(sqrts, same_iso, _m_pair_gev), 0.0, None)
     if cfg.nn_inelastic:
-        pcm = jnp.sqrt(jnp.clip(s / 4.0 - M_N ** 2, 1e-6, None)) / 1000.0
+        # incoming NN CM momentum: exact Kallen with PHYSICAL per-pair masses (= ACHILLES p1CM boost,
+        # NucleonNucleon.cc:57-59), NOT the equal-avg-mass approximation s/4 - M_N^2.
+        _lam_in = (s - (_m1_mev + _m2_mev) ** 2) * (s - (_m1_mev - _m2_mev) ** 2)
+        pcm = jnp.sqrt(jnp.clip(_lam_in, 0.0, None)) / (2.0 * sqrts) / 1000.0
         sig_in = jnp.clip(nni.sigma_nn_ndelta(sqrts / 1000.0, pcm, same_iso), 0.0, None)
     else:
         sig_in = jnp.zeros_like(sig_el)
@@ -464,9 +475,11 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     u_br = _ev_fold_uniform(sk, 101)
     chose_inel = has_hit & (u_br < sig_in_j / jnp.clip(sig_el_j + sig_in_j, 1e-12, None))
     Pj = p4 + pN_j
-    rs_j = jnp.sqrt(jnp.clip(Pj[:, 0] ** 2 - jnp.sum(Pj[:, 1:] ** 2, axis=1), (2 * M_N) ** 2, None))
+    _mNb = jnp.where(isp, _MP_PHYS, _MN_PHYS)                       # beam nucleon PHYSICAL mass
+    _mNs = jnp.where(nisp[ar, j], _MP_PHYS, _MN_PHYS)               # struck nucleon PHYSICAL mass
+    rs_j = jnp.sqrt(jnp.clip(Pj[:, 0] ** 2 - jnp.sum(Pj[:, 1:] ** 2, axis=1), (_mNb + _mNs) ** 2, None))
     u_m = _ev_fold_uniform(sk, 102)
-    m_d = jnp.clip(nni.sample_delta_mass(rs_j / 1000.0, u_m) * 1000.0, M_N + 135.0, rs_j - M_N - 1.0)
+    _m_d_raw = nni.sample_delta_mass(rs_j / 1000.0, u_m) * 1000.0   # Delta-mass clip deferred (needs recoil mass)
     cth1 = 2 * _ev_fold_uniform(sk, 103) - 1.0
     phi1 = 2 * jnp.pi * _ev_fold_uniform(sk, 104)
     cth2 = 2 * _ev_fold_uniform(sk, 105) - 1.0
@@ -486,6 +499,10 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     _mN1 = jnp.where((q_pair - dch) == 1, _MP_PHYS, _MN_PHYS)   # nucleon recoiling against the Delta
     _mN2 = jnp.where((dch - pi_q) == 1, _MP_PHYS, _MN_PHYS)     # nucleon from the Delta decay
     _mpi_dec = _CH_MASS[(1 - pi_q)]                             # pion from the Delta decay (per-charge phys)
+    # Delta-mass window (ACHILLES ResonanceHelper.cc:25-27): floor = neutron+pi+ ("heavier" convention),
+    # ceiling = sqrts - PHYSICAL recoil-nucleon mass (was avg M_N +/- ad-hoc 1 MeV buffer).
+    _m_d_hi = jnp.maximum(rs_j - _mN1, _MN_PHYS + _CH_MASS[0] + 1.0)
+    m_d = jnp.clip(_m_d_raw, _MN_PHYS + _CH_MASS[0], _m_d_hi)
 
     def _split2(P4, mA, mB, cth_, phi_):
         ss = jnp.clip(P4[:, 0] ** 2 - jnp.sum(P4[:, 1:] ** 2, axis=1), (mA + mB) ** 2 * 1.0001, None)
@@ -703,20 +720,25 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     def abs_one(p_pi_i, pNj_i, pNp_i, npr, kfpa, kfna, kfpb, kfnb, k):
         P = p_pi_i + pNj_i + pNp_i
         s = P[0] ** 2 - jnp.sum(P[1:] ** 2)
-        sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
-        Estar = sqrts / 2.0
-        pstar = jnp.sqrt(jnp.clip(Estar ** 2 - M_N ** 2, 0.0, None))
         k1, k2, k3 = jax.random.split(k, 3)
+        a_is_p = jax.random.uniform(k3) < 0.5
+        A_is_p = (npr >= 2) | ((npr == 1) & a_is_p)
+        B_is_p = (npr >= 2) | ((npr == 1) & (~a_is_p))
+        # ACHILLES PionAbsorption.cc:175-181: PHYSICAL product-nucleon masses -> ASYMMETRIC CM energy
+        # split (was avg M_N for both, i.e. forced symmetric).  Blocking uses outgoing |p| vs kF.
+        mA = jnp.where(A_is_p, _MP_PHYS, _MN_PHYS)
+        mB = jnp.where(B_is_p, _MP_PHYS, _MN_PHYS)
+        s = jnp.clip(s, (mA + mB) ** 2, None)
+        sqrts = jnp.sqrt(s)
+        Ea = sqrts / 2.0 * (1.0 + (mA ** 2 - mB ** 2) / s)
+        pstar = jnp.sqrt(jnp.clip((s - (mA + mB) ** 2) * (s - (mA - mB) ** 2), 0.0, None)) / (2.0 * sqrts)
         cth = 2.0 * jax.random.uniform(k1) - 1.0
         sth = jnp.sqrt(jnp.clip(1 - cth ** 2, 0.0, None)); phi = 2 * jnp.pi * jax.random.uniform(k2)
         dirn = jnp.array([sth * jnp.cos(phi), sth * jnp.sin(phi), cth])
         beta = P[1:] / P[0]
-        pa = _boost(jnp.concatenate([Estar[None], pstar * dirn]), beta)
-        pb = _boost(jnp.concatenate([Estar[None], -pstar * dirn]), beta)
+        pa = _boost(jnp.concatenate([Ea[None], pstar * dirn]), beta)
+        pb = _boost(jnp.concatenate([(sqrts - Ea)[None], -pstar * dirn]), beta)
         ma = jnp.linalg.norm(pa[1:]); mb = jnp.linalg.norm(pb[1:])
-        a_is_p = jax.random.uniform(k3) < 0.5
-        A_is_p = (npr >= 2) | ((npr == 1) & a_is_p)
-        B_is_p = (npr >= 2) | ((npr == 1) & (~a_is_p))
         kfA = jnp.where(A_is_p, kfpa, kfna); kfB = jnp.where(B_is_p, kfpb, kfnb)
         blocked = (ma < kfA) | (mb < kfB)
         # ACHILLES re-cascades BOTH absorption nucleons (Cascade.cc particles_out[0],[1]) regardless of
@@ -773,13 +795,15 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     # recoil baryon charge (eta neutral): pi->eta q_bary=(1-ch)+struck_p; eta->pi q_bary=struck_p-(1-out_pi_idx)
     q_bary = jnp.where(is_eta, struck_p - (1 - out_pi_idx), (1 - ch) + struck_p)
     morph_ok = chose_morph & ((q_bary == 0) | (q_bary == 1))
-    # CM two-body (meson m_out + nucleon M_N), isotropic direction:
+    # CM two-body (meson m_out + recoil nucleon), isotropic direction.  ACHILLES MesonBaryonInteractions.cc
+    # :162-182 uses the PHYSICAL recoil-baryon mass (per q_bary), not the average M_N.
+    _mB_conv = jnp.where(q_bary == 1, _MP_PHYS, _MN_PHYS)
     Pcv = p_pi + pN_j
     scv = Pcv[:, 0] ** 2 - jnp.sum(Pcv[:, 1:] ** 2, axis=1)
-    rscv = jnp.sqrt(jnp.clip(scv, (M_N + m_out) ** 2, None))
-    EN = (scv + M_N ** 2 - m_out ** 2) / (2.0 * rscv)          # recoil baryon CM energy
+    rscv = jnp.sqrt(jnp.clip(scv, (_mB_conv + m_out) ** 2, None))
+    EN = (scv + _mB_conv ** 2 - m_out ** 2) / (2.0 * rscv)     # recoil baryon CM energy
     Em = rscv - EN                                            # outgoing meson CM energy
-    pst = jnp.sqrt(jnp.clip(EN ** 2 - M_N ** 2, 0.0, None))
+    pst = jnp.sqrt(jnp.clip(EN ** 2 - _mB_conv ** 2, 0.0, None))
     ccv = 2.0 * _ev_fold_uniform(ka, 211) - 1.0
     scv_ = jnp.sqrt(jnp.clip(1 - ccv ** 2, 0.0, None)); phcv = 2 * jnp.pi * _ev_fold_uniform(ka, 212)
     dcv = jnp.stack([scv_ * jnp.cos(phcv), scv_ * jnp.sin(phcv), ccv], axis=1)

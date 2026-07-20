@@ -33,7 +33,7 @@ MPI_HEAVY = MASS_PDG_PIP / _GEV
 # Particles.yml delta masses/widths [GeV]
 DELTA_MASS = {"pp": 1230.55 / _GEV, "p": 1234.90 / _GEV, "0": 1231.30 / _GEV, "m": 1230.55 / _GEV}
 DELTA_WIDTH = {"pp": 112.2 / _GEV, "p": 131.1 / _GEV, "0": 112.5 / _GEV, "m": 112.2 / _GEV}
-HBARC_GEVFM = 0.19732                                           # GeV.fm (BlattWeisskopf x = k/HBARC)
+HBARC_GEVFM = 197.3269804 / 1000.0                             # GeV.fm (BlattWeisskopf x = k/HBARC); full precision (was 0.19732, 3.5e-5 coarse) [audit 2026-07-20]
 HBARC2_GEV2_MB = HBARC2 / 1e6                                   # mb GeV^2
 
 _CACHE = {}

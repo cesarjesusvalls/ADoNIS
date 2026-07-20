@@ -20,7 +20,8 @@ import jax.numpy as jnp
 
 from adonis.fsi import oset_xsec as ox
 from adonis.fsi.cascade_real import (_load_density, _rho_species, _kf_local,
-                                     _sample_fermi_nucleon, _two_body_cm_scatter, MB_TO_FM2)
+                                     _sample_fermi_nucleon, _two_body_cm_scatter, MB_TO_FM2,
+                                     _MP_PHYS, _MN_PHYS)
 
 M_N = ox.M_N
 M_N_GEV = M_N / 1000.0
@@ -95,24 +96,27 @@ def _propagate_nucleon_scan(pos0, p_N0, is_proton0, cfg: NucleonCascadeConfig, k
         kpt, kN = jax.random.split(kN)
         zoa = (1.0 - protfrac) / 2.0                 # background proton fraction Z/A
         bg_is_proton = jax.random.uniform(kpt, (n,)) < zoa
-        p_bg = jax.vmap(_sample_fermi_nucleon)(kf, jax.random.split(kN, n))
+        # PHYSICAL per-species masses (was global avg M_N at the floor, sigma pair-mass, and scatter). [audit 2026-07-20]
+        m_lead = jnp.where(isp, _MP_PHYS, _MN_PHYS)
+        m_bgm = jnp.where(bg_is_proton, _MP_PHYS, _MN_PHYS)
+        p_bg = jax.vmap(_sample_fermi_nucleon)(kf, jax.random.split(kN, n), m_bgm)
 
         same_iso = (isp == bg_is_proton)
         P = p_N + p_bg
         s = P[:, 0] ** 2 - jnp.sum(P[:, 1:] ** 2, axis=1)
-        sqrts = jnp.sqrt(jnp.clip(s, (2 * M_N) ** 2, None))
-        sigma = nn_elastic_sigma(sqrts, same_iso) * MB_TO_FM2
+        sqrts = jnp.sqrt(jnp.clip(s, (m_lead + m_bgm) ** 2, None))
+        sigma = nn_elastic_sigma(sqrts, same_iso, 0.5 * (m_lead + m_bgm) / 1000.0) * MB_TO_FM2
         p_int = -jnp.expm1(-rho_tot * sigma * cfg.step)
 
         kI, kS = jax.random.split(step_key)
         interacts = alive & (jax.random.uniform(kI, (n,)) < p_int)
 
-        def scat_one(p_lead, p_bg_i, kf_i, k):
-            p_out = _two_body_cm_scatter(p_lead, p_bg_i, M_N, k)
+        def scat_one(p_lead, p_bg_i, m1, m2, kf_i, k):
+            p_out = _two_body_cm_scatter(p_lead, p_bg_i, m1, k, m_recoil=m2)
             p_rec = (p_lead + p_bg_i) - p_out
             blocked = (jnp.linalg.norm(p_out[1:]) < kf_i) | (jnp.linalg.norm(p_rec[1:]) < kf_i)
             return p_out, blocked
-        p_out, blocked = jax.vmap(scat_one)(p_N, p_bg, kf, jax.random.split(kS, n))
+        p_out, blocked = jax.vmap(scat_one)(p_N, p_bg, m_lead, m_bgm, kf, jax.random.split(kS, n))
         do_scatter = interacts & ~blocked
         p_N = jnp.where(do_scatter[:, None], p_out, p_N)
         nsc = nsc + do_scatter.astype(jnp.int32)
