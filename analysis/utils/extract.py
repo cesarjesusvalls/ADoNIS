@@ -254,7 +254,7 @@ def res_w(path, **_):
 def cc_incl(path, **_):
     """CC-inclusive: any charged-current muon event.  Muon kinematics only (pmu, cosθμ, pT, p||) --
     the MicroBooNE-style broad-acceptance observable.  No hadronic requirement."""
-    pmu_m, cmu, pmu_t, pmu_l, enu, w = [], [], [], [], [], []
+    pmu_m, cmu, pmu_t, pmu_l, enu, w, proc = [], [], [], [], [], [], []
     for evt in parse_events(Path(path)):
         mu = None; nu = None
         for pid, status, p4 in evt["parts"]:
@@ -268,8 +268,9 @@ def cc_incl(path, **_):
         pmu_m.append(float(pm)); cmu.append(float(mu[3] / pm))
         pmu_t.append(float(np.hypot(mu[1], mu[2]))); pmu_l.append(float(mu[3]))
         enu.append(float(nu[0]) if nu is not None else np.nan); w.append(evt["w"] or 1.0)
+        proc.append(evt["proc"] if evt["proc"] is not None else -1)   # 200=QE, 401/402=RES
     return dict(pmu=np.array(pmu_m), cos_mu=np.array(cmu), pmu_T=np.array(pmu_t),
-                pmu_L=np.array(pmu_l), Enu=np.array(enu), w=np.array(w))
+                pmu_L=np.array(pmu_l), Enu=np.array(enu), w=np.array(w), proc=np.array(proc, np.int64))
 
 
 CHANNELS = {"cc0pi": cc0pi, "cc1pi": cc1pi, "cc1pi_rich": cc1pi_rich, "res_w": res_w, "cc_incl": cc_incl}

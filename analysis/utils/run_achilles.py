@@ -41,6 +41,7 @@ _RULES = [
     ("run_T2K_Ar_fsi",  ("achilles:fullcascade", True, "/achilles/bin/achilles")),
     ("run_MINERvA_C_fsi",    ("achilles:fullcascade", True, "/achilles/bin/achilles")),  # different flux, C
     ("run_MicroBooNE_Ar_fsi", ("achilles:fullcascade", True, "/achilles/bin/achilles")),  # different flux+target
+    ("run_MicroBooNE_C_fsi", ("achilles:fullcascade", True, "/achilles/bin/achilles")),   # BNB flux on C (flux/target isolation)
     # everything else is a no-cascade oracle run (inclusive, free-nucleon, res1pi, T2K *_nofsi, T2K_H)
 ]
 _DEFAULT = (ORACLE, False, "/achilles/bin/achilles")
