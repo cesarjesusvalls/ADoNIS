@@ -310,6 +310,12 @@ class DiscreteCascadeConfig:
                              # 10 MeV optical-potential capture is SEPARATE from (and always on, unlike)
                              # the PotentialProp:True Hamiltonian capture.  Mirrors ACHILLES's hard-coded
                              # 10.0 -> keep in sync with it; set 0.0 only for no-capture ablations.
+    beam_zplane: bool = False  # CrossSection beam-transport mode: the un-scattered PRIMARY beam escapes via
+                             # the z>=radius PLANE (ACHILLES external_test, Cascade.cc:632), NOT the sphere.
+                             # The sphere (|pos|>R & outward) trips at z=sqrt(R^2-b^2)<R, cutting the beam's
+                             # path short for impact parameter b>0 and missing distant (large-b) candidates
+                             # -- the pn-channel first-hit deficit (Deviation 2).  Knockouts/secondaries and
+                             # ALL of RES/QE production (no external beam) keep the sphere -> leave False there.
 
 
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
@@ -354,7 +360,7 @@ def _ev_fold_uniform(keys, data, shape=()):
 
 
 def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
-                  rgrid, rhoP, rhoN, radius, cfg, key, dt_evt=None):
+                  rgrid, rhoP, rhoN, radius, cfg, key, dt_evt=None, is_beam=None):
     """ONE step of the NUCLEON cascade for one particle per event (n,) -- the per-step physics of
     `_propagate_nucleon_discrete.body` (escape/recapture, formation zone, in-slab geometry, elastic
     scatter + per-species Pauli, NN->NDelta->NN'pi inelastic + channel charges), re-expressed for the
@@ -366,10 +372,15 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
              (pi4,pipos,pifz,pich,pial), consumed', (has_hit, perp2_c, sig_c)."""
     n, A = nisp.shape; ar = jnp.arange(n)
     outward = jnp.sum(pos * dhat, axis=1) > 0
-    if os.environ.get("ADONIS_NUC_ZPLANE") == "1":
-        escaping = (pos[:, 2] >= radius)                               # ABLATION: ACHILLES external_test z-plane
+    esc_sphere = (jnp.linalg.norm(pos, axis=1) > radius) & outward
+    # CrossSection external_test beam (un-scattered PRIMARY, is_beam): escape via the z>=radius PLANE
+    # (ACHILLES Cascade.cc:632) -- the sphere trips at z=sqrt(R^2-b^2)<R and cuts the beam path short for
+    # impact parameter b>0, missing distant large-b candidates (the pn first-hit deficit, Deviation 2).
+    # Scattered primary + knockouts/secondaries + all RES/QE: sphere.  Gated by cfg.beam_zplane.
+    if cfg.beam_zplane and is_beam is not None:
+        escaping = jnp.where(is_beam, pos[:, 2] >= radius, esc_sphere)
     else:
-        escaping = (jnp.linalg.norm(pos, axis=1) > radius) & outward
+        escaping = esc_sphere
     # ACHILLES Cascade::Escaped (every step, ungated): captured if E - mN_avg - 10 < 0.  CRITICAL mass
     # convention: E uses the PHYSICAL per-species mass (the escaping particle's 4-vec; neutron E with
     # mn=939.565), while the subtracted threshold uses the AVERAGE mN (Constant::mN=938.919).  ADoNIS

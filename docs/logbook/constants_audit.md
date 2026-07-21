@@ -57,7 +57,14 @@ electron-PDF) — not oversights.
 - Naming trap: `constants.py:59 M_N = mn` (neutron, a DCC alias) collides with the cascade's
   `ox.M_N` (average). Inert today; do not "clean up" the imports.
 
-## Physics impact on Deviation 2 (nucleon reaction deficit)
-The elastic floor fix (`:412`) raises near-threshold pp σ but the extra hits are low-momentum-transfer
-and Pauli-blocked, so the **reacted** rate moves only 0.913→0.918 (identical-config replay, n=8000).
-**The mass bugs are NOT the driver of the ~9% reacted deficit** — that remains open.
+## Physics impact on Deviation 2 (nucleon reaction deficit) — SOLVED separately
+The mass fixes are NOT the driver: the elastic floor fix (`:412`) raises near-threshold pp σ but the
+extra hits are Pauli-blocked, so the reacted rate moved only 0.913→0.918.  The real driver was the
+**beam escape rule**: `_nucleon_step` escaped the un-scattered beam via a SPHERE (`|pos|>R`, trips at
+`z=sqrt(R^2-b^2)<R`), cutting the path short for impact parameter b>0 and missing the distant large-b
+neutrons (<b>=4.6 fm) that dominate the **pn** channel; ACHILLES uses a z-PLANE (`z>=R`, Cascade.cc:632)
+for the `external_test` beam.  Fix: `cfg.beam_zplane` gates z-plane escape to the un-scattered PRIMARY
+(`(origin==prim)&(nsc==0)`), leaving RES/QE production on the sphere.  Result (identical-config replay,
+n=8000): geometric 0.365->0.417 (ACHILLES 0.419), pn 0.286->0.332 (0.334), pp 0.085 (0.086); **reacted
+rate 0.913->1.021, every bin consistent with 1.0** (first bin 0.86->1.01).  Isolated via a direct
+first-hit iso decomposition (each event's struck species) vs ACHILLES CDSCAT pid2.

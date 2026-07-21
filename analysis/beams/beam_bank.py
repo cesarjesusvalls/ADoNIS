@@ -50,7 +50,7 @@ BEAMS = {"pip": (211, "PION", 0), "prot": (2212, "NUCLEON", 1), "neut": (2112, "
 
 
 def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
-          outdir="output/beam_bank", chunk=250_000, log=print):
+          outdir="output/beam_bank", chunk=250_000, log=print, pauli=True):
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
@@ -62,7 +62,8 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
     pid, species, charge = BEAMS[beam]
     tg = resolve_targets(target)[0][0]
     cfg = DiscreteCascadeConfig(nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs,
-                                step=0.04, pauli=True, nn_inelastic=True, engine="pool")
+                                step=0.04, pauli=pauli, nn_inelastic=True, engine="pool",
+                                beam_zplane=True)  # CrossSection external_test beam -> z-plane escape (Deviation 2)
     _rg, _rp, _rn, radius = _load_density(cfg.nucleus, cfg.density_n)
     z0 = -1.05 * float(radius)                  # InitCrossSection: 5% outside the nuclear surface
     mass = float(_CH_MASS[charge]) if species == "PION" else (_MP_PHYS if charge == 1 else _MN_PHYS)
@@ -208,8 +209,10 @@ if __name__ == "__main__":
                          "slots) are allocated per chunk BEFORE the ragged compaction, so peak memory "
                          "scales with THIS, not with the bank size.  250k thrashed a 16 GB box "
                          "(6.6 GB RSS, 8.2/9.2 GB swap); 50k is comfortable.")
+    ap.add_argument("--no-pauli", action="store_true", help="DEBUG: disable Pauli blocking (ablation)")
     a = ap.parse_args()
     out = a.out or f"output/beam_{a.beam}_C"
     t0 = time.time()
     build(a.beam, n=a.n, pmin=a.pmin, pmax=a.pmax, seed=a.seed, outdir=out, chunk=a.chunk,
+          pauli=not a.no_pauli,
           log=lambda s: print(f"[{time.time()-t0:7.1f}s] {s}", flush=True))

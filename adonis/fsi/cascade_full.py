@@ -180,9 +180,12 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             _kk = jax.vmap(lambda k: jax.random.split(k))(step_key)        # (n,2,2)
             kN, kP = _kk[:, 0], _kk[:, 1]                                  # per-particle nucleon/pion keys (n,2)
             # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
+            # un-scattered PRIMARY beam (external_test) -> z-plane escape when cfg.beam_zplane (excludes
+            # knockouts via origin, and the scattered primary via nsc): see _nucleon_step / Deviation 2.
+            is_beam_m = (stack["origin"][:, m] == _ORIG_PRIM_PI) & (nsc == 0)
             (p4n, posn, _dn, fzn, alnN, qln), escN, _rc, _do, koN, pinN, consumedN, nstat = _nucleon_step(
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
-                rgrid, rhoP, rhoN, radius, cfg, kN, dt_evt=_dt_e)
+                rgrid, rhoP, rhoN, radius, cfg, kN, dt_evt=_dt_e, is_beam=is_beam_m)
             # PION branch (charge = pion index 0/1/2); scatter continues, abs/conv removed.
             (p4p, posp, _dp, chp, nscp, alnP), escP, is_abs, is_conv, s1, s2, smes, consumedP, pstat = _pion_step(
                 p4, pos, dhat, chg, nsc, is_pi, npos, nmom, nisp, consumed,
