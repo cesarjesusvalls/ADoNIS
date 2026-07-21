@@ -65,7 +65,11 @@ def sigma_of_p(beam, edges, target="C"):
     """Combine all seed batches -> (sigma_reaction, sigma_second, err_r, err_s, n_r, n_s, n_tried).
     `second` = absorption for a pion beam, pion production for a nucleon beam."""
     pid, species, _q = BEAMS[beam]
-    stem = {"pip": "run_cascade_pip_C_broad", "prot": "run_cascade_prot_C", "neut": "run_cascade_neut_C"}[beam]
+    _STEM = {
+        "C":  {"pip": "run_cascade_pip_C_broad",  "prot": "run_cascade_prot_C",  "neut": "run_cascade_neut_C"},
+        "Ar": {"pip": "run_cascade_pip_Ar_broad", "prot": "run_cascade_prot_Ar", "neut": "run_cascade_neut_Ar"},
+    }
+    stem = _STEM[target][beam]
     paths = sorted(ACH_DIR.glob(f"{stem}*.hepmc"))
     if not paths:
         raise FileNotFoundError(f"no ACHILLES hepmc for {beam} ({stem}*)")

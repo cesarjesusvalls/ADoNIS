@@ -23,12 +23,13 @@ from analysis.beams import beam_bank as BB, achilles_beam as AB       # noqa: E4
 from analysis.paper import style                                       # noqa: E402
 
 BEAMS = ("pip", "prot", "neut")
-TITLE = {"pip": "$\\pi^+$ + $^{12}$C", "prot": "p + $^{12}$C", "neut": "n + $^{12}$C"}
+BEAM_TEX = {"pip": "$\\pi^+$", "prot": "p", "neut": "n"}
+NUCLEUS_TEX = {"C": "$^{12}$C", "Ar": "$^{40}$Ar"}
 SECOND = {"pip": "absorption", "prot": "$\\pi$ production", "neut": "$\\pi$ production"}
 
 
-def adonis_sigma(beam, nbins):
-    B = BB.load(f"output/beam_{beam}_C")
+def adonis_sigma(beam, nbins, target="C"):
+    B = BB.load(f"output/beam_{beam}_{target}")
     man = B["manifest"]
     p = np.asarray(B["beam_p"], float)
     edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
@@ -54,19 +55,19 @@ def chi2(a, b, ea, eb):
     return float(d.sum()), int(m.sum())
 
 
-def main(nbins=15):
+def main(nbins=15, target="C"):
     style.use()
     fig, axes = plt.subplots(4, 3, figsize=(13.5, 10.5), sharex="col",
                              gridspec_kw={"height_ratios": [3, 1.2, 3, 1.2], "hspace": 0.08, "wspace": 0.22})
     for c, beam in enumerate(BEAMS):
         try:
-            edges, ar, as_, aer, aes = adonis_sigma(beam, nbins)
+            edges, ar, as_, aer, aes = adonis_sigma(beam, nbins, target)
         except Exception as e:                                   # bank not built yet
             for r in range(4):
                 axes[r, c].text(.5, .5, f"{beam}: {e}", ha="center", va="center", fontsize=7,
                                 transform=axes[r, c].transAxes)
             continue
-        hr, hs, her, hes, _nr, _ns, ntried = AB.sigma_of_p(beam, edges)
+        hr, hs, her, hes, _nr, _ns, ntried = AB.sigma_of_p(beam, edges, target)
         cen = 0.5 * (edges[:-1] + edges[1:])
         # SAME visual conventions as the neutrino panels (adonis/workflow/plotting.chi2_ratio_panel):
         # ACHILLES = grey step + stat band, ADoNIS = blue squares, ratio ACH/ADO = red dots on a green band.
@@ -80,7 +81,8 @@ def main(nbins=15):
             x2, nd = chi2(A, H, EA, EH)
             ax.set_ylabel(f"$\\sigma$ [mb] — {lab}")
             if row == 0:
-                ax.set_title(f"{TITLE[beam]}   (ACHILLES {int(ntried):,} tried)", fontsize=9)
+                ax.set_title(f"{BEAM_TEX[beam]} + {NUCLEUS_TEX[target]}   (ACHILLES {int(ntried):,} tried)",
+                             fontsize=9)
             ax.set_ylim(bottom=0)
             ax.text(.03, .90, f"$\\chi^2$/ndf {x2/max(nd,1):.2f}", transform=ax.transAxes, fontsize=8)
             if row == 0 and c == 0:
@@ -97,11 +99,16 @@ def main(nbins=15):
             rx.text(0.04, 0.78, f"{x2/max(nd,1):.1f}", transform=rx.transAxes, fontsize=9)
             if row == 1:
                 rx.set_xlabel("tagged beam $|p|$ [MeV/c]")
-    fig.suptitle("Tagged-beam validation: ADoNIS vs ACHILLES on $^{12}$C  —  pure TRANSPORT "
+    fig.suptitle(f"Tagged-beam validation: ADoNIS vs ACHILLES on {NUCLEUS_TEX[target]}  —  pure TRANSPORT "
                  "(no hard vertex, no spectral function).  Band = $\\pm$5%", fontsize=10)
-    style.save(fig, "beams_validation")
+    style.save(fig, f"beams_validation_{target}")
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("--nbins", type=int, default=15)
-    main(**vars(ap.parse_args()))
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--nbins", type=int, default=15)
+    ap.add_argument("--target", default="both", help="C | Ar | both")
+    a = ap.parse_args()
+    targets = ["C", "Ar"] if a.target == "both" else [a.target]
+    for _t in targets:
+        main(nbins=a.nbins, target=_t)

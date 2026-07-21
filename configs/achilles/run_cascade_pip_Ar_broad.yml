@@ -1,0 +1,45 @@
+# ACHILLES cascade pi+ on 40Ar BROAD [50,1000] reaction/absorption cross section (paper Fig 3 / c12_ar40_validation, right).
+# achilles:cascade image, /achilles/bin/achilles-cascade, Mode: CrossSection.  Same setup as the 12C card
+# (run_cascade_pip_C.yml): uniform-momentum range beam [80,500], sigma(p) by binning; VirtRes interactions;
+# ProtonFile/NeutronFile densities (40Ar.yml).  ACHILLES SIGSEGVs mid-run -> use --seeds N.
+#   python -m analysis.utils.run_achilles configs/achilles/run_cascade_pip_Ar.yml --seeds 8
+Initialize:
+  seed: 123456789
+
+Nucleus:
+  Name: 40Ar
+  Binding: 8.6
+  Fermi Momentum: 250
+  Density:
+    ProtonFile: data/densities/rho_Ar_p.txt
+    NeutronFile: data/densities/rho_Ar_n.txt
+    FilePotential: data/realOP_12C_EDAI.dat
+    Function: configuration
+    Configs: data/configurations/AR40_configs_RMF_achilles.out.gz
+  FermiGas:
+    Type: Local
+    Params: []
+  Potential: 
+    Name: Schroedinger
+    r0: 0.16
+    Mode: 3
+
+Cascade:
+  Mode: CrossSection
+  # Virtual-Resonances interaction set (validated transparency cascade) -- see run_cascade_pip_C.yml.
+  Interactions: !include "data/default/VirtResInteractions.yml"
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+  Params:
+    radius: 10
+
+KickMomentum: [50, 1000]   # broad beam to match pip_C_broad + ADoNIS pip_Ar bank
+NEvents: 500000
+PID: 211
+
+Output:
+  Format: NuHepMC
+  Name: /out/run_cascade_pip_Ar_broad.hepmc
