@@ -210,9 +210,10 @@ if __name__ == "__main__":
                          "scales with THIS, not with the bank size.  250k thrashed a 16 GB box "
                          "(6.6 GB RSS, 8.2/9.2 GB swap); 50k is comfortable.")
     ap.add_argument("--no-pauli", action="store_true", help="DEBUG: disable Pauli blocking (ablation)")
+    ap.add_argument("--target", default="C", help="nucleus (C, Ar, ...) -- resolve_targets key")
     a = ap.parse_args()
-    out = a.out or f"output/beam_{a.beam}_C"
+    out = a.out or f"output/beam_{a.beam}_{a.target}"
     t0 = time.time()
-    build(a.beam, n=a.n, pmin=a.pmin, pmax=a.pmax, seed=a.seed, outdir=out, chunk=a.chunk,
+    build(a.beam, n=a.n, pmin=a.pmin, pmax=a.pmax, seed=a.seed, target=a.target, outdir=out, chunk=a.chunk,
           pauli=not a.no_pauli,
           log=lambda s: print(f"[{time.time()-t0:7.1f}s] {s}", flush=True))

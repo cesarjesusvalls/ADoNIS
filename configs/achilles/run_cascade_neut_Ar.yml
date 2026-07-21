@@ -1,0 +1,45 @@
+# ACHILLES cascade: NEUTRON on 40Ar, tagged beam 300-1400 MeV/c (KE ~50-800 MeV; straddles NN->NNpi ~290).
+# Mirror of run_cascade_neut_C.yml with the 40Ar nucleus block (rho_Ar_p/n densities + AR40 configs) from
+# run_cascade_pip_Ar.yml.  CrossSection mode; sigma(p) by binning the incoming |p|.  ACHILLES SIGSEGVs
+# mid-run -> use --seeds N.
+#   python -m analysis.utils.run_achilles configs/achilles/run_cascade_neut_Ar.yml --seeds 8
+Initialize:
+  seed: 123456789
+
+Nucleus:
+  Name: 40Ar
+  Binding: 8.6
+  Fermi Momentum: 250
+  Density:
+    ProtonFile: data/densities/rho_Ar_p.txt
+    NeutronFile: data/densities/rho_Ar_n.txt
+    FilePotential: data/realOP_12C_EDAI.dat
+    Function: configuration
+    Configs: data/configurations/AR40_configs_RMF_achilles.out.gz
+  FermiGas:
+    Type: Local
+    Params: []
+  Potential:
+    Name: Schroedinger
+    r0: 0.16
+    Mode: 3
+
+Cascade:
+  Mode: CrossSection
+  # Virtual-Resonances interaction set (validated transparency cascade) -- see run_cascade_pip_C.yml.
+  Interactions: !include "data/default/VirtResInteractions.yml"
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+  Params:
+    radius: 10
+
+KickMomentum: [300, 1400]   # broad TAGGED beam: uniform in |p|, sigma(p) by binning the incoming |p|
+NEvents: 500000
+PID: 2112
+
+Output:
+  Format: NuHepMC
+  Name: /out/run_cascade_neut_Ar.hepmc
