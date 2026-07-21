@@ -62,8 +62,7 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
     pid, species, charge = BEAMS[beam]
     tg = resolve_targets(target)[0][0]
     cfg = DiscreteCascadeConfig(nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs,
-                                step=0.04, pauli=pauli, nn_inelastic=True, engine="pool",
-                                beam_zplane=True)  # CrossSection external_test beam -> z-plane escape (Deviation 2)
+                                step=0.04, pauli=pauli, nn_inelastic=True, engine="pool")
     _rg, _rp, _rn, radius = _load_density(cfg.nucleus, cfg.density_n)
     z0 = -1.05 * float(radius)                  # InitCrossSection: 5% outside the nuclear surface
     mass = float(_CH_MASS[charge]) if species == "PION" else (_MP_PHYS if charge == 1 else _MN_PHYS)
@@ -101,6 +100,7 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
         g0["charge"] = jnp.full((m, 1), charge, jnp.int32)
         g0["p4"] = p4[:, None, :]; g0["pos"] = pos0[:, None, :]
         g0["origin"] = jnp.full((m, 1), CF._ORIG_PRIM_PI, jnp.int32)   # provenance tag for THE BEAM particle
+        g0["external_test"] = jnp.ones((m, 1), bool)   # ACHILLES external_test: CrossSection beam -> z-plane escape
         _base = jax.vmap(lambda e: jax.random.fold_in(knuc, e))(jnp.arange(m))
         g0["pkey"] = jax.vmap(lambda b: jax.random.fold_in(b, 0))(_base)[:, None, :]
 

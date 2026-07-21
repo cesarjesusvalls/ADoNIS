@@ -85,6 +85,9 @@ def empty_batch(n, P):
     return dict(species=jnp.zeros((n, P), jnp.int32), charge=jnp.zeros((n, P), jnp.int32),
                 p4=jnp.zeros((n, P, 4)), pos=jnp.zeros((n, P, 3)), fz=jnp.zeros((n, P)),
                 nsc=jnp.zeros((n, P), jnp.int32),                     # pion scatter count (pool: beam-vs-internal escape)
+                external_test=jnp.zeros((n, P), bool),                # ACHILLES ParticleStatus::external_test: the
+                #   CrossSection beam BEFORE its first interaction -> z-plane escape (Cascade.cc:632).  Set True
+                #   at beam init; cleared on the first realized interaction.  Default False = sphere (all else).
                 alive=jnp.zeros((n, P), bool), w=jnp.ones((n, P)), fate=jnp.zeros((n, P), jnp.int32),
                 origin=jnp.zeros((n, P), jnp.int32), gen=jnp.zeros((n, P), jnp.int32),
                 track_id=jnp.zeros((n, P), jnp.int32),                # MC-truth: unique id (tracking.py)
@@ -127,7 +130,8 @@ def compact(b, P_out, sort_priority=False):
     out = empty_batch(n, P_out)
     ar = jnp.broadcast_to(jnp.arange(n)[:, None], (n, M))
     dst = jnp.where(rank < P_out, rank, P_out)                    # P_out = scratch drop slot (will be sliced off)
-    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id", "nsc", "lstep", "gtime"):
+    for k in ("species", "charge", "fate", "origin", "gen", "track_id", "parent_id", "nsc", "lstep", "gtime",
+              "external_test"):
         if k not in b:                                            # optional (e.g. BFS kernel spawns omit nsc)
             continue
         out[k] = jnp.zeros((n, P_out + 1), b[k].dtype).at[ar, dst].set(b[k], mode="drop")[:, :P_out]
@@ -180,12 +184,10 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             _kk = jax.vmap(lambda k: jax.random.split(k))(step_key)        # (n,2,2)
             kN, kP = _kk[:, 0], _kk[:, 1]                                  # per-particle nucleon/pion keys (n,2)
             # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
-            # un-scattered PRIMARY beam (external_test) -> z-plane escape when cfg.beam_zplane (excludes
-            # knockouts via origin, and the scattered primary via nsc): see _nucleon_step / Deviation 2.
-            is_beam_m = (stack["origin"][:, m] == _ORIG_PRIM_PI) & (nsc == 0)
             (p4n, posn, _dn, fzn, alnN, qln), escN, _rc, _do, koN, pinN, consumedN, nstat = _nucleon_step(
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
-                rgrid, rhoP, rhoN, radius, cfg, kN, dt_evt=_dt_e, is_beam=is_beam_m)
+                rgrid, rhoP, rhoN, radius, cfg, kN, dt_evt=_dt_e,
+                is_beam=stack["external_test"][:, m])   # ACHILLES external_test -> z-plane escape (Deviation 2)
             # PION branch (charge = pion index 0/1/2); scatter continues, abs/conv removed.
             (p4p, posp, _dp, chp, nscp, alnP), escP, is_abs, is_conv, s1, s2, smes, consumedP, pstat = _pion_step(
                 p4, pos, dhat, chg, nsc, is_pi, npos, nmom, nisp, consumed,
@@ -230,6 +232,10 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             # (pterm["nsc"]), which is untouched.
             n_react = is_N & (_do.astype(bool) | nstat[5])            # realized elastic OR inelastic
             nsc_2 = jnp.where(is_pi, nscp, nsc + n_react.astype(jnp.int32))
+            # external_test (ACHILLES status) is cleared on the FIRST realized interaction of this particle
+            # -- nucleon scatter/inelastic (n_react) OR pion scatter/absorb/convert -> becomes 'propagating'.
+            _react = n_react | (is_pi & ((nscp > nsc) | is_abs | is_conv))
+            et_2 = stack["external_test"][:, m] & ~_react
             # nucleon charge can now change: NN elastic charge-exchange / inelastic leading channel charge
             # (qln from _nucleon_step; == incident charge when no scatter).  Pion charge oscillates (chp).
             chg_2 = jnp.where(is_N, qln, jnp.where(is_pi, chp, chg))
@@ -251,7 +257,7 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             fate_2 = jnp.where((is_N & escN) | (is_pi & escP), FATE_ESCAPE,
                      jnp.where(is_pi & is_abs, FATE_ABSORB,
                      jnp.where(is_pi & is_conv, FATE_CONVERT, FATE_NONE))).astype(jnp.int32)
-            new = (p4_2, pos_2, fz_2, nsc_2, chg_2, al_2, term, fate_2)
+            new = (p4_2, pos_2, fz_2, nsc_2, chg_2, al_2, term, fate_2, et_2)
             # nucleon-slot knockout / pion-slot 1st product -> nuc1; pion-slot 2nd product -> nuc2.
             nuc1 = tuple(jnp.where(is_N, kn, jnp.where(is_pi, s1k, dk)) if kn.ndim == 1
                          else jnp.where(is_N[:, None], kn, jnp.where(is_pi[:, None], s1k, dk))
@@ -298,13 +304,13 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         consumed, scanned = jax.lax.scan(slot, consumed, jnp.arange(M))
         new, nuc1, nuc2, pio = scanned[:4]
         T = lambda x: jnp.moveaxis(x, 0, 1)                          # (M, n, ...) -> (n, M, ...)
-        p4s, poss, fzs, nscs, chgs, als, terms, fates = new
+        p4s, poss, fzs, nscs, chgs, als, terms, fates, ets = new
         # accumulated path: +beta*step (time-sync) or +step (distance-sync) per processed step, from the
         # PRE-step momentum -- the same _dstep the slot cap uses, vectorised over the whole stack.
         _beta_all = jnp.linalg.norm(stack["p4"][:, :, 1:], axis=2) / jnp.clip(stack["p4"][:, :, 0], 1e-9, None)
         _dstep_all = _beta_all * _dt_e[:, None] if cfg.time_step else jnp.full_like(_beta_all, cfg.step)
         stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "nsc": T(nscs),
-                  "charge": T(chgs), "alive": T(als), "fate": T(fates),
+                  "charge": T(chgs), "alive": T(als), "fate": T(fates), "external_test": T(ets),
                   "lstep": stack["lstep"] + stack["alive"].astype(jnp.int32),   # +1 per processed (alive) step
                   "lpath": stack["lpath"] + _dstep_all * stack["alive"].astype(stack["lpath"].dtype),
                   "gtime": stack["gtime"] + stack["alive"].astype(jnp.int32)}   # absolute time advances in lockstep

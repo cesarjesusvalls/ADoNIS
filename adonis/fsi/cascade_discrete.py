@@ -310,12 +310,6 @@ class DiscreteCascadeConfig:
                              # 10 MeV optical-potential capture is SEPARATE from (and always on, unlike)
                              # the PotentialProp:True Hamiltonian capture.  Mirrors ACHILLES's hard-coded
                              # 10.0 -> keep in sync with it; set 0.0 only for no-capture ablations.
-    beam_zplane: bool = False  # CrossSection beam-transport mode: the un-scattered PRIMARY beam escapes via
-                             # the z>=radius PLANE (ACHILLES external_test, Cascade.cc:632), NOT the sphere.
-                             # The sphere (|pos|>R & outward) trips at z=sqrt(R^2-b^2)<R, cutting the beam's
-                             # path short for impact parameter b>0 and missing distant (large-b) candidates
-                             # -- the pn-channel first-hit deficit (Deviation 2).  Knockouts/secondaries and
-                             # ALL of RES/QE production (no external beam) keep the sphere -> leave False there.
 
 
 def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
@@ -373,11 +367,12 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     n, A = nisp.shape; ar = jnp.arange(n)
     outward = jnp.sum(pos * dhat, axis=1) > 0
     esc_sphere = (jnp.linalg.norm(pos, axis=1) > radius) & outward
-    # CrossSection external_test beam (un-scattered PRIMARY, is_beam): escape via the z>=radius PLANE
-    # (ACHILLES Cascade.cc:632) -- the sphere trips at z=sqrt(R^2-b^2)<R and cuts the beam path short for
-    # impact parameter b>0, missing distant large-b candidates (the pn first-hit deficit, Deviation 2).
-    # Scattered primary + knockouts/secondaries + all RES/QE: sphere.  Gated by cfg.beam_zplane.
-    if cfg.beam_zplane and is_beam is not None:
+    # ACHILLES external_test beam (is_beam == ParticleStatus::external_test, the un-scattered CrossSection
+    # beam) escapes via the z>=radius PLANE (Cascade.cc:632); everything else -- scattered primary,
+    # knockouts/secondaries, all RES/QE -- escapes via the sphere.  The sphere trips at z=sqrt(R^2-b^2)<R,
+    # cutting the beam path short for impact parameter b>0 and missing distant large-b candidates (the
+    # pn-channel first-hit deficit, Deviation 2).
+    if is_beam is not None:
         escaping = jnp.where(is_beam, pos[:, 2] >= radius, esc_sphere)
     else:
         escaping = esc_sphere
