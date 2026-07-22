@@ -90,6 +90,11 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
         kn, kp = jax.random.split(k_nuc, 2)
         npos, nmom, nisp = sample_nucleons(kn, m, cfg)
         A = nisp.shape[1]
+        # FSI-record slot caps must SCALE WITH THE NUCLEUS: a heavier target gives longer cascades and
+        # more vertices per event.  Overflow is a hard assert below, so under-sizing kills the shard --
+        # (96,256) is validated for 12C but overflowed on 40Ar (pion beam worst: 112 shards lost).
+        # ceil(A/12): 12C -> 1x (unchanged), 40Ar -> 4x.
+        _sc = max(1, -(-A // 12))
         su = dict(npos=npos, nmom=nmom, nisp=nisp, pos0=pos0, consumed0=jnp.zeros((m, A), bool),
                   ch0=jnp.full(m, charge if species == "PION" else 0, jnp.int32), kp=kp)
         _k1, knuc, _k2 = jax.random.split(su["kp"], 3)
@@ -107,7 +112,7 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
         stepper = CF.make_pool_stepper(su, cfg, with_rec=True)
         out, _sofl, _oofl, prim_fate, (rec, rofl) = CF.run_cascade_pool(
             g0, stepper, knuc, su["consumed0"], M=12, max_steps=2000, M_out=24,
-            prim_origin=CF._ORIG_PRIM_PI, rec_caps=(96, 256))
+            prim_origin=CF._ORIG_PRIM_PI, rec_caps=(96 * _sc, 256 * _sc))
         assert int(rofl) == 0, f"FSI record overflow in chunk {c}"
         log(f"  chunk {c+1}/{n_chunks}: cascade done ({m:,} ev, {time.time()-t0:.0f}s)")
 
