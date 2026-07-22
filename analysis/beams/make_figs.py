@@ -26,11 +26,21 @@ BEAMS = ("pip", "prot", "neut")
 BEAM_TEX = {"pip": "$\\pi^+$", "prot": "p", "neut": "n"}
 NUCLEUS_TEX = {"C": "$^{12}$C", "Ar": "$^{40}$Ar"}
 SECOND = {"pip": "absorption", "prot": "$\\pi$ production", "neut": "$\\pi$ production"}
+# Which ADoNIS cascade build each bank suffix corresponds to -- stamped on the figure so two
+# otherwise-identical-looking plots can never be confused.
+BUILD = {"": "BASELINE build (no pion birth-position fix)",
+         "_bpfix": "WITH pion birth-position fix (D7)"}
 
 
-def adonis_sigma(beam, nbins, target="C"):
-    B = BB.load(f"output/beam_{beam}_{target}")
+def adonis_sigma(beam, nbins, target="C", suffix=""):
+    # `suffix` selects an alternative bank build (e.g. "_bpfix" = pion birth-position fix).  A beam that
+    # has no suffixed bank falls back to the canonical one, so a partial regeneration still plots.
+    path = f"output/beam_{beam}_{target}{suffix}"
+    if suffix and not Path(path).is_dir():
+        path = f"output/beam_{beam}_{target}"
+    B = BB.load(path)
     man = B["manifest"]
+    adonis_sigma.last = (path, int(man.get("n_total", 0)))    # for labelling the panel
     p = np.asarray(B["beam_p"], float)
     edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
     idx = np.clip(np.digitize(p, edges) - 1, 0, nbins - 1)
@@ -55,13 +65,13 @@ def chi2(a, b, ea, eb):
     return float(d.sum()), int(m.sum())
 
 
-def main(nbins=15, target="C"):
+def main(nbins=15, target="C", suffix=""):
     style.use()
     fig, axes = plt.subplots(4, 3, figsize=(13.5, 10.5), sharex="col",
                              gridspec_kw={"height_ratios": [3, 1.2, 3, 1.2], "hspace": 0.08, "wspace": 0.22})
     for c, beam in enumerate(BEAMS):
         try:
-            edges, ar, as_, aer, aes = adonis_sigma(beam, nbins, target)
+            edges, ar, as_, aer, aes = adonis_sigma(beam, nbins, target, suffix)
         except Exception as e:                                   # bank not built yet
             for r in range(4):
                 axes[r, c].text(.5, .5, f"{beam}: {e}", ha="center", va="center", fontsize=7,
@@ -81,8 +91,11 @@ def main(nbins=15, target="C"):
             x2, nd = chi2(A, H, EA, EH)
             ax.set_ylabel(f"$\\sigma$ [mb] — {lab}")
             if row == 0:
-                ax.set_title(f"{BEAM_TEX[beam]} + {NUCLEUS_TEX[target]}   (ACHILLES {int(ntried):,} tried)",
-                             fontsize=9)
+                _bp, _bn = getattr(adonis_sigma, "last", ("?", 0))
+                _tag = "post-fix" if _bp.endswith("_bpfix") else "baseline"
+                ax.set_title(f"{BEAM_TEX[beam]} + {NUCLEUS_TEX[target]}   "
+                             f"(ACHILLES {int(ntried):,} tried | ADoNIS {_bn/1e6:.2f}M ev, {_tag})",
+                             fontsize=8)
             ax.set_ylim(bottom=0)
             ax.text(.03, .90, f"$\\chi^2$/ndf {x2/max(nd,1):.2f}", transform=ax.transAxes, fontsize=8)
             if row == 0 and c == 0:
@@ -100,15 +113,20 @@ def main(nbins=15, target="C"):
             if row == 1:
                 rx.set_xlabel("tagged beam $|p|$ [MeV/c]")
     fig.suptitle(f"Tagged-beam validation: ADoNIS vs ACHILLES on {NUCLEUS_TEX[target]}  —  pure TRANSPORT "
-                 "(no hard vertex, no spectral function).  Band = $\\pm$5%", fontsize=10)
-    style.save(fig, f"beams_validation_{target}")
+                 "(no hard vertex, no spectral function).  Band = $\\pm$5%\n"
+                 f"ADoNIS cascade: {BUILD.get(suffix, suffix)}"
+                 + ("   [only the p column differs between builds; $\\pi^+$/n reuse the baseline banks]"
+                    if suffix else ""),
+                 fontsize=10)
+    style.save(fig, f"beams_validation_{target}{suffix}")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--nbins", type=int, default=15)
     ap.add_argument("--target", default="both", help="C | Ar | both")
+    ap.add_argument("--suffix", default="", help="bank suffix, e.g. _bpfix")
     a = ap.parse_args()
     targets = ["C", "Ar"] if a.target == "both" else [a.target]
     for _t in targets:
-        main(nbins=a.nbins, target=_t)
+        main(nbins=a.nbins, target=_t, suffix=a.suffix)

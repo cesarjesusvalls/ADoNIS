@@ -365,8 +365,12 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     Returns: (p4', pos', dhat', fz', alive'), terminal, recap, do, (ko4,kopos,kofz,koisp,koal),
              (pi4,pipos,pifz,pich,pial), consumed', (has_hit, perp2_c, sig_c)."""
     n, A = nisp.shape; ar = jnp.arange(n)
-    outward = jnp.sum(pos * dhat, axis=1) > 0
-    esc_sphere = (jnp.linalg.norm(pos, axis=1) > radius) & outward
+    # D1: ACHILLES's Escaped() (Cascade.cc:640) is a PURE position test -- `Position().Magnitude2() >
+    # radius^2` -- with NO directional gate.  We used to require `& outward` (momentum pointing away),
+    # which retired strictly fewer particles than ACHILLES: one beyond the radius but momentarily moving
+    # inward/tangentially (the surface competition zone for a created pion) stayed interaction-eligible
+    # here while ACHILLES had already counted it escaped, giving extra reabsorption chances.
+    esc_sphere = jnp.linalg.norm(pos, axis=1) > radius
     # ACHILLES external_test beam (is_beam == ParticleStatus::external_test, the un-scattered CrossSection
     # beam) escapes via the z>=radius PLANE (Cascade.cc:632); everything else -- scattered primary,
     # knockouts/secondaries, all RES/QE -- escapes via the sphere.  The sphere trips at z=sqrt(R^2-b^2)<R,
@@ -566,7 +570,23 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     # created pion spawn (inelastic only)
     pi_alive = is_inel & (jnp.linalg.norm(_pPiX[:, 1:], axis=1) > 1.0)
     pi_fz = _formation_zone(p4, _pPiX)
-    pi_pos = npos[ar, j]
+    # BIRTH POSITION of the Delta's decay products (ACHILLES NucleonNucleon.cc, ResonanceMode::Decay):
+    # when the Delta is out_ids[0] ("slot a") the products are inserted at particle1.Position() -- the
+    # LEADING nucleon -- because the `decay.Position() = particle2.Position()` override there runs AFTER
+    # decays_out.insert() and is dead code; when the Delta is out_ids[1] ("slot b") they get
+    # particle2.Position(), the STRUCK nucleon.  a/b is the same 50/50 mode split as the elastic branch.
+    # ADoNIS always used the struck vertex -> the pion started up to ~an impact parameter deeper/shallower
+    # than ACHILLES for half the vertices, changing how much material it traverses before escaping.
+    # VERIFIED against NucleonNucleon.cc: allowed_states (:38-45) lists the Delta FIRST in EVERY
+    # NN->NDelta channel, so out_ids[0] is always the resonance -> info_a.IsResonance() is always true
+    # and info_b never is.  Only one branch ever runs: decays_a is built at particle1.Position() (:161)
+    # and inserted (:162) BEFORE the `decay.Position() = particle2.Position()` override (:163), which is
+    # therefore dead code operating on an already-copied vector.  Net: the Delta's products -- the
+    # nucleon AND the pion -- are ALWAYS born at particle1.Position(), the LEADING nucleon; only the
+    # slot-b nucleon (:172) sits at particle2.Position().  There is no 50/50 slot coin.
+    # ADoNIS's leading continues at `pos` and the knockout spawns at `npos[ar,j]`, matching :161/:172,
+    # so the pion belongs at `pos`.  (Was: always npos -> struck vertex; then a 50/50 mix -> half right.)
+    pi_pos = jnp.broadcast_to(pos, _pPiX[:, 1:].shape)
     # leading update + consumed depletion + fz + advance
     p4 = jnp.where(do[:, None], p_out, jnp.where(is_inel[:, None], lead_in, p4))
     consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & (do | is_inel)[:, None])
@@ -581,7 +601,7 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
 
 
 def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
-               rgrid, rhoP, rhoN, radius, cfg, key, dt_evt=None):
+               rgrid, rhoP, rhoN, radius, cfg, key, dt_evt=None, is_beam=None):
     """ONE step of the PION cascade for one pion per event (n,) -- a line-for-line extraction of
     `_propagate_discrete.body` (algo="step"), re-expressed for the POOLED engine: the absorption
     products (piNN->NN, up to 2 protons), the scatter recoil, and the eta-N' conversion baryon are
@@ -603,11 +623,20 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     # escaped explicitly here for ALL nsc; otherwise an un-scattered (nsc==0) pion leaving in any
     # direction but +z never triggers esc_plane/esc_sphere and idles to max_steps (BFS treats these as
     # inert-survived).  inert subsumes esc_sphere; esc_plane keeps the +z beam-transparency convention.
-    ext = nsc == 0
-    outward = jnp.sum(pos * dhat, axis=1) > 0
-    esc_plane = ext & (pos[:, 2] >= radius)
-    inert = (jnp.linalg.norm(pos, axis=1) > radius) & outward          # outside & outward -> will escape
-    escaping = esc_plane | inert
+    # D2: use the EXPLICIT external_test flag, not the `nsc==0` proxy.  Only ACHILLES's
+    # ParticleStatus::external_test beam gets the z-plane rule (Cascade.cc:628-651); every secondary is
+    # pushed as Status::propagating (Cascade.cc:965-973).  A CREATED pion is also nsc==0 at birth, so the
+    # old proxy wrongly handed it the beam's plane escape.  Fall back to the proxy only when the caller
+    # supplies no flag (legacy/non-pool callers), where the pion beam IS the nsc==0 particle.
+    ext = (nsc == 0) if is_beam is None else is_beam
+    # D1: pure position test, no `& outward` gate -- matches Cascade.cc:640.  See _nucleon_step.
+    esc_sphere = jnp.linalg.norm(pos, axis=1) > radius
+    # Cascade.cc:632 is an if/else, NOT a union: the external_test beam is tested ONLY against the
+    # z-plane, everything else ONLY against the sphere.  This matters because the beam is launched at
+    # z0 = -1.05*radius, i.e. ALREADY OUTSIDE the sphere -- OR-ing the two tests (as the old
+    # `esc_plane | inert` did) escapes the beam at step 0 the moment the `& outward` guard is removed,
+    # and the pion beam never interacts at all.  Mirrors _nucleon_step's jnp.where.
+    escaping = jnp.where(ext, pos[:, 2] >= radius, esc_sphere)
     alive = alive & ~escaping
     # STEPPING CLOCK (see _nucleon_step): time-sync -> sweep beta*dt_evt (dt_evt=step/beta_max from the pool);
     # else fixed step.  Pions carry NO formation zone (ACHILLES skips IsPion in InFormationZone) -> slab+advance only.

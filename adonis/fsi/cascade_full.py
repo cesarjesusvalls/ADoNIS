@@ -191,7 +191,8 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             # PION branch (charge = pion index 0/1/2); scatter continues, abs/conv removed.
             (p4p, posp, _dp, chp, nscp, alnP), escP, is_abs, is_conv, s1, s2, smes, consumedP, pstat = _pion_step(
                 p4, pos, dhat, chg, nsc, is_pi, npos, nmom, nisp, consumed,
-                rgrid, rhoP, rhoN, radius, cfg, kP, dt_evt=_dt_e)
+                rgrid, rhoP, rhoN, radius, cfg, kP, dt_evt=_dt_e,
+                is_beam=stack["external_test"][:, m])   # D2: real external_test flag, not the nsc==0 proxy
             # kind-1 FSI reweight sufficient statistics (mirrors the legacy brec/srec per-step records):
             #   pion: record every geometric hit (has_hit) -> branch code + sigma components (sa,ss,si).
             #   nucleon: record every in-slab candidate step (perp2_c<1e5) -> hit flag + a_nom=pi b^2/sigma.
