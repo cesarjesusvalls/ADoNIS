@@ -140,6 +140,31 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
         n_pi_out = pi_alive.sum(axis=1).astype(np.int16)
         n_p_out = ((O["species"] == CF.NUCLEON) & O["alive"] & (O["charge"] == 1)).sum(axis=1).astype(np.int16)
         n_n_out = ((O["species"] == CF.NUCLEON) & O["alive"] & (O["charge"] == 0)).sum(axis=1).astype(np.int16)
+        # charge-resolved final-state multiplicities.  PION charge index: 0=pi+, 1=pi0, 2=pi-, 3=eta
+        # (the eta rides the PION species slot).  Nucleon charge: 1=p, 0=n (already in n_p/n_n_out).
+        _PI = (O["species"] == CF.PION) & O["alive"]
+        n_pip = (_PI & (O["charge"] == 0)).sum(axis=1).astype(np.int16)
+        n_pi0 = (_PI & (O["charge"] == 1)).sum(axis=1).astype(np.int16)
+        n_pim = (_PI & (O["charge"] == 2)).sum(axis=1).astype(np.int16)
+        n_eta = (_PI & (O["charge"] == 3)).sum(axis=1).astype(np.int16)
+
+        # ---- FLATTENED per-particle final-state kinematics (every ESCAPED particle) ------------------ #
+        # Ragged over the (m, M_out) output buffer: keep only alive slots, flatten, tag with event index
+        # (offset into the global numbering in load(), like the FSI eidx).  Gives momentum + angular
+        # spectra per species/charge without re-running.  cth = pz/|p| vs the +z beam axis.
+        _al = O["alive"]
+        _p3 = O["p4"][:, :, 1:]
+        _pm = np.linalg.norm(_p3, axis=2)
+        _cth = _p3[:, :, 2] / np.clip(_pm, 1e-9, None)
+        _eidx_grid = np.broadcast_to(np.arange(m, dtype=np.int32)[:, None], _al.shape)
+        ks_save = {
+            "ks_eidx": _eidx_grid[_al].astype(np.int32),
+            "ks_species": O["species"][_al].astype(np.int8),
+            "ks_charge": O["charge"][_al].astype(np.int8),
+            "ks_pmag": _pm[_al].astype(np.float32),
+            "ks_cth": _cth[_al].astype(np.float32),
+            "ks_prim": (O["origin"][_al] == CF._ORIG_PRIM_PI),
+        }
 
         flat = CF.compact_fsi_record({k: np.asarray(v) for k, v in rec.items()})
         fsi_save = {"f_p_eidx": flat["p_eidx"].astype(np.int32), "f_n_eidx": flat["n_eidx"].astype(np.int32)}
@@ -155,8 +180,9 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
                  w0=np.full(m, PIR2_MB, np.float64),        # pi R^2 [mb]; sigma(bin) = <w0 * X * w(theta)>
                  reacted=reacted, absorbed=absorbed,
                  n_pi_out=n_pi_out, n_p_out=n_p_out, n_n_out=n_n_out,
+                 n_pip=n_pip, n_pi0=n_pi0, n_pim=n_pim, n_eta=n_eta,
                  nsc_prim=np.asarray(nsc_prim, np.int16), prim_fate=prim_fate.astype(np.int8),
-                 **fsi_save)
+                 **fsi_save, **ks_save)
         log(f"  chunk {c+1}/{n_chunks}: written | reacted {reacted.mean():.3f} | absorbed {absorbed.mean():.3f} "
             f"| <n_pi_out> {n_pi_out.mean():.3f} | pion slots {len(flat['p_eidx']):,} nucleon {len(flat['n_eidx']):,}")
 
@@ -178,7 +204,7 @@ def load(outdir):
         nev = len(d["w0"])
         for k in d.files:
             v = d[k]
-            if k in ("f_p_eidx", "f_n_eidx"):
+            if k in ("f_p_eidx", "f_n_eidx", "ks_eidx"):
                 v = v.astype(np.int64) + ev_off       # per-slot event index -> global numbering
             per.setdefault(k, []).append(v)
         ev_off += nev
