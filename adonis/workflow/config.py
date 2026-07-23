@@ -50,7 +50,10 @@ class CascadeHyperparams:
     nn_inelastic: bool = True
     time_step: bool = False     # stepping clock: False = distance-sync (every particle sweeps `step`);
                                 #   True = ACHILLES AdaptiveStep time-sync (Dt=step/beta_max per round)
-    path_budget_R: float = 3.0  # physics termination: drop a particle once its path length > this * radius
+    path_budget_R: float = 20.0  # runaway backstop (was 3.0): drop a particle once its path length > this
+                                #   * radius.  20R never clips a real escaping/capturing track (net escape
+                                #   ~1R); at 3R it silently clipped ~0.009% slow random-walkers -> reacted
+                                #   mis-count.  Keep in sync with DiscreteCascadeConfig + tune.POOLCFG.
     mprot: int = 6              # top-M proton terminals stored per event (-> ADONIS_MPROT)
 
 
