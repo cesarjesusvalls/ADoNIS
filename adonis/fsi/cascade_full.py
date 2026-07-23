@@ -33,7 +33,7 @@ from adonis.fsi.cascade_discrete import (_CH_PID, sample_nucleons, MB_TO_FM2, pi
                                          fsi_nucleon_reweight_flat, fsi_nncex_reweight_flat)
 
 PION, NUCLEON = 0, 1
-FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT = 0, 1, 2, 3
+FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT, FATE_CAPTURE = 0, 1, 2, 3, 4
 _ORIG_PRIM_PI = 2          # pool origin tag for the RES PRIMARY pion (0=RES recoil/QE chain, 1=pi-knockout)
 _TRACK_OFFSET = 1000       # daughter track_ids start here (> any primary track_id); see make_pool_stepper
 # Engine DEFAULTS (cascade_nucleus): refill + waiting-queue are ON by default so every consumer gets the
@@ -258,9 +258,14 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             term = (is_N & escN) | (is_pi & escP)                    # escaped = final-state (collected)
             # per-slot fate (for the primary-pion latch in run_cascade_pool; output stays escape-only):
             # nucleon/pion escape -> ESCAPE, pion absorbed -> ABSORB, pion converted -> CONVERT.
-            fate_2 = jnp.where((is_N & escN) | (is_pi & escP), FATE_ESCAPE,
+            # D12-followup: a CAPTURED nucleon (KE<10 MeV at the boundary) is bound, NOT emitted to the
+            # final state (escN excludes it), but it DID react -- record FATE_CAPTURE so the primary-fate
+            # latch preserves its reaction (its nsc is otherwise lost when it leaves the output).  This is
+            # ACHILLES status-26: recorded (reaction counted) but not status-1 (not a final-state particle).
+            fate_2 = jnp.where(is_N & capturedN, FATE_CAPTURE,
+                     jnp.where((is_N & escN) | (is_pi & escP), FATE_ESCAPE,
                      jnp.where(is_pi & is_abs, FATE_ABSORB,
-                     jnp.where(is_pi & is_conv, FATE_CONVERT, FATE_NONE))).astype(jnp.int32)
+                     jnp.where(is_pi & is_conv, FATE_CONVERT, FATE_NONE)))).astype(jnp.int32)
             new = (p4_2, pos_2, fz_2, nsc_2, chg_2, al_2, term, fate_2, et_2)
             # nucleon-slot knockout / pion-slot 1st product -> nuc1; pion-slot 2nd product -> nuc2.
             nuc1 = tuple(jnp.where(is_N, kn, jnp.where(is_pi, s1k, dk)) if kn.ndim == 1
@@ -607,7 +612,11 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         extra = _step[4] if len(_step) >= 5 else None
         term_batch = {**stk2, "alive": terminal}
         out2, oo = compact({k: jnp.concatenate([out[k], term_batch[k]], axis=1) for k in out}, M_out)
-        isprim = (stk2["origin"] == prim_origin) & (stk2["species"] == PION) & (stk2["fate"] != FATE_NONE)
+        # Latch the PRIMARY's terminal fate.  Was PION-only (RES primary pion); now species-agnostic so a
+        # nucleon-beam primary's fate (ESCAPE or CAPTURE) is also latched -- only the continuing primary
+        # carries origin==prim_origin, so this catches exactly it (pion for RES, nucleon for a beam; T2K
+        # QE has prim_origin=-999 -> no match, unchanged).
+        isprim = (stk2["origin"] == prim_origin) & (stk2["fate"] != FATE_NONE)
         anyp = jnp.any(isprim, axis=1); j = jnp.argmax(isprim, axis=1)
         prim = jnp.where(anyp & (prim == FATE_NONE), stk2["fate"][ar, j], prim)
         if with_rec:

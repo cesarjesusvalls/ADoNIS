@@ -134,7 +134,12 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
         else:
             prim_N = is_prim & (O["species"] == CF.NUCLEON)
             nsc_prim = (O["nsc"] * prim_N).max(axis=1)                   # POST-PAULI nucleon interactions
-            reacted = nsc_prim > 0
+            # A primary nucleon that reacted and was then CAPTURED (KE<10 MeV) is bound -> removed from the
+            # final-state output (D12), so nsc_prim can't see it (nsc_prim=0).  Its capture is latched in
+            # prim_fate (FATE_CAPTURE); count it as reacted (a captured primary necessarily scattered to
+            # slow below 10 MeV).  Without this, captured primaries were mis-counted as non-reacted ->
+            # low-momentum reaction + N_p=0 deficit (v2->v2k regression).
+            reacted = (nsc_prim > 0) | (prim_fate == CF.FATE_CAPTURE)
             absorbed = np.zeros(m, bool)                                 # nucleons are not absorbed
         # pion PRODUCTION by a nucleon beam = the NN->NNpi inelastic channel -> the s_NN_inelastic handle
         n_pi_out = pi_alive.sum(axis=1).astype(np.int16)
