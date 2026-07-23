@@ -331,3 +331,30 @@ isolation. `base` reproduces `beam_bank.py:114` exactly.
 | FSI `rec_caps` scaling by `ceil(A/12)` | — |
 
 Deviation 2 result: reacted rate 0.913→1.021; χ²/ndf prot reaction 4.07→0.86, neut 2.17→0.40.
+
+---
+
+## FINAL — full regen on corrected code (commit e7f5d84), all banks validated (2026-07-23)
+
+Fixes: D12 capture partition (44cec6d) + D12-regression fix (50ca799: captured nucleons removed from
+output lost their reaction record -> latch FATE_CAPTURE into prim_fate) + path_budget_R 3->20 (e7f5d84).
+
+**Hadronic beams — reaction chi2/ndf (was 6.06 broken for prot on the buggy v2k):**
+
+| beam | C | Ar |
+|---|---|---|
+| pi+  | 0.57 | 1.34 |
+| p    | 0.67 | 1.16 |
+| n    | 0.41 | 0.79 |
+
+(second observable chi2/ndf: pip absorption C 1.26 / Ar 2.12; prot pi-prod C 0.84 / Ar 1.35;
+neut pi-prod C 0.55 / Ar 1.28. pip_Ar absorption 2.12 is a pre-existing pion-absorption residual,
+unrelated to the reaction/capture fixes.)
+
+**N_p=0 (proton beams), reacted, ADoNIS vs ACHILLES:** C 0.0122 vs 0.0121; Ar 0.0140 vs 0.0141.
+
+**T2K neutrino N_p=0 (QE+RES), ADoNIS_v3 vs ACHILLES:** inclusive 0.0392 vs 0.0391; muon-cut 0.0488 vs
+0.0488. Undisturbed by the fixes (as expected -- T2K counts final-state from fs_p4, not the reacted flag).
+
+All banks (beam_{pip,prot,neut}_{C,Ar}_v3, event_bank_v3) reproduce ACHILLES reaction, capture (N_p=0),
+and multiplicity on the corrected code. The D12 regression and the path_budget clipping are RESOLVED.
