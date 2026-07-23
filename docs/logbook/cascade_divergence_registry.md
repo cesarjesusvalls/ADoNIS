@@ -56,6 +56,24 @@ improvement.
 - **D10** per-draw ZXZ Euler rotation of configs (Configuration.cc:76-79).
 - **D8** Δ⁺/Δ⁰→Nγ BR 0.0055 (decays.yml).
 
+## Bug audit of v1+v2 (5 adversarial Sonnet auditors, 2026-07-23)
+
+Every fix in commits 44cec6d (D1/D2/D7) and 801855c (D3/D6/D8/D10) was independently audited against the
+ACHILLES source, adversarially (assume-a-bug). **All seven verified CLEAN — no bug found.**
+- D10 einsum is `R@vec` not `Rᵀ@vec` (numerically confirmed 4e-16); matrix matches ThreeVector.cc entry-for-entry.
+- D6 inverse-CDF algebraically identical to DecayHandler.cc; axis-equivalence confirmed by replicating the
+  Poincaré rotation; ⟨cos²⟩=0.467; the +2% is REAL PHYSICS (ACHILLES uses the same forward-peaked decay).
+- D3 incoming `dhat` and `_dstep` are both pre-scatter at the displacement line; matches Propagate-before-
+  FinalizeMomentum.
+- D8 `dch∈{0,1}` correctly selects Δ⁰/Δ⁺; fold 111 collision-free. D1 if/else escape (not union). D2 flag
+  correctly threaded, created pions never get external_test. D7 pion-at-`pos`=particle1.Position(), and the
+  pi_pos line sits before the pos-update in BOTH v1 and v2 (no D3 line-order regression).
+
+**Conclusion: the prot_Ar +1.9σ overshoot is NOT a bug in the fixes.** v1's 0.998 agreement was partly
+compensating errors — the isotropic Δ decay masked a real ~2% pion over-escape that the (correct) D6
+forward-peaked decay unmasked. The one remaining A-scaling open divergence, **D9 (AdaptiveStep)**, is the
+prime candidate for that residual.
+
 ## Symptom being chased
 
 | Observable | Status |
