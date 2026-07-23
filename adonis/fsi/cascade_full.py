@@ -184,7 +184,10 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             _kk = jax.vmap(lambda k: jax.random.split(k))(step_key)        # (n,2,2)
             kN, kP = _kk[:, 0], _kk[:, 1]                                  # per-particle nucleon/pion keys (n,2)
             # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
-            (p4n, posn, _dn, fzn, alnN, qln), escN, _rc, _do, koN, pinN, consumedN, nstat = _nucleon_step(
+            # escN is EMITTED-to-final-state only: _nucleon_step partitions boundary-reachers into
+            # escaping (emitted) vs capturedN (bound, KE<10 MeV) at the source, so escN never contains a
+            # captured nucleon and `term` below is correct without any flag-application step here.
+            (p4n, posn, _dn, fzn, alnN, qln), escN, capturedN, _do, koN, pinN, consumedN, nstat = _nucleon_step(
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kN, dt_evt=_dt_e,
                 is_beam=stack["external_test"][:, m])   # ACHILLES external_test -> z-plane escape (Deviation 2)

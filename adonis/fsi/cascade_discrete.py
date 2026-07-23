@@ -392,18 +392,27 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     # cutting the beam path short for impact parameter b>0 and missing distant large-b candidates (the
     # pn-channel first-hit deficit, Deviation 2).
     if is_beam is not None:
-        escaping = jnp.where(is_beam, pos[:, 2] >= radius, esc_sphere)
+        reached = jnp.where(is_beam, pos[:, 2] >= radius, esc_sphere)   # reached the escape boundary
     else:
-        escaping = esc_sphere
-    # ACHILLES Cascade::Escaped (every step, ungated): captured if E - mN_avg - 10 < 0.  CRITICAL mass
-    # convention: E uses the PHYSICAL per-species mass (the escaping particle's 4-vec; neutron E with
-    # mn=939.565), while the subtracted threshold uses the AVERAGE mN (Constant::mN=938.919).  ADoNIS
-    # nucleon p4[:,0] carries avg M_N, so recompute E from |p| with the physical species mass; using avg
-    # for E too over-captured neutrons in |p| in (132.9, 137.4) MeV -> the <137 MeV first-bin deficit.
+        reached = esc_sphere
+    # D12 + capture-as-escape-partition.  ACHILLES Cascade::Escaped (Cascade.cc:640-649, every step,
+    # ungated by PotentialProp): a nucleon reaching the boundary with KE < 10 MeV is CAPTURED (bound,
+    # status 26) -- NOT a final-state particle -- while everything else becomes final_state (status 1).
+    # We PARTITION the boundary-reachers into `escaping` (emitted) and `captured` (bound) HERE, at the
+    # source, and hand back `escaping` = emitted-to-final-state ONLY.  Invariant: a captured nucleon is
+    # never in `escaping`, so every downstream consumer of the escape flag (the pool's terminal/output
+    # collection, the fate latch, diagnostics) is correct BY CONSTRUCTION -- there is no separate
+    # "recapture" flag that a caller must remember to apply.  (The old code returned `escaping` INCLUDING
+    # captured plus a side `recap` flag; the pool ignored `recap` and emitted captured protons at rest ->
+    # the P(n_p=0) deficit.  Folding capture into the partition removes that whole bug class.)
+    # CRITICAL mass convention: E uses the PHYSICAL per-species mass (neutron mn=939.565), while the
+    # subtracted threshold uses the AVERAGE mN (Constant::mN=938.919); ADoNIS p4[:,0] carries avg M_N, so
+    # recompute E from |p| with the physical species mass (using avg for E over-captures neutrons in
+    # |p| in (132.9, 137.4) MeV -> the <137 MeV first-bin deficit).
     _e_phys = jnp.sqrt(jnp.where(isp, _MP_PHYS, _MN_PHYS) ** 2 + jnp.sum(p4[:, 1:] ** 2, axis=1))
-    recap = escaping & ((_e_phys - M_N) < cfg.recap_ke)
-    p4 = jnp.where(recap[:, None], jnp.array([M_N, 0.0, 0.0, 0.0]), p4)
-    alive = alive & ~escaping
+    captured = reached & ((_e_phys - M_N) < cfg.recap_ke)      # KE < recap_ke -> bound, not emitted
+    escaping = reached & ~captured                             # emitted to the final state ONLY
+    alive = alive & ~reached                                   # emitted AND captured both leave the cascade
     beta = jnp.linalg.norm(p4[:, 1:], axis=1) / jnp.clip(p4[:, 0], 1e-9, None)
     # STEPPING CLOCK: distance-sync -> every particle sweeps `step` fm/step, fz -= step/beta (proper time).
     # time-sync (ACHILLES AdaptiveStep) -> the per-event time step dt_evt = step/beta_max (beta_max over the
@@ -646,7 +655,7 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     # already equals the recomputed one, so this is a no-op there.
     pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
     d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)  # NEXT step
-    return ((p4, pos, dhat, fz, alive, lead_q_new), escaping, recap, do.astype(jnp.int32),
+    return ((p4, pos, dhat, fz, alive, lead_q_new), escaping, captured, do.astype(jnp.int32),
             (ko_cand, ko_pos, ko_fz, ko_q, ko_alive),
             (_pPiX, pi_pos, pi_fz, pi_chidx, pi_alive), consumed,
             jax.lax.stop_gradient((has_hit, perp2_c, sig_c, iso_c, finel_c, is_inel, do & _swap_cx)))

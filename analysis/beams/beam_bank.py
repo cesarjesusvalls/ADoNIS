@@ -165,6 +165,18 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
             "ks_cth": _cth[_al].astype(np.float32),
             "ks_prim": (O["origin"][_al] == CF._ORIG_PRIM_PI),
         }
+        # GUARD (D12 invariant): an EMITTED nucleon must have escaped, i.e. KE >= recap_ke; a captured
+        # (bound) nucleon is partitioned out at the source and never enters the final state.  This catches
+        # any regression that re-emits bound nucleons -- e.g. the old set-to-rest bug put captured protons
+        # in the output at |p|=0 (KE=0), deflating P(n_p=0).  Loose floor (recap_ke - 5) so a genuine
+        # near-threshold escaper never trips it, but a rest/bound nucleon does.
+        _isN = ks_save["ks_species"] == CF.NUCLEON
+        if _isN.any():
+            _mN = np.where(ks_save["ks_charge"][_isN] == 1, _MP_PHYS, _MN_PHYS).astype(np.float64)
+            _keN = np.sqrt(_mN ** 2 + ks_save["ks_pmag"][_isN].astype(np.float64) ** 2) - _mN
+            assert _keN.min() > cfg.recap_ke - 5.0, (
+                f"emitted nucleon KE={_keN.min():.2f} MeV < floor {cfg.recap_ke-5.0} -- capture leak "
+                f"(a bound nucleon reached the final state; check _nucleon_step escape/capture partition)")
 
         flat = CF.compact_fsi_record({k: np.asarray(v) for k, v in rec.items()})
         fsi_save = {"f_p_eidx": flat["p_eidx"].astype(np.int32), "f_n_eidx": flat["n_eidx"].astype(np.int32)}
