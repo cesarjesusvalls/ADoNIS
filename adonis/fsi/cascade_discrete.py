@@ -266,10 +266,17 @@ class DiscreteCascadeConfig:
                              # path_budget_R far below this.  Reaching it = a runaway particle, which the
                              # pool RAISES on (run_cascade_pool _raise_if_runaway) rather than silently
                              # truncating.  Keep == cascade_full._HARD_STEPS.
-    path_budget_R: float = 3.0  # PHYSICS termination: drop a particle once its accumulated path length
-                             # exceeds path_budget_R * nuclear_radius (lpath >= R_budget).  Scheme-
-                             # independent (distance- AND time-sync), no beta literal: a slow track just
-                             # takes more steps to cover the same distance.  Tweak to widen/tighten reach.
+    path_budget_R: float = 20.0  # RUNAWAY BACKSTOP (was 3.0): drop a particle once its accumulated path
+                             # length exceeds path_budget_R * nuclear_radius (lpath >= R_budget).  ACHILLES
+                             # has NO path budget (only geometric escape/capture + the 100k-step ceiling),
+                             # so this is an ADoNIS-only cap with no counterpart.  At 3.0 it fired on
+                             # ~0.009% of particles -- but those are exactly the slow, tightly random-
+                             # walking tracks that ACHILLES lets run to escape/capture, so a too-tight
+                             # budget can silently clip legitimate low-energy trajectories (and, being a
+                             # silent kill with no fate, mis-count the primary as non-reacted).  20R is far
+                             # beyond any real escaping/capturing track (net escape needs ~1R), so it
+                             # changes compute negligibly (particles terminate physically first) while
+                             # making the clipped fraction ~0.  Scheme-independent (distance/time-sync).
     seed: int = 0
     time_step: bool = False  # stepping clock: False = fixed-DISTANCE march (every particle advances
                              # `step` fm/global-step -> distance-synchronized).  True = fixed-TIME march
