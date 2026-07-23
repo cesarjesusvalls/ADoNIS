@@ -7,6 +7,55 @@ on the **active execution path** for the tagged-beam validation
 
 Edit in place as items are resolved. Do not delete rows — move them to **RESOLVED** with the evidence.
 
+## RESULT — Round 1 (D1+D2+D7, commit 44cec6d), full regeneration, both-sides errors
+
+Prot-beam π-production, aggregated over the three open bins, ADoNIS/ACHILLES:
+
+| target | pre-fix | **Round 1 (D1+D2+D7)** |
+|---|---|---|
+| ¹²C  | 0.9707 | **1.0064 ± 0.0129 (0.5σ)** |
+| ⁴⁰Ar | 0.9546 | **0.9977 ± 0.0098 (0.2σ)** |
+
+**The Ar residual is CLOSED.** The 2.6σ deficit is gone; both targets now agree with ACHILLES at <0.5σ.
+All 6 configs regenerated at ~2M events single-core; neut and pip banks are now real (not baseline
+fallbacks).
+
+**Round 2 (D3/D6/D8/D10, commit 801855c)** implemented and committed after reading the ACHILLES source
+for each. Smoke clean (reacted within baseline noise, no NaN). Full regeneration done, banks
+`beam_<b>_<t>_v2` (~1.7–2.0M ev each).
+
+**Round 2 RESULT — v2 slightly OVER-corrects; v1 remains the best-agreement configuration.**
+
+prot π-production, aggregate, ADoNIS/ACHILLES (both-sides errors):
+
+| target | v1 (D1+D2+D7) | v2 (+D3+D6+D8+D10) |
+|---|---|---|
+| ¹²C  | 1.0064 | 1.0120 ± 0.0138 (0.9σ) |
+| ⁴⁰Ar | **0.9977** | **1.0188 ± 0.0101 (1.9σ high)** |
+
+neut π-production rose consistently (+0.7% C, +1.1% Ar); pip **unchanged** (0.0% — the pion beam has no
+NN→NΔ→NNπ channel), which localizes the shift to Δ-decay pion production exactly as expected.
+
+**Interpretation (honest).** My a-priori guess that D6+D8 would *reduce* pions was WRONG. The (1+3cos²θ)
+law is peaked at cosθ=±1, so more decay pions go forward along the Δ (≈beam) direction and **escape more
+easily** → *more* surviving pions. This dominates D8's ~0.5% γ-branch removal. Net: v2 raises π
+production ~+2% on Ar, moving it from 0.2σ low to **1.9σ high**. Each of D3/D6/D8/D10 is individually
+faithful to the ACHILLES source, but the *bundle* over-corrects Ar.
+
+**Recommendation.** D1+D2+D7 (v1, commit 44cec6d) is the best-agreement production configuration — both
+targets <0.5σ. D3/D6/D8/D10 (v2, commit 801855c) are committed and correct-in-principle but net over-
+correct Ar to 1.9σ. Before adopting v2 for production, D6 deserves a closer look (is the anisotropy axis
+— Δ-momentum vs the mother-nucleon direction — exactly ACHILLES's? the Δ has no Mothers set so the code
+uses its own momentum, but this is the single most likely spot for a residual sign/axis subtlety). This
+is a **user decision**, deferred: keep v2, revert to v1, or investigate D6 further. Not claimed as an
+improvement.
+
+### D3, D6, D8, D10 — IMPLEMENTED (commit 801855c), faithfulness caveat above
+- **D3** advance along pre-scatter direction (Cascade.cc:705) — both step fns.
+- **D6** Δ→Nπ (1+3cos²θ)/4 about the Δ-momentum axis (DecayHandler.cc:126-131,76-79). Verified sampler.
+- **D10** per-draw ZXZ Euler rotation of configs (Configuration.cc:76-79).
+- **D8** Δ⁺/Δ⁰→Nγ BR 0.0055 (decays.yml).
+
 ## Symptom being chased
 
 | Observable | Status |
