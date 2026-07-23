@@ -320,6 +320,21 @@ def sample_nucleons(key, n, cfg: DiscreteCascadeConfig):
     kc, kd, km = jax.random.split(key, 3)
     idx = jax.random.choice(kc, pos.shape[0], (n,), p=w)
     npos = pos[idx]; nisp = iso[idx]
+    # D10: per-draw random Euler rotation of the nucleon configuration (ACHILLES
+    # DensityConfiguration::GetConfiguration, Configuration.cc:76-79: three angles ~U(0,2pi) with the
+    # SECOND halved to [0,pi), applied via ThreeVector::Rotate's ZXZ matrix, ThreeVector.cc:31-40).
+    # The density is spherically symmetric so r (hence k_F) is unchanged, but the FIXED-+z beam sees a
+    # different nucleon arrangement per event -> orientation is no longer frozen to the config library's
+    # stored frame.  Independent RNG stream (fold_in) so config/momentum draws above stay bit-identical.
+    _ke = jax.random.fold_in(key, 777)
+    _ang = jax.random.uniform(_ke, (n, 3)) * (2 * jnp.pi)
+    _a, _b, _g = _ang[:, 0], _ang[:, 1] / 2.0, _ang[:, 2]      # beta halved -> [0,pi)
+    c1, s1 = jnp.cos(_a), jnp.sin(_a); c2, s2 = jnp.cos(_b), jnp.sin(_b); c3, s3 = jnp.cos(_g), jnp.sin(_g)
+    _R = jnp.stack([                                            # ZXZ matrix, ThreeVector::Rotate exactly
+        jnp.stack([c1 * c3 - c2 * s1 * s3, -c1 * s3 - c2 * c3 * s1, s1 * s2], axis=1),
+        jnp.stack([c3 * s1 + c1 * c2 * s3, c1 * c2 * c3 - s1 * s3, -c1 * s2], axis=1),
+        jnp.stack([s2 * s3, c3 * s2, c2], axis=1)], axis=1)     # (n,3,3)
+    npos = jnp.einsum('eij,eaj->eai', _R, npos)
     r = jnp.linalg.norm(npos, axis=2)
     # ACHILLES Local FG: PER-SPECIES k_F -- protons from rho_p, neutrons from rho_n (Nucleus.cc:212-238).
     # For N=Z (carbon) rho_p == rho_n bitwise -> unchanged.
@@ -492,7 +507,15 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     _m_d_raw = nni.sample_delta_mass(rs_j / 1000.0, u_m) * 1000.0   # Delta-mass clip deferred (needs recoil mass)
     cth1 = 2 * _ev_fold_uniform(sk, 103) - 1.0
     phi1 = 2 * jnp.pi * _ev_fold_uniform(sk, 104)
-    cth2 = 2 * _ev_fold_uniform(sk, 105) - 1.0
+    # D6: Delta->N pi decay follows the AngularMom:2 law w(cos) proportional to (1+3cos^2)/4, sampled by
+    # ACHILLES's analytic inverse-CDF (DecayHandler.cc:126-131).  cbrt is the REAL cube root; the sqrt
+    # argument 7-27r+27r^2 has negative discriminant so is always positive.  cth2 in [-1,1] (clip the
+    # ~1e-2 float overshoot at the endpoints), symmetric, cth2(r=0.5)=0.  The NN->NDelta PRODUCTION
+    # angle cth1 stays isotropic (NucleonNucleon.cc:129 cos_cms = 2r-1).
+    _r2 = _ev_fold_uniform(sk, 105)
+    _term2 = jnp.cbrt(9.0 - 18.0 * _r2 + 2.0 * jnp.sqrt(3.0)
+                      * jnp.sqrt(jnp.clip(7.0 - 27.0 * _r2 + 27.0 * _r2 ** 2, 0.0, None)))
+    cth2 = jnp.clip(1.0 / (jnp.cbrt(3.0) * _term2) - _term2 / jnp.cbrt(9.0), -1.0, 1.0)
     phi2 = 2 * jnp.pi * _ev_fold_uniform(sk, 106)
     # Channel charges computed BEFORE the splits so the NN->N Delta-> N N pi products carry PHYSICAL
     # per-species/charge masses (ACHILLES decays the Delta via DecayHandler -> ParticleInfo masses).
@@ -514,13 +537,29 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     _m_d_hi = jnp.maximum(rs_j - _mN1, _MN_PHYS + _CH_MASS[0] + 1.0)
     m_d = jnp.clip(_m_d_raw, _MN_PHYS + _CH_MASS[0], _m_d_hi)
 
-    def _split2(P4, mA, mB, cth_, phi_):
+    def _split2(P4, mA, mB, cth_, phi_, aniso_axis=False):
         ss = jnp.clip(P4[:, 0] ** 2 - jnp.sum(P4[:, 1:] ** 2, axis=1), (mA + mB) ** 2 * 1.0001, None)
         rss = jnp.sqrt(ss)
         EA = (ss + mA ** 2 - mB ** 2) / (2 * rss)
         pf = jnp.sqrt(jnp.clip(EA ** 2 - mA ** 2, 0.0, None))
         sth_ = jnp.sqrt(jnp.clip(1 - cth_ ** 2, 0, None))
-        d_ = jnp.stack([sth_ * jnp.cos(phi_), sth_ * jnp.sin(phi_), cth_], axis=1)
+        if aniso_axis:
+            # D6: measure the polar angle cth_ relative to the DECAYING PARTICLE's momentum direction,
+            # not the lab z-axis.  ACHILLES rotates the rest-frame products so z aligns with the mother's
+            # momentum before boosting (DecayHandler.cc:76-79; the NN->NDelta Delta has no Mothers set,
+            # so the `else` branch = the Delta's OWN momentum is used).  For an ISOTROPIC decay the axis
+            # is irrelevant, but the AngularMom:2 law (1+3cos^2) is anisotropic, so the axis matters:
+            # build the rest-frame unit vector in the {phat, e1, e2} basis with phat = parent momentum.
+            phat = P4[:, 1:] / jnp.clip(jnp.linalg.norm(P4[:, 1:], axis=1, keepdims=True), 1e-9, None)
+            ref = jnp.where(jnp.abs(phat[:, 0:1]) < 0.9,
+                            jnp.array([1.0, 0.0, 0.0]), jnp.array([0.0, 1.0, 0.0]))
+            e1 = ref - jnp.sum(ref * phat, axis=1, keepdims=True) * phat
+            e1 = e1 / jnp.clip(jnp.linalg.norm(e1, axis=1, keepdims=True), 1e-9, None)
+            e2 = jnp.cross(phat, e1)
+            d_ = (cth_[:, None] * phat
+                  + sth_[:, None] * (jnp.cos(phi_)[:, None] * e1 + jnp.sin(phi_)[:, None] * e2))
+        else:
+            d_ = jnp.stack([sth_ * jnp.cos(phi_), sth_ * jnp.sin(phi_), cth_], axis=1)
         pa = jnp.concatenate([EA[:, None], pf[:, None] * d_], axis=1)
         pb = jnp.concatenate([(rss - EA)[:, None], -pf[:, None] * d_], axis=1)
         beta_ = P4[:, 1:] / P4[:, [0]]
@@ -532,8 +571,8 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
             return jnp.concatenate([E[:, None], p3], axis=1)
         return lab(pa), lab(pb)
 
-    pN1, pD = _split2(Pj, _mN1, m_d, cth1, phi1)
-    pN2, _pPiX = _split2(pD, _mN2, _mpi_dec, cth2, phi2)
+    pN1, pD = _split2(Pj, _mN1, m_d, cth1, phi1)                         # production: isotropic
+    pN2, _pPiX = _split2(pD, _mN2, _mpi_dec, cth2, phi2, aniso_axis=True)  # D6: (1+3cos^2) about pD dir
     # Pauli-block the two inelastic outgoing nucleons per species; the LEADING one (faster -> continues
     # from |pos|) is blocked at the LEADING's position (like the elastic kf_lead), the other (knockout at
     # the struck vertex) at the struck k_F -- same position fix as the elastic channel.
@@ -568,7 +607,14 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     ko_alive = (do | is_inel) & (jnp.linalg.norm(ko_cand[:, 1:], axis=1) > 1.0)
     ko_pos = npos[ar, j]
     # created pion spawn (inelastic only)
-    pi_alive = is_inel & (jnp.linalg.norm(_pPiX[:, 1:], axis=1) > 1.0)
+    # D8: Delta+ (2214) and Delta0 (2114) have a radiative branch Delta->N gamma at BR 0.0055
+    # (data/decays.yml); Delta++ and Delta- go 100% to N pi.  The Delta charge is `dch`, so this branch
+    # is open only for dch in {0,+1}.  When it fires the vertex emits a photon instead of a pion -> no
+    # pion produced (the recoil nucleon N2 is kept with its N pi kinematics; the ~massless-vs-m_pi
+    # kinematic shift on a 0.55% branch is negligible, and the photon does not reinteract).
+    _delta_pm = (dch == 0) | (dch == 1)
+    _gamma = _delta_pm & (_ev_fold_uniform(sk, 111) < 0.0055)
+    pi_alive = is_inel & (jnp.linalg.norm(_pPiX[:, 1:], axis=1) > 1.0) & ~_gamma
     pi_fz = _formation_zone(p4, _pPiX)
     # BIRTH POSITION of the Delta's decay products (ACHILLES NucleonNucleon.cc, ResonanceMode::Decay):
     # when the Delta is out_ids[0] ("slot a") the products are inserted at particle1.Position() -- the
@@ -592,8 +638,14 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & (do | is_inel)[:, None])
     fz = jnp.where((fz > 0.0) & alive, fz - timeStep, fz)
     fz = jnp.where(do, fz_new, jnp.where(is_inel, _formation_zone(p4, lead_in), fz))
-    d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
+    # D3: advance along the PRE-interaction direction (the incoming `dhat`).  ACHILLES sets the position
+    # inside AllowedInteractions via Propagate (Cascade.cc:705), which runs BEFORE FinalizeMomentum, so
+    # the full step is taken along the OLD momentum direction; the post-scatter direction only takes
+    # effect on the NEXT step.  `dhat` is the pre-interaction unit direction (== the direction of the
+    # incoming p4, used for the candidate geometry throughout this body); on a non-interacting step it
+    # already equals the recomputed one, so this is a no-op there.
     pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
+    d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)  # NEXT step
     return ((p4, pos, dhat, fz, alive, lead_q_new), escaping, recap, do.astype(jnp.int32),
             (ko_cand, ko_pos, ko_fz, ko_q, ko_alive),
             (_pPiX, pi_pos, pi_fz, pi_chidx, pi_alive), consumed,
@@ -881,8 +933,10 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     alive = alive & ~is_abs & ~is_conv
     interacted = is_abs | is_scat | is_conv
     consumed = consumed | (jax.nn.one_hot(j, A, dtype=bool) & interacted[:, None])
-    d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
+    # D3 (see _nucleon_step): advance along the PRE-scatter direction (incoming `dhat`), then recompute
+    # for the next step.  ACHILLES Propagate (Cascade.cc:705) runs before FinalizeMomentum.
     pos = pos + _dstep[:, None] * dhat * alive[:, None]    # beta*step (time-sync) or step (distance-sync)
+    d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)  # NEXT
     ss_j = ss[ar, j]                                            # direct (see ss_c: no sig-sa-si cancellation)
     ss_el_j = sig_io_j[ar, jnp.clip(ch, 0, 2)]                  # elastic (out==in) scatter sigma at the hit
     # ETA-track steps are NOT recorded in the pion kind-1 FSI reweight (their sa/ss/si carry the eta
