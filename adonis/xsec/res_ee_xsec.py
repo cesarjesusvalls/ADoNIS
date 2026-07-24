@@ -89,17 +89,22 @@ def _sample_channel_ee(n, rng, E_beam, m_pi, m_Nf, m_struck, imp):
                 J=tb["J_3body"], mom=mom, energy=energy, valid=valid)
 
 
-def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000):
+def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records=False):
     """Inclusive (e,e') RES MC: n samples per EM channel.  Returns per-event contribution c [nb]
-    (SUM = sigma), omega [MeV], theta_e' [deg]."""
+    (SUM = sigma), omega [MeV], theta_e' [deg].
+    records=True ALSO returns the hadronic final state for VALID events only (all angles) -- p_N, p_pi
+    [4-mom], ppid (pion), Npid (final nucleon), ipid (struck nucleon) -- everything cascade_nucleus needs
+    to run the recorded FSI cascade (mirrors res_xsec.generate(return_events=True) for the neutrino bank)."""
     Z, N, sf_p_path, sf_n_path = MATERIALS[material]
     imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))
     imp_n = SpectralImportanceSampler(SpectralFunction(sf_n_path))
-    out = {"c": [], "omega": [], "theta": []}
+    keys = ["c", "omega", "theta"] + (["p_N", "p_pi", "ppid", "Npid", "ipid"] if records else [])
+    out = {k: [] for k in keys}
     for ci, (spid, itiz, ppid, m_Nf, is_p) in enumerate(EM_CHANNELS):
         imp = imp_p if is_p else imp_n
         n_tgt = Z if is_p else N
         m_struck = MASS_PDG_PROTON if is_p else MASS_PDG_NEUTRON
+        Npid = 2212 if m_Nf == MASS_PDG_PROTON else 2112     # final nucleon pid from its mass
         m_pi = _M_PI[ppid]
         done = 0; sd = seed * 1000 + ci * 100
         while done < n:
@@ -119,8 +124,19 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000):
             omega = E_beam - k_le[:, 0]
             kmag = np.linalg.norm(k_le[:, 1:], axis=1)
             theta = np.degrees(np.arccos(np.clip(k_le[:, 3] / np.clip(kmag, 1e-9, None), -1, 1)))
-            out["c"].append(w / n)             # per-event contribution; SUM over all chunks+channels = sigma
-            out["omega"].append(omega); out["theta"].append(theta)
+            if records:
+                # keep VALID events only (clean kinematics for the cascade); invalid carry w=0 so the stored
+                # SUM(c) is unchanged.  Per-event pids are the channel's (broadcast to the kept events).
+                sel = v
+                out["c"].append((w / n)[sel]); out["omega"].append(omega[sel]); out["theta"].append(theta[sel])
+                out["p_N"].append(s["p_N"][sel]); out["p_pi"].append(s["p_pi"][sel])
+                nk = int(sel.sum())
+                out["ppid"].append(np.full(nk, ppid, np.int32))
+                out["Npid"].append(np.full(nk, Npid, np.int32))
+                out["ipid"].append(np.full(nk, spid, np.int32))
+            else:
+                out["c"].append(w / n)         # per-event contribution; SUM over all chunks+channels = sigma
+                out["omega"].append(omega); out["theta"].append(theta)
             done += m
     return {k: np.concatenate(v) for k, v in out.items()}
 
