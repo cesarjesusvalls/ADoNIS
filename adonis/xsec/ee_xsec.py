@@ -97,15 +97,29 @@ def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target
     ke_mag = np.linalg.norm(k_e_out[:, 1:], axis=1)
     cos_th = np.clip(k_e_out[:, 3] / np.clip(ke_mag, 1e-9, None), -1, 1)
     theta_deg = np.degrees(np.arccos(cos_th))
-    return c, omega, theta_deg, valid
+    return dict(c=c, omega=omega, theta=theta_deg, valid=valid,
+                k_e=k_e, k_e_out=k_e_out, p_struck=p_struck, p_out=p_out,
+                me=me, is_p=np.full(n, bool(is_proton)),
+                had_mass=np.full(n, had_mass), n_target=np.full(n, n_target))
 
 
-def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000):
+_SCALAR = ("c", "omega", "theta", "is_p")
+_VEC = ("k_e", "k_e_out", "p_struck", "p_out")
+_REC_EXTRA = ("me", "had_mass", "n_target")
+
+
+def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000, records=False,
+             theta_acc=THETA_ACC):
     """Inclusive (e,e') MC: n samples per species (p + n).  Returns per-event contribution c [nb]
-    (SUM = sigma), omega [MeV], theta_e' [deg], and the struck-species tag.  Chunked to bound JAX mem."""
+    (SUM = sigma), omega [MeV], theta_e' [deg], and the struck-species tag.  Chunked to bound JAX mem.
+    records=True also keeps the per-event kinematics (k_e, k_e_out, p_struck, p_out, me, had_mass,
+    n_target) for the theta-ACCEPTED events only -- the inputs a knob reweight needs to recompute the
+    EM matrix element (adonis/xsec/ee_xsec + analysis/beams/ee_fisher)."""
     Z, N, sf_p_path, sf_n_path = MATERIALS[material]
     sf_p = SpectralFunction(sf_p_path); sf_n = SpectralFunction(sf_n_path)
-    out = {"c": [], "omega": [], "theta": [], "is_p": []}
+    lo, hi = theta_acc
+    keep = list(_SCALAR) + (list(_VEC) + list(_REC_EXTRA) if records else [])
+    out = {k: [] for k in keep}
     species = [(True, MASS_PDG_PROTON, MASS_PDG_PROTON, sf_p, Z),
                (False, MASS_PDG_NEUTRON, MASS_PDG_NEUTRON, sf_n, N)]
     for is_p, m_kin, m_flux, sf, n_tgt in species:
@@ -113,11 +127,14 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000):
         while done < n:
             m = min(chunk, n - done)
             rng = np.random.default_rng(sd); sd += 1
-            # per-species c already normalized by THIS call's m -> rescale to the full-n estimator
-            c, omega, theta, valid = _sample_species(m, rng, E_beam, m_kin, m_flux, is_p, sf, n_tgt)
-            out["c"].append(c * m / n)                                    # SUM over all chunks = sigma
-            out["omega"].append(omega); out["theta"].append(theta)
-            out["is_p"].append(np.full(m, is_p))
+            r = _sample_species(m, rng, E_beam, m_kin, m_flux, is_p, sf, n_tgt)
+            r["c"] = r["c"] * m / n                                       # SUM over all chunks = sigma
+            # records: keep only VALID & theta-accepted events -- invalid events carry c=0 (no observable
+            # contribution) but a NaN matrix element that would poison the reweight ratio me_new/me_nom.
+            sel = np.ones(m, bool) if not records else \
+                (r["theta"] >= lo) & (r["theta"] <= hi) & r["valid"]
+            for k in keep:
+                out[k].append(r[k][sel])
             done += m
     return {k: np.concatenate(v) for k, v in out.items()}
 
