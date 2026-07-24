@@ -7,7 +7,7 @@ hadronic side carries none).  Returns L of shape (..., 4_spincombo, 4_mu) comple
 
 Couplings (LeptonicCurrent.cc:24-45) for the standard probes:
   CC nu  : coupl_left = ee*i/(sw*sqrt2), coupl_right=0, M=MW, Gamma=GAMW
-  EM e   : coupl_left = coupl_right = -ee*i, no propagator denominator (photon)
+  EM e   : coupl_left = coupl_right = -ee*i, M=Gamma=0 -> prop = i/q^2 (the photon propagator)
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def _couplings(kind):
         return C.ee * _I / (C.sw * np.sqrt(2.0)), 0.0 + 0j, C.MW, C.GAMW, True
     if kind == "EM":
         c = -C.ee * _I
-        return c, c, 0.0, 0.0, False                 # photon: no propagator denominator
+        return c, c, 0.0, 0.0, True                  # photon: prop = i/q^2 (M=Gamma=0 boson-propagator limit)
     raise ValueError(kind)
 
 

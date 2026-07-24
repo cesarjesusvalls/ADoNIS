@@ -40,14 +40,21 @@ def flux_factor(p_in_lep, p_in_nuc, had_mass=MASS_PDG_NEUTRON):
 
 
 def me_cross_section(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, spin_avg=0.5, had_mass=MASS_PDG_NEUTRON,
-                     axial_scale=1.0, vector_scale=1.0, ff_scale=None):
+                     axial_scale=1.0, vector_scale=1.0, ff_scale=None, probe="CC", is_proton=None):
     """amps2 * FluxFactor * SpinAvg  [nb] -- the matrix-element cross section WITHOUT the
     InitialStateWeight (spectral function) and WITHOUT the phase-space Jacobian.  had_mass is the
     actual struck-nucleon mass (mn neutron / mp proton) used by FluxFactor.  axial_scale/vector_scale
-    are the QE axial/vector reweight hooks (amps2 quadratic in each)."""
-    L = lepton_current(p_in_lep, p_out_lep, kind="CC_nu", anti=False)
+    are the QE axial/vector reweight hooks (amps2 quadratic in each).
+
+    probe: "CC" (default, nu N -> l N; leptonic kind="CC_nu", isovector hadron current) is BIT-IDENTICAL
+    to the pre-EM path.  "EM" (e N -> e' N inclusive (e,e')) routes the photon leptonic current and the
+    struck-nucleon's own form factors -- needs is_proton (bool, broadcast over events) and typically
+    spin_avg=0.25 (2 e helicities x 2 nucleon spins) at the call site."""
+    lep_kind = "EM" if probe == "EM" else "CC_nu"
+    L = lepton_current(p_in_lep, p_out_lep, kind=lep_kind, anti=False)
     H = hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc,
-                                axial_scale=axial_scale, vector_scale=vector_scale, ff_scale=ff_scale)
+                                axial_scale=axial_scale, vector_scale=vector_scale, ff_scale=ff_scale,
+                                probe=probe, is_proton=is_proton)
     amps2 = _contract(L, H)
     flux = flux_factor(p_in_lep, p_in_nuc, had_mass=had_mass)
     return dict(amps2=amps2, flux=flux, spin_avg=spin_avg,
