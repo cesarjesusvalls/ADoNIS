@@ -69,22 +69,56 @@ def run():
     # -- well inside (384,1024).  Only the TRANSIENT dense buffer grows with the cap; the stored ragged
     # record does not.  The carbon-tuned (96,64) and my earlier flat (256,256) both overflowed on Ar.
     # compact_fsi_record now fails LOUD with the exact K needed if this is ever still too small.
-    _sc = max(1, -(-tgt.A // 12))                    # ceil(A/12)
-    # FLAT (streaming) record: opt in via ADONIS_FLAT_FSI=1.  Then rec_caps is the TOTAL interaction
-    # budget = CHUNK * per-event-mean * margin (nucleus-scaled), NOT a per-event K -- the tail-free fix
-    # (docs/logbook/fsi_record_cap_techdebt.md).  The loud guard in compact_fsi_record catches undersizing.
-    _flat = os.environ.get("ADONIS_FLAT_FSI", "1") != "0"   # event_bank defaults to FLAT (tail-free; validated
+    _sc = max(1, -(-tgt.A // 12))                    # ceil(A/12)  (dense fallback caps only)
+    # FLAT (streaming) record: rec_caps is the TOTAL interaction budget = n * per-event-mean * margin,
+    # NOT a per-event K (the tail-free fix, docs/logbook/fsi_record_cap_techdebt.md).  We do NOT GUESS the
+    # mean -- a small calibration pass MEASURES it for THIS exact config (below, after POOL), x _MARGIN.
+    # The loud guard in compact_fsi_record still backstops any pathological tail.
+    _flat = os.environ.get("ADONIS_FLAT_FSI", "1") != "0"   # event_bank defaults to FLAT (validated
     CF.FLAT_FSI_REC = _flat                                 #   bit-identical to dense).  ADONIS_FLAT_FSI=0 -> dense.
-    if _flat:
-        CAPS = (CHUNK * 8 * _sc, CHUNK * 24 * _sc)   # (pion, nucleon) totals; C-mean ~ (0.06..2, 7)/ev
-    else:
-        CAPS = (96 * _sc, 256 * _sc)                 # legacy per-event dense caps
-    if os.environ.get("ADONIS_REC_CAPS"):
-        CAPS = tuple(int(x) for x in os.environ["ADONIS_REC_CAPS"].split(","))
+    _MARGIN = float(os.environ.get("ADONIS_REC_MARGIN", "1.5"))
+    CAPS_qe = CAPS_res = (96 * _sc, 256 * _sc)             # legacy per-event dense caps (used when not _flat)
+    if os.environ.get("ADONIS_REC_CAPS"):                 # explicit override -> both channels, skip cal
+        CAPS_qe = CAPS_res = tuple(int(x) for x in os.environ["ADONIS_REC_CAPS"].split(","))
     # material-aware cascade: thread the nucleus density/configs into the pool config (carbon default).
     POOL = lambda **k: T.POOLCFG(nucleus=tgt.density_p, density_n=tgt.density_n, configs=tgt.configs, **k)
     FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "nh",
              "hh", "a", "iso", "finel", "inel", "swap", "ns")
+
+    if _flat and not os.environ.get("ADONIS_REC_CAPS"):
+        # Auto-size the flat TOTAL budget: MEASURE this config's per-event interaction rate on a small
+        # sample, x _MARGIN.  The calibration buffer size is IRRELEVANT -- the flat cursor gc counts every
+        # interaction truthfully even when the writes overflow and drop -- so we run it with a throwaway
+        # (8,8) buffer purely as a COUNTER.  No chicken-and-egg: we never need a cap to measure the cap.
+        import math
+        ncal = min(CHUNK, int(os.environ.get("ADONIS_REC_NCAL", "100")))
+        qc = qe_xsec.sample_importance(ncal, seed=SEED0, sf=sf, n_neutron=n_neutron)
+        rc = res_xsec.generate(ncal, seed=SEED0, return_events=True, sf_n=sf, sf_p=sf_p,
+                               n_neutron=n_neutron, n_proton=n_proton)["events"]
+        kcq, kcr = jax.random.split(jax.random.PRNGKey(7), 2)
+        nqc, nrc = len(qc["w"]), len(rc["w"])
+        rq = CF.cascade_nucleus(jnp.zeros((nqc, 4)), jnp.asarray(qc["p_out"]), jnp.zeros(nqc, jnp.int32),
+                                jnp.full(nqc, 2112, jnp.int32), jnp.full(nqc, 2212, jnp.int32),
+                                POOL(seed=2), kcq, channel="qe", rec_caps=(8, 8))[4]
+        rr = CF.cascade_nucleus(jnp.asarray(rc["p_pi"]), jnp.asarray(rc["p_N"]),
+                                jnp.asarray(rc["ppid"]).astype(jnp.int32), jnp.asarray(rc["ipid"]).astype(jnp.int32),
+                                jnp.asarray(rc["Npid"]).astype(jnp.int32), POOL(seed=1), kcr, channel="res", rec_caps=(8, 8))[4]
+        # SYMMETRIC cap: size BOTH buffers to max(pion, nucleon) of the per-cal point estimate * margin.  The
+        # pion slot-count is zero-INFLATED and UNMEASURABLE at 100 events -- pions are made by rare threshold
+        # NN->NNpi events (cascade_full.py:300), each then logging a BURST of ~20 in-slab candidate slots, so
+        # a 100-evt sample sees 0 ~2/3 of the time (mean is carried by rare bursts).  We therefore NEVER size
+        # the pion buffer from its own count: max() lets the RELIABLE nucleon cap (tail-insensitive, ~600
+        # counts/100ev) cover the pion buffer too.  Empirically pion slots <= nucleon slots always; max() is
+        # symmetric so it self-corrects if a config ever inverts that, and the loud guard backstops either way.
+        def _cap(rec, n):
+            def b(g):
+                return max(64, math.ceil(int(g) / max(n, 1) * CHUNK * _MARGIN))
+            t = max(b(rec["gc_p"]), b(rec["gc_n"]))
+            return (t, t)
+        CAPS_qe, CAPS_res = _cap(rq, nqc), _cap(rr, nrc)
+        log(f"flat FSI caps auto-sized on {ncal} evts (x{_MARGIN}, symmetric max): "
+            f"qe rate=({int(rq['gc_p'])/nqc:.2f},{int(rq['gc_n'])/nqc:.2f})/ev -> {CAPS_qe}   "
+            f"res rate=({int(rr['gc_p'])/nrc:.2f},{int(rr['gc_n'])/nrc:.2f})/ev -> {CAPS_res}")
 
     def compact_fs(nt):
         al = np.asarray(nt["alive"]); chg = np.asarray(nt["charge"]); spc = np.asarray(nt["species"])
@@ -99,7 +133,8 @@ def run():
     def merge_off(a, b):
         return np.concatenate([a, a[-1] + b[1:]]).astype(np.int64)
 
-    manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, caps=list(CAPS))
+    manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks,
+                    caps_qe=list(CAPS_qe), caps_res=list(CAPS_res))
     for c in range(n_chunks):
         qe = qe_xsec.sample_importance(CHUNK, seed=SEED0 + c, sf=sf, n_neutron=n_neutron)
         qw = np.asarray(qe["w"]) / CHUNK
@@ -110,10 +145,10 @@ def run():
         nq = len(qw); nr = len(rw)
         ptq, ntq, _o, _cq, recq = CF.cascade_nucleus(
             jnp.zeros((nq, 4)), jnp.asarray(qe["p_out"]), jnp.zeros(nq, jnp.int32),
-            jnp.full(nq, 2112, jnp.int32), jnp.full(nq, 2212, jnp.int32), POOL(seed=2), kq, channel="qe", rec_caps=CAPS)
+            jnp.full(nq, 2112, jnp.int32), jnp.full(nq, 2212, jnp.int32), POOL(seed=2), kq, channel="qe", rec_caps=CAPS_qe)
         ptr, ntr, _o2, _cr, recr = CF.cascade_nucleus(
             jnp.asarray(res["p_pi"]), jnp.asarray(res["p_N"]), jnp.asarray(res["ppid"]).astype(jnp.int32),
-            jnp.asarray(res["ipid"]).astype(jnp.int32), jnp.asarray(res["Npid"]).astype(jnp.int32), POOL(seed=1), kr, channel="res", rec_caps=CAPS)
+            jnp.asarray(res["ipid"]).astype(jnp.int32), jnp.asarray(res["Npid"]).astype(jnp.int32), POOL(seed=1), kr, channel="res", rec_caps=CAPS_res)
         log(f"chunk {c+1}/{n_chunks}: cascades done (nq={nq}, nr={nr})")
 
         # HARD-VERTEX records, identity-padded on the opposite channel (QE block then RES block)
@@ -157,7 +192,8 @@ def run():
             dt = (np.int8 if field in ("bc", "iso")
                   else (bool if field in ("hh", "inel", "swap", "pi_hh") else np.float32))
             fsi_save[f"f_{field}"] = arr.astype(dt)
-        _budget = (nq + nr) * (CAPS[0] + CAPS[1]) if not _flat else (CAPS[0] + CAPS[1])
+        _budget = ((CAPS_qe[0] + CAPS_qe[1] + CAPS_res[0] + CAPS_res[1]) if _flat
+                   else (nq + nr) * (CAPS_qe[0] + CAPS_qe[1]))
         log(f"chunk {c+1}: FSI record {'streamed(flat)' if _flat else 'compacted(dense)'} -> pion "
             f"{len(flat['p_eidx'])} slots, nucleon {len(flat['n_eidx'])} slots "
             f"({'flat budget' if _flat else 'dense would be'} {_budget})")

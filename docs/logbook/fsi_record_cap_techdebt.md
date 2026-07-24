@@ -1,6 +1,8 @@
 # FSI reweight-record cap: nucleus-scaling is a PATCH (computational tech debt)
 
-**Status:** works, physics-exact. To be fixed for COMPUTATIONAL reasons only — NOT a fidelity issue.
+**Status:** RESOLVED for `event_bank` (flat streaming record + auto-sized cap, default on; see "Resolution"
+below). The dense per-event `(n,K)` buffer + nucleus-scaled guess below is retained only as the fallback
+(`ADONIS_FLAT_FSI=0`) and for other callers (`beam_bank`/`tune`) not yet migrated. History kept for context.
 
 ## What it is
 The differentiable event/beam banks store a per-cascade-step FSI reweight record. Because the cascade
@@ -36,9 +38,24 @@ callback fires **inside** the multi-thousand-step hot loop, forcing a **device�
 which serializes the vectorized cascade and is orders of magnitude slower. So streaming is possible but
 the slowest option; the two-pass/spill fixes below keep on-device speed while removing the padding.
 
-## Proper fixes (options, unimplemented)
-1. **Auto-size `K`**: a cheap pre-pass (or the first chunk) measures the true max occupancy, then allocate
-   exactly that (+small margin) instead of a nucleus-scaled guess. Cheapest to do.
+## Resolution (implemented in `event_bank`, default on)
+The flat/streaming record (single flat `(TOTAL,)` buffer per species + global cursor, sized by the
+tail-insensitive TOTAL interaction count) replaces the per-event `(n,K)` dense buffer. `TOTAL` is
+**auto-sized**, not guessed:
+- A **100-event calibration pass** runs the QE and RES cascades with a throwaway `(8,8)` buffer purely as a
+  COUNTER — the flat cursor `gc` advances by the true interaction count regardless of buffer size
+  (`cascade_full.py:456`), so the tiny buffer reads the exact per-event rate. Budget = `rate * CHUNK * 1.5`.
+- **Symmetric `max` cap**: both the pion and nucleon buffers are sized to `max(pion, nucleon)` of the
+  calibrated estimate. Reason: the pion slot-count is **zero-inflated / unmeasurable at 100 events** — pions
+  come only from rare threshold `NN->NNpi` (`cascade_full.py:300`), each then logging a BURST of ~20 in-slab
+  slots, so a 100-event sample sees 0 ~2/3 of the time. We never size the pion buffer from its own count; the
+  reliable, tail-insensitive nucleon count covers it (pion slots <= nucleon slots always; `max` self-corrects
+  if a config inverts that). Knobs: `ADONIS_REC_MARGIN` (1.5), `ADONIS_REC_NCAL` (100), `ADONIS_REC_CAPS`
+  (explicit override). The loud overflow guard remains as the backstop.
+
+## Proper fixes (options — #1 now done for event_bank; others still open for beam_bank/tune)
+1. **Auto-size `K`** — DONE for `event_bank` (see Resolution above): a 100-event pre-pass measures the true
+   rate, then allocate `rate * CHUNK * margin` instead of a nucleus-scaled guess.
 2. **Small `K` + graceful overflow spill**: keep a tight `K` for the common case; the rare high-occupancy
    events spill to a slow numpy fallback path (no shard loss, no over-allocation).
 3. **Segment/compress the log**: store one row per cascade *segment* (already exists as the `log_cap`
