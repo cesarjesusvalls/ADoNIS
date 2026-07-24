@@ -50,7 +50,8 @@ DBG = {
     "axial_z": 1.0,     # scale the axial Z component (zmtx 7,8 from table, idxp=4 pair)
     "axial_time": 1.0,  # scale the axial TIME component (zmtx 3,4, idxp=3 pair)
     "vec_cc_z": 1.0,    # scale the vector z-from-time current-conservation add (zmtx 7,8)
-    "idxp_start": 0,    # 1 -> skip idxp=1 (the (1,6) pair) for J=1/2 waves, as ACHILLES does
+    "idxp_start": 1,    # skip idxp=1 (the (1,6) pair) for J=1/2 waves, as ACHILLES does (faithful default;
+    #                     amp_dcc_sl_module.f:809-813 applies it to BOTH the vector AND axial current loops)
     "axial_sign": -1.0, # overall axial sign (ACHILLES yin=-zampa -> a=-axial); +1 to test
 }
 # env-var override (debug only): ADONIS_DBG_PION_POLE=-1 etc. Faithful defaults unless set.
@@ -98,10 +99,15 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
         # idx-1 -> idxx-1 pairs, with per-pair DEBUG scale (time/z localization)
         _ax_scale = {(0, 5): 1.0, (1, 4): 1.0,
                      (2, 3): DBG["axial_time"], (6, 7): DBG["axial_z"]}
+        # ACHILLES idxp_start applies to the axial loop too (amp_dcc_sl_module.f:809-814): the (0,5) pair
+        # (idxp=1) is skipped for J=1/2 waves.  keep_idxp1 (npw,) = 0 for those waves.
+        keep_idxp1 = jnp.asarray([0.0 if (DBG["idxp_start"] and int(two_J[i]) == 1) else 1.0
+                                  for i in range(npw)])
         for src, dst in ((0, 5), (1, 4), (2, 3), (6, 7)):     # id1-1 -> id2-1
             sc = _ax_scale[(src, dst)]
-            zmtx = zmtx.at[src].set(a[src] * sc)
-            zmtx = zmtx.at[dst].set(a[src] * pha * sc)
+            av = a[src] * keep_idxp1 if (src, dst) == (0, 5) else a[src]
+            zmtx = zmtx.at[src].set(av * sc)
+            zmtx = zmtx.at[dst].set(av * pha * sc)
         # pion-pole (induced pseudoscalar) term, CC only (mode>0)
         if mode > 0:
             facpp = DBG["pion_pole"] / (-Q2 - m_pi ** 2)

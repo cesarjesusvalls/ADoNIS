@@ -46,6 +46,13 @@ _W_LO = 1076.957; _W_HI = 2000.0; _Q2_HI = 5.0e6
 # scale is DERIVED, not tuned.
 _FRESV = C.Vud * C.ee / (C.sw * np.sqrt(2.0) * 2.0)          # |hadronic CC coupling|
 _NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron mass via conventions
+# EM (e,e') RES: the hadronic vertex couples with the PHOTON charge ee (the N->Delta transition FFs are
+# in the DCC vector amplitude), replacing the CC hadronic coupling FResV.  TWO differences vs _NORM:
+#   1. FResV -> ee   (photon coupling; leptonic side carries -ee*i and i/q^2 via lepton_current kind="EM")
+#   2. the CC isospin factor fac*=sqrt(2) (amp_dcc_sl_module.f:275, mode 1-4 ONLY) is ABSENT for EM
+#      (mode=10) -> the CC fac^2 baked into _NORM carries an extra 2 that EM must NOT have -> *2 on _NORM_EM.
+# Net: _NORM_EM = 2 * _NORM * (FResV^2/ee^2).  Validated against oracle_ee_C_res.
+_NORM_EM = 2.0 * (2.0 * np.pi) / (C.ee ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
 
 # Amplitude(W,Q2) interpolation.  DEFAULT = "spline" (bit-faithful to ACHILLES interpolate_amp) -- the
 # SAFE default; every reported result must use it.  "bilinear" is ~45x faster but a KNOWN OFFENDER vs W:
@@ -180,23 +187,29 @@ from adonis.xsec.dcc_kinematics import boost_matrix_batch, setdfun_batch
 _BUILD_ZMTX_V = None
 
 
-def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None, pion_pole=1.0):
+def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None, pion_pole=1.0, mode=1):
     """Unified amplitude matrix: the batched differential.build_zmtx_batched (the single
     build_zmtx; proven == vmapped assembly.build_zmtx for CC in tests/test_build_zmtx_equiv.py).
     m_N via conventions (amplitude-internal avg mass); m_pi passed in (conventions.amp_m_pi()).
-    r_axial (N,) scales the axial amplitudes (M_A reweight hook; None = nominal)."""
+    r_axial (N,) scales the axial amplitudes (M_A reweight hook; None = nominal).
+    mode: 1 CC (default) | 10 EM (e,e': axial off, EM isospin) | -1 NC."""
     from adonis.primary.dcc.differential import build_zmtx_batched as _bzb
     return _bzb(vec, isv, axial, W, Q2, _PW_2J, _PW_2L, _PW_2I,
-                mode=1, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial, pion_pole=pion_pole)
+                mode=mode, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial, pion_pole=pion_pole)
 
 
 def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
                           return_zj=False, q_direct=None, r_axial=None, return_q2=False, knobs=None,
-                          pion_pole=1.0):
+                          pion_pole=1.0, probe="CC"):
     """Vectorised exclusive amps2 over a batch of events (all SAME channel: itiz, hPID).
     Returns amps2 (N,) on the ACHILLES absolute scale (/_NORM).
     return_zj=True returns the lab hadron current zj (N,4_combo,4_mu) instead (DIAGNOSTIC).
-    q_direct (N,4): use this q verbatim as the (already de-Forest-shifted) transfer."""
+    q_direct (N,4): use this q verbatim as the (already de-Forest-shifted) transfer.
+    probe: "CC" (default; nu N, weak, mode=1, _NORM) is BIT-IDENTICAL to the pre-EM path.  "EM"
+    (inclusive (e,e'): photon leptonic current + i/q^2, DCC mode=10 EM isospin, _NORM_EM)."""
+    _mode = 10 if probe == "EM" else 1
+    _lep_kind = "EM" if probe == "EM" else "CC_nu"
+    _norm = _NORM_EM if probe == "EM" else _NORM
     k_nu = np.asarray(k_nu, float); k_mu = np.asarray(k_mu, float)
     p_struck = np.asarray(p_struck, float); p_outN = np.asarray(p_outN, float); p_pi = np.asarray(p_pi, float)
     N = k_nu.shape[0]; mN = C.mN
@@ -240,7 +253,7 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     amp_mpi = AMP_MPI_OVERRIDE if AMP_MPI_OVERRIDE is not None else mpi
     r_ax = None if r_axial is None else jnp.asarray(r_axial)
     zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, amp_mpi,
-                                          r_axial=r_ax, pion_pole=pion_pole))  # (N,8,npw)
+                                          r_axial=r_ax, pion_pole=pion_pole, mode=_mode))  # (N,8,npw)
     tiz = itiz / 2.0; tpinz = tcrz + tiz; tmax = tm_f + 0.5 + _EPS_TPIN
     IGM1 = (-1, 0, 1, 2)
     zcrnt = np.zeros((N, 2, 2, 4), complex)
@@ -279,14 +292,14 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
         xlrs = boost_matrix_batch(pcm, to_cm=True)
         knu_c = np.einsum('nmk,nk->nm', xlrs, k_nu); kmu_c = np.einsum('nmk,nk->nm', xlrs, k_mu)
         zj = zjx.reshape(N, 4, 4)                                            # current in 2CM
-        L = np.asarray(lepton_current(jnp.asarray(knu_c), jnp.asarray(kmu_c)))
+        L = np.asarray(lepton_current(jnp.asarray(knu_c), jnp.asarray(kmu_c), kind=_lep_kind))
     else:
         zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)          # (N, combo, mu)
-        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_mu)))  # (N,4,4)
+        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_mu), kind=_lep_kind))  # (N,4,4)
     if return_zj:
         return zj                                                            # (N, combo, mu) lab current
     LH = np.einsum('ncm,nbm,m->ncb', L, zj, _METRIC)
-    a2 = np.sum(np.abs(LH) ** 2, axis=(1, 2)) / _NORM
+    a2 = np.sum(np.abs(LH) ** 2, axis=(1, 2)) / _norm
     gate = (wcm >= _W_LO) & (wcm <= _W_HI) & (Q2 >= 0) & (Q2 <= _Q2_HI)   # DCC table validity
     out = np.where(gate, a2, 0.0)
     if return_q2:

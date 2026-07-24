@@ -161,6 +161,10 @@ def angular_factor(theta, phi, pre):
 # --------------------------------------------------------------------------- #
 #  Batched build_zmtx (the angle-independent, knob-dependent amplitude matrix)  #
 # --------------------------------------------------------------------------- #
+IDXP_START = True    # ACHILLES-faithful: skip the idxp=1 (0,5) current pair for J=1/2 waves (default).
+#                      Set False only to MEASURE the size of that term vs the pre-fix behavior.
+
+
 def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
                        m_N, m_pi, r_axial=None, vfac=1.0, pion_pole=1.0):
     """Batched port of `hadron_assembly.build_zmtx`.
@@ -174,6 +178,13 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
     phv = jnp.asarray([pw_phase(int(two_J[i]), int(two_L[i])) for i in range(npw)])  # (npw,)
     pha = -phv
     is_I32 = jnp.asarray([1.0 if int(two_I[i]) == 3 else 0.0 for i in range(npw)])   # (npw,)
+    # ACHILLES idxp_start (amp_dcc_sl_module.f:809-813,873-877,920-924): for J=1/2 waves (two_J==1) the
+    # vector AND axial current loops start at idxp=2, i.e. the idxp=1 pair (idx 1,6 -> 0-based (0,5)) is
+    # NEVER populated.  keep_idxp1 (npw,) = 0 for J=1/2 waves, 1 otherwise -> zeroes that pair per wave.
+    if IDXP_START:
+        keep_idxp1 = jnp.asarray([0.0 if int(two_J[i]) == 1 else 1.0 for i in range(npw)])[None, :]
+    else:
+        keep_idxp1 = jnp.ones((1, npw))
 
     qc0 = (W ** 2 - m_N ** 2 - Q2) / (2.0 * W)               # (N,)
     qc = jnp.sqrt(Q2 + qc0 ** 2)
@@ -187,9 +198,10 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
         if r_axial is not None:
             r = jnp.asarray(r_axial)
             a = a * (r if r.ndim == 0 else r[:, None, None])
-        for src, dst in ((0, 5), (1, 4), (2, 3), (6, 7)):
-            zmtx = zmtx.at[:, src].set(a[:, src])
-            zmtx = zmtx.at[:, dst].set(a[:, src] * pha)
+        for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3), (6, 7)), start=1):
+            av = a[:, src] * keep_idxp1 if idxp == 1 else a[:, src]   # skip (0,5) for J=1/2 waves
+            zmtx = zmtx.at[:, src].set(av)
+            zmtx = zmtx.at[:, dst].set(av * pha)
         if mode > 0:                                         # pion pole (CC only)
             facpp = (jnp.asarray(pion_pole) / (-Q2 - m_pi ** 2))[:, None]   # pion_pole: F_P reweight knob
             zp = (qc0c * zmtx[:, 2] - qcc * zmtx[:, 6]) * facpp
@@ -221,6 +233,8 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
         src_block = vec
     for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3)), start=1):
         vz = vfac * src_block[:, src]                        # (N, npw)
+        if idxp == 1:
+            vz = vz * keep_idxp1                             # skip (0,5) pair for J=1/2 waves (ACHILLES)
         zmtx = zmtx.at[:, src].add(vz)
         zmtx = zmtx.at[:, dst].add(vz * phv)
         if idxp == 3:

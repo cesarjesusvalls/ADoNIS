@@ -1,0 +1,146 @@
+"""Inclusive (e,e') RES (single-pion) cross section + dsigma/domega, mirroring adonis/xsec/res_xsec but
+for the ELECTROMAGNETIC probe.  Three changes vs the CC RES driver:
+
+  1. BEAM   : monochromatic e- at fixed E (J_beam = 1).
+  2. PROBE  : exclusive_amps2_batch(probe="EM") -> DCC mode=10 (axial off, EM N->Delta isospin: proton
+              -> vec, neutron I=1/2 -> -isv isoscalar) + photon leptonic current + i/q^2 + _NORM_EM.
+              spin_avg = 1/4 (2 e- helicities x 2 nucleon spins).
+  3. CHANNELS: the 4 EM 1-pi channels {p->p pi0, p->n pi+, n->n pi0, n->p pi-}, each struck nucleon
+              drawn from its OWN spectral function (imp_p / imp_n) so the target count Z/N is explicit.
+
+Observable: inclusive dsigma/domega (omega = E_beam - E'_e) inside the outgoing-electron theta HardCut,
+summed over channels.  Validation gate: dsigma/domega vs the ACHILLES oracle output/oracle_ee_C_res.
+"""
+from __future__ import annotations
+
+import numpy as np
+
+from adonis.xsec import constants as C
+from adonis.xsec.spectral import SpectralFunction, SpectralImportanceSampler
+from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON, MASS_PDG_NEUTRON
+from adonis.xsec.dcc_current import exclusive_amps2_batch
+from adonis.xsec.res_xsec import _boost_to_lab, _sqlam, M_PIP, M_PI0
+
+_MN = C.mN
+_M_E = 0.51099895               # electron mass [MeV]
+_TWO_PI = 2 * np.pi
+E_BEAM_JLAB = 2222.0
+THETA_ACC = (14.0, 17.0)
+SPIN_AVG_EM = 0.25              # 2 e- helicities x 2 nucleon spins
+
+# (struck pid, itiz, pion pid, m_Nf [MeV], is_proton_struck)
+EM_CHANNELS = [
+    (2212, +1, 111, MASS_PDG_PROTON,  True),    # p -> p pi0
+    (2212, +1, 211, MASS_PDG_NEUTRON, True),    # p -> n pi+
+    (2112, -1, 111, MASS_PDG_NEUTRON, False),   # n -> n pi0
+    (2112, -1, -211, MASS_PDG_PROTON, False),   # n -> p pi-
+]
+_M_PI = {111: M_PI0, 211: M_PIP, -211: M_PIP}
+
+MATERIALS = {
+    "C":  (6, 6,  "data/Spectral_Functions/pke12p_tot.data", "data/Spectral_Functions/pke12n_tot.data"),
+    "Ar": (18, 22, "data/Spectral_Functions/pke40p_tot.data", "data/Spectral_Functions/pke40n_tot.data"),
+}
+
+
+def _sample_3body_ee(k_e, p_struck, m_pi, m_Nf, m_lep, u):
+    """3-body final state e' + N + pi via two isotropic 2-body splits.  Verbatim res_xsec._sample_3body
+    with the outgoing-lepton mass generalized to m_lep (electron, not muon)."""
+    P = k_e + p_struck
+    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
+    sqrts = np.sqrt(np.clip(s, 1e-9, None))
+    s23max = (sqrts - m_pi) ** 2; s23min = np.maximum((m_lep + m_Nf) ** 2, 1e-8)
+    s23 = s23min + (s23max - s23min) * u[:, 0]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
+    EleN = (s + s23 - m_pi ** 2) / (2 * sqrts); pA = sqrts * _sqlam(s, s23, m_pi ** 2) / 2
+    ctA = 2 * u[:, 1] - 1; stA = np.sqrt(np.clip(1 - ctA ** 2, 0, None)); phA = _TWO_PI * u[:, 2]
+    dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
+    leN_cm = np.concatenate([EleN[:, None], pA[:, None] * dA], axis=1)
+    pi_cm = np.concatenate([np.sqrt(m_pi ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
+    p_leN = _boost_to_lab(leN_cm, P); p_pi = _boost_to_lab(pi_cm, P)
+    I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, s23, m_pi ** 2), 1e-12, None)
+    Ele = (s23 + m_lep ** 2 - m_Nf ** 2) / (2 * rs23); pB = rs23 * _sqlam(s23, m_lep ** 2, m_Nf ** 2) / 2
+    ctB = 2 * u[:, 3] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 4]
+    dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
+    le_cm = np.concatenate([Ele[:, None], pB[:, None] * dB], axis=1)
+    N_cm = np.concatenate([np.sqrt(m_Nf ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
+    k_le = _boost_to_lab(le_cm, p_leN); p_N = _boost_to_lab(N_cm, p_leN)
+    I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, m_lep ** 2, m_Nf ** 2), 1e-12, None)
+    density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
+    J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
+    valid3 = ((s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0)
+              & (_sqlam(s23, m_lep ** 2, m_Nf ** 2) > 0))
+    return dict(k_le=k_le, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, valid3=valid3)
+
+
+def _sample_channel_ee(n, rng, E_beam, m_pi, m_Nf, m_struck, imp):
+    kz = np.sqrt(E_beam ** 2 - _M_E ** 2)
+    k_e = np.tile(np.array([E_beam, 0.0, 0.0, kz]), (n, 1))
+    u = rng.random((n, 10))
+    pvec, energy = imp.sample(n, rng)                      # |p|^2 S importance (initwgt -> N constant)
+    mom = np.linalg.norm(pvec, axis=1)
+    p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
+    tb = _sample_3body_ee(k_e, p_struck, m_pi, m_Nf, _M_E, u[:, 5:10])
+    Smin = (_M_E + m_Nf + m_pi) ** 2
+    det = E_beam ** 2 + mom ** 2 + 2 * pvec[:, 2] * kz + Smin
+    emax = _MN + E_beam - np.sqrt(np.clip(det, 0, None))
+    emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
+    valid = (tb["s"] > Smin) & tb["valid3"] & (energy < emax)
+    return dict(k_e=k_e, p_struck=p_struck, k_le=tb["k_le"], p_N=tb["p_N"], p_pi=tb["p_pi"],
+                J=tb["J_3body"], mom=mom, energy=energy, valid=valid)
+
+
+def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000):
+    """Inclusive (e,e') RES MC: n samples per EM channel.  Returns per-event contribution c [nb]
+    (SUM = sigma), omega [MeV], theta_e' [deg]."""
+    Z, N, sf_p_path, sf_n_path = MATERIALS[material]
+    imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))
+    imp_n = SpectralImportanceSampler(SpectralFunction(sf_n_path))
+    out = {"c": [], "omega": [], "theta": []}
+    for ci, (spid, itiz, ppid, m_Nf, is_p) in enumerate(EM_CHANNELS):
+        imp = imp_p if is_p else imp_n
+        n_tgt = Z if is_p else N
+        m_struck = MASS_PDG_PROTON if is_p else MASS_PDG_NEUTRON
+        m_pi = _M_PI[ppid]
+        done = 0; sd = seed * 1000 + ci * 100
+        while done < n:
+            m = min(chunk, n - done)
+            rng = np.random.default_rng(sd); sd += 1
+            s = _sample_channel_ee(m, rng, E_beam, m_pi, m_Nf, m_struck, imp)
+            a2 = np.zeros(m); v = s["valid"]
+            if v.any():
+                # tcrz = current isospin_z: 0 for the PHOTON (isovector Iz=0), NOT the CC W+ value 1.
+                # With the CC default the isospin CG <1,tcrz;1/2,tiz|tpi,tpiz> kills the pi0/pi- channels.
+                a2[v] = exclusive_amps2_batch(s["k_e"][v], s["k_le"][v], s["p_struck"][v],
+                                              s["p_N"][v], s["p_pi"][v], itiz, ppid, probe="EM", tcrz=0.0)
+            fl = np.asarray(flux_factor(s["k_e"], s["p_struck"], had_mass=m_struck))
+            w = np.where(v, a2 * fl * n_tgt * SPIN_AVG_EM * s["J"], 0.0)
+            w = np.where(np.isfinite(w), w, 0.0)
+            k_le = s["k_le"]
+            omega = E_beam - k_le[:, 0]
+            kmag = np.linalg.norm(k_le[:, 1:], axis=1)
+            theta = np.degrees(np.arccos(np.clip(k_le[:, 3] / np.clip(kmag, 1e-9, None), -1, 1)))
+            out["c"].append(w / n)             # per-event contribution; SUM over all chunks+channels = sigma
+            out["omega"].append(omega); out["theta"].append(theta)
+            done += m
+    return {k: np.concatenate(v) for k, v in out.items()}
+
+
+def dsigma_domega(res, edges, theta_acc=THETA_ACC):
+    lo, hi = theta_acc
+    mth = (res["theta"] >= lo) & (res["theta"] <= hi)
+    h, _ = np.histogram(res["omega"][mth], bins=edges, weights=res["c"][mth])
+    return h / np.diff(edges)
+
+
+if __name__ == "__main__":
+    import sys
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 500_000
+    mat = sys.argv[2] if len(sys.argv) > 2 else "C"
+    r = generate(n, material=mat)
+    lo, hi = THETA_ACC
+    acc = (r["theta"] >= lo) & (r["theta"] <= hi)
+    print(f"(e,e') RES {mat}  n={n}/channel  sigma_total={r['c'].sum():.4e} nb  "
+          f"sigma_in_[{lo},{hi}]deg={r['c'][acc].sum():.4e} nb  ({acc.sum()} accepted)")
+    edges = np.linspace(0, 800, 41)
+    dsdo = dsigma_domega(r, edges); ctr = 0.5 * (edges[:-1] + edges[1:])
+    print(f"  dsigma/domega peak at omega ~ {ctr[np.argmax(dsdo)]:.0f} MeV, max = {dsdo.max():.3e} nb/MeV")
