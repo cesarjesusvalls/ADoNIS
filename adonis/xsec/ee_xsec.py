@@ -54,6 +54,14 @@ def _boost(p4, beta):
     return np.concatenate([E[..., None], vec], axis=-1)
 
 
+STRUCK_MASS_MODE = "species"    # "species" (DEFAULT: struck energy = m_species - E_rm) -- (e,e') strikes
+#                                 BOTH p and n, so the physical species mass (not the average mN) puts each
+#                                 QE peak at the right omega.  dsigma/domega chi2/ndf 2.03 (avg) -> 1.21
+#                                 (species), integral unchanged.  See [[mass-convention-audit]].
+#                                 "avg" = the qe_xsec convention (mN_avg - E_rm); CC QE is neutron-only so
+#                                 it is insensitive to the choice.
+
+
 def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target):
     """One species: importance-sample the struck nucleon from its SF, isotropic two-body e'+N_out,
     return per-event contribution c (nb) with SUM_i c_i = sigma_species, plus omega and theta_e' [deg].
@@ -63,7 +71,8 @@ def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target
     # ---- struck nucleon: |p|,E ~ |p|^2 S importance sampling (the flat-MC weight peak cancels) ----
     samp = SpectralImportanceSampler(sf)
     pvec, E_rm = samp.sample(n, rng)
-    p_struck = np.concatenate([(_MN - E_rm)[:, None], pvec], axis=1)      # struck energy: average mN
+    m_struck = m_species if STRUCK_MASS_MODE == "species" else _MN        # avg mN (default) | species mass
+    p_struck = np.concatenate([(m_struck - E_rm)[:, None], pvec], axis=1)
     # ---- two-body final state e'(m_e) + N_out(m_species), isotropic CM (TwoBodyMapper) ----
     u = rng.random((n, 2))
     P = k_e + p_struck
