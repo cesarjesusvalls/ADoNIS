@@ -40,6 +40,13 @@ _TRACK_OFFSET = 1000       # daughter track_ids start here (> any primary track_
 # persistent-refill engine and the keep-overflow-particles correctness (the plan's allowed change).
 _DEFAULT_NW = 2048         # refill working-set width (events in flight).  n_w=None -> min(_DEFAULT_NW, n);
                            # n_w=0 forces lock-step (the bit-exact reference).  Tuned by the (workers,n_w,P) study.
+# FSI reweight-record layout.  FLAT/STREAMING (opt-in): one flat (TOTAL,) buffer per field + a global
+# cursor; the budget is tail-INSENSITIVE (~ n*E[interactions]) so it is NOT set by the per-event tail.
+# When flat, rec_caps=(Tp,Tn) is the TOTAL interaction budget (NOT a per-event K).  DENSE (default): the
+# legacy per-event (n,K) buffer.  Both give a BIT-IDENTICAL reweight (scatter-add by eidx is order-
+# independent).  Default stays DENSE until every caller passes flat budgets; callers opt in via
+# ADONIS_FLAT_FSI=1 + a total budget.  See docs/logbook/fsi_record_cap_techdebt.md.
+FLAT_FSI_REC = os.environ.get("ADONIS_FLAT_FSI", "0") != "0"
 _DEFAULT_QCAP = 64         # particle waiting-queue width.  q_cap=None -> this; keeps overflow particles
                            # (stack overflow sofl -> 0); q_cap=0 disables (legacy drop-on-overflow).
 _HARD_STEPS = 100000       # ACHILLES cMaxSteps-style ABSOLUTE step ceiling.  Physical termination is
@@ -425,6 +432,42 @@ def _rec_scatter(bufs, cnt, mask, vals, cap):
     return new_bufs, (cnt + jnp.sum(mask.astype(jnp.int32), axis=1)).astype(cnt.dtype), overflow
 
 
+def _rec_scatter_flat(bufs, gc, eidx_buf, mask, vals, evt_id, cap, n_events):
+    """FLAT/STREAMING twin of _rec_scatter (docs/logbook/fsi_record_cap_techdebt.md): append this step's
+    masked slots' `vals` into ONE flat (cap,) buffer at a GLOBAL running cursor `gc`, tagging each written
+    slot with its event id `evt_id[row]` in `eidx_buf`.  `cap` = TOTAL interaction budget (~ n*E[interactions],
+    tail-INSENSITIVE), NOT per-event K -- so it is sized by the concentrated sum, not the heavy per-event
+    tail.  Overflow (gc+order >= cap) is dropped (mode='drop').  Unwritten eidx slots keep their init value
+    n_events (out of range) so the by-eidx reduction (_ragged_prod) drops them.  The reweight is a scatter-ADD
+    by eidx, so step-order here gives a BIT-IDENTICAL reweight to _rec_scatter's per-event order.
+    Returns (new_bufs, new_gc, new_eidx_buf, overflow_this_step)."""
+    n, M = mask.shape
+    fm = mask.reshape(-1)                                          # (n*M,) row-major: row i's M slots contiguous
+    order = jnp.cumsum(fm.astype(jnp.int32)) - 1                   # global order among THIS step's interactions
+    gpos = gc + order
+    valid = fm & (gpos < cap)
+    dst = jnp.where(valid, gpos, cap)                             # out-of-range -> scratch idx `cap` (dropped)
+    eidx_flat = jnp.repeat(evt_id, M)                             # (n*M,) event id per flattened slot
+    new_bufs = [b.at[dst].set(v.reshape(-1), mode="drop") for b, v in zip(bufs, vals)]
+    new_eidx = eidx_buf.at[dst].set(jnp.where(valid, eidx_flat, n_events), mode="drop")
+    overflow = jnp.sum((fm & (gpos >= cap)).astype(jnp.int32)).astype(jnp.int32)
+    return new_bufs, (gc + jnp.sum(fm.astype(jnp.int32))).astype(gc.dtype), new_eidx, overflow
+
+
+# field lists for the flat record (mirror _P_SLOT/_N_SLOT + the reduction's expected order)
+def _empty_flat_fsi_record(Tp, Tn, n_events):
+    """Flat FSI record: single (Tp,)/(Tn,) field buffers + global cursors gc_p/gc_n + per-slot event index
+    p_eidx/n_eidx (init n_events = out-of-range -> unwritten slots dropped by _ragged_prod).  Tp/Tn = TOTAL
+    budgets (n_events * E[interactions]).  Slot defaults match _empty_fsi_record (per-slot LR=1 at nominal)."""
+    return dict(bc=jnp.zeros(Tp, jnp.int32), sa=jnp.ones(Tp), ss_el=jnp.ones(Tp), ss=jnp.ones(Tp),
+                si=jnp.zeros(Tp), pi_hh=jnp.zeros(Tp, bool), pi_a=jnp.full(Tp, 50.0),
+                sa_c=jnp.ones(Tp), ss_el_c=jnp.ones(Tp), ss_c=jnp.ones(Tp), si_c=jnp.zeros(Tp),
+                hh=jnp.zeros(Tn, bool), a=jnp.full(Tn, 50.0), iso=jnp.zeros(Tn, jnp.int32),
+                finel=jnp.zeros(Tn), inel=jnp.zeros(Tn, bool), swap=jnp.zeros(Tn, bool),
+                gc_p=jnp.int32(0), gc_n=jnp.int32(0),
+                p_eidx=jnp.full(Tp, n_events, jnp.int32), n_eidx=jnp.full(Tn, n_events, jnp.int32))
+
+
 def _empty_fsi_record(n, Kp, Kn):
     """Per-event kind-1 FSI reweight buffers (defaults give per-slot LR=1).  bc is the granular pion channel
     code {0 el,1 cex,2 abs,3 conv}; ss_el = elastic part of the total scatter sigma ss (ss_cex = ss-ss_el).
@@ -479,8 +522,22 @@ _N_SLOT = ("hh", "a", "iso", "finel", "inel", "swap")
 
 def compact_fsi_record(rec):
     """Dense (n, K) kind-1 record -> ragged: flat slot arrays + per-slot event index (p_eidx / n_eidx).
-    Pure numpy (called once, at bank-write time).  Physics-preserving: it only drops the padding."""
+    Pure numpy (called once, at bank-write time).  Physics-preserving: it only drops the padding.
+    FLAT record (from FLAT_FSI_REC streaming, carries gc_p/gc_n): already ragged -- just TRIM to the
+    cursor (the tail past gc has eidx=n_events, dropped by the reweight anyway)."""
     import numpy as _np
+    if "gc_p" in rec:                                            # already-flat streaming record: trim + pass
+        gp = int(_np.asarray(rec["gc_p"])); gn = int(_np.asarray(rec["gc_n"]))
+        Tp = len(_np.asarray(rec["bc"])); Tn = len(_np.asarray(rec["hh"]))
+        # gc counts ALL interactions (incl. dropped-past-budget) -> gc > buffer means silent truncation.
+        # Fail LOUD with the total budget needed (the flat budget is ~ n*E[interactions], tail-insensitive).
+        if gp > Tp or gn > Tn:
+            raise ValueError(f"FLAT FSI record overflow: pion {gp}/{Tp}, nucleon {gn}/{Tn}. Raise the flat "
+                             f"TOTAL budget (rec_caps) -- it must be >= the batch's total interaction count.")
+        out = {f: _np.asarray(rec[f])[:gp] for f in _P_SLOT}
+        out.update({f: _np.asarray(rec[f])[:gn] for f in _N_SLOT})
+        out["p_eidx"] = _np.asarray(rec["p_eidx"])[:gp]; out["n_eidx"] = _np.asarray(rec["n_eidx"])[:gn]
+        return out
     out = {}
     for names, cnt, tag in ((_P_SLOT, "nh", "p"), (_N_SLOT, "ns", "n")):
         c = _np.asarray(rec[cnt])
@@ -598,7 +655,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
                 **{k: jnp.zeros((W, L), jnp.float32) for k in _LOG_F}}
 
     def _apply_step(stk, state, kk, step_i, wait, out, prim, rb, log, wptr, sofl, oofl, rofl, logofl, bg_w, ar,
-                    round_gt, betamax):
+                    round_gt, betamax, evt_id=None):
         """ONE pooled step on the working set + accumulation (out, prim latch, rec, seg log) + reconcile.
         Scalars sofl/oofl/rofl/logofl accumulate globally; out/prim/rb/log/wptr are per-slot.  Returns the
         updated working-set state; identical maths regardless of refill mode.  time_sync: ACHILLES
@@ -631,19 +688,22 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         prim = jnp.where(anyp & (prim == FATE_NONE), stk2["fate"][ar, j], prim)
         if with_rec:
             rec = extra
-            (bc, sa, ss_el, ss, si, pi_hh, pi_a, sa_c, ss_el_c, ss_c, si_c), nh, op = _rec_scatter(
-                [rb["bc"], rb["sa"], rb["ss_el"], rb["ss"], rb["si"],
-                 rb["pi_hh"], rb["pi_a"], rb["sa_c"], rb["ss_el_c"], rb["ss_c"], rb["si_c"]],
-                rb["nh"], rec["pi_m"],
-                [rec["pi_bc"], rec["pi_sa"], rec["pi_ss_el"], rec["pi_ss"], rec["pi_si"],
-                 rec["pi_hh"], rec["pi_a"], rec["pi_sa_c"], rec["pi_ss_el_c"], rec["pi_ss_c"],
-                 rec["pi_si_c"]], Kp)
-            (hh, a, iso, finel, inel, swap), ns, on = _rec_scatter(
-                [rb["hh"], rb["a"], rb["iso"], rb["finel"], rb["inel"], rb["swap"]], rb["ns"], rec["nu_m"],
-                [rec["nu_hh"], rec["nu_a"], rec["nu_iso"], rec["nu_finel"], rec["nu_inel"], rec["nu_swap"]], Kn)
-            rb = dict(bc=bc, sa=sa, ss_el=ss_el, ss=ss, si=si,
-                      pi_hh=pi_hh, pi_a=pi_a, sa_c=sa_c, ss_el_c=ss_el_c, ss_c=ss_c, si_c=si_c,
-                      nh=nh, hh=hh, a=a, iso=iso, finel=finel, inel=inel, swap=swap, ns=ns)
+            pion_vals = [rec["pi_bc"], rec["pi_sa"], rec["pi_ss_el"], rec["pi_ss"], rec["pi_si"],
+                         rec["pi_hh"], rec["pi_a"], rec["pi_sa_c"], rec["pi_ss_el_c"], rec["pi_ss_c"],
+                         rec["pi_si_c"]]                                   # in _P_SLOT order
+            nuc_vals = [rec["nu_hh"], rec["nu_a"], rec["nu_iso"], rec["nu_finel"], rec["nu_inel"],
+                        rec["nu_swap"]]                                    # in _N_SLOT order
+            if "gc_p" in rb:                                              # FLAT/STREAMING record (tail-free)
+                new_p, gc_p, p_eidx, op = _rec_scatter_flat(
+                    [rb[f] for f in _P_SLOT], rb["gc_p"], rb["p_eidx"], rec["pi_m"], pion_vals, evt_id, Kp, _NEVT)
+                new_n, gc_n, n_eidx, on = _rec_scatter_flat(
+                    [rb[f] for f in _N_SLOT], rb["gc_n"], rb["n_eidx"], rec["nu_m"], nuc_vals, evt_id, Kn, _NEVT)
+                rb = {**dict(zip(_P_SLOT, new_p)), **dict(zip(_N_SLOT, new_n)),
+                      "gc_p": gc_p, "gc_n": gc_n, "p_eidx": p_eidx, "n_eidx": n_eidx}
+            else:                                                        # DENSE per-event (n, K) record
+                new_p, nh, op = _rec_scatter([rb[f] for f in _P_SLOT], rb["nh"], rec["pi_m"], pion_vals, Kp)
+                new_n, ns, on = _rec_scatter([rb[f] for f in _N_SLOT], rb["ns"], rec["nu_m"], nuc_vals, Kn)
+                rb = {**dict(zip(_P_SLOT, new_p)), **dict(zip(_N_SLOT, new_n)), "nh": nh, "ns": ns}
             rofl = (rofl + op + on).astype(rofl.dtype)
         if do_log:
             seg = extra
@@ -668,6 +728,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     # ---------------- NO-REFILL: the working set IS the n events (bit-exact to the pre-refill engine) ----
     if pending is None:
         n = init["alive"].shape[0]; ar = jnp.arange(n)
+        _NEVT = n                                        # event count for the flat record's eidx range
         # INITIAL overflow (more primaries than M, e.g. RES pion+recoil at M=1) must go to the wait QUEUE,
         # not be dropped -- else the engine is not P-invariant (the initial compact silently discarded the
         # 2nd primary at small M).  Mirror pool_reconcile: pack init into M active + Q waiting.
@@ -678,7 +739,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         else:
             stack, _ = compact(init, M, sort_priority=True)
             wait0 = empty_batch(n, max(Q, 1))
-        out0 = empty_batch(n, M_out); rec0 = _empty_fsi_record(n, Kp, Kn)
+        out0 = empty_batch(n, M_out)
+        rec0 = _empty_flat_fsi_record(Kp, Kn, n) if (with_rec and FLAT_FSI_REC) else _empty_fsi_record(n, Kp, Kn)
         log0 = _logbuf(n); wptr0 = jnp.zeros(n, jnp.int32); logofl0 = jnp.int32(0)
         evt_id0 = jnp.arange(n, dtype=jnp.int32); nstep0 = jnp.zeros(n, jnp.int32)
 
@@ -696,7 +758,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
             (newstk, state2, newwait, out2, prim2, rb2, log2, wptr2, sofl2, oofl2, rofl2, logofl2,
              round_gt2, betamax2) = _apply_step(
                 stk, state, kk, i, wait, out, prim, rb, log, wptr, sofl, oofl, rofl, logofl, bg, ar,
-                round_gt, betamax)
+                round_gt, betamax, evt_id=evt_id)
             return (i + jnp.int32(1), newstk, state2, out2, sofl2, oofl2, prim2, rb2, rofl2,
                     log2, wptr2, logofl2, newwait, evt_id, nstep + jnp.int32(1), round_gt2, betamax2)
 
@@ -718,6 +780,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     # ---------------- REFILL: working set of n_w slots fed from the pending pool of N_total events -------
     Ntot = pending["stack"]["alive"].shape[0]
     W = min(int(n_w) if n_w else Ntot, Ntot); ar = jnp.arange(W)
+    _NEVT = Ntot                                     # event count for the flat record's eidx range
+    _flat = with_rec and FLAT_FSI_REC                # streaming: rb IS the ONE global flat buffer (no grb flush)
     # INITIAL overflow (events with >M primaries, e.g. RES pion+recoil at M=1) must ride in the WAIT queue,
     # not be dropped -- mirror the no-refill init.  pstack = M active per event, pwait = Q waiting per event.
     # (Without this the RES recoil nucleon is silently dropped at refill setup -> N(p) halved.)
@@ -732,12 +796,14 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     pcons = pending["consumed0"]
     # global per-event buffers (filled by flush-on-finish, indexed by evt_id)
     g_out = empty_batch(Ntot, M_out); g_prim = jnp.full(Ntot, FATE_NONE, jnp.int32)
-    g_rb = _empty_fsi_record(Ntot, Kp, Kn); g_log = _logbuf(Ntot); g_wptr = jnp.zeros(Ntot, jnp.int32)
+    g_rb = {} if _flat else _empty_fsi_record(Ntot, Kp, Kn)   # flat: unused (rb is the global buffer)
+    g_log = _logbuf(Ntot); g_wptr = jnp.zeros(Ntot, jnp.int32)
     # initial working set = first W events
     idx0 = jnp.arange(W, dtype=jnp.int32)
     stk0 = _take_rows(pstack, idx0); cons0 = pcons[idx0]
     bg0 = (pbg[0][idx0], pbg[1][idx0], pbg[2][idx0])
-    out0 = empty_batch(W, M_out); rb0 = _empty_fsi_record(W, Kp, Kn)
+    out0 = empty_batch(W, M_out)
+    rb0 = _empty_flat_fsi_record(Kp, Kn, Ntot) if _flat else _empty_fsi_record(W, Kp, Kn)
     log0 = _logbuf(W); wptr0 = jnp.zeros(W, jnp.int32)
     prim0 = jnp.full(W, FATE_NONE, jnp.int32)
     wait0 = _take_rows(pwait, idx0) if Q > 0 else empty_batch(W, max(Q, 1))   # recoil rides in wait from t=0
@@ -755,7 +821,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         (newstk, cons2, newwait, out2, prim2, rb2, log2, wptr2, sofl2, oofl2, rofl2, logofl2,
          round_gt2, betamax2) = _apply_step(
             stk, cons, kk, nstep, wait, out, prim, rb, log, wptr, sofl, oofl, rofl, logofl, bgw, ar,
-            round_gt, betamax)
+            round_gt, betamax, evt_id=evt)
         nstep2 = nstep + jnp.int32(1)
         still_alive = jnp.any(newstk["alive"], axis=1) | jnp.any(newwait["alive"], axis=1)
         hit_cap = (nstep2 >= cap)                                     # _HARD_STEPS per-event ceiling
@@ -766,7 +832,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         gi = jnp.where(flush, evt, Ntot)
         go = {k: go[k].at[gi].set(out2[k], mode="drop") for k in go}
         gp = gp.at[gi].set(prim2, mode="drop")
-        grb = {k: grb[k].at[gi].set(rb2[k], mode="drop") for k in grb}
+        if not _flat:                                                # flat: rb2 already streamed globally; no flush
+            grb = {k: grb[k].at[gi].set(rb2[k], mode="drop") for k in grb}
         glog = {k: glog[k].at[gi].set(log2[k], mode="drop") for k in glog}
         gwp = gwp.at[gi].set(wptr2, mode="drop")
         # REFILL flushed slots from the cursor (creation order); idle slots (evt<0) are skipped
@@ -789,9 +856,13 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         _ewait = empty_batch(W, max(Q, 1))
         wait3 = {k: _sel(rwait[k], _sel(_ewait[k], newwait[k], finished), take) for k in newwait}
         # reset per-slot accumulators on EVERY finished slot (taken or now-idle); evt/nstep updated
-        e_out = empty_batch(W, M_out); e_rb = _empty_fsi_record(W, Kp, Kn); e_log = _logbuf(W)
+        e_out = empty_batch(W, M_out); e_log = _logbuf(W)
         out3 = {k: _sel(e_out[k], out2[k], finished) for k in out2}
-        rb3 = {k: _sel(e_rb[k], rb2[k], finished) for k in rb2}
+        if _flat:
+            rb3 = rb2                                    # ONE global flat buffer streamed in-place: no per-slot reset
+        else:
+            e_rb = _empty_fsi_record(W, Kp, Kn)
+            rb3 = {k: _sel(e_rb[k], rb2[k], finished) for k in rb2}
         log3 = {k: _sel(e_log[k], log2[k], finished) for k in log2}
         prim3 = jnp.where(finished, FATE_NONE, prim2)
         wptr3 = jnp.where(finished, 0, wptr2)
@@ -808,13 +879,13 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
                jnp.int32(0), jnp.int32(0), jnp.int32(0), jnp.int32(0), g_out, g_prim, g_rb, g_log, g_wptr,
                jnp.full(W, -1, jnp.int32), jnp.ones(W), jnp.int32(0))
     out_st = jax.lax.while_loop(rcond, rbody, init_st)
-    (_, _, _, _, _, _, _, _, _, _, _, _, sofl, oofl, rofl, logofl, go, gp, grb, glog, gwp,
+    (_, _, _, _, _, _, _, _, _, _rb_fin, _, _, sofl, oofl, rofl, logofl, go, gp, grb, glog, gwp,
      _rg, _bm, _forced) = out_st
     _raise_if_runaway(_forced, "refill")
     if do_log:
         return go, sofl, oofl, gp, (glog, gwp, logofl)
-    if with_rec:
-        return go, sofl, oofl, gp, (grb, rofl)
+    if with_rec:                                         # flat: rb IS the global ragged record; dense: grb
+        return go, sofl, oofl, gp, (_rb_fin if _flat else grb, rofl)
     return go, sofl, oofl, gp
 
 
