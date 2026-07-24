@@ -70,7 +70,15 @@ def run():
     # record does not.  The carbon-tuned (96,64) and my earlier flat (256,256) both overflowed on Ar.
     # compact_fsi_record now fails LOUD with the exact K needed if this is ever still too small.
     _sc = max(1, -(-tgt.A // 12))                    # ceil(A/12)
-    CAPS = (96 * _sc, 256 * _sc)
+    # FLAT (streaming) record: opt in via ADONIS_FLAT_FSI=1.  Then rec_caps is the TOTAL interaction
+    # budget = CHUNK * per-event-mean * margin (nucleus-scaled), NOT a per-event K -- the tail-free fix
+    # (docs/logbook/fsi_record_cap_techdebt.md).  The loud guard in compact_fsi_record catches undersizing.
+    _flat = os.environ.get("ADONIS_FLAT_FSI", "1") != "0"   # event_bank defaults to FLAT (tail-free; validated
+    CF.FLAT_FSI_REC = _flat                                 #   bit-identical to dense).  ADONIS_FLAT_FSI=0 -> dense.
+    if _flat:
+        CAPS = (CHUNK * 8 * _sc, CHUNK * 24 * _sc)   # (pion, nucleon) totals; C-mean ~ (0.06..2, 7)/ev
+    else:
+        CAPS = (96 * _sc, 256 * _sc)                 # legacy per-event dense caps
     if os.environ.get("ADONIS_REC_CAPS"):
         CAPS = tuple(int(x) for x in os.environ["ADONIS_REC_CAPS"].split(","))
     # material-aware cascade: thread the nucleus density/configs into the pool config (carbon default).
@@ -129,10 +137,18 @@ def run():
         # arrays + a per-slot event index -- the same ragged layout the bank already uses for the final
         # state (fs_* + fs_off).  Physics-identical (only padding is removed), ~4x smaller than the OLD
         # bank, and every Jacobian jvp then touches 40x fewer slots.
-        def fcat(field):
-            return np.concatenate([np.asarray(recq[field]), np.asarray(recr[field])])
-        dense = {f: fcat(f) for f in FSI_F}
-        flat = CF.compact_fsi_record(dense)
+        if _flat:
+            # recq/recr are already-ragged FLAT records -> compact (trim) each, concat, offset the RES
+            # per-slot event index by nq (QE block is events 0..nq-1, RES block nq..nq+nr-1).
+            from adonis.fsi.cascade_full import _P_SLOT, _N_SLOT
+            cq = CF.compact_fsi_record(dict(recq)); cr = CF.compact_fsi_record(dict(recr))
+            flat = {f: np.concatenate([cq[f], cr[f]]) for f in _P_SLOT + _N_SLOT}
+            flat["p_eidx"] = np.concatenate([cq["p_eidx"], cr["p_eidx"] + nq])
+            flat["n_eidx"] = np.concatenate([cq["n_eidx"], cr["n_eidx"] + nq])
+        else:
+            def fcat(field):
+                return np.concatenate([np.asarray(recq[field]), np.asarray(recr[field])])
+            flat = CF.compact_fsi_record({f: fcat(f) for f in FSI_F})
         fsi_save = {"f_p_eidx": flat["p_eidx"].astype(np.int32),
                     "f_n_eidx": flat["n_eidx"].astype(np.int32)}
         for field, arr in flat.items():
@@ -141,9 +157,10 @@ def run():
             dt = (np.int8 if field in ("bc", "iso")
                   else (bool if field in ("hh", "inel", "swap", "pi_hh") else np.float32))
             fsi_save[f"f_{field}"] = arr.astype(dt)
-        log(f"chunk {c+1}: FSI record compacted -> pion {len(flat['p_eidx'])} slots, "
-            f"nucleon {len(flat['n_eidx'])} slots (dense would be "
-            f"{dense['sa'].shape[0]*dense['sa'].shape[1] + dense['a'].shape[0]*dense['a'].shape[1]})")
+        _budget = (nq + nr) * (CAPS[0] + CAPS[1]) if not _flat else (CAPS[0] + CAPS[1])
+        log(f"chunk {c+1}: FSI record {'streamed(flat)' if _flat else 'compacted(dense)'} -> pion "
+            f"{len(flat['p_eidx'])} slots, nucleon {len(flat['n_eidx'])} slots "
+            f"({'flat budget' if _flat else 'dense would be'} {_budget})")
 
         offq, fpq, fcq, fp4q, dq = compact_fs(ntq[0]); offr, fpr, fcr, fp4r, dr = compact_fs(ntr[0])
         if dq + dr:

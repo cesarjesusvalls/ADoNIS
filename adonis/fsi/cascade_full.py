@@ -43,8 +43,10 @@ _DEFAULT_NW = 2048         # refill working-set width (events in flight).  n_w=N
 # FSI reweight-record layout.  FLAT/STREAMING (opt-in): one flat (TOTAL,) buffer per field + a global
 # cursor; the budget is tail-INSENSITIVE (~ n*E[interactions]) so it is NOT set by the per-event tail.
 # When flat, rec_caps=(Tp,Tn) is the TOTAL interaction budget (NOT a per-event K).  DENSE (default): the
-# legacy per-event (n,K) buffer.  Both give a BIT-IDENTICAL reweight (scatter-add by eidx is order-
-# independent).  Default stays DENSE until every caller passes flat budgets; callers opt in via
+# legacy per-event (n,K) buffer.  Both give a NUMERICALLY-IDENTICAL reweight -- the reduction is a scatter-
+# add by eidx (order-independent), so results agree to float64 precision (exact at nominal; 1-2 ULP off-
+# nominal, from the interleaved-by-step vs contiguous-by-event log-sum order).  Default stays DENSE until
+# every caller passes flat budgets; callers opt in via
 # ADONIS_FLAT_FSI=1 + a total budget.  See docs/logbook/fsi_record_cap_techdebt.md.
 FLAT_FSI_REC = os.environ.get("ADONIS_FLAT_FSI", "0") != "0"
 _DEFAULT_QCAP = 64         # particle waiting-queue width.  q_cap=None -> this; keeps overflow particles
@@ -565,6 +567,16 @@ def pool_fsi_reweight_flat(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex
     """pool_fsi_reweight on a RAGGED record (compact_fsi_record output + n_events).  Same per-slot physics
     (cascade_discrete.*_slot_factor), ragged reduction.  record["n_events"] gives the event count."""
     R = record
+    # OVERFLOW GUARD on the DIRECT (uncompacted) flat path: a raw flat record carries gc_p/gc_n = the TRUE
+    # interaction count (incl. dropped-past-buffer).  If gc > buffer, the buffer is TRUNCATED and the reweight
+    # would be silently wrong -- fail loud here too (not only in compact_fsi_record).  A compacted record has
+    # no gc_* (already trimmed & guarded), so this is a no-op there.
+    if "gc_p" in R:
+        gp = int(jnp.asarray(R["gc_p"])); gn = int(jnp.asarray(R["gc_n"]))
+        Tp = len(jnp.asarray(R["bc"])); Tn = len(jnp.asarray(R["hh"]))
+        if gp > Tp or gn > Tn:
+            raise ValueError(f"FLAT FSI record overflow on reweight: pion {gp}/{Tp}, nucleon {gn}/{Tn}. "
+                             f"Raise the flat TOTAL budget (rec_caps) above the batch total interaction count.")
     n = int(R["n_events"])
     s_el = sscat if s_piN_elastic is None else s_piN_elastic
     s_cex = sscat if s_piN_cex is None else s_piN_cex
