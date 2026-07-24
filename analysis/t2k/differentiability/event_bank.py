@@ -47,13 +47,27 @@ def run():
     n_chunks = int(np.ceil(N_TOTAL / CHUNK))
     SEED0 = int(os.environ.get("SEED0", "0"))   # per-shard seed offset: each SLURM array task owns a
     #   disjoint seed range (seed = SEED0 + c) so shards produce INDEPENDENT events (default 0 = original).
-    sf = SpectralFunction(resolve_targets("C")[0][0].spectral_n)
+    # flux + material are env-configurable (T2K/C default -> byte-identical).  ADONIS_FLUX_FILE is read
+    # by the generators' T2KFlux() (DEFAULT_FLUX); ADONIS_MATERIAL selects the nucleus (C | Ar).
+    MATERIAL = os.environ.get("ADONIS_MATERIAL", "C")
+    tgt = resolve_targets(MATERIAL)[0][0]
+    sf = SpectralFunction(tgt.spectral_n); sf_p = SpectralFunction(tgt.spectral_p)
+    n_neutron = tgt.A - tgt.Z; n_proton = tgt.Z
     NOM = nominal_knobs()
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
     os.makedirs(outdir, exist_ok=True)
     log(f"event_bank (full records): N={N_TOTAL} in {n_chunks} chunk(s) of {CHUNK} -> {outdir}")
-    POOL = T.POOLCFG; CAPS = T.REC_CAPS
+    log(f"  flux={os.environ.get('ADONIS_FLUX_FILE','flux/T2K_nu.dat')}  material={tgt.symbol}{tgt.A} "
+        f"(Z={tgt.Z} N={n_neutron})")
+    # in-slab record caps: carbon-tuned (96,64) overflow on bigger nuclei (Ar ~9.1 fm radius -> more
+    # pion/nucleon cascade steps).  Widen for non-carbon (compaction drops the padding, so only the
+    # transient dense record grows).  Override via ADONIS_REC_CAPS="Np,Nn".
+    CAPS = T.REC_CAPS if MATERIAL == "C" else (256, 256)
+    if os.environ.get("ADONIS_REC_CAPS"):
+        CAPS = tuple(int(x) for x in os.environ["ADONIS_REC_CAPS"].split(","))
+    # material-aware cascade: thread the nucleus density/configs into the pool config (carbon default).
+    POOL = lambda **k: T.POOLCFG(nucleus=tgt.density_p, density_n=tgt.density_n, configs=tgt.configs, **k)
     FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "nh",
              "hh", "a", "iso", "finel", "inel", "swap", "ns")
 
@@ -72,8 +86,10 @@ def run():
 
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, caps=list(CAPS))
     for c in range(n_chunks):
-        qe = qe_xsec.sample_importance(CHUNK, seed=SEED0 + c); qw = np.asarray(qe["w"]) / CHUNK
-        res = res_xsec.generate(CHUNK, seed=SEED0 + c, return_events=True)["events"]; rw = np.asarray(res["w"])
+        qe = qe_xsec.sample_importance(CHUNK, seed=SEED0 + c, sf=sf, n_neutron=n_neutron)
+        qw = np.asarray(qe["w"]) / CHUNK
+        res = res_xsec.generate(CHUNK, seed=SEED0 + c, return_events=True, sf_n=sf, sf_p=sf_p,
+                                n_neutron=n_neutron, n_proton=n_proton)["events"]; rw = np.asarray(res["w"])
         HV, SF = build_hv_sf(qe, res, sf, with_pw=False)
         kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)
         nq = len(qw); nr = len(rw)
