@@ -60,10 +60,17 @@ def run():
     log(f"event_bank (full records): N={N_TOTAL} in {n_chunks} chunk(s) of {CHUNK} -> {outdir}")
     log(f"  flux={os.environ.get('ADONIS_FLUX_FILE','flux/T2K_nu.dat')}  material={tgt.symbol}{tgt.A} "
         f"(Z={tgt.Z} N={n_neutron})")
-    # in-slab record caps: carbon-tuned (96,64) overflow on bigger nuclei (Ar ~9.1 fm radius -> more
-    # pion/nucleon cascade steps).  Widen for non-carbon (compaction drops the padding, so only the
-    # transient dense record grows).  Override via ADONIS_REC_CAPS="Np,Nn".
-    CAPS = T.REC_CAPS if MATERIAL == "C" else (256, 256)
+    # TODO(tech-debt, COMPUTATIONAL not physics): the nucleus-scaled fixed cap over-allocates the
+    # transient dense buffer for the long occupancy tail (~97% padding).  Proper fix = auto-size K from
+    # a pre-pass, or spill rare overflows.  See docs/logbook/fsi_record_cap_techdebt.md.
+    # In-slab FSI-record caps must SCALE WITH THE NUCLEUS (heavier target -> longer cascades -> more
+    # in-slab steps per event).  Mirror the PROVEN beam_bank.py scaling (_sc=ceil(A/12), base (96,256)):
+    # 12C -> (96,256), 40Ar -> (384,1024).  Measured event-bank Ar max occupancy is (pion 92, nucleon 333)
+    # -- well inside (384,1024).  Only the TRANSIENT dense buffer grows with the cap; the stored ragged
+    # record does not.  The carbon-tuned (96,64) and my earlier flat (256,256) both overflowed on Ar.
+    # compact_fsi_record now fails LOUD with the exact K needed if this is ever still too small.
+    _sc = max(1, -(-tgt.A // 12))                    # ceil(A/12)
+    CAPS = (96 * _sc, 256 * _sc)
     if os.environ.get("ADONIS_REC_CAPS"):
         CAPS = tuple(int(x) for x in os.environ["ADONIS_REC_CAPS"].split(","))
     # material-aware cascade: thread the nucleus density/configs into the pool config (carbon default).

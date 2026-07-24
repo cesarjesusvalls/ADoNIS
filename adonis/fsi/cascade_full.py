@@ -485,6 +485,16 @@ def compact_fsi_record(rec):
     for names, cnt, tag in ((_P_SLOT, "nh", "p"), (_N_SLOT, "ns", "n")):
         c = _np.asarray(rec[cnt])
         K = _np.asarray(rec[names[0]]).shape[1]
+        cmax = int(c.max()) if c.size else 0
+        # The in-cascade log is a fixed-width (n, K) buffer (JAX static shapes); K = rec_caps.  If any
+        # particle took MORE steps than K, that buffer truncated it while `c` still reports the true count
+        # -> the compaction below would be inconsistent.  Fail LOUD and say exactly what K is needed (the
+        # bigger nuclei, e.g. Ar, log more steps than the carbon-tuned caps).  Only the transient buffer
+        # grows with K; the stored ragged output does not.
+        if cmax > K:
+            raise ValueError(
+                f"FSI '{tag}' record overflow: max per-event steps = {cmax} exceeds the buffer cap K = {K} "
+                f"(rec_caps). Set rec_caps / ADONIS_REC_CAPS for this species above {cmax} (with margin).")
         keep = _np.arange(K)[None, :] < c[:, None]                # the used slots, per event
         out[f"{tag}_eidx"] = _np.repeat(_np.arange(len(c), dtype=_np.int32), c)
         for f in names:
