@@ -56,35 +56,53 @@ def _seg_count(mask, seg_ids, n_events):
 
 def bank_obs(bank):
     """final-state observables + per-event weight from a paper_banks bank (fs_* ragged)."""
+    import json
     fs = sorted((BANKDIR / bank / "merged").glob("chunk_*.npz"))
-    wk = "c" if bank.startswith("ee") else "w0"
-    W, PID, P4, SEG = [], [], [], []
+    is_ee = bank.startswith("ee"); is_beam = bank.startswith("beam")
+    wk = "c" if is_ee else "w0"
+    xkey = "theta" if is_ee else ("reacted" if is_beam else None)   # per-event field for the acceptance mask
+    W, PID, P4, SEG, X = [], [], [], [], []
     ev_base = 0
     for f in fs:
         d = np.load(f)
         w = np.asarray(d[wk], float); ne = len(w)
-        off = np.asarray(d["fs_off"], np.int64)               # (ne+1,) offsets into the flat particle arrays
-        cnt = np.diff(off)                                     # particles per event
+        cnt = np.diff(np.asarray(d["fs_off"], np.int64))      # particles per event
         SEG.append(np.repeat(np.arange(ne) + ev_base, cnt))   # event index per particle
         W.append(w); PID.append(np.asarray(d["fs_pid"])); P4.append(np.asarray(d["fs_p4"], float))
+        if xkey:
+            X.append(np.asarray(d[xkey]))
         ev_base += ne
-    w = np.concatenate(W)
-    # absolute-nb normalization to match the oracle's sigma:
-    #  neutrino/(e,e'):  each chunk is an independent full-flux sigma estimate -> divide by n_chunks (== load_bank)
-    #  beam:             w0 = PIR2 [mb] constant; dsigma = PIR2 * N_bin / N_total -> divide by n_total
-    import json
-    man = json.load(open(BANKDIR / bank / "merged" / "manifest.json"))
-    norm = len(w) if bank.startswith("beam") else man.get("n_chunks", len(fs))
-    w = w / norm
-    return _observables(np.concatenate(PID), np.concatenate(P4), np.concatenate(SEG), w, len(w))
+    w = np.concatenate(W); pid = np.concatenate(PID); p4 = np.concatenate(P4); seg = np.concatenate(SEG)
+    n_all = len(w)
+    # per-event acceptance mask to make ADoNIS the IDENTICAL measurement as the oracle:
+    #  (e,e'): electron in [14,17] deg (the oracle's window; Mott is forward-peaked so "all angles" differs).
+    #  beam:   REACTED events only (ACHILLES CrossSection-mode writes only reacted; ADoNIS fs_* also holds the
+    #          non-reacted beam pass-through, which must be excluded).
+    if is_ee or is_beam:
+        x = np.concatenate(X)
+        keep = ((x >= 14.0) & (x <= 17.0)) if is_ee else x.astype(bool)
+        pk = keep[seg]; seg = (np.cumsum(keep) - 1)[seg[pk]]; pid = pid[pk]; p4 = p4[pk]; w = w[keep]
+    # absolute-nb normalization to match the oracle sigma:
+    if is_beam:
+        w = w * 1e6 / n_all         # w0=PIR2 [mb] -> nb; dsigma = PIR2 * N_reacted-particles / N_total (== n_tried)
+    else:
+        man = json.load(open(BANKDIR / bank / "merged" / "manifest.json"))
+        w = w / man.get("n_chunks", len(fs))   # independent full-flux sigma estimates averaged (== load_bank)
+    return _observables(pid, p4, seg, w, len(w))
 
 
 def oracle_obs(bank):
     """same observables from the rich oracle(s) (prot_p4 (M,4), pi_p4/pi_pid (K,4)/(K,))."""
     ev_w, plead, pcos, pilead, npr, npi = [], [], [], [], [], []
+    import json
+    bnorm = None
+    if bank.startswith("beam"):
+        bn = json.load(open(ORADIR / "beam_norm.json"))[bank[5:]]
+        bnorm = bn["pir2_mb"] * 1e6 / bn["n_tried"]     # geometric CrossSection-mode: sigma = PIR2*N/n_tried
     for stem in ORACLE[bank]:
         d = np.load(ORADIR / f"{stem}.npz", allow_pickle=True)
-        w = np.asarray(d["w"], float) * float(d["weight_to_nb"])
+        # beam ACHILLES uses PIR2*N_reacted/n_tried [mb], NOT flux*gen_xs -> constant weight per reacted event
+        w = np.full(len(d["w"]), bnorm) if bnorm is not None else np.asarray(d["w"], float) * float(d["weight_to_nb"])
         pr = np.asarray(d["prot_p4"], float); pip = np.asarray(d["pi_p4"], float); pipid = np.asarray(d["pi_pid"])
         prm = np.linalg.norm(pr[:, :, 1:], axis=2)                      # (n,M)
         prc = np.where(prm > 0, pr[:, :, 3] / np.maximum(prm, 1e-9), -2.0)
