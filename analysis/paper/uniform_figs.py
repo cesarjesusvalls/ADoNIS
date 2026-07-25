@@ -33,6 +33,10 @@ ORACLE["ee_C"] = ["ee_C_qe_fsi", "ee_C_res_fsi"]
 ORACLE["ee_Ar"] = ["ee_Ar_qe_fsi", "ee_Ar_res_fsi"]
 BANKDIR = ROOT / "output" / "paper_banks"
 ORADIR = ROOT / "output" / "achilles" / "fsrich"
+# SHADOWING (opt-in): ADONIS_SHADOW=1 greys out + drops-from-chi2 bins contributing < ADONIS_SHADOW_FRAC
+# (default 0.01 = 1%) of the panel's total cross section.  ADONIS_SHADOW=0 (default) -> all bins count.
+SHADOW_FRAC = (float(os.environ.get("ADONIS_SHADOW_FRAC", "0.01"))
+               if os.environ.get("ADONIS_SHADOW", "0") != "0" else None)
 
 TITLE = {"nu_T2K_C": "T2K $\\nu_\\mu$ on $^{12}$C", "nu_MINERvA_C": "MINERvA $\\nu_\\mu$ on $^{12}$C",
          "nu_uBooNE_Ar": "MicroBooNE $\\nu_\\mu$ on $^{40}$Ar",
@@ -158,8 +162,9 @@ def make(bank):
         res = chi2_ratio_panel(ax[0, c], ax[1, c], EDGES[k],
                                {"values": av[mask_a], "w": aw[mask_a]}, {"values": dv[mask_d], "w": dw[mask_d]},
                                label=LABELS[k], ado_label="ADoNIS", ref_label="ACHILLES",
-                               ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.5))
-        print(f"  chi2/ndf  {bank:14s} {k:12s} {res['chi2']/max(res['ndf'],1):8.2f}  (ndf={res['ndf']})", flush=True)
+                               ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.5), shadow_frac=SHADOW_FRAC)
+        print(f"  chi2/ndf  {bank:14s} {k:12s} {res['chi2']/max(res['ndf'],1):8.2f}  "
+              f"(ndf={res['ndf']}, shadowed={res.get('n_shadow',0)})", flush=True)
         ax[0, c].text(0.05, 0.88, f"$\\chi^2$/ndf {res['chi2']/max(res['ndf'],1):.2f}",
                       transform=ax[0, c].transAxes, fontsize=7.5)
         if c == 0:

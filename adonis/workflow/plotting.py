@@ -22,16 +22,33 @@ def hist_with_errors(values, weights, edges):
 
 def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
                      ratio_ylim=(0.5, 1.6), ado_label="ENGINE", ref_label="ACHILLES", data=None,
-                     logy=False):
+                     logy=False, shadow_frac=None):
     """Render one observable into top axis a0 (dsigma/dx) + bottom a1 (ACH/ADO ratio).
-    ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado)."""
+    ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado).
+    shadow_frac (opt-in, e.g. 0.01): bins contributing < this fraction of the panel's TOTAL cross section
+    (max of the ACH and ADO integrals, so a real discrepancy is never hidden) are SHADOWED (greyed) and
+    EXCLUDED from chi2/ndf -- removes stat-inflated low-sigma tail bins.  None -> off (all bins count)."""
     bw = np.diff(edges); ctr = 0.5 * (edges[1:] + edges[:-1])
     da, ea = hist_with_errors(ref["values"], ref["w"], edges)
     dd, ed = hist_with_errors(ado["values"], ado["w"], edges)
     a0.fill_between(edges, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
                     step="post", color="0.55", alpha=0.55, lw=0, label="ACH stat")
     a0.step(edges, np.append(da, da[-1]), where="post", color="0.3", lw=1.3, label=ref_label)
-    a0.errorbar(ctr, dd, yerr=ed, fmt="s", color="C0", ms=3, capsize=2, lw=0.9, label=ado_label)
+    m = (da > 0) & (dd > 0)                     # bins with content on both sides
+    shadow = np.zeros(len(bw), bool)            # low-contribution bins: shown greyed, excluded from chi2
+    if shadow_frac:
+        ca = da * bw / max(float(np.sum(da * bw)), 1e-30)
+        cd = dd * bw / max(float(np.sum(dd * bw)), 1e-30)
+        shadow = m & (np.maximum(ca, cd) < float(shadow_frac))
+    keep = m & ~shadow
+    # ADoNIS points: kept normal (C0), shadowed greyed; + a grey band over each shadowed bin (both panels)
+    a0.errorbar(ctr[keep], dd[keep], yerr=ed[keep], fmt="s", color="C0", ms=3, capsize=2, lw=0.9, label=ado_label)
+    if shadow.any():
+        a0.errorbar(ctr[shadow], dd[shadow], yerr=ed[shadow], fmt="s", color="0.6", ms=3, capsize=2, lw=0.9,
+                    alpha=0.6, label=f"shadowed (<{100*float(shadow_frac):.2g}%)")
+        for i in np.where(shadow)[0]:
+            a0.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
+            a1.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
     if data is not None:
         a0.errorbar(data["ctr"], data["val"], yerr=data["err"], fmt="o", color="k", ms=3,
                     capsize=2, lw=0.9, label="data")
@@ -43,18 +60,19 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
             a0.set_ylim(0.5 * pos.min(), 2.0 * pos.max())
     else:
         a0.set_ylim(bottom=0)
-    m = (da > 0) & (dd > 0)
-    chi2 = float(np.sum((da[m] - dd[m]) ** 2 / (ea[m] ** 2 + ed[m] ** 2))); ndf = int(m.sum())
+    chi2 = float(np.sum((da[keep] - dd[keep]) ** 2 / (ea[keep] ** 2 + ed[keep] ** 2))); ndf = int(keep.sum())
     with np.errstate(divide="ignore", invalid="ignore"):
         r = da / dd; re = r * np.sqrt((ed / dd) ** 2 + (ea / da) ** 2)
     a1.axhspan(ratio_band[0], ratio_band[1], color="green", alpha=0.12)
     a1.axhline(1.0, ls="--", color="green", lw=0.7)
-    a1.errorbar(ctr[m], r[m], yerr=re[m], fmt="o", color="C3", ms=3, capsize=2, lw=0.8)
+    a1.errorbar(ctr[keep], r[keep], yerr=re[keep], fmt="o", color="C3", ms=3, capsize=2, lw=0.8)
+    if shadow.any():
+        a1.errorbar(ctr[shadow], r[shadow], yerr=re[shadow], fmt="o", color="0.6", ms=3, capsize=2, lw=0.8, alpha=0.6)
     a1.set_ylim(*ratio_ylim); a1.set_xlabel(label, fontsize=8)
     a0.set_xlim(edges[0], edges[-1])           # clamp to bin edges (sharex -> a1 too): no "floating" margin
     a1.text(0.04, 0.83, f"{chi2/max(ndf,1):.1f}", transform=a1.transAxes, fontsize=9)
     ach_ado = float(np.sum(da * bw) / max(np.sum(dd * bw), 1e-30))
-    return dict(chi2=chi2, ndf=ndf, ach_ado=ach_ado)
+    return dict(chi2=chi2, ndf=ndf, ach_ado=ach_ado, n_shadow=int(shadow.sum()))
 
 
 def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.6),
