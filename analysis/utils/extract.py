@@ -273,7 +273,66 @@ def cc_incl(path, **_):
                 pmu_L=np.array(pmu_l), Enu=np.array(enu), w=np.array(w), proc=np.array(proc, np.int64))
 
 
-CHANNELS = {"cc0pi": cc0pi, "cc1pi": cc1pi, "cc1pi_rich": cc1pi_rich, "res_w": res_w, "cc_incl": cc_incl}
+ELEC = 11
+
+
+def fs_rich(path, K=6, M=10, **_):
+    """PROBE-AGNOSTIC full final state (no cut, no lepton requirement) -- the UNIFORM oracle blueprint for
+    every bank (neutrino / (e,e') / hadron beam).  Per event: final-state pions(K,+pid), protons(M),
+    neutrons(M) [all |p|-sorted, padded]; the outgoing lepton (mu or e-, zeros if none); the incoming probe
+    (status-4 beam, else the highest-E neutrino); struck nucleon(+pid); n_other_meson; weight; proc.  So one
+    rich oracle expresses final-state kinematics for ANY probe -- extract.py cc1pi_rich but WITHOUT the
+    nu/mu/struck skip that made it neutrino-only."""
+    lep_l, prb_l, st_l, sp_l, w_l, nom_l, proc_l = [], [], [], [], [], [], []
+    pip4_l, pipid_l, pr4_l, nr4_l = [], [], [], []
+    n_evt = 0
+    for evt in parse_events(Path(path)):
+        n_evt += 1
+        lep = prb = struck = None; struck_pid = 0; pions = []; protons = []; neutrons = []; n_other = 0
+        for pid, status, p4 in evt["parts"]:
+            if status == 4 and (prb is None or p4[0] > prb[0]):        # incoming beam particle (any probe)
+                prb = p4
+            elif pid == NU_MU and prb is None:                         # neutrino probe if no status-4 beam
+                prb = p4
+            if status == 2 and pid in NUCLEONS and struck is None:
+                struck = p4; struck_pid = pid
+            if status != 1:
+                continue
+            if pid == MU or pid == ELEC:                               # outgoing lepton (mu | e-)
+                lep = p4
+            elif pid in PIONS:
+                pions.append((pid, p4)); n_other += (pid != PIP)
+            elif pid in MESONS:
+                n_other += 1
+            elif pid == PROT:
+                protons.append(p4)
+            elif pid == NEUT:
+                neutrons.append(p4)
+        p4p = np.zeros((K, 4)); pidp = np.zeros(K, np.int64)
+        for i, (pp, q) in enumerate(sorted(pions, key=lambda t: -np.linalg.norm(t[1][1:]))[:K]):
+            p4p[i] = q; pidp[i] = pp
+        prp = np.zeros((M, 4))
+        for i, q in enumerate(sorted(protons, key=lambda v: -np.linalg.norm(v[1:]))[:M]):
+            prp[i] = q
+        nrp = np.zeros((M, 4))
+        for i, q in enumerate(sorted(neutrons, key=lambda v: -np.linalg.norm(v[1:]))[:M]):
+            nrp[i] = q
+        lep_l.append(lep if lep is not None else np.zeros(4))
+        prb_l.append(prb if prb is not None else np.zeros(4))
+        st_l.append(struck if struck is not None else np.zeros(4)); sp_l.append(struck_pid)
+        pip4_l.append(p4p); pipid_l.append(pidp); pr4_l.append(prp); nr4_l.append(nrp)
+        nom_l.append(n_other); w_l.append(evt["w"] or 1.0)
+        proc_l.append(evt["proc"] if evt["proc"] is not None else -1)
+        if n_evt % 200000 == 0:
+            print(f"  {n_evt} parsed", flush=True)
+    return dict(lep=np.array(lep_l), probe=np.array(prb_l), struck=np.array(st_l),
+                struck_pid=np.array(sp_l), pi_p4=np.array(pip4_l), pi_pid=np.array(pipid_l),
+                prot_p4=np.array(pr4_l), neut_p4=np.array(nr4_l), n_other_meson=np.array(nom_l),
+                w=np.array(w_l), proc=np.array(proc_l, np.int64))
+
+
+CHANNELS = {"cc0pi": cc0pi, "cc1pi": cc1pi, "cc1pi_rich": cc1pi_rich, "res_w": res_w,
+            "cc_incl": cc_incl, "fs_rich": fs_rich}
 
 
 def main(argv=None):

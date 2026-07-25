@@ -35,9 +35,11 @@ BUILD = {"": "BASELINE build (no pion birth-position fix)",
 def adonis_sigma(beam, nbins, target="C", suffix=""):
     # `suffix` selects an alternative bank build (e.g. "_bpfix" = pion birth-position fix).  A beam that
     # has no suffixed bank falls back to the canonical one, so a partial regeneration still plots.
-    path = f"output/beam_{beam}_{target}{suffix}"
+    import os
+    pattern = os.environ.get("ADONIS_BEAM_PATTERN", "output/beam_{beam}_{target}{suffix}")
+    path = pattern.format(beam=beam, target=target, suffix=suffix)
     if suffix and not Path(path).is_dir():
-        path = f"output/beam_{beam}_{target}"
+        path = pattern.format(beam=beam, target=target, suffix="")
     B = BB.load(path)
     man = B["manifest"]
     adonis_sigma.last = (path, int(man.get("n_total", 0)))    # for labelling the panel

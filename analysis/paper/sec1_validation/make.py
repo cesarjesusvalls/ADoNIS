@@ -25,6 +25,7 @@ absolute nb on both sides (bank w0; oracle w * weight_to_nb, = 1 here).
 
 Usage:  python -m analysis.paper.sec1_validation.make [--no-beams]
 """
+import os
 import argparse
 import sys
 from pathlib import Path
@@ -43,7 +44,7 @@ from analysis.t2k.differentiability.full_knobs import nominal_knobs
 from adonis.workflow.plotting import chi2_ratio_panel
 from analysis.paper import style
 
-BANKDIR = "output/event_bank_v2"
+BANKDIR = os.environ.get("ADONIS_BANK", "output/event_bank_v2")   # override -> paper_banks/nu_T2K_C/merged
 ORACLE = str(ROOT / "output" / "achilles" / "t2k_cc1pi_rich_ach_FSI_proc.npz")
 
 # T2K acceptance constants (single source of truth = tune / bank_plot; repeated here only for the oracle)
