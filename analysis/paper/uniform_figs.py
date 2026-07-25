@@ -27,8 +27,10 @@ BANKS = ["nu_T2K_C", "nu_MINERvA_C", "nu_uBooNE_Ar",
          "ee_C", "ee_Ar"]
 # bank -> rich-oracle npz stem(s) under output/achilles/fsrich/ (ee combines qe+res to match the bank)
 ORACLE = {b: [b] for b in BANKS}
-ORACLE["ee_C"] = ["ee_C_qe", "ee_C_res"]
-ORACLE["ee_Ar"] = ["ee_Ar_qe", "ee_Ar_res"]
+# ee uses the FSI-ON oracles (rebuilt-from-source achilles; the prebuilt image segfaulted on (e,e')+cascade)
+# so it's post-FSI vs post-FSI, matching the ADoNIS ee bank.  _fsi combined by combine_fsrich.
+ORACLE["ee_C"] = ["ee_C_qe_fsi", "ee_C_res_fsi"]
+ORACLE["ee_Ar"] = ["ee_Ar_qe_fsi", "ee_Ar_res_fsi"]
 BANKDIR = ROOT / "output" / "paper_banks"
 ORADIR = ROOT / "output" / "achilles" / "fsrich"
 
@@ -157,6 +159,7 @@ def make(bank):
                                {"values": av[mask_a], "w": aw[mask_a]}, {"values": dv[mask_d], "w": dw[mask_d]},
                                label=LABELS[k], ado_label="ADoNIS", ref_label="ACHILLES",
                                ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.5))
+        print(f"  chi2/ndf  {bank:14s} {k:12s} {res['chi2']/max(res['ndf'],1):8.2f}  (ndf={res['ndf']})", flush=True)
         ax[0, c].text(0.05, 0.88, f"$\\chi^2$/ndf {res['chi2']/max(res['ndf'],1):.2f}",
                       transform=ax[0, c].transAxes, fontsize=7.5)
         if c == 0:
