@@ -183,6 +183,21 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
                 f"emitted nucleon KE={_keN.min():.2f} MeV < floor {cfg.recap_ke-5.0} -- capture leak "
                 f"(a bound nucleon reached the final state; check _nucleon_step escape/capture partition)")
 
+        # ---- FULL final-state 4-vectors (fs_*), UNIFORM with the neutrino/(e,e') banks -------------- #
+        # Same ragged layout as event_bank.compact_fs: fs_off (n+1 offsets), fs_pid/fs_chg/fs_p4 over the
+        # ALIVE slots.  So one final-state extraction reads every bank identically.  pid: pion slot ->
+        # {pi+,pi0,pi-,eta}[charge], nucleon -> p/n; eta (charge 3) rides the PION species slot.
+        _p4o = O["p4"].astype(np.float64)
+        _fpid = np.where(O["species"] == CF.PION,
+                         np.array([211, 111, -211, 221])[np.clip(O["charge"], 0, 3)],
+                         np.where(O["charge"] == 1, 2212, 2112))
+        _fcnt = _al.sum(1).astype(np.int64); _foff = np.concatenate([[0], np.cumsum(_fcnt)])
+        _fm = _al.reshape(-1)
+        fs_save = {"fs_off": _foff.astype(np.int64),
+                   "fs_pid": _fpid.reshape(-1)[_fm].astype(np.int32),
+                   "fs_chg": O["charge"].reshape(-1)[_fm].astype(np.int32),
+                   "fs_p4": _p4o.reshape(-1, 4)[_fm].astype(np.float32)}
+
         flat = CF.compact_fsi_record({k: np.asarray(v) for k, v in rec.items()})
         fsi_save = {"f_p_eidx": flat["p_eidx"].astype(np.int32), "f_n_eidx": flat["n_eidx"].astype(np.int32)}
         for f, arr in flat.items():
@@ -199,7 +214,7 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
                  n_pi_out=n_pi_out, n_p_out=n_p_out, n_n_out=n_n_out,
                  n_pip=n_pip, n_pi0=n_pi0, n_pim=n_pim, n_eta=n_eta,
                  nsc_prim=np.asarray(nsc_prim, np.int16), prim_fate=prim_fate.astype(np.int8),
-                 **fsi_save, **ks_save)
+                 **fsi_save, **ks_save, **fs_save)
         log(f"  chunk {c+1}/{n_chunks}: written | reacted {reacted.mean():.3f} | absorbed {absorbed.mean():.3f} "
             f"| <n_pi_out> {n_pi_out.mean():.3f} | pion slots {len(flat['p_eidx']):,} nucleon {len(flat['n_eidx']):,}")
 
