@@ -5,7 +5,7 @@ physical shape (rises from the N+Delta threshold through the Delta region).
 """
 import numpy as np
 
-from adonis.fsi.mb import nn_delta as nd
+from adonis.fsi.interactions import nn_to_ndelta as nd
 
 
 def test_effective_width_at_pole():

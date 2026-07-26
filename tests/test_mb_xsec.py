@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from adonis.io import achilles_data_root
-from adonis.fsi.mb.anl_xsec import pip_p_total
+from adonis.fsi.interactions.meson_baryon_amplitudes import pip_p_total
 
 _ANL = achilles_data_root() / "MesonBaryonAmplitudes" / "ANL" / "ANL_0-0.dat"
 pytestmark = pytest.mark.skipif(not _ANL.exists(),
@@ -38,7 +38,7 @@ def test_sigma_norm_linear():
 def test_pim_p_isospin_ratio():
     """pi- p elastic reproduces the Delta with the textbook 9:1 isospin ratio vs pi+ p
     (the I=3/2 amplitude enters with weight 1 for pi+p, 1/3 for pi-p elastic -> |1|^2/|1/3|^2=9)."""
-    from adonis.fsi.mb.anl_xsec import pip_p_total, pim_p_elastic
+    from adonis.fsi.interactions.meson_baryon_amplitudes import pip_p_total, pim_p_elastic
     W, sp = pip_p_total()
     _, sm = pim_p_elastic()
     m = (W >= 1150) & (W <= 1350)
@@ -50,7 +50,7 @@ def test_cex_isospin_921_ratio():
     """The three piN channels at the Delta(1232) reproduce the textbook 9:2:1 isospin ratio
     pi+p : (pi-p->pi0n charge exchange) : pi-p elastic -- a pure I=3/2 prediction (weights
     1, sqrt(2)/3, 1/3 -> 1 : 2/9 : 1/9 = 9:2:1)."""
-    from adonis.fsi.mb.anl_xsec import pip_p_total, pim_p_elastic, pim_p_cex
+    from adonis.fsi.interactions.meson_baryon_amplitudes import pip_p_total, pim_p_elastic, pim_p_cex
     W, sp = pip_p_total()
     _, sc = pim_p_cex()
     _, se = pim_p_elastic()
@@ -65,7 +65,7 @@ def test_delta_angular_distribution():
     """pi+ p dsigma/dOmega at the Delta (W=1232) reproduces the P33 1 + 3 cos^2(theta)
     shape (forward/90deg ~ 4), with the physical S-P interference forward-backward asymmetry."""
     import numpy as np
-    from adonis.fsi.mb.anl_xsec import dsigma_dOmega
+    from adonis.fsi.interactions.meson_baryon_amplitudes import dsigma_dOmega
     c = np.linspace(-1, 1, 41)
     d = dsigma_dOmega(1232.0, c)
     fwd, ninety = d[-1], d[len(c) // 2]
@@ -83,7 +83,7 @@ def test_eta_klambda_production():
     import pytest
     if not (achilles_data_root() / "MesonBaryonAmplitudes" / "ANL" / "ANL_0-1.dat").exists():
         pytest.skip("ANL_0-1 (etaN) amplitudes not present")
-    from adonis.fsi.mb.anl_xsec import eta_production, klambda_production
+    from adonis.fsi.interactions.meson_baryon_amplitudes import eta_production, klambda_production
     We, se = eta_production(); Wk, sk = klambda_production()
     me = (We >= 1480) & (We <= 1800)
     assert 1510 <= We[me][se[me].argmax()] <= 1580           # N(1535) peak

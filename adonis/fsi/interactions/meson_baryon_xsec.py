@@ -1,6 +1,6 @@
 """DCC meson-baryon cross sections for the intranuclear cascade (the ACHILLES Virtual-
 Resonances `MesonBaryonInteraction`).  Builds, from the Phase-E ANL-Osaka partial-wave
-amplitudes (`anl_xsec`), the pi N -> pi' N' scattering cross sections sigma(W) [mb] for every
+amplitudes (`meson_baryon_amplitudes`), the pi N -> pi' N' scattering cross sections sigma(W) [mb] for every
 charge channel (elastic + charge exchange), precomputed on the amplitude W grid and exposed
 as fast interpolators for the cascade.  These are the sharply Delta-peaked piN cross sections
 (validated to the 9.3:2.2:1 isospin ratio in Phase E) -- the RIGHT scatter rates for the
@@ -8,13 +8,13 @@ cascade (vs the broad Oset QE).
 
 Channels (pion_in, nucleon) -> list of (pion_out, nucleon_out, isospin-cg) with
 cg = {3: c_{3/2}, 1: c_{1/2}} (the product of the initial+final meson-baryon Clebsches):
-the partial-wave sum sigma = pref * sum_{L,J} (2J+1) |sum_I cg_I A^I_{L,J}|^2 (anl_xsec).
+the partial-wave sum sigma = pref * sum_{L,J} (2J+1) |sum_I cg_I A^I_{L,J}|^2 (meson_baryon_amplitudes).
 """
 from __future__ import annotations
 
 import numpy as np
 
-from adonis.fsi.mb.anl_xsec import load_anl, _channel_sigma
+from adonis.fsi.interactions.meson_baryon_amplitudes import load_anl, _channel_sigma
 
 _R2 = np.sqrt(2.0) / 3.0
 # (pion_in_idx, nucleon: 'p'/'n') -> [(pion_out_idx, nucleon_out, cg_dict), ...]
@@ -137,7 +137,7 @@ def _cg_for_channel(pin, nuc_idx, pout):
 def _build_angular():
     if _ANG:
         return _ANG
-    from adonis.fsi.mb.anl_xsec import dsigma_dOmega
+    from adonis.fsi.interactions.meson_baryon_amplitudes import dsigma_dOmega
     Wg = np.linspace(1085.0, 2200.0, 224)            # W grid [MeV], 5 MeV step == the ANL piN grid
     #   (1080-2200) that ACHILLES MesonBaryonAmplitudes loads.  Was truncated at 1700 -> high-momentum
     #   pion scatters were clamped to a too-isotropic angle; ACHILLES samples to w_vec max (2200).
@@ -193,7 +193,7 @@ def _jax_grid_conversion():
     """numpy-cached (W grid, sig_conv (3 pion, 2 nucleon, nW)) from anl_xsec.conversion_sigma_grid
     (faithful ACHILLES MesonBaryonAmplitudes port; thresholds/table-end -> 0 via interp edges)."""
     if "conv_np" not in _JGRID:
-        from adonis.fsi.mb.anl_xsec import conversion_sigma_grid
+        from adonis.fsi.interactions.meson_baryon_amplitudes import conversion_sigma_grid
         Wg, sig = conversion_sigma_grid()
         _JGRID["convW_np"] = np.asarray(Wg); _JGRID["conv_np"] = np.asarray(sig)
     return _jnp.asarray(_JGRID["convW_np"]), _jnp.asarray(_JGRID["conv_np"])
@@ -216,7 +216,7 @@ def _jax_grid_eta():
     """numpy-cached eta grids: (Wprod, sig_pi2eta (3,2,nW)), (Wel, sig_el (nW,)),
     (Wbc, sig_bc (2,3,nW))."""
     if "eta_prodW_np" not in _JGRID:
-        from adonis.fsi.mb.anl_xsec import (eta_production_sigma_grid, eta_elastic_sigma_grid,
+        from adonis.fsi.interactions.meson_baryon_amplitudes import (eta_production_sigma_grid, eta_elastic_sigma_grid,
                                             eta_backconv_sigma_grid)
         Wp, sp = eta_production_sigma_grid()
         We, se = eta_elastic_sigma_grid()

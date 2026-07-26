@@ -1,4 +1,4 @@
-"""Gate for the DCC meson-baryon cascade cross sections (adonis/fsi/mb/cascade_mb.py) -- the
+"""Gate for the DCC meson-baryon cascade cross sections (adonis/fsi/mb/meson_baryon_xsec.py) -- the
 piN sigma(W) per charge channel the ACHILLES Virtual-Resonances cascade scatters through
 (= Phase E ANL-Osaka amplitudes).  These must be sharply Delta-peaked (the resonance shape),
 carry the right charge-exchange structure, and agree with the standalone Phase-E channel
@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from adonis.io import achilles_data_root
-from adonis.fsi.mb import cascade_mb as cm
+from adonis.fsi.interactions import meson_baryon_xsec as cm
 
 _ANL = achilles_data_root() / "MesonBaryonAmplitudes" / "ANL" / "ANL_0-0.dat"
 pytestmark = pytest.mark.skipif(not _ANL.exists(), reason="ANL meson-baryon table not present")

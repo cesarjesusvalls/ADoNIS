@@ -7,7 +7,7 @@ refill), differentiable via kind-1 reweighting, and jit-able end to end.
 Merged verbatim (2026-07-26, branch cascade-unify) from the retired
 cascade_full.py (pool orchestration) + cascade_discrete.py (step physics + reweight
 math) + cascade_real.py (density/kinematics helpers) + nucleon_cascade.nn_elastic_sigma.
-Cross-section source-of-truth stays in the imported libs (oset_xsec, mb.cascade_mb,
+Cross-section source-of-truth stays in the imported libs (oset_xsec, interactions.meson_baryon_xsec,
 nn_inelastic, absorption_modes). Public entry: cascade_nucleus (eager core) and
 cascade_nucleus_jit (jitted). Config: CascadeConfig (DiscreteCascadeConfig = alias).
 """
@@ -24,7 +24,7 @@ import jax
 import jax.numpy as jnp
 
 from adonis.fsi import oset_xsec as ox
-from adonis.fsi.mb import cascade_mb
+from adonis.fsi.interactions import meson_baryon_xsec
 from adonis.fsi.absorption_modes import kernel_tables as _abs_kernel_tables
 from adonis.fsi import nn_inelastic as nni
 from adonis.constants import mp as _MP_PHYS, mn as _MN_PHYS
@@ -49,7 +49,7 @@ def _load_density(name="c12_density.txt", name_n=None):
     rho_proton < 1e-6 fm^-3 (ABSOLUTE minDensity, Nucleus.cc:49-51).  Returns (rgrid, rho_p, rho_n,
     radius).  For N=Z, rho_p == rho_n bitwise and rho_p+rho_n == 2*rho_p -> carbon is unchanged."""
     # numpy cache + per-call asarray: a jnp array first created inside a jit trace would
-    # leak the tracer context to later traces (cf. cascade_mb._jax_grids_resolved).
+    # leak the tracer context to later traces (cf. meson_baryon_xsec._jax_grids_resolved).
     name_n = name_n or name
     key = (name, name_n)
     if key not in _DENS:
@@ -217,7 +217,7 @@ def _load_qmc_configs(nmax=36000, name="QMC_configs.out.gz"):
     transparency is unchanged vs the old 20000 cap (first-20k and full-36k have identical rms radius
     and both sample ∝ weight)."""
     # Cache as NUMPY (not jnp): a jnp array first created inside a jit trace would leak the
-    # tracer context to later traces (cf. cascade_mb._jax_grids_resolved); asarray per-call is free.
+    # tracer context to later traces (cf. meson_baryon_xsec._jax_grids_resolved); asarray per-call is free.
     if name not in _CFG:
         path = Path(__file__).resolve().parents[2].parent / "Achilles" / "data" / "configurations" / name
         with gzip.open(path, "rt") as f:
@@ -900,13 +900,13 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
         nuc_i = jnp.where(nip, 0, 1).astype(jnp.int32)
         ch_pi = jnp.clip(ch, 0, 2)                              # eta slots reuse pi+ table (unused for eta)
         Wf = Wl.reshape(-1); nuf = nuc_i.reshape(-1); chf = jnp.broadcast_to(ch_pi[:, None], (n, K_)).reshape(-1)
-        sio = cascade_mb.jax_channel_sigmas_resolved(Wf, chf, nuf).reshape(n, K_, 3)
+        sio = meson_baryon_xsec.jax_channel_sigmas_resolved(Wf, chf, nuf).reshape(n, K_, 3)
         ssl = jnp.clip(jnp.sum(sio, axis=-1), 0.0, None)
-        sil = jnp.clip(cascade_mb.jax_conversion_sigma(Wf, chf, nuf).reshape(n, K_), 0.0, None)
+        sil = jnp.clip(meson_baryon_xsec.jax_conversion_sigma(Wf, chf, nuf).reshape(n, K_), 0.0, None)
         # --- ETA meson track (ch==3): no Oset absorption; elastic etaN->etaN is "scatter"; back-conversion
         # etaN->piN is "conversion" (regenerates a pion).  Blend by the per-event species (is_eta). --------
-        ssl_eta = jnp.clip(cascade_mb.jax_eta_elastic_sigma(Wf).reshape(n, K_), 0.0, None)
-        sil_eta = jnp.clip(jnp.sum(cascade_mb.jax_eta_backconv_sigma(Wf, nuf).reshape(n, K_, 3), -1), 0.0, None)
+        ssl_eta = jnp.clip(meson_baryon_xsec.jax_eta_elastic_sigma(Wf).reshape(n, K_), 0.0, None)
+        sil_eta = jnp.clip(jnp.sum(meson_baryon_xsec.jax_eta_backconv_sigma(Wf, nuf).reshape(n, K_, 3), -1), 0.0, None)
         ise = is_eta[:, None]
         sal = jnp.where(ise, 0.0, sal)
         ssl = jnp.where(ise, ssl_eta, ssl)
@@ -1027,7 +1027,7 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     chan_idx = jnp.clip(ch, 0, 2) * 6 + nuc_idx * 3 + jnp.clip(out_ch, 0, 2)
     u_ang = _ev_uniform(ka)
     cos_cm = jnp.where(is_eta, 2.0 * u_ang - 1.0,             # eta: isotropic; pion: DCC angular table
-                       cascade_mb.jax_sample_cos_cm(W_j, u_ang, chan_idx))
+                       meson_baryon_xsec.jax_sample_cos_cm(W_j, u_ang, chan_idx))
     _rec_is_p = jnp.where(is_eta, struck_p == 1, (struck_p + out_ch - ch) == 1)   # recoil nucleon charge
     kf_rec_pi = jnp.where(_rec_is_p, kf_p_j, kf_n_j)
     m_rec_pi = jnp.where(_rec_is_p, _MP_PHYS, _MN_PHYS)        # recoil nucleon mass PHYSICAL per-species
@@ -1047,12 +1047,12 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     # is why ~1/3 of high-|p| conversions do NOT end up absorbed (the eta back-converts to a pion).
     is_conv = chose_conv
     nuc_idx_j = nuc_idx                                        # struck-nucleon index (0 p, 1 n)
-    bc_j = cascade_mb.jax_eta_backconv_sigma(W_j, nuc_idx_j)   # (n,3) etaN->pi_c N sigma per out-pion
+    bc_j = meson_baryon_xsec.jax_eta_backconv_sigma(W_j, nuc_idx_j)   # (n,3) etaN->pi_c N sigma per out-pion
     pbc = bc_j / jnp.clip(jnp.sum(bc_j, axis=1, keepdims=True), 1e-12, None)
     u_out = _ev_fold_uniform(ka, 331)
     out_pi_idx = jnp.clip(jnp.sum((u_out[:, None] > jnp.cumsum(pbc, axis=1)).astype(jnp.int32), axis=1),
                           0, 2).astype(jnp.int32)
-    si_eta_j = cascade_mb.jax_pi_to_eta_sigma(W_j, jnp.clip(ch, 0, 2), nuc_idx_j)   # piN->etaN piece (n,)
+    si_eta_j = meson_baryon_xsec.jax_pi_to_eta_sigma(W_j, jnp.clip(ch, 0, 2), nuc_idx_j)   # piN->etaN piece (n,)
     frac_morph = jnp.where(is_eta, 1.0, si_eta_j / jnp.clip(si_j, 1e-12, None))     # eta piece of the conv
     chose_morph = is_conv & (_ev_fold_uniform(ka, 332) < frac_morph)
     m_out = jnp.where(is_eta, _CH_MASS[out_pi_idx], _CH_MASS[3])   # outgoing meson mass (eta->pion; pi->eta)

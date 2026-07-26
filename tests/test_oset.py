@@ -7,7 +7,7 @@ differentiable in the C_A2/C_A3/C_Q knobs (the paper's tunable FSI absorption pa
 import numpy as np
 import jax
 
-from adonis.fsi.mb.oset import (absorption_self_energy, self_energy_abs_NNN, self_energy_qe,
+from adonis.fsi.interactions.oset_selfenergy import (absorption_self_energy, self_energy_abs_NNN, self_energy_qe,
                                  C_A2, C_Q)
 
 
