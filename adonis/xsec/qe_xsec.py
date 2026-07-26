@@ -133,15 +133,18 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     k_mu = _boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta)
     p_out = _boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta)
     # Kinematically-degenerate events (s->0 => CM boost beta->1) blow the boost up to ~1e17 MeV.
-    # They are rejected below (valid=False => w=0), but the garbage momenta are toxic to any
-    # downstream consumer -- notably the FSI cascade, where such absurd momenta sit exactly on the
-    # escape/Pauli branch thresholds and make the result diverge between CPU and GPU float rounding.
-    # Clamp non-finite / >1 TeV momenta to an on-shell rest placeholder; w=0 keeps physics identical.
+    # They are rejected below (valid=False => w=0), but the garbage momenta are toxic to any downstream
+    # consumer: the FSI cascade (absurd momenta sit on escape/Pauli thresholds -> CPU/GPU divergence)
+    # AND me_cross_section (degenerate kinematics -> NaN amps2).  Replace the bad rows' FULL kinematics
+    # with a valid event's, so every consumer sees finite, self-consistent QE kinematics.  w=0 (set
+    # below via `valid`, which is computed from the ORIGINAL per-row s/lam/E_rm) keeps physics identical.
     _bad = (~np.isfinite(p_out).all(1) | ~np.isfinite(k_mu).all(1)
             | (np.linalg.norm(p_out[:, 1:], axis=1) > 1.0e6)
             | (np.linalg.norm(k_mu[:, 1:], axis=1) > 1.0e6))
-    p_out = np.where(_bad[:, None], np.array([M_P, 0.0, 0.0, 0.0]), p_out)
-    k_mu = np.where(_bad[:, None], np.array([M_MU, 0.0, 0.0, 0.0]), k_mu)
+    if _bad.any() and not _bad.all():
+        _ref = int(np.argmin(_bad))                     # first finite row
+        for _a in (k_nu, k_mu, p_struck, p_out):
+            _a[_bad] = _a[_ref]
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
     # ACHILLES QESpectralMapper restricts the removal energy to [0, emax]; the importance sampler
     # draws E_rm from the full spectral grid, so the SAME kinematic ceiling must be imposed or the
