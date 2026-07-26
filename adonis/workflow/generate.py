@@ -76,7 +76,9 @@ def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n
         return _prefsi_record(channel, a), None, 0
     nn = len(a["w"]); ar = np.arange(nn)
     p_pi_in = jnp.asarray(a["p_pi"]) if "p_pi" in a else jnp.asarray(a["p_N"])
-    pterm, nterms, ofl, created = CF.cascade_nucleus(
+    # JIT engine by default (CPU: ~1.4x; GPU/turing: ~25x).  Bit-for-bit vs the eager engine on every
+    # DISCRETE field; momenta differ only ~1e-12 (XLA float reorder), which is below the physics floor.
+    pterm, nterms, ofl, created = CF.cascade_nucleus_jit(
         p_pi_in, jnp.asarray(a["p_N"]), jnp.asarray(a["ppid"], jnp.int32), jnp.asarray(a["ipid"], jnp.int32),
         jnp.asarray(a["Npid"], jnp.int32), cfg_cascade, jax.random.PRNGKey(seed + 11),
         channel=channel, n_w=n_w)

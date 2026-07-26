@@ -1174,18 +1174,20 @@ _HARD_STEPS = 100000       # ACHILLES cMaxSteps-style ABSOLUTE step ceiling.  Ph
 
 
 def _raise_if_runaway(counter, where):
-    """Host-side guard: raise if the cascade hit the _HARD_STEPS ceiling (a particle never terminated).
-    No-op when `counter` is a tracer (under jit) -- the eager forward/gen path is where it matters."""
-    if isinstance(counter, (jax.Array,)) and getattr(counter, "shape", None) == ():
-        try:
-            c = int(counter)
-        except Exception:
-            return                                                   # traced -> skip host check
+    """Guard: raise if the cascade hit the _HARD_STEPS ceiling (a particle never terminated).
+    Works eager AND under jit: since generation now defaults to the jitted engine, the tracer case is
+    routed through jax.debug.callback so a runaway is never SILENTLY truncated (incl. on GPU)."""
+    def _check(c):
+        c = int(c)
         if c > 0:
             raise RuntimeError(
                 f"cascade {where}: hit the {_HARD_STEPS}-step hard ceiling for {c} particle/event(s) -- "
                 "no physical termination (escape/capture/absorption/path-budget) fired.  This should never "
                 "happen; investigate (runaway particle) rather than accept a silently truncated cascade.")
+    try:
+        _check(counter)                                              # eager: concrete scalar
+    except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError):
+        jax.debug.callback(_check, counter)                          # jit/GPU: host-side check at run time
 
 
 def setup_nucleus(p_pi, pid_pi, pid_Ni, cfg, key):
