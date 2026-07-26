@@ -42,7 +42,6 @@ _ABS_W_NP, _ABS_PART_NP = _abs_kernel_tables()      # (6,3) numpy constants
 
 M_N = ox.M_N                                          # average nucleon mass (Constant::mN = (mp+mn)/2)
 from adonis.constants import mp as _MP_PHYS, mn as _MN_PHYS   # PHYSICAL per-species (ACHILLES particle 4-vec E)
-_M_ETA = 548.0                # eta mass [MeV] (ACHILLES Constants mEta) for the piN->etaN' conversion baryon (#5)
 HBARC = ox.HBARC
 _CFG = {}
 
@@ -82,8 +81,8 @@ def _load_qmc_configs(nmax=36000, name="QMC_configs.out.gz"):
 
 
 _KSLAB = 3                   # # of nearest in-slab nucleons whose cross sections are evaluated per step
-                             # (fast_xsec).  sigma for non-in-slab nucleons is never used (prob is masked
-                             # to in_slab); >=K in one 0.04 fm slab is ~never, so this is bit-exact.
+                             # (fast_xsec).  sigma for non-top-K in-slab nucleons is forced 0.  ">=K in one
+                             # 0.04 fm slab is ~never" (measured KSLAB=1==3 on n-C, 2026-07-26), so bit-exact.
 
 
 def pion_branch_reweight(brec, sabs, sscat):
@@ -464,7 +463,13 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
     _ks3 = _ev_split(key, 3); sk, ku, ks = _ks3[:, 0], _ks3[:, 1], _ks3[:, 2]   # per-event keys (n,2)
     passes = in_slab & (_ev_uniform(ku, (A,)) < prob)
-    big = jnp.where(passes, perp2, jnp.inf)
+    # ACHILLES Cascade::Interacted (Cascade.cc:759-786) walks candidates in ASCENDING IMPACT-PARAMETER b^2
+    # order -- AllowedInteractions sorts by perp^2 via Project()->Magnitude2() (Cascade.cc:718-726) +
+    # sortPairSecond (Utilities.cc:32) -- and returns the FIRST that passes its Gaussian roll.  With the
+    # per-nucleon rolls fixed, "first passer in b^2 order" == "min-PERP2 among passers".  (A 2026-07-26
+    # change to min-`par`/along-path MISREAD the ACHILLES sort key as path-order -- it is impact-parameter
+    # order -- and was a regression biasing toward softer, larger-b recoils; reverted here.)
+    big = jnp.where(passes, perp2, jnp.inf)        # ACHILLES: smallest-impact-parameter passer
     j = jnp.argmin(big, axis=1)
     has_hit = jnp.isfinite(big[ar, j]) & alive & can_int
     perp2_is = jnp.where(in_slab, perp2, jnp.inf); cidx = jnp.argmin(perp2_is, axis=1)
@@ -918,6 +923,20 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
         return jnp.concatenate([(gcv * (Ecm + bp))[:, None], p3], axis=1)
     p_bary = _boost_cm(EN, pst[:, None] * dcv)
     p_meson = _boost_cm(Em, -pst[:, None] * dcv)               # the propagated eta / regenerated pion
+    # PAULI-BLOCK the piN<->etaN morph recoil nucleon N', exactly like the scatter (`blocked`) and
+    # absorption (`abs_blocked`) recoils.  ACHILLES FinalizeMomentum applies `hit &= !PauliBlocking(part)`
+    # GENERICALLY to every accepted channel's outgoing baryon (Cascade.cc:814-820); the conversion channel
+    # previously skipped it, so ADoNIS accepted sub-k_F morph recoils ACHILLES rejects (over-producing
+    # eta-conversion knockouts).  A blocked morph -> the conversion is rejected and the pion/eta continues
+    # unchanged (not removed, not consumed), mirroring ACHILLES's `if(hit)` no-op.  (Only the MORPH recoil
+    # is a nucleon; the terminal K-Lambda/K-Sigma conversions produce a hyperon and are not nucleon-Pauli
+    # blocked, so conv_blocked is gated on `chose_morph`.)
+    kf_bary = jnp.where(q_bary == 1, kf_p_j, kf_n_j)
+    conv_blocked = chose_morph & (jnp.linalg.norm(p_bary[:, 1:], axis=1) < kf_bary)
+    if not cfg.pauli:
+        conv_blocked = conv_blocked & False
+    morph_ok = morph_ok & ~conv_blocked                        # blocked morph: no meson/recoil spawn
+    is_conv = is_conv & ~conv_blocked                          # blocked morph: pion NOT removed/consumed
     is_scat = has_hit & ~chose_abs & ~chose_conv & ~blocked
     p_rec = (p_pi + pN_j) - p_out
     q_rec = struck_p + out_ch - ch

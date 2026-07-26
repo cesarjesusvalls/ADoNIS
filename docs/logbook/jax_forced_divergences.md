@@ -145,6 +145,62 @@ counters stay 0 on the physics sample (esp. _KSLAB and pool M for Ar).
 
 ---
 
+## CATEGORY 5 — exotic mesons (eta, K+hyperon)  [audited 2026-07-26, two Sonnet agents]
+
+The recently-added meson-baryon exotic channels (eta, KLambda, KSigma) in `_pion_step`.  **Audit verdict:
+the cross-section tables are faithful ports** (isospin CG for piN & KSigma, flux-mass convention
+`_MM_ANL/_MB_ANL=138.5/938.5` applied to ALL production channels, ANL i-f channel indexing, sigma prefactor,
+physical masses eta=547.862, formation-zone=0 for mesons, charge conservation through piN<->etaN) — all
+verified line-by-line vs `MesonBaryonAmplitudes.cc`/`MesonBaryonInteractions.cc`.  Real divergences found:
+
+### 5.1 [V] eta-conversion morph recoil Pauli block — **FIXED 2026-07-26**
+`_pion_step` spawned the piN<->etaN morph recoil nucleon N' with NO Pauli check, while ACHILLES
+`FinalizeMomentum` applies `hit &= !PauliBlocking(part)` GENERICALLY (Cascade.cc:807-820; `PauliBlocking`
+returns false for non-nucleons, so only N' is gated).  ADoNIS over-produced sub-k_F morph knockouts (wrong
+direction for the N_p deficit).  FIX: added `conv_blocked = chose_morph & (|p_bary| < kf_bary)` gating
+`morph_ok`/`is_conv` (cascade_discrete.py, right after `p_meson`).  Gated on `chose_morph` (NOT the terminal
+K branch, whose products are hyperon+kaon, not nucleons -> ACHILLES never Pauli-blocks them).  Agent-verified
+faithful.  **Accuracy validated? needs a pi+ beam functional check (neutron beam barely exercises eta).**
+
+### 5.2 [V, KNOWN BUG — fix DEFERRED] terminal K-Lambda/K-Sigma deletes 4-momentum
+When `chose_conv & ~chose_morph` fires (piN->K+hyperon), the pion AND struck nucleon are removed
+(`is_conv`->alive=False, consumed) but `s1_p4`/`sm_p4` are gated on `morph_ok` -> **nothing is emitted**;
+the K + hyperon 4-momentum is silently discarded (energy/momentum non-conservation).  ACHILLES emits both
+as propagating particles (Cascade.cc:972-980).  **Impact on N_p/N_n: ZERO** — the struck nucleon legitimately
+becomes a hyperon in both codes (correctly removed from the nucleon count); the loss is only per-event total
+energy in rare high-W (>~1.6 GeV) events, invisible to nucleon/pion spectra.  **Fix (produce-and-freeze)
+DEFERRED**: emit K+Y as terminal (non-rescattering) final-state particles.  NOT trivial — kaons/hyperons
+cannot ride the pion/nucleon slots (the fs extractor would mislabel K->pion, Y->nucleon, INFLATING N_pi/N_p);
+needs a distinct exotic-final-state buffer with proper PIDs (cf. oracle `n_other_meson` field) + the KLambda
+/KSigma split + charge sampling.  Do only if energy-balance/final-state completeness is needed.
+
+### 5.3 [V, KNOWN — fix DEFERRED] isotropic angle for eta channels vs ACHILLES amplitude-weighted
+ADoNIS uses flat `cos_cm = 2u-1` for eta-elastic (cascade_discrete.py, `is_eta` branch) and the piN<->etaN
+morph, while ACHILLES `GenerateMomentum` samples the actual partial-wave dsigma/dOmega for EVERY channel
+(same machinery as pion elastic).  ADoNIS built the DCC angular table only for pure-pion channels.  Likely
+small (S11(1535) S-wave dominance -> near-isotropic) but UNPROVEN across the W range (grid to 2200 MeV).
+Fix = build an amplitude-weighted eta angular table (mirror `jax_sample_cos_cm`).  DEFERRED (rare, high-W).
+
+### 5.4 [V, INTENTIONALLY OMITTED — bookkept] K/hyperon FSI + coupled channels (the "#3" omission)
+ADoNIS loads 6 of 16 ANL tables; the 10 KLambda/KSigma-initial + etaN->K channels are absent, so there is
+**no kaon/hyperon rescattering and no KLambda->piN back-conversion** (ADoNIS is a strict subset of ACHILLES
+above ~1.6 GeV).  **DELIBERATELY NOT IMPLEMENTED — high compute cost, low value.**  Reason: in the vectorized
+pool, adding kaon/hyperon as propagating species means every slot evaluates their step logic EVERY step
+(jnp.where dispatch computes-then-selects), ~doubling the meson-step compute (already the bottleneck), paid
+on every event even though K/Y appear only in a tiny high-W fraction.  Eta was cheap ONLY because etaN reuses
+the SAME piN ANL amplitudes via the pion slot (charge==3 tag); K/N is a strangeness+1 system NOT in those
+tables, and KLambda->piN back-conversion needs K+Lambda recombination (does not occur in a cascade).
+Marginal for nucleon multiplicity.  Left as a documented approximation.
+
+### 5.5 minor / cosmetic (not acted on)
+- KSigma physical-mass threshold floor absent in ADoNIS; currently harmless (masked by an ACHILLES
+  `sigmam()` PID-naming coincidence, both land on the table's first W row).  Fragile near-miss, not live.
+- morph spawn uses struck-nucleon position; ACHILLES uses the meson position (its own code flags this
+  choice as uncertain).  Co-located within slab tolerance -> negligible.
+- dead constant `_M_ETA=548.0` (unused; real code uses `_CH_MASS[3]=547.862`) — **DELETED 2026-07-26.**
+
+---
+
 ## Status summary
 - **1.1 nn_inelastic** — FIXED (sigma <=0.7% in range); cascade-level NN->NNpi re-validation pending the
   seed-1 segment run with the new table.
@@ -152,6 +208,10 @@ counters stay 0 on the physics sample (esp. _KSLAB and pool M for Ar).
 - **1.3 / 2.4 spectral sampler** — TESTED OK (chi2/ndf ~1; peak region 5.8%, no bias).
 - **4.1 Gaussian prob** — accepted (deliberate, differentiable engine).
 - **4.2 straight-line** — NOT A DIVERGENCE (PotentialProp: False -> ACHILLES also straight-line).
+- **5.1 eta morph Pauli** — FIXED 2026-07-26 (pi+ beam functional check pending).
+- **5.2 terminal-K 4-momentum deletion** — KNOWN bug, produce-and-freeze fix DEFERRED (zero N_p impact).
+- **5.3 isotropic eta angle** — KNOWN, amplitude-weighted table DEFERRED (rare/high-W).
+- **5.4 K/hyperon FSI + coupled channels** — INTENTIONALLY OMITTED (high compute, marginal); bookkept.
 
 ## Remaining action order
 1. **1.1 cascade-level** — re-check the cascade-segment matrix NN->NNpi cell after regenerating the
