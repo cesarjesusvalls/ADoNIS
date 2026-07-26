@@ -153,9 +153,8 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
 def weight_from_sample(knobs: DCCKnobs, S, use_spline=True):
     """Knob-dependent per-event weight (N,) and per-channel L.W (N,n_ch) from a fixed
     sample S (sample_final_state).  Differentiable in `knobs`; cheap to re-evaluate.
-    use_spline=False uses bilinear: NOT W-FAITHFUL (~0.3% integrated but >1% in the dsigma/dW high-W
-    tail) -- ONLY for closures/fits where it provably cancels between data and model, with explicit
-    awareness; NEVER for a reported number."""
+    use_spline=False uses bilinear: NOT W-FAITHFUL (>1% in the dsigma/dW high-W tail) -- NEVER use
+    unless the user has EXPLICITLY requested it for a specific purpose."""
     hs = S["hs"]
     amp_fn = hs.amp.amplitudes_spline if use_spline else hs.amp.amplitudes_bilinear
     vec, isv, axial = amp_fn(S["Wc"], S["Q2c"], knobs)

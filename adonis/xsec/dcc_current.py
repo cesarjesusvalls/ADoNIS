@@ -55,11 +55,9 @@ _NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron 
 _NORM_EM = 2.0 * (2.0 * np.pi) / (C.ee ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
 
 # Amplitude(W,Q2) interpolation.  DEFAULT = "spline" (bit-faithful to ACHILLES interpolate_amp) -- the
-# SAFE default; every reported result must use it.  "bilinear" is ~45x faster but a KNOWN OFFENDER vs W:
-# although the flux-integrated xsec differs only ~0.3%, the dsigma/dW SHAPE (esp. the high-W tail)
-# deviates WELL BEYOND 1%.  bilinear must NEVER be used unless with EXPLICIT AWARENESS of its
-# detrimental effect on W faithfulness (e.g. a closure/fit where it provably cancels) -- never for a
-# reported number.
+# SAFE default; every reported result must use it.  "bilinear" is NOT W-FAITHFUL (the dsigma/dW shape,
+# esp. the high-W tail, deviates well beyond 1%).  bilinear must NEVER be used unless the user has
+# EXPLICITLY requested it for a specific purpose.
 BATCH_INTERP = "spline"
 # Diagnostic override for the AMPLITUDE-INTERNAL pion mass (build_zmtx: qc, pion-pole facpp).
 # None -> use the per-channel hPID mass.  Used to determine which m_pi ACHILLES uses in the amplitude.
@@ -243,8 +241,8 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     Q2 = np.sum(qsh[:, 1:] ** 2, axis=1) - qsh[:, 0] ** 2
     dfun, off = setdfun_batch(xz_q, _JMAX)
     bleg = legendre_ylm_batch(_LMAX, xz_pin)                                  # (N, L+1, 2L+1)
-    # interp switch (default "spline" = bit-matches ACHILLES interpolate_amp).  "bilinear" is a fast
-    # diagnostic ONLY -- ~0.3% on the integral but a known W-SHAPE offender (>1% in the high-W tail).
+    # interp switch (default "spline" = bit-matches ACHILLES interpolate_amp).  "bilinear" is NOT
+    # W-faithful (W-SHAPE offender, >1% in the high-W tail) -- NEVER use unless explicitly requested.
     _kn = knobs if knobs is not None else DCCKnobs()    # pw_norm / axial_strength reweight hook (record-build)
     if BATCH_INTERP == "spline":
         vec, isv, axial = _AMP.amplitudes_spline_np(wcm, Q2, _kn)
