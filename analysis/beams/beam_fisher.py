@@ -62,7 +62,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
            ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "p_eidx",
             "hh", "a", "iso", "finel", "inel", "swap", "n_eidx")}
     rec["n_events"] = len(p)
-    from adonis.fsi.cascade_full import pool_fsi_reweight
+    from adonis.fsi.cascade import pool_fsi_reweight
 
     def w_of(theta):
         k = PF.knobs_of(theta, nom)

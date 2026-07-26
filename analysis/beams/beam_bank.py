@@ -55,9 +55,9 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
     from adonis.workflow.materials import resolve_targets
-    from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _load_density, sample_nucleons, _CH_MASS
-    from adonis.fsi import cascade_full as CF
-    from adonis.fsi.cascade_real import _MP_PHYS, _MN_PHYS
+    from adonis.fsi.cascade import DiscreteCascadeConfig, _load_density, sample_nucleons, _CH_MASS
+    from adonis.fsi import cascade as CF
+    from adonis.fsi.cascade import _MP_PHYS, _MN_PHYS
 
     pid, species, charge = BEAMS[beam]
     tg = resolve_targets(target)[0][0]
@@ -248,7 +248,7 @@ def load(outdir):
 def beam_weight(B, knobs):
     """w(theta) for a cascade-only bank: w0 x the kind-1 FSI reweight (NO hard vertex, NO spectral fn)."""
     import jax.numpy as jnp
-    from adonis.fsi.cascade_full import pool_fsi_reweight
+    from adonis.fsi.cascade import pool_fsi_reweight
     from analysis.t2k.differentiability.bank_reweight import _FSI_F
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
     rec["n_events"] = len(B["w0"])

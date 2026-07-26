@@ -19,7 +19,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import qe_xsec, res_xsec
-from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
+from adonis.fsi.cascade import DiscreteCascadeConfig
 
 MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
 NQE, NRES = 120000, 120000
@@ -91,7 +91,7 @@ def build_ma_records(qe, res):
 # theta-independent and the knobs enter only through the kind-1 reweight; the single validated+fixed
 # pool engine underneath (re-cascades both absorption nucleons, charge-resolved sigma, etc.).
 # ============================================================================================== #
-import adonis.fsi.cascade_full as _CF
+import adonis.fsi.cascade as _CF
 # Gaussian interaction probability everywhere -> ADoNIS forward + differentiable tuning share ONE model and the
 # kind-1 sigma-reweight is exact (see all-gaussian decision).  max_steps=100000 (= production / the runaway
 # ceiling): with the M=1 serial pool the per-event nstep is the SUM of all particles' steps, so the physics

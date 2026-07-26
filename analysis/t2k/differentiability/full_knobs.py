@@ -20,7 +20,7 @@ from adonis.analysis.ma_records import (build_qe_ma_records, build_res_ma_record
                                         build_qe_ff_records, build_res_pw_records, build_res_pionpole_records,
                                         ma_reweight, strength_reweight)
 from adonis.analysis.sf_reweight import sf_grids, sf_reweight, removal_from_struck
-import adonis.fsi.cascade_full as _CF
+import adonis.fsi.cascade as _CF
 
 _NPW = 14
 _DELTA_WAVE = 5     # DCC partial-wave index of the P33 Delta(1232) (tests: test_res_strength_reweight)

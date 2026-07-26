@@ -27,8 +27,8 @@ import jax.numpy as jnp
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root (analysis/validations/ -> .)
 from adonis.workflow.materials import resolve_targets
-from adonis.fsi.cascade_discrete import DiscreteCascadeConfig, _load_density
-from adonis.fsi.cascade_full import cascade_nucleus, NUCLEON
+from adonis.fsi.cascade import DiscreteCascadeConfig, _load_density
+from adonis.fsi.cascade import cascade_nucleus, NUCLEON
 from analysis.validations.parse_cascadedump import parse_cascadedump, to_arrays
 
 OUTDIR = "output/figures"
@@ -210,7 +210,7 @@ def mode_seq(dump, target, nmax, logcap, step):
 
 # --------------------------------------------------------------------------- 2->2 recoil kinematics
 def mode_kin(dump, nmax):
-    from adonis.fsi.cascade_real import _two_body_cm_scatter
+    from adonis.fsi.cascade import _two_body_cm_scatter
     from adonis.constants import mp as MP, mn as MN
 
     def vec(s): return [float(x) for x in s.split(",")]

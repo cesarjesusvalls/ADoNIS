@@ -28,8 +28,8 @@ def run():
     from analysis.t2k.differentiability import tune as T
     from adonis.workflow.materials import resolve_targets
     from adonis.xsec import ee_xsec, res_ee_xsec
-    import adonis.fsi.cascade_full as CF
-    from adonis.fsi.cascade_full import _P_SLOT, _N_SLOT
+    import adonis.fsi.cascade as CF
+    from adonis.fsi.cascade import _P_SLOT, _N_SLOT
 
     N_TOTAL = int(os.environ.get("EE_N", "100000"))       # samples per species/channel per chunk
     CHUNK = min(int(os.environ.get("CHUNK", str(N_TOTAL))), N_TOTAL)

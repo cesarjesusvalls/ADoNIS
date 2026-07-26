@@ -2,7 +2,7 @@
 
 Per-event logic is lifted VERBATIM from scripts/gen_cc_engine_rich.py so banks stay bit-identical:
 RES via res_xsec.generate / QE via qe_xsec.sample_importance (w/=N), the faithful BFS cascade
-(cascade_full.cascade_nucleus, internal seed=1, key PRNGKey(seed+11)), top-M proton terminals with
+(cascade.cascade_nucleus, internal seed=1, key PRNGKey(seed+11)), top-M proton terminals with
 provenance, per-seed checkpoint, weight normalized by the ACTUAL seeds banked.
 
 Material: only a carbon cascade target is engine-generatable (free-H is a separate primary bank, not
@@ -16,9 +16,9 @@ import jax.numpy as jnp
 import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.xsec import res_xsec
 from adonis.xsec.spectral import SpectralFunction
-from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
-from adonis.fsi.cascade_real import _load_density
-import adonis.fsi.cascade_full as CF
+from adonis.fsi.cascade import DiscreteCascadeConfig
+from adonis.fsi.cascade import _load_density
+import adonis.fsi.cascade as CF
 import adonis.fsi.tracking as TK
 from adonis.workflow.materials import resolve_targets
 

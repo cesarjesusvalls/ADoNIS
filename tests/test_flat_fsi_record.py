@@ -1,6 +1,6 @@
 """FLAT/streaming FSI record == DENSE per-event record, through the ACTUAL pool cascade.
 
-The flat layout (adonis/fsi/cascade_full.py, docs/logbook/fsi_record_cap_techdebt.md) streams the FSI
+The flat layout (adonis/fsi/cascade.py, docs/logbook/fsi_record_cap_techdebt.md) streams the FSI
 reweight record into one flat (TOTAL,) buffer sized by n*E[interactions] (tail-free), instead of the
 legacy per-event (n, K_max) dense buffer.  The reweight is a scatter-add by event index, so the two must
 agree to float64 precision at any knob vector.  This runs a real QE cascade both ways and compares.
@@ -16,7 +16,7 @@ jax.config.update("jax_enable_x64", True)
 def _run(flat, n=300, seed=0):
     import sys
     sys.argv = [sys.argv[0], "dpt"]                     # tune.py reads argv[1] as its observable at import
-    import adonis.fsi.cascade_full as CF
+    import adonis.fsi.cascade as CF
     from adonis.xsec import qe_xsec
     from analysis.t2k.differentiability import tune as T
     CF.FLAT_FSI_REC = flat
@@ -45,7 +45,7 @@ def test_flat_overflow_raises():
     direct reweight path (pool_fsi_reweight on a raw flat record)."""
     import sys
     sys.argv = [sys.argv[0], "dpt"]
-    import adonis.fsi.cascade_full as CF
+    import adonis.fsi.cascade as CF
     from adonis.xsec import qe_xsec
     from analysis.t2k.differentiability import tune as T
     CF.FLAT_FSI_REC = True

@@ -40,7 +40,7 @@ def run():
     from adonis.workflow.materials import resolve_targets
     from adonis.xsec.spectral import SpectralFunction
     from adonis.xsec import qe_xsec, res_xsec
-    import adonis.fsi.cascade_full as CF
+    import adonis.fsi.cascade as CF
 
     N_TOTAL = int(os.environ.get("CC0PI_N", "100000"))
     CHUNK = min(int(os.environ.get("CHUNK", str(N_TOTAL))), N_TOTAL)
@@ -105,7 +105,7 @@ def run():
                                 jnp.asarray(rc["Npid"]).astype(jnp.int32), POOL(seed=1), kcr, channel="res", rec_caps=(8, 8))[4]
         # SYMMETRIC cap: size BOTH buffers to max(pion, nucleon) of the per-cal point estimate * margin.  The
         # pion slot-count is zero-INFLATED and UNMEASURABLE at 100 events -- pions are made by rare threshold
-        # NN->NNpi events (cascade_full.py:300), each then logging a BURST of ~20 in-slab candidate slots, so
+        # NN->NNpi events (cascade.py:300), each then logging a BURST of ~20 in-slab candidate slots, so
         # a 100-evt sample sees 0 ~2/3 of the time (mean is carried by rare bursts).  We therefore NEVER size
         # the pion buffer from its own count: max() lets the RELIABLE nucleon cap (tail-insensitive, ~600
         # counts/100ev) cover the pion buffer too.  Empirically pion slots <= nucleon slots always; max() is
@@ -175,7 +175,7 @@ def run():
         if _flat:
             # recq/recr are already-ragged FLAT records -> compact (trim) each, concat, offset the RES
             # per-slot event index by nq (QE block is events 0..nq-1, RES block nq..nq+nr-1).
-            from adonis.fsi.cascade_full import _P_SLOT, _N_SLOT
+            from adonis.fsi.cascade import _P_SLOT, _N_SLOT
             cq = CF.compact_fsi_record(dict(recq)); cr = CF.compact_fsi_record(dict(recr))
             flat = {f: np.concatenate([cq[f], cr[f]]) for f in _P_SLOT + _N_SLOT}
             flat["p_eidx"] = np.concatenate([cq["p_eidx"], cr["p_eidx"] + nq])

@@ -6,7 +6,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import jax, jax.numpy as jnp
-from adonis.fsi.cascade_full import empty_batch, pool_reconcile, run_cascade_pool
+from adonis.fsi.cascade import empty_batch, pool_reconcile, run_cascade_pool
 
 
 def _batch(n, M, tags, alive):

@@ -9,11 +9,11 @@ import jax.numpy as jnp
 
 from adonis.analysis.ma_records import ma_reweight, strength_reweight
 from adonis.analysis.sf_reweight import sf_grids, sf_reweight, removal_from_struck
-from adonis.fsi.cascade_full import pool_fsi_reweight
+from adonis.fsi.cascade import pool_fsi_reweight
 from adonis.xsec.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets
 
-# RAGGED kind-1 FSI record (see cascade_full.compact_fsi_record): flat per-slot arrays + a per-slot event
+# RAGGED kind-1 FSI record (see cascade.compact_fsi_record): flat per-slot arrays + a per-slot event
 # index.  The dense (n, K) layout was ~97% padding; this is ~40x fewer slots to store AND to reweight.
 _FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "p_eidx",
           "hh", "a", "iso", "finel", "inel", "swap", "n_eidx")

@@ -15,7 +15,7 @@ from adonis.xsec.flux import T2KFlux, M_MU, M_P
 from adonis.xsec.res_xsec import _sample_3body, _sample_3body_dispatch, _pi_kin_mass, M_PIP, SPIN_AVG
 from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON
-from adonis.fsi.cascade_discrete import DiscreteCascadeConfig
+from adonis.fsi.cascade import DiscreteCascadeConfig
 from adonis.fsi.pool_fsi import run_fsi
 
 MU_LO = 250.0; COSMU = -0.6; P_LO, P_HI = 450.0, 1000.0; COSP = 0.4

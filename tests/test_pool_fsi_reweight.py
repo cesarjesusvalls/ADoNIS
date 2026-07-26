@@ -3,8 +3,8 @@ GRANULAR pion knobs (s_piN_elastic / s_piN_cex / s_conv).  Synthetic representat
 compile -> fast); the real pool record is gated separately by scripts/_pool_rec_check.py."""
 import numpy as np
 import jax, jax.numpy as jnp
-from adonis.fsi.cascade_full import pool_fsi_reweight
-from adonis.fsi.cascade_discrete import fsi_pion_reweight, nucleon_scat_reweight, fsi_nucleon_reweight
+from adonis.fsi.cascade import pool_fsi_reweight
+from adonis.fsi.cascade import fsi_pion_reweight, nucleon_scat_reweight, fsi_nucleon_reweight
 
 N, KP, KN = 200, 16, 64
 
@@ -153,7 +153,7 @@ def test_ragged_equals_dense():
     the in-engine record is dense (n, K).  Same per-slot physics, different reduction -> the two must give
     the same weight.  Also pins the nominal identity under the exp(sum(log)) reduction."""
     import numpy as _np
-    from adonis.fsi.cascade_full import compact_fsi_record
+    from adonis.fsi.cascade import compact_fsi_record
     r = _record(13)
     dense = {k: _np.asarray(v) for k, v in r.items()}
     flat = compact_fsi_record(dense)
