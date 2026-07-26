@@ -99,7 +99,7 @@ def bank_obs(bank):
 
 def oracle_obs(bank):
     """same observables from the rich oracle(s) (prot_p4 (M,4), pi_p4/pi_pid (K,4)/(K,))."""
-    ev_w, plead, pcos, pilead, npr, npi = [], [], [], [], [], []
+    ev_w, plead, pcos, pilead, npr, npi, nneu = [], [], [], [], [], [], []
     import json
     bnorm = None
     if bank.startswith("beam"):
@@ -115,15 +115,16 @@ def oracle_obs(bank):
         pim = np.linalg.norm(pip[:, :, 1:], axis=2)                     # (n,K)
         ispi = (pipid == 211) | (pipid == -211)
         pim_ch = np.where(ispi, pim, 0.0)
+        nem = np.linalg.norm(np.asarray(d["neut_p4"], float)[:, :, 1:], axis=2)   # (n,M) neutron |p|
         ev_w.append(w)
         npro = (prm > 0).sum(1); npio = ispi.sum(1)
-        npr.append(npro.astype(float)); npi.append(npio.astype(float))
+        npr.append(npro.astype(float)); npi.append(npio.astype(float)); nneu.append((nem > 0).sum(1).astype(float))
         # leading |p|: NaN where the event has no such particle (so both sides exclude empties identically)
         pl = prm.max(1); plead.append(np.where(npro > 0, pl, np.nan))
         pcos.append(np.where(npro > 0, prc[np.arange(len(pr)), prm.argmax(1)], np.nan))
         pilead.append(np.where(npio > 0, pim_ch.max(1), np.nan))
     w = np.concatenate(ev_w)
-    return {"n_p": (np.concatenate(npr), w), "n_chpi": (np.concatenate(npi), w),
+    return {"n_p": (np.concatenate(npr), w), "n_n": (np.concatenate(nneu), w), "n_chpi": (np.concatenate(npi), w),
             "p_lead_p": (np.concatenate(plead), w), "cos_lead_p": (np.concatenate(pcos), w),
             "p_lead_pi": (np.concatenate(pilead), w)}
 
@@ -132,22 +133,23 @@ def _observables(pid, p4, seg, w, n):
     mom = np.linalg.norm(p4[:, 1:], axis=1)
     cth = np.where(mom > 0, p4[:, 3] / np.maximum(mom, 1e-9), -2.0)
     isp = pid == 2212
+    isn = pid == 2112
     ispi = (pid == 211) | (pid == -211)
-    n_p = _seg_count(isp, seg, n); n_pi = _seg_count(ispi, seg, n)
+    n_p = _seg_count(isp, seg, n); n_pi = _seg_count(ispi, seg, n); n_n = _seg_count(isn, seg, n)
     p_lead_p = _seg_max(np.where(isp, mom, -1.0), seg, n)
     p_lead_pi = _seg_max(np.where(ispi, mom, -1.0), seg, n)
     # leading-proton cos-theta: cth at the proton achieving p_lead_p (approx via a second seg pass)
     lead_is = isp & np.isclose(mom, p_lead_p[seg]) & (mom > 0)
     cos_lead_p = np.full(n, -2.0)
     np.maximum.at(cos_lead_p, seg[lead_is], cth[lead_is])
-    return {"n_p": (n_p, w), "n_chpi": (n_pi, w), "p_lead_p": (np.where(p_lead_p >= 0, p_lead_p, np.nan), w),
+    return {"n_p": (n_p, w), "n_n": (n_n, w), "n_chpi": (n_pi, w), "p_lead_p": (np.where(p_lead_p >= 0, p_lead_p, np.nan), w),
             "cos_lead_p": (cos_lead_p, w), "p_lead_pi": (np.where(p_lead_pi >= 0, p_lead_pi, np.nan), w)}
 
 
-KEYS = ["n_p", "n_chpi", "p_lead_p", "p_lead_pi", "cos_lead_p"]
-LABELS = {"n_p": "$N_p$", "n_chpi": "$N_{\\pi^\\pm}$", "p_lead_p": "leading $p$  $|p|$ [MeV/c]",
+KEYS = ["n_p", "n_n", "n_chpi", "p_lead_p", "p_lead_pi", "cos_lead_p"]
+LABELS = {"n_p": "$N_p$", "n_n": "$N_n$", "n_chpi": "$N_{\\pi^\\pm}$", "p_lead_p": "leading $p$  $|p|$ [MeV/c]",
           "p_lead_pi": "leading $\\pi^\\pm$  $|p|$ [MeV/c]", "cos_lead_p": "leading $p$  $\\cos\\theta$"}
-EDGES = {"n_p": np.arange(-0.5, 6.5), "n_chpi": np.arange(-0.5, 4.5),
+EDGES = {"n_p": np.arange(-0.5, 6.5), "n_n": np.arange(-0.5, 6.5), "n_chpi": np.arange(-0.5, 4.5),
          "p_lead_p": np.linspace(0, 1500, 26), "p_lead_pi": np.linspace(0, 1200, 26),
          "cos_lead_p": np.linspace(-1, 1, 26)}
 

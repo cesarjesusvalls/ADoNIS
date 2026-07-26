@@ -12,12 +12,26 @@ Top-level convenience API:
 """
 __version__ = "0.1.0"
 
-from adonis.core.params import PhysicsParams, ChainConfig, DCCKnobs          # noqa: F401
-from adonis.core.chain import Generator                              # noqa: F401
-from adonis.primary.dcc.channel import DCCSinglePion                 # noqa: F401
-from adonis.fsi.none import NoFSI                                    # noqa: F401
-from adonis.nuclear.spectral import SpectralFunction                 # noqa: F401
-from adonis.nuclear.free import FreeNucleon                          # noqa: F401
-from adonis.flux.mono import Monochromatic                           # noqa: F401
-from adonis import observables                                       # noqa: F401
-from adonis.analysis import fit                                      # noqa: F401
+# LAZY re-exports (PEP 562).  Eagerly importing the generator stack here pulled JAX into EVERY consumer of
+# the package -- so `import adonis.workflow.plotting` (pure numpy+matplotlib) paid a ~2s JAX import it never
+# uses.  The convenience API below still works (`from adonis import Generator` imports the submodule ON FIRST
+# USE); lightweight consumers (plotting, config, analysis I/O) no longer pull JAX at all.  Submodule access
+# (`from adonis import observables`, `from adonis.analysis import fit`) works via the normal import machinery.
+_LAZY = {
+    "PhysicsParams": "adonis.core.params", "ChainConfig": "adonis.core.params", "DCCKnobs": "adonis.core.params",
+    "Generator": "adonis.core.chain", "DCCSinglePion": "adonis.primary.dcc.channel",
+    "NoFSI": "adonis.fsi.none", "SpectralFunction": "adonis.nuclear.spectral",
+    "FreeNucleon": "adonis.nuclear.free", "Monochromatic": "adonis.flux.mono",
+}
+
+
+def __getattr__(name):                       # PEP 562 module-level lazy attribute
+    import importlib
+    target = _LAZY.get(name)
+    if target is not None:
+        return getattr(importlib.import_module(target), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(list(globals()) + list(_LAZY))
