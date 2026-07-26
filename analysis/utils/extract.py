@@ -290,8 +290,12 @@ def fs_rich(path, K=6, M=10, **_):
         n_evt += 1
         lep = prb = struck = None; struck_pid = 0; pions = []; protons = []; neutrons = []; n_other = 0
         for pid, status, p4 in evt["parts"]:
-            if status == 4 and (prb is None or p4[0] > prb[0]):        # incoming beam particle (any probe)
+            if status == 4 and (prb is None or p4[0] > prb[0]):        # incoming beam particle (neutrino/ee: status 4)
                 prb = p4
+            elif status == 29 and abs(p4[1]) < 1.0 and abs(p4[2]) < 1.0 and (prb is None or p4[0] > prb[0]):
+                prb = p4                                               # HADRON BEAM: CrossSection-mode projectile is
+                #   status-29 initial state, on-axis (px=py=0, pz=beam |p|); the struck nucleon is also status-29
+                #   but carries Fermi transverse momentum, so the on-axis cut selects the beam only.
             elif pid == NU_MU and prb is None:                         # neutrino probe if no status-4 beam
                 prb = p4
             if status == 2 and pid in NUCLEONS and struck is None:
