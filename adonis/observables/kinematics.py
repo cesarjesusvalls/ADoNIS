@@ -139,7 +139,7 @@ def delta_pTT(ev):
 # carbon target masses for the TKI longitudinal inference [MeV]
 _M_A = 11174.862        # 12C nuclear mass
 _M_A1 = 10252.547       # 11B residual
-M_A_12C = _M_A          # public aliases -- single source for the numpy-batch twin (adonis/workflow/observables)
+M_A_12C = _M_A          # public aliases -- single source for the numpy-batch twin (adonis/observables/batch)
 M_A_11B = _M_A1
 
 

@@ -123,7 +123,7 @@ def freeH_offsets(edges_by_name):
     survives (no nuclear FSI); acceptance mirrors signal_cc1pi_stv (windows + cos70 forward cut); observables via the
     validated O.tki (NUISANCE hydrogen daT randomization included)."""
     from adonis.workflow.free_proton import generate_H
-    import adonis.workflow.observables as O
+    import adonis.observables.batch as O
     NH, NSEED = 50000, 4
     acc = {"pn": [], "dptt": [], "daT": []}; wl = []
     def _acc(p4, lo, hi):
