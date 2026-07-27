@@ -14,7 +14,7 @@ dcc.BATCH_INTERP = "spline"
 from adonis.flux.spectrum import SpectrumFlux, M_MU, M_P
 from adonis.channels.res import _sample_3body, _sample_3body_dispatch, _pi_kin_mass, M_PIP, SPIN_AVG
 from adonis.channels.dcc_current import exclusive_amps2_batch
-from adonis.channels.currents.backend import flux_factor, MASS_PDG_PROTON
+from adonis.channels.currents.matrix_element import flux_factor, MASS_PDG_PROTON
 from adonis.fsi.cascade import DiscreteCascadeConfig
 from adonis.fsi.pool_fsi import run_fsi
 

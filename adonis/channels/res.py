@@ -17,7 +17,7 @@ jax.config.update("jax_enable_x64", True)
 from adonis.channels import constants as C
 from adonis.flux.spectrum import SpectrumFlux
 from adonis.nuclear.spectral import SpectralFunction
-from adonis.channels.currents.backend import flux_factor, MASS_PDG_NEUTRON, MASS_PDG_PROTON
+from adonis.channels.currents.matrix_element import flux_factor, MASS_PDG_NEUTRON, MASS_PDG_PROTON
 from adonis.channels.dcc_current import exclusive_amps2_batch
 from adonis.nuclear.spectral import SpectralImportanceSampler
 

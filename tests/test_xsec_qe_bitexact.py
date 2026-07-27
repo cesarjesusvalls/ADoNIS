@@ -16,7 +16,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis.channels.currents.backend import me_cross_section, MASS_PDG_NEUTRON as MN, MASS_PDG_PROTON as MP
+from adonis.channels.currents.matrix_element import me_cross_section, MASS_PDG_NEUTRON as MN, MASS_PDG_PROTON as MP
 
 DUMP = Path(__file__).resolve().parent / "data" / "qe_dump_achilles.txt"
 
