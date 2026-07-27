@@ -38,7 +38,7 @@ import uproot
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
-from adonis.reweight.full_knobs import nominal_knobs, _EB_EPS
+from adonis.reweight.reweight_model import nominal_knobs, _EB_EPS
 
 BANKDIR = os.environ.get("ADONIS_EVENT_BANK", "output/event_bank")
 
@@ -123,7 +123,7 @@ def freeH_offsets(edges_by_name):
     survives (no nuclear FSI); acceptance mirrors signal_cc1pi_stv (windows + cos70 forward cut); observables via the
     validated O.tki (NUISANCE hydrogen daT randomization included)."""
     from adonis.channels.free_proton import generate_H
-    import adonis.observables.batch as O
+    import adonis.observables.kinematics_np as O
     NH, NSEED = 50000, 4
     acc = {"pn": [], "dptt": [], "daT": []}; wl = []
     def _acc(p4, lo, hi):

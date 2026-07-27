@@ -51,7 +51,7 @@ def load_bank(outdir):
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
     B["n_chunks"] = nchunks
-    from adonis.reweight.full_knobs import nominal_knobs, knob_specs
+    from adonis.reweight.reweight_model import nominal_knobs, knob_specs
     B["labels"] = [s[2] for s in knob_specs(nominal_knobs())]   # plotted knobs (no pw_norm, no sscat)
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
     return B

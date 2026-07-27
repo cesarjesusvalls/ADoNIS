@@ -13,7 +13,7 @@ own rich schema: select_reference -> _ach_cc1pi for CC1pi and mirrors the CC0pi 
 """
 from __future__ import annotations
 import numpy as np
-import adonis.observables.batch as O
+import adonis.observables.kinematics_np as O
 
 _PIONS = (211, 111, -211)
 _OTHER_MESON = (111, -211, -1)            # vs a pi+ signal: pi0 / pi- / converted(eta,K)

@@ -26,7 +26,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
-from adonis.reweight.full_knobs import nominal_knobs
+from adonis.reweight.reweight_model import nominal_knobs
 from analysis.paper import info_content as IC
 
 BANKDIR = os.environ.get("ADONIS_EVENT_BANK", "output/event_bank")
@@ -38,7 +38,7 @@ LABEL = os.environ.get("ADONIS_LABEL", "physfit_gate1" if OBS == "all" else f"ph
 # ---- knob spec: enumerated through the SINGLE SOURCE OF TRUTH (full_knobs.knob_specs), which drops
 # sscat (dead) and pw_norm (dormant DCC infra) and expands the tuple knobs. We attach only the fit-local
 # PRIOR policy here: 20% multiplicative default; natural units for the non-multiplicative knobs. -------- #
-from adonis.reweight.full_knobs import knob_specs as _knob_specs
+from adonis.reweight.reweight_model import knob_specs as _knob_specs
 _PRIOR_POLICY = {"Eb_shift": 4.0, "f_NN_cex": 0.10}     # everything else: 20% multiplicative
 SPEC = [(name, idx, lab, _PRIOR_POLICY.get(name, 0.20))
         for (name, idx, lab, _nom) in _knob_specs(nominal_knobs())]

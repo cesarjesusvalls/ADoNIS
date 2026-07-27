@@ -39,7 +39,7 @@ import jax.numpy as jnp
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
-from adonis.reweight.full_knobs import nominal_knobs
+from adonis.reweight.reweight_model import nominal_knobs
 from analysis.paper import info_content as IC
 
 BANKDIR = os.environ.get("ADONIS_EVENT_BANK", "output/event_bank")

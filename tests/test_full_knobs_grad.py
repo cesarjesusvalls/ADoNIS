@@ -14,7 +14,7 @@ jax.config.update("jax_enable_x64", True)
 
 _sys.argv = [_sys.argv[0], "dpt"]                      # tune.py reads OBS from argv[1] at import
 import adonis.reweight.tune as T
-from adonis.reweight.full_knobs import (nominal_knobs, build_hv_sf, model_hist_full)
+from adonis.reweight.reweight_model import (nominal_knobs, build_hv_sf, model_hist_full)
 from adonis.workflow.materials import resolve_targets
 from adonis.nuclear.spectral import SpectralFunction
 

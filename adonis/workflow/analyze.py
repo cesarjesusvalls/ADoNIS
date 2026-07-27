@@ -7,7 +7,7 @@ the ACHILLES rich bank(s), absolute nb.  Bins/chi2/ratio + optional data overlay
 """
 from __future__ import annotations
 import numpy as np
-import adonis.workflow.signal as SG
+import adonis.workflow.selection as SG
 from adonis.workflow.plotting import make_figure
 from adonis.workflow.data_overlay import load_overlay
 

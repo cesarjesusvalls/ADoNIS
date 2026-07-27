@@ -17,7 +17,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
-from adonis.reweight.full_knobs import nominal_knobs
+from adonis.reweight.reweight_model import nominal_knobs
 from analysis.paper.physical_fit import PNAMES, PRIOR, NPAR, build_physfit_datasets, theta_nominal, SYST
 from physical_fit_run import Engine, apply_mode, flags
 

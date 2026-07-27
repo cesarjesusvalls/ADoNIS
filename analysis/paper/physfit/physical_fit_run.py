@@ -30,7 +30,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
-from adonis.reweight.full_knobs import nominal_knobs
+from adonis.reweight.reweight_model import nominal_knobs
 from analysis.paper import info_content as IC
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from analysis.paper.physical_fit import (SPEC, NPAR, PNAMES, PRIOR, theta_nominal, knobs_of,

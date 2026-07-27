@@ -40,7 +40,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts" / "altgen"))
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
-from adonis.reweight.full_knobs import nominal_knobs
+from adonis.reweight.reweight_model import nominal_knobs
 from adonis.workflow.plotting import chi2_ratio_panel
 from analysis.paper import style
 

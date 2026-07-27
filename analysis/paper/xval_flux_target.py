@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from adonis.workflow.config import SignalDef                      # noqa: E402
-from adonis.workflow import signal as SG, observables as OBS       # noqa: E402
+from adonis.workflow import selection as SG, observables as OBS       # noqa: E402
 from adonis.workflow.plotting import chi2_ratio_panel              # noqa: E402
 
 ADO = str(ROOT / "output" / "adonis")

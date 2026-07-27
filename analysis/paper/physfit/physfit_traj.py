@@ -43,7 +43,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR       # noqa: E402
-from adonis.reweight.full_knobs import nominal_knobs                   # noqa: E402
+from adonis.reweight.reweight_model import nominal_knobs                   # noqa: E402
 from analysis.paper.physical_fit import build_physfit_datasets, OBS_SUBSETS, NPAR                    # noqa: E402
 from physical_fit_run import Engine, apply_mode, parse_inject                          # noqa: E402
 
