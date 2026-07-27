@@ -28,9 +28,9 @@ we use the per-particle nsc (realized interactions), NEVER the kind-1 `hh`/`nh` 
 sampled hit and would over-count Pauli-blocked interactions).
 
 Usage:
-    python -m analysis.beams.beam_bank pip  --n 500000 --pmin 50   --pmax 1000 --out output/beam_pip_C
-    python -m analysis.beams.beam_bank prot --n 500000 --pmin 300  --pmax 1400 --out output/beam_prot_C
-    python -m analysis.beams.beam_bank neut --n 500000 --pmin 300  --pmax 1400 --out output/beam_neut_C
+    python -m analysis.paper.beams.beam_bank pip  --n 500000 --pmin 50   --pmax 1000 --out output/beam_pip_C
+    python -m analysis.paper.beams.beam_bank prot --n 500000 --pmin 300  --pmax 1400 --out output/beam_prot_C
+    python -m analysis.paper.beams.beam_bank neut --n 500000 --pmin 300  --pmax 1400 --out output/beam_neut_C
 """
 import argparse
 import json
@@ -39,7 +39,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 import numpy as np
 
 from adonis.flux.hadron import BEAMS, R_DISK, PIR2_MB, HadronBeam    # beam description (adonis/flux)
@@ -241,7 +241,7 @@ def beam_weight(B, knobs):
     """w(theta) for a cascade-only bank: w0 x the kind-1 FSI reweight (NO hard vertex, NO spectral fn)."""
     import jax.numpy as jnp
     from adonis.fsi.cascade import pool_fsi_reweight
-    from analysis.t2k.differentiability.bank_reweight import _FSI_F
+    from adonis.reweight.bank_reweight import _FSI_F
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
     rec["n_events"] = len(B["w0"])
     k = knobs

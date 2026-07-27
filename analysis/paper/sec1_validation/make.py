@@ -191,7 +191,7 @@ def main(beams=True):
     _grid(MULT, edges_by, ado, ach, "sec1_multiplicity",
           r"ADoNIS vs ACHILLES — CC-inclusive multiplicities on $^{12}$C")
     if beams:
-        from analysis.beams import make_figs
+        from analysis.paper.beams import make_figs
         make_figs.main()                                                  # -> output/paper/beams_validation
 
 

@@ -21,10 +21,10 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from analysis.beams.beam_bank import BEAMS, PIR2_MB          # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from analysis.paper.beams.beam_bank import BEAMS, PIR2_MB          # noqa: E402
 
-ACH_DIR = Path(__file__).resolve().parents[2] / "output" / "achilles"
+ACH_DIR = Path(__file__).resolve().parents[3] / "output" / "achilles"
 PION_PIDS = (211, 111, -211)
 
 

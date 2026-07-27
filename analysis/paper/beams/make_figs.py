@@ -7,7 +7,7 @@ Both sides use the SAME in-medium cross sections and the SAME CrossSection-mode 
 a pure TRANSPORT comparison -- the cascade's own validation, with no hard vertex and no spectral function
 anywhere in it.
 
-Usage:  python -m analysis.beams.make_figs [--nbins 15]
+Usage:  python -m analysis.paper.beams.make_figs [--nbins 15]
 """
 import argparse
 import sys
@@ -18,8 +18,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from analysis.beams import beam_bank as BB, achilles_beam as AB       # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from analysis.paper.beams import beam_bank as BB, achilles_beam as AB       # noqa: E402
 from analysis.paper import style                                       # noqa: E402
 
 BEAMS = ("pip", "prot", "neut")
