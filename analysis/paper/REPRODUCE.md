@@ -55,14 +55,20 @@ python -m adonis.oracle.run_achilles configs/achilles/run_cascade_neut_C.yml    
 
 ## 4. ADoNIS banks + Gate-I Jacobian (model side)  → `output/`
 ```bash
-# reweight bank (QE+RES, kind-1 FSI records) -- the reweight-bank generator (fast on GPU/turing now)
-CC0PI_N=1000000 CHUNK=250000 python -u -m adonis.reweight.event_bank output/event_bank_v2
+# Differentiable REWEIGHT banks (QE+RES + hard-vertex amps2 + kind-1 FSI records) -- ONE config-driven
+# generator for EVERY probe (weak nu | EM electron), via adonis.workflow.cli --reweight-bank.  One chunk
+# per seed (n-per-seed events/chunk, n-seeds chunks, seed0+c) so SLURM shards over seed0 stay independent.
+# The 11 paper samples: 3 neutrino + 2 electron below; 6 hadron beams via beam_bank (further down).
+python -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml    --reweight-bank output/event_bank_v2 \
+       --n-per-seed 250000 --n-seeds 4 --seed0 0
+# nu_MINERvA_C, nu_uBooNE_Ar (weak; flux+material from the config), ee_C, ee_Ar (EM electron) -- same call,
+# swap the config.  (This replaces the retired env-driven event_bank + ee_event_bank; byte-for-byte identical.)
 
 # Gate-I Jacobian (27 knobs x bins; shared J for sec2 + sec3)
 ADONIS_EVENT_BANK=output/event_bank_v2 PHYSFIT_OBS=full ADONIS_LABEL=physfit_gate1_full_v2 \
   python -u -m analysis.paper.physical_fit          # -> output/altgen/physfit_gate1_full_v2.npz
 
-# tagged-beam cascade banks (config-driven, like the neutrino gen above; CLI flags override any field)
+# tagged-beam cascade banks (config-driven BeamGenConfig; CLI flags override any field)
 python -u -m analysis.paper.beams.beam_bank configs/beam_pip_C.yaml
 python -u -m analysis.paper.beams.beam_bank configs/beam_prot_C.yaml
 python -u -m analysis.paper.beams.beam_bank configs/beam_neut_C.yaml
@@ -97,7 +103,7 @@ python -m analysis.paper.methods_report                   # -> output/paper/meth
 
 ## Status (post-refactor)
 Everything is reproducible; all generators were recovered into the refactored layout:
-- reweight bank -> `adonis.reweight.event_bank`; ACHILLES oracles -> `adonis.oracle.*`
+- reweight banks -> `adonis.workflow.cli --reweight-bank` (one driver, weak+EM); ACHILLES oracles -> `adonis.oracle.*`
 - beam studies -> `analysis.paper.beams.{beam_bank,beam_fisher}`
 - fit engine + sec4/5 + report figs -> `analysis.paper.{physical_fit,info_content}` +
   `analysis.paper.physfit.{physical_fit_run, physfit_*_fig, physfit_report, build_fakedata}`

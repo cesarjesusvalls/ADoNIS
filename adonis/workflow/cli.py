@@ -132,6 +132,11 @@ def main(argv=None):
     ap.add_argument("--n-w", type=int, default=None, help="cascade refill working set (0 = full-batch lock-step)")
     ap.add_argument("--vegas-cache", type=str, default=None, choices=[None, "auto", "load", "rebuild"])
     ap.add_argument("--no-fsi", action="store_true", help="PRE-FSI bank (primary products, no cascade)")
+    ap.add_argument("--reweight-bank", type=str, default=None, metavar="OUTDIR",
+                    help="build the DIFFERENTIABLE reweight bank (hv_* amps2 + f_* FSI kind-1 records; "
+                         "chunk_NNN.npz) into OUTDIR via generate_reweight_bank, for ANY probe (weak|EM). "
+                         "One chunk per seed (n-per-seed events/chunk, n-seeds chunks, seed0+c). This is "
+                         "the paper-banks generator (replaces the retired reweight/event_bank + ee_event_bank).")
     a = ap.parse_args(argv)
 
     # Export ADONIS_FLUX_FILE from the config's flux key BEFORE the generators (or subprocess workers)
@@ -141,6 +146,13 @@ def main(argv=None):
     _gc = _lgc(a.config)
     if _gc.beam == "spectrum":
         os.environ.setdefault("ADONIS_FLUX_FILE", _FF[_gc.flux])
+
+    if a.reweight_bank:                         # differentiable reweight bank (the paper-banks generator)
+        from adonis.workflow.reweight_bank import generate_reweight_bank
+        gc = _apply_overrides(load_gen_config(a.config), a)
+        generate_reweight_bank(gc, a.reweight_bank)
+        print("DONE:", a.reweight_bank, flush=True)
+        return
 
     if a.workers and a.workers > 1:
         if a.n_per_seed is None:

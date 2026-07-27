@@ -1,0 +1,7 @@
+name: nu_uBooNE_Ar
+probe: weak
+beam: spectrum
+flux: microboone
+material: Ar
+channels: [qe, res]
+fsi: true

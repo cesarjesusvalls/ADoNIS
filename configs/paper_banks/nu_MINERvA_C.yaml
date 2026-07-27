@@ -1,0 +1,7 @@
+name: nu_MINERvA_C
+probe: weak
+beam: spectrum
+flux: minerva
+material: C
+channels: [qe, res]
+fsi: true

@@ -1,0 +1,7 @@
+name: ee_C
+probe: EM
+beam: electron
+material: C
+channels: [qe, res]
+e_beam: 2222.0
+fsi: true

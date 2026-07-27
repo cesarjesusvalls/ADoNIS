@@ -1,0 +1,7 @@
+name: nu_T2K_C
+probe: weak
+beam: spectrum
+flux: t2k
+material: C
+channels: [qe, res]
+fsi: true

@@ -1,4 +1,4 @@
-"""Plot-time consumer of the differentiable EVENT BANK (event_bank.py).  NO JAX cascade here -- everything
+"""Plot-time consumer of the differentiable EVENT BANK (adonis.workflow.reweight_bank.generate_reweight_bank).  NO JAX cascade here -- everything
 is a cheap re-sum over the stored per-event records (kinematics, ragged final state, w0, hard-vertex amps2 +
 FSI kind-1 + SF records for the EXACT reweight via bank_reweight).
 

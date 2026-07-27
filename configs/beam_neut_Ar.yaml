@@ -1,0 +1,9 @@
+# Tagged neutron beam on 12C (FSI-only cascade bank; ACHILLES CrossSection geometry).
+name: beam_neut_Ar
+beam: neut
+material: Ar
+n: 500000
+pmin: 300.0
+pmax: 1400.0
+chunk: 50000
+seed: 0
