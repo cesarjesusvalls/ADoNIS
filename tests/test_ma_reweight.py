@@ -14,7 +14,7 @@ jax.config.update("jax_enable_x64", True)
 
 from adonis.channels import qe as qe_xsec
 from adonis.channels.backend import me_cross_section
-from adonis.primary.dcc.form_factors import axial_reweight_dipole
+from adonis.channels.dcc.form_factors import axial_reweight_dipole
 
 N = 2000
 _QE = qe_xsec.sample_importance(N, seed=3)

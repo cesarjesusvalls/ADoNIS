@@ -7,12 +7,12 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis.primary.dcc.loader import load_cached
-from adonis.primary.dcc.amplitudes import DCCAmplitudes, DCCKnobs
-from adonis.primary.dcc.assembly import build_zmtx, angular_kernel, current_and_tensor
-from adonis.primary.dcc.structure import CC_CHANNELS
+from adonis.channels.dcc.loader import load_cached
+from adonis.channels.dcc.amplitudes import DCCAmplitudes, DCCKnobs
+from adonis.channels.dcc.assembly import build_zmtx, angular_kernel, current_and_tensor
+from adonis.channels.dcc.structure import CC_CHANNELS
 from adonis.constants import MQE as M_N, M_PI
-from adonis.primary.dcc import differential as ad
+from adonis.channels.dcc import differential as ad
 
 t = load_cached()
 amp = DCCAmplitudes(t)

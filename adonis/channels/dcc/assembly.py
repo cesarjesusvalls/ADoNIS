@@ -28,7 +28,7 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
-from adonis.primary.dcc.angular import cbg, legendre_ylm, ISMI, ISMIX, ISBI
+from adonis.channels.dcc.angular import cbg, legendre_ylm, ISMI, ISMIX, ISBI
 
 # Fortran data statements (interpolate_amp): symmetry pairs id1<->id2 (1-based) and the
 # parity-phase exponent.  pairs: (1,6) (2,5) (3,4) (7,8).

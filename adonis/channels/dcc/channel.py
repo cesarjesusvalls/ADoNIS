@@ -33,16 +33,16 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.primary.dcc.amplitudes import DCCKnobs
+from adonis.channels.dcc.amplitudes import DCCKnobs
 from adonis.nuclear.spectral import load_spectral, SpectralSampler
-from adonis.primary.dcc.structure import HadronStructure
-from adonis.primary.dcc.lepton import cm_lepton_momenta, lepton_tensor_cc, lepton_tensor_em, contract
-from adonis.primary.dcc.form_factors import axial_reweight_dipole
+from adonis.channels.dcc.structure import HadronStructure
+from adonis.channels.dcc.lepton import cm_lepton_momenta, lepton_tensor_cc, lepton_tensor_em, contract
+from adonis.channels.dcc.form_factors import axial_reweight_dipole
 from adonis.constants import MQE, M_PI, W_THR, W_MAX, Q2_MAX
-from adonis.primary.dcc.differential import (precompute_diff_coeffs, angular_factor,
+from adonis.channels.dcc.differential import (precompute_diff_coeffs, angular_factor,
                            build_zmtx_batched, differential_current, differential_tensor)
-from adonis.primary.dcc.final_state import cm_basis, two_body_lab, rotate_about_z
-from adonis.primary.dcc.fold_integrated import pion_cm_momentum
+from adonis.channels.dcc.final_state import cm_basis, two_body_lab, rotate_about_z
+from adonis.channels.dcc.fold_integrated import pion_cm_momentum
 from adonis.core.event import EventRecord
 
 E_NU_DEFAULT = 1500.0
@@ -131,7 +131,7 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     # momentum magnitude `plep` (not the energy Ep) is what enters d^3p'/(2E').
     # KINEMATIC pion mass (mpi0 to match ACHILLES) for the final-state on-shell decay; the
     # amplitude-internal m_pi (=fpio 138.04, passed in as `m_pi`) stays in S["m_pi"] for build_zmtx.
-    from adonis.primary.dcc.conventions import kin_m_pi, M_PIP
+    from adonis.channels.dcc.conventions import kin_m_pi, M_PIP
     m_pi_kin = kin_m_pi(M_PIP)
     p_pi, p_N = two_body_lab(P, e1, e2, e3, jnp.clip(W, 1.0, None), cos_ts, phi_s, m_pi_kin, m_N)
     prefac = (plep / e_nu) * jnp.sin(theta) * (pion_cm_momentum(W) / jnp.clip(W, 1.0, None)) * em_prop

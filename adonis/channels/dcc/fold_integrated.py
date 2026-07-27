@@ -25,10 +25,10 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.primary.dcc.amplitudes import DCCKnobs
+from adonis.channels.dcc.amplitudes import DCCKnobs
 from adonis.nuclear.spectral import load_spectral, SpectralSampler
-from adonis.primary.dcc.structure import HadronStructure
-from adonis.primary.dcc.lepton import cm_lepton_momenta, lepton_tensor_cc, contract
+from adonis.channels.dcc.structure import HadronStructure
+from adonis.channels.dcc.lepton import cm_lepton_momenta, lepton_tensor_cc, contract
 from adonis.constants import MQE, M_PI, W_THR, W_MAX, Q2_MAX
 
 E_NU_DEFAULT = 1500.0
@@ -37,7 +37,7 @@ E_NU_DEFAULT = 1500.0
 def pion_cm_momentum(W):
     """Pion CM momentum k_pi(W) [MeV]; 0 below threshold.  KINEMATIC pion mass (mpi0 to match
     ACHILLES) via conventions, NOT the amplitude-internal fpio."""
-    from adonis.primary.dcc.conventions import kin_m_pi, M_PIP
+    from adonis.channels.dcc.conventions import kin_m_pi, M_PIP
     mpi = kin_m_pi(M_PIP)
     thr_hi = (MQE + mpi) ** 2
     thr_lo = (MQE - mpi) ** 2

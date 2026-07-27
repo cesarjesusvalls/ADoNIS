@@ -23,11 +23,11 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.primary.dcc.amplitudes import DCCAmplitudes, DCCKnobs
-from adonis.primary.dcc.loader import load_cached
-from adonis.primary.dcc.assembly import build_zmtx, angular_kernel, current_and_tensor
-from adonis.primary.dcc.form_factors import axial_reweight_dipole
-from adonis.primary.dcc.spline import interp2d_spline
+from adonis.channels.dcc.amplitudes import DCCAmplitudes, DCCKnobs
+from adonis.channels.dcc.loader import load_cached
+from adonis.channels.dcc.assembly import build_zmtx, angular_kernel, current_and_tensor
+from adonis.channels.dcc.form_factors import axial_reweight_dipole
+from adonis.channels.dcc.spline import interp2d_spline
 from adonis.constants import MQE as M_N, M_PI    # exact ACHILLES masses (938.919, 138.04)
 
 

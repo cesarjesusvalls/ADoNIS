@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from adonis.primary.dcc.lepton import boost_to_rest, _mink_dot
+from adonis.channels.dcc.lepton import boost_to_rest, _mink_dot
 
 
 def _mag(v3):

@@ -19,7 +19,7 @@ __version__ = "0.1.0"
 # (`from adonis import observables`, `from adonis.analysis import fit`) works via the normal import machinery.
 _LAZY = {
     "PhysicsParams": "adonis.core.params", "ChainConfig": "adonis.core.params", "DCCKnobs": "adonis.core.params",
-    "Generator": "adonis.core.chain", "DCCSinglePion": "adonis.primary.dcc.channel",
+    "Generator": "adonis.core.chain", "DCCSinglePion": "adonis.channels.dcc.channel",
     "NoFSI": "adonis.fsi.none", "SpectralFunction": "adonis.nuclear.spectral",
     "FreeNucleon": "adonis.nuclear.free", "Monochromatic": "adonis.flux.mono",
 }

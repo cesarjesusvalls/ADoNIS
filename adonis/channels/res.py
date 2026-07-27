@@ -45,7 +45,7 @@ SPIN_AVG = 0.5
 # Pion KINEMATIC mass for the 3-body phase space.  Single source of truth: conventions.kin_m_pi
 # (mpi0=134.98 to match ACHILLES, else the physical per-channel mass).  This was THE dominant
 # RES normalization deficit -- see conventions.py and the [[res-norm-deficit-is-pion-mass]] note.
-from adonis.primary.dcc import conventions as _conv
+from adonis.channels.dcc import conventions as _conv
 MATCH_ACHILLES_PION_MASS = _conv.MATCH_ACHILLES        # back-compat alias; toggle lives in conventions
 def _pi_kin_mass(physical_mpi):
     """Kinematic pion mass for the 3-body phase space (delegates to conventions.kin_m_pi)."""

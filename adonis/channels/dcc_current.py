@@ -13,13 +13,13 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.channels import constants as C
-from adonis.primary.dcc import conventions as _conv
+from adonis.channels.dcc import conventions as _conv
 from adonis.channels.leptonic import lepton_current
 from adonis.channels.dcc_kinematics import boost_matrix, setdfun
-from adonis.primary.dcc.angular import cbg, legendre_ylm, legendre_ylm_batch, ISMI, ISMIX, ISBI
-from adonis.primary.dcc.assembly import build_zmtx
-from adonis.primary.dcc.amplitudes import DCCAmplitudes, DCCKnobs
-from adonis.primary.dcc.loader import load_cached
+from adonis.channels.dcc.angular import cbg, legendre_ylm, legendre_ylm_batch, ISMI, ISMIX, ISBI
+from adonis.channels.dcc.assembly import build_zmtx
+from adonis.channels.dcc.amplitudes import DCCAmplitudes, DCCKnobs
+from adonis.channels.dcc.loader import load_cached
 
 _AMP = DCCAmplitudes()
 _T = load_cached()
@@ -191,7 +191,7 @@ def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None, pion_po
     m_N via conventions (amplitude-internal avg mass); m_pi passed in (conventions.amp_m_pi()).
     r_axial (N,) scales the axial amplitudes (M_A reweight hook; None = nominal).
     mode: 1 CC (default) | 10 EM (e,e': axial off, EM isospin) | -1 NC."""
-    from adonis.primary.dcc.differential import build_zmtx_batched as _bzb
+    from adonis.channels.dcc.differential import build_zmtx_batched as _bzb
     return _bzb(vec, isv, axial, W, Q2, _PW_2J, _PW_2L, _PW_2I,
                 mode=mode, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial, pion_pole=pion_pole)
 

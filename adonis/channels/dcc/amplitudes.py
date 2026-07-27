@@ -19,7 +19,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.primary.dcc.loader import load_cached, PW_LABELS
+from adonis.channels.dcc.loader import load_cached, PW_LABELS
 from adonis.core.params import PhysicsParams, DCCKnobs    # DCCKnobs is an alias of PhysicsParams
 
 
@@ -55,7 +55,7 @@ class DCCAmplitudes:
     def amplitudes_spline(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
         """Batched (N,) spline amplitude interpolation matching ACHILLES (FMM cubic in
         W and Q2). Returns vec, isv, axial each (N, n_idx, n_pw) complex, knobs applied."""
-        from adonis.primary.dcc.spline import interp2d_spline
+        from adonis.channels.dcc.spline import interp2d_spline
         ni, npw = self.vec.shape[2], self.vec.shape[3]
         def sp(block):
             flat = block.reshape(block.shape[0], block.shape[1], ni * npw)
@@ -69,7 +69,7 @@ class DCCAmplitudes:
     def amplitudes_spline_np(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
         """NumPy (no-autodiff) twin of amplitudes_spline -- bit-identical FMM-cubic interp,
         ~30x faster for the forward generator (avoids per-op JAX dispatch). Returns numpy arrays."""
-        from adonis.primary.dcc.spline import interp2d_spline_np
+        from adonis.channels.dcc.spline import interp2d_spline_np
         if not hasattr(self, "_Wnp"):
             self._Wnp = np.asarray(self.W); self._Q2np = np.asarray(self.Q2)
             self._vecnp = np.asarray(self.vec); self._isvnp = np.asarray(self.isv)

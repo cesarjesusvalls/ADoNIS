@@ -32,8 +32,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.primary.dcc.angular import cbg
-from adonis.primary.dcc.assembly import (IGM1_LIST, LAM_LIST, ISF_LIST, _IXI1_OF, pw_phase)
+from adonis.channels.dcc.angular import cbg
+from adonis.channels.dcc.assembly import (IGM1_LIST, LAM_LIST, ISF_LIST, _IXI1_OF, pw_phase)
 
 _SQHF = 1.0 / np.sqrt(2.0)
 

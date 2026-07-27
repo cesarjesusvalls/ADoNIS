@@ -23,7 +23,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.io import achilles_data_root
-from adonis.primary.dcc.form_factors import M_PI_GEV  # GeV; we work in MeV here
+from adonis.channels.dcc.form_factors import M_PI_GEV  # GeV; we work in MeV here
 
 from adonis.constants import mpip as M_PI, mp as M_N  # charged pion / proton [MeV]
 HBARC = 197.32              # MeV fm (verbatim local rounding of the ANL transcription)

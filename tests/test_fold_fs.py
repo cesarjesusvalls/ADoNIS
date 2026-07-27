@@ -6,10 +6,10 @@ import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
 
-from adonis.primary.dcc.amplitudes import DCCKnobs
-from adonis.primary.dcc.structure import HadronStructure
-from adonis.primary.dcc.fold_integrated import fold_full_events
-from adonis.primary.dcc.channel import fold_final_state
+from adonis.channels.dcc.amplitudes import DCCKnobs
+from adonis.channels.dcc.structure import HadronStructure
+from adonis.channels.dcc.fold_integrated import fold_full_events
+from adonis.channels.dcc.channel import fold_final_state
 from adonis import observables as obs
 
 # The angle-integrated fold's intermediate scales as N * n_theta * n_phi, so a single
@@ -63,7 +63,7 @@ print(f"dsigma/dQ2  max rel diff (bins>1% peak): {np.max(np.abs(dQm-dQf)[dQf>0.0
 
 # final-state sanity: pion + nucleon on-shell, W consistency
 from adonis.constants import M_PI, MQE
-from adonis.primary.dcc.conventions import kin_m_pi
+from adonis.channels.dcc.conventions import kin_m_pi
 keep = wm != 0
 mpi2 = obs._mink_dot(ev.p_pi, ev.p_pi)
 mN2 = obs._mink_dot(ev.p_N, ev.p_N)

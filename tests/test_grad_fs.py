@@ -7,9 +7,9 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis.primary.dcc.amplitudes import DCCKnobs
-from adonis.primary.dcc.structure import HadronStructure
-from adonis.primary.dcc.channel import fold_final_state
+from adonis.channels.dcc.amplitudes import DCCKnobs
+from adonis.channels.dcc.structure import HadronStructure
+from adonis.channels.dcc.channel import fold_final_state
 from adonis import observables as obs
 
 hs = HadronStructure(n_theta=12, n_phi=12, spline=False)

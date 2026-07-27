@@ -2,7 +2,7 @@
 
 ZERO FITTED CONSTANTS: every value here is a physical input (a PDG/ACHILLES mass) or a derived
 combination of them -- never a calibration.  This module is imported by BOTH the fast event
-generator (adonis.channels.res_xsec / dcc_current) AND the differentiable JAX path (adonis.primary.dcc
+generator (adonis.channels.res_xsec / dcc_current) AND the differentiable JAX path (adonis.channels.dcc
 channel/structure), so the two implementations cannot drift on conventions again.
 
 The pion mass plays THREE distinct roles, empirically separated from the ACHILLES free-proton

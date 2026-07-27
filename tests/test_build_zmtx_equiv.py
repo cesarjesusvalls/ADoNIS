@@ -6,9 +6,9 @@ import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
-from adonis.primary.dcc.assembly import build_zmtx as build_scalar
-from adonis.primary.dcc.differential import build_zmtx_batched
-from adonis.primary.dcc.loader import load_cached
+from adonis.channels.dcc.assembly import build_zmtx as build_scalar
+from adonis.channels.dcc.differential import build_zmtx_batched
+from adonis.channels.dcc.loader import load_cached
 
 
 def test_build_zmtx_scalar_equals_batched_cc():

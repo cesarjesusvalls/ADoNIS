@@ -16,8 +16,8 @@ import adonis.channels.dcc_current as dcc
 dcc.BATCH_INTERP = "spline"
 from adonis.channels.dcc_current import exclusive_amps2_batch, _NORM
 from adonis.channels import constants as C
-from adonis.primary.dcc.channel import sample_final_state, weight_from_sample
-from adonis.primary.dcc.structure import HadronStructure
+from adonis.channels.dcc.channel import sample_final_state, weight_from_sample
+from adonis.channels.dcc.structure import HadronStructure
 from adonis.core.params import DCCKnobs
 from adonis.nuclear.free import FreeNucleon
 
