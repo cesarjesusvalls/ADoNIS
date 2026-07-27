@@ -31,9 +31,8 @@ from adonis.xsec.backend import me_cross_section
 from adonis.constants import MASS_PDG_PROTON, MASS_PDG_NEUTRON
 
 _MN = C.mN                       # average nucleon mass (struck-nucleon kinematics; mirrors qe_xsec)
-_M_E = 0.51099895               # electron mass [MeV] (ACHILLES Particles.yml); negligible vs 2222 but exact
+from adonis.flux.electron import M_E as _M_E, E_BEAM_JLAB, electron_k    # e- beam (adonis/flux)
 _TWO_PI = 2 * np.pi
-E_BEAM_JLAB = 2222.0            # JLab Murphy:2019wed point [MeV]
 THETA_ACC = (14.0, 17.0)        # outgoing-e- polar-angle HardCut [deg] (run_inclusive_ee_C_*.yml)
 
 # per-material target: (Z protons, N neutrons, proton SF, neutron SF)
@@ -66,8 +65,8 @@ def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target
     """One species: importance-sample the struck nucleon from its SF, isotropic two-body e'+N_out,
     return per-event contribution c (nb) with SUM_i c_i = sigma_species, plus omega and theta_e' [deg].
     Mirrors qe_xsec.sample_importance but for the EM probe + monochromatic e- beam (J_beam = 1)."""
-    kz = np.sqrt(E_beam ** 2 - _M_E ** 2)
-    k_e = np.tile(np.array([E_beam, 0.0, 0.0, kz]), (n, 1))
+    kz = np.sqrt(E_beam ** 2 - _M_E ** 2)              # kept: used in the removal-energy ceiling below
+    k_e = electron_k(E_beam, n)
     # ---- struck nucleon: |p|,E ~ |p|^2 S importance sampling (the flat-MC weight peak cancels) ----
     samp = SpectralImportanceSampler(sf)
     pvec, E_rm = samp.sample(n, rng)

@@ -42,11 +42,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import numpy as np
 
-R_DISK = 10.0                                  # beam impact-parameter disk [fm] (card Params/radius)
-PIR2_MB = np.pi * R_DISK ** 2 * 10.0           # pi R^2 in mb (1 fm^2 = 10 mb) = 3141.6 mb
-
-# beam key -> (PID, cascade species, charge)   charge: pion index {0:pi+,1:pi0,2:pi-}; nucleon 1=p, 0=n
-BEAMS = {"pip": (211, "PION", 0), "prot": (2212, "NUCLEON", 1), "neut": (2112, "NUCLEON", 0)}
+from adonis.flux.hadron import BEAMS, R_DISK, PIR2_MB, HadronBeam    # beam description (adonis/flux)
 
 
 def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
@@ -66,6 +62,7 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
     _rg, _rp, _rn, radius = _load_density(cfg.nucleus, cfg.density_n)
     z0 = -1.05 * float(radius)                  # InitCrossSection: 5% outside the nuclear surface
     mass = float(_CH_MASS[charge]) if species == "PION" else (_MP_PHYS if charge == 1 else _MN_PHYS)
+    hb = HadronBeam(beam, mass)                 # reusable beam description (adonis/flux/hadron)
     # NB the beam particle is built ON-SHELL with the mass the cascade itself uses, so E^2 - m^2 = |p|^2
     # exactly.  (The soft-pion NaN of docs/logbook/pion_soft_sigma_nan.md comes from the RES generator
     # building the pion with the mpi0 KINEMATIC mass while the cascade uses the physical one -- a beam
@@ -80,12 +77,7 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
         m = min(chunk, n - c * chunk)
         key = jax.random.PRNGKey(seed + 1000 * c)
         k_mom, k_disk, k_nuc, k_run = jax.random.split(key, 4)
-        mom = jax.random.uniform(k_mom, (m,), minval=pmin, maxval=pmax)          # TAGGED beam momentum
-        u = jax.random.uniform(k_disk, (m, 2))
-        br = R_DISK * jnp.sqrt(u[:, 0]); th = 2 * jnp.pi * u[:, 1]               # uniform in the disk
-        E = jnp.sqrt(mom ** 2 + mass ** 2)
-        p4 = jnp.stack([E, jnp.zeros(m), jnp.zeros(m), mom], axis=1)             # along +z
-        pos0 = jnp.stack([br * jnp.cos(th), br * jnp.sin(th), jnp.full((m,), z0)], axis=1)
+        mom, p4, pos0 = hb.sample(k_mom, k_disk, m, pmin, pmax, z0)              # beam (adonis/flux/hadron)
 
         kn, kp = jax.random.split(k_nuc, 2)
         npos, nmom, nisp = sample_nucleons(kn, m, cfg)

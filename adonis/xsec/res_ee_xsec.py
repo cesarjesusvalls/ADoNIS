@@ -22,9 +22,8 @@ from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.res_xsec import _boost_to_lab, _sqlam, M_PIP, M_PI0
 
 _MN = C.mN
-_M_E = 0.51099895               # electron mass [MeV]
+from adonis.flux.electron import M_E as _M_E, E_BEAM_JLAB, electron_k    # e- beam (adonis/flux)
 _TWO_PI = 2 * np.pi
-E_BEAM_JLAB = 2222.0
 THETA_ACC = (14.0, 17.0)
 SPIN_AVG_EM = 0.25              # 2 e- helicities x 2 nucleon spins
 
@@ -74,7 +73,7 @@ def _sample_3body_ee(k_e, p_struck, m_pi, m_Nf, m_lep, u):
 
 def _sample_channel_ee(n, rng, E_beam, m_pi, m_Nf, m_struck, imp):
     kz = np.sqrt(E_beam ** 2 - _M_E ** 2)
-    k_e = np.tile(np.array([E_beam, 0.0, 0.0, kz]), (n, 1))
+    k_e = electron_k(E_beam, n)
     u = rng.random((n, 10))
     pvec, energy = imp.sample(n, rng)                      # |p|^2 S importance (initwgt -> N constant)
     mom = np.linalg.norm(pvec, axis=1)
