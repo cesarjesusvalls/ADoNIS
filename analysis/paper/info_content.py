@@ -122,7 +122,7 @@ def freeH_offsets(edges_by_name):
     """Frozen nominal free-H (carbon+H -> CH) contribution per CC1pi observable, nb/unit.  pi+ always
     survives (no nuclear FSI); acceptance mirrors signal_cc1pi_stv (windows + cos70 forward cut); observables via the
     validated O.tki (NUISANCE hydrogen daT randomization included)."""
-    from adonis.workflow.free_proton import generate_H
+    from adonis.channels.free_proton import generate_H
     import adonis.observables.batch as O
     NH, NSEED = 50000, 4
     acc = {"pn": [], "dptt": [], "daT": []}; wl = []

@@ -18,7 +18,7 @@ from adonis.nuclear.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets
 from adonis.reweight.amps2_records import (build_res_ma_records, build_res_pw_records,
                                         build_res_pionpole_records, strength_reweight, RES_ITIZ)
-from adonis.channels import dcc_current as dcc
+from adonis.channels.dcc import current as dcc
 from adonis.core.params import DCCKnobs
 
 _tg = resolve_targets("C")[0][0]

@@ -13,7 +13,7 @@ import os, time
 import numpy as np
 import jax
 import jax.numpy as jnp
-import adonis.channels.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
+import adonis.channels.dcc.current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.channels import res as res_xsec
 from adonis.nuclear.spectral import SpectralFunction
 from adonis.fsi.cascade import DiscreteCascadeConfig
@@ -191,7 +191,7 @@ def run_channel(channel, gc, target, n_w=None):
     vg = getattr(gc, "vegas", None)
     if vg is not None and vg.enabled and channel == "res" and gc.probe == "weak":
         from adonis.channels import res as _R
-        from adonis.channels.vegas_grid import VegasGrid
+        from adonis.vegas_grid import VegasGrid
         # Grid cache key = the PHYSICS that determines the proposal: material (spectral fns + N counts)
         # and flux mode.  Flux is T2K-neutrino only today, so the canonical key is the material -> one
         # shared grid auto-reused across tags/seed-counts of the same nucleus.  (When a nubar/other flux
