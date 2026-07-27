@@ -48,7 +48,7 @@ def run():
     SEED0 = int(os.environ.get("SEED0", "0"))   # per-shard seed offset: each SLURM array task owns a
     #   disjoint seed range (seed = SEED0 + c) so shards produce INDEPENDENT events (default 0 = original).
     # flux + material are env-configurable (T2K/C default -> byte-identical).  ADONIS_FLUX_FILE is read
-    # by the generators' T2KFlux() (DEFAULT_FLUX); ADONIS_MATERIAL selects the nucleus (C | Ar).
+    # by the generators' SpectrumFlux() (DEFAULT_FLUX); ADONIS_MATERIAL selects the nucleus (C | Ar).
     MATERIAL = os.environ.get("ADONIS_MATERIAL", "C")
     tgt = resolve_targets(MATERIAL)[0][0]
     sf = SpectralFunction(tgt.spectral_n); sf_p = SpectralFunction(tgt.spectral_p)

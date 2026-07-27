@@ -11,7 +11,7 @@ import jax.numpy as jnp
 
 import adonis.xsec.dcc_current as dcc
 dcc.BATCH_INTERP = "spline"
-from adonis.xsec.flux import T2KFlux, M_MU, M_P
+from adonis.flux.spectrum import SpectrumFlux, M_MU, M_P
 from adonis.xsec.res_xsec import _sample_3body, _sample_3body_dispatch, _pi_kin_mass, M_PIP, SPIN_AVG
 from adonis.xsec.dcc_current import exclusive_amps2_batch
 from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON
@@ -24,7 +24,7 @@ _CFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool"
 
 def generate_H(n, seed=0):
     rng = np.random.default_rng(seed)
-    flux = T2KFlux()
+    flux = SpectrumFlux()
     m_pi = _pi_kin_mass(M_PIP); m_Nf = M_P            # outgoing N = proton; kinematic pion mass
     Smin = (M_MU + m_Nf + m_pi) ** 2
     minE = max((Smin - m_Nf ** 2) / (2 * m_Nf) / 1000.0, flux.min_energy)

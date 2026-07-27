@@ -15,7 +15,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 from adonis.xsec import constants as C
-from adonis.xsec.flux import T2KFlux
+from adonis.flux.spectrum import SpectrumFlux
 from adonis.xsec.spectral import SpectralFunction
 from adonis.xsec.backend import flux_factor, MASS_PDG_NEUTRON, MASS_PDG_PROTON
 from adonis.xsec.dcc_current import exclusive_amps2_batch
@@ -385,7 +385,7 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
              (2112, -1, 211, sf_n, n_neutron, MASS_PDG_NEUTRON),  # [1] n -> n pi+
              (2212, +1, 211, sf_p, n_proton, MASS_PDG_PROTON)]    # [2] p -> p pi+
     rng = np.random.default_rng(seed)
-    flux = T2KFlux(); maxE = flux.max_energy
+    flux = SpectrumFlux(); maxE = flux.max_energy
     s = _sample_shared(n, rng, flux, maxE)
     v = s["valid"]; idx = np.where(v & (s["J"] > 0))[0]
     out = {}; w_tot = np.zeros(n)
@@ -464,7 +464,7 @@ def warmup_vegas(n=100000, iters=6, nbins=50, alpha=1.5, seed=987654321, sf_n=No
     `progress` shows a tqdm-style bar (iters x channels steps) with ETA for the integration phase."""
     from adonis.xsec.vegas_grid import VegasGrid
     sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
-    flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
+    flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     grid = VegasGrid(6, nbins)
     pbar = _warmup_pbar(iters * len(CHANNELS), "vegas warm-up") if progress else None
     for it in range(iters):
@@ -502,7 +502,7 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
                         n_neutron=N_NUC, n_proton=N_NUC, grid=None, defensive=0.0):
     sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
     rng = np.random.default_rng(seed)
-    flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
+    flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     out = {}; sig = 0.0
     ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
     nch = len(CHANNELS); m = max(1, n // nch)          # n = TOTAL draws across channels; m per channel

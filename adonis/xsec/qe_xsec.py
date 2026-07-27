@@ -15,7 +15,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from adonis.xsec import constants as C
-from adonis.xsec.flux import T2KFlux, M_MU, M_P
+from adonis.flux.spectrum import SpectrumFlux, M_MU, M_P
 from adonis.xsec.spectral import SpectralFunction
 from adonis.xsec.backend import me_cross_section, MASS_PDG_NEUTRON
 
@@ -40,7 +40,7 @@ def sample(n, seed=0):
     """Flat-MC sample of the QE phase space.  Returns dict with lab momenta and event_weight J."""
     rng = np.random.default_rng(seed)
     u = rng.random((n, 7))
-    flux = T2KFlux()
+    flux = SpectrumFlux()
     # ---- beam ----
     minE = flux.seed_min_GeV()
     E_GeV, J_beam = flux.sample_beam(u[:, 4], minE)        # 'is' (default) | 'flat'  -- BEAM_MODE toggle
@@ -112,7 +112,7 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     from adonis.xsec.spectral import SpectralImportanceSampler, SpectralFunction as _SF
     rng = np.random.default_rng(seed)
     u = rng.random((n, 7))
-    flux = T2KFlux()
+    flux = SpectrumFlux()
     minE = flux.seed_min_GeV()
     E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0   # BEAM_MODE toggle
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)

@@ -85,7 +85,7 @@ class TrackingConfig:
 
 
 # flux key -> ACHILLES Spectrum table (relative to the sibling Achilles/ dir).  The generators read
-# the actual table via adonis.xsec.flux.DEFAULT_FLUX (env ADONIS_FLUX_FILE); a run must export that to
+# the actual table via adonis.flux.spectrum (ADONIS_FLUX_FILE) (env ADONIS_FLUX_FILE); a run must export that to
 # the file below so the bank name (this key) and the physics agree.  See _resolve_flux() in the CLI.
 FLUX_FILES = {
     "t2k":        "flux/T2K_nu.dat",

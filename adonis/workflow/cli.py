@@ -132,7 +132,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     # Export ADONIS_FLUX_FILE from the config's flux key BEFORE the generators (or subprocess workers)
-    # import adonis.xsec.flux, so a non-T2K beam is actually used and the bank name stays consistent.
+    # import adonis.flux.spectrum, so a non-T2K beam is actually used and the bank name stays consistent.
     from adonis.workflow.config import load_gen_config as _lgc, FLUX_FILES as _FF
     _flux = _lgc(a.config).flux
     os.environ.setdefault("ADONIS_FLUX_FILE", _FF[_flux])

@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 from adonis.xsec import constants as C
-from adonis.xsec.flux import T2KFlux
+from adonis.flux.spectrum import SpectrumFlux
 
 MN = C.mN                                  # Constant::mN (isoscalar) used in the mappers
 TWO_PI = 2 * np.pi
@@ -136,7 +136,7 @@ def j_had(k_nu, p_struck, Smin):
 
 def main():
     rows = parse_res(str(Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"))
-    flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
+    flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     rel = []
     for r in rows:
         k_nu, k_mu, p_struck = r["li"], r["lo"], r["hi"]
@@ -166,7 +166,7 @@ if __name__ == "__main__":
 def test_res_psw_bit_exact():
     """RES event.Weight (psw) reconstructs to ~1e-12 from the ported ACHILLES mappers."""
     rows = parse_res(str(Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"))
-    flux = T2KFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
+    flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     rel = []
     for r in rows:
         k_nu, k_mu, p_struck, p_N, p_pi = r["li"], r["lo"], r["hi"], r["hN"], r["hP"]
