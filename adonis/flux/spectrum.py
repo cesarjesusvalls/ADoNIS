@@ -18,7 +18,7 @@ import os as _os
 from pathlib import Path
 import numpy as np
 
-from adonis.nuclear.spectral import _polint
+from adonis.numerics import polint as _polint
 
 from adonis.io import achilles_sibling_root
 _ACH = achilles_sibling_root()   # single source: adonis.io
