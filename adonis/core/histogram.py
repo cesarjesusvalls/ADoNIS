@@ -10,8 +10,6 @@ Framework services used across validation/fitting (previously hand-rolled per sc
 """
 from __future__ import annotations
 
-import os
-
 import numpy as np
 
 
@@ -74,16 +72,3 @@ def ratio_chi2(m_sw, m_sw2, o_sw, o_sw2):
     return R, Re, chi2, ndf
 
 
-def save_cache(path, key, **arrays):
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    np.savez(path, key=key, **arrays)
-
-
-def load_cache(path, key):
-    """Return the cached npz dict if present and the key matches, else None."""
-    if not os.path.exists(path):
-        return None
-    d = np.load(path, allow_pickle=True)
-    if str(d["key"]) != str(key):
-        return None
-    return d

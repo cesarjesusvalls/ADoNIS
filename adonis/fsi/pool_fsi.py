@@ -24,25 +24,6 @@ def lead_proton(nt):
     return jnp.where((mom[ar, j] > 0)[:, None], p4[ar, j], 0.0)
 
 
-def proton_candidates(nterms, mprot):
-    """Top-`mprot` escaped PROTON terminals across ALL cascade generations ->
-    (prot (n,mprot,4), prot_origin (n,mprot), prot_gen (n,mprot)); non-proton/empty slots are 0 / -1.
-    Verbatim of adonis.workflow.generate.run_one_seed's prot[] construction -- the single validated
-    pool proton-candidate set (origin: 0=RES/QE nucleon chain, 1=pion-knockout, 2=primary pion)."""
-    p4s, orgs, gns = [], [], []
-    for g in nterms:
-        sp = np.asarray(g["species"]); pid = np.asarray(g["pid"]); p4 = np.asarray(g["p4"]); al = np.asarray(g["alive"])
-        good = (sp == NUCLEON) & (pid == 2212) & al
-        p4s.append(np.where(good[:, :, None], p4, 0.0))
-        orgs.append(np.where(good, np.asarray(g["origin"]), -1))
-        gns.append(np.where(good, np.asarray(g["gen"]), -1))
-    P4 = np.concatenate(p4s, axis=1); ORG = np.concatenate(orgs, axis=1); GN = np.concatenate(gns, axis=1)
-    n = P4.shape[0]; ar = np.arange(n)
-    mom = np.linalg.norm(P4[:, :, 1:], axis=2)
-    idx = np.argsort(-mom, axis=1)[:, :mprot]; g2 = ar[:, None]
-    return P4[g2, idx], ORG[g2, idx].astype(np.int64), GN[g2, idx].astype(np.int64)
-
-
 def run_fsi(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, channel="res", rec_caps=None):
     """Run the pool cascade and return the common per-event FSI outputs as a dict:
       pterm   : primary-pion terminal (RES: pid 0=absorbed, -1=converted, else surviving-pi pid; QE: 0)

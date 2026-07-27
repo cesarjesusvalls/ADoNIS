@@ -1,4 +1,8 @@
-"""Oset pion self-energy in nuclear matter -- absorption + quasi-elastic (Phase F).
+"""NUMPY VALIDATION REFERENCE -- frozen twin of the LIVE code in adonis/fsi/oset_xsec.py.
+Exercised ONLY by tests/test_oset.py (the oracle the live path is checked against).  Do NOT modify,
+wire into production, or consolidate its constants/helpers -- its value is being independent.
+
+Oset pion self-energy in nuclear matter -- absorption + quasi-elastic (Phase F).
 
 Faithful transcription of ACHILLES `OsetCrossSections.cc` / `.hh`: the imaginary parts of
 the Delta self-energy that drive pion absorption (2N + 3N) and quasi-elastic scattering in

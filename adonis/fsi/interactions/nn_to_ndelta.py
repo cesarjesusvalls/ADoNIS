@@ -1,4 +1,9 @@
-"""GiBUU N N -> N Delta production cross section -- the core of the ACHILLES Propagating-
+"""NUMPY VALIDATION REFERENCE -- frozen scalar-loop twin of the LIVE jax NN->NDelta code in
+adonis/fsi/nn_inelastic.py.  Exercised ONLY by tests/test_nn_delta.py (as the oracle the jax path is
+checked against).  Do NOT modify, wire into production, or consolidate its Kallen/CDF helpers -- its
+value is being an independent re-derivation.
+
+GiBUU N N -> N Delta production cross section -- the core of the ACHILLES Propagating-
 Resonances mode and the paper's Fig 14 (pp -> pn pi+, pp -> pp pi0 via N N -> N Delta -> N N pi).
 
 Faithful port of `src/Achilles/ResonanceHelper.cc` (the Dmitriev-Sushkov / GiBUU one-pion-
