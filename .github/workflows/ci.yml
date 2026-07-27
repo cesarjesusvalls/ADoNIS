@@ -1,11 +1,10 @@
 name: CI
 
-# Fast PR/push gate: per-module closure + oracle self-tests, and the verification
-# figures.  The ACHILLES data tables (DCC amplitudes + spectral function) are
-# extracted from the published oracle image so the model side matches the oracle;
-# the oracle npz itself is fetched from the `oracle-data` release if it exists
-# (otherwise the oracle gates skip).  See .github/workflows/oracle.yml for the
-# image-backed oracle regeneration.
+# Fast PR/push gate: the pytest suite (per-module closure + self-consistency + reweight
+# gates).  The ACHILLES data tables (DCC amplitudes + spectral function) are extracted from
+# the published oracle image so the cross-section building blocks match ACHILLES reference
+# dumps.  (The ADoNIS-vs-ACHILLES high-statistics oracle gates + reproduce scripts were
+# retired; that validation lives in the analysis/paper pipeline.)
 
 # push trigger disabled 2026-06-12 (was failing on every push; not a priority) --
 # run manually from the Actions tab when needed.
@@ -73,18 +72,7 @@ jobs:
           df -h / | tail -1
           python -c "import jax, jaxlib; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__); print('devices', jax.devices())"
 
-      - name: Fetch oracle data (if published)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p data/oracle
-          if gh release download oracle-data -p oracle_finalstate.npz -D data/oracle/ 2>/dev/null; then
-            echo "fetched oracle_finalstate.npz from the oracle-data release"
-          else
-            echo "no oracle-data release yet -> oracle gates will skip"
-          fi
-
-      - name: Per-module self-tests (closure + oracle)
+      - name: Per-module self-tests (closure + reweight)
         run: |
           set -o pipefail
           # Run each test file in its OWN process. These modules do heavy float64 JAX
@@ -104,26 +92,6 @@ jobs:
             echo "::endgroup::"
           done
           exit $rc
-
-      - name: Verification figures (reduced statistics)
-        run: |
-          ADONIS_DIFF_N=15000 python scripts/make_diff_figures.py
-          ADONIS_NDATA=80000 ADONIS_NMODEL=30000 ADONIS_DATA_CHUNK=40000 ADONIS_ITERS=80 \
-            python scripts/make_ma_fit.py
-          if [ -f data/oracle/oracle_finalstate.npz ]; then
-            # small per-chunk n: the angle-integrated fold's grid*n intermediate is the
-            # memory hog (same reason test_fold_fs chunks); 8k*15 = 120k total, low peak
-            FS_CHUNK=8000 FS_NCHUNK=15 python scripts/validate_final_state.py
-          else
-            echo "skipping final-state oracle figure (no oracle data)"
-          fi
-
-      - name: Upload figures
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: figures
-          path: figures/
 
       - name: Upload test log
         if: always()
