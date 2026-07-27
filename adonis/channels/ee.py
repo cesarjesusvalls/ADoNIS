@@ -156,6 +156,22 @@ def dsigma_domega(res, edges, theta_acc=THETA_ACC):
     return h / bw
 
 
+from adonis.core.sample import Sampler       # noqa: E402
+
+
+class EEChannel(Sampler):
+    """Inclusive (e,e') QE (EM probe, monochromatic e- beam) as a detached kind-1 SAMPLER.
+    `propose(seed, n)` = the verbatim `generate(..., records=True)` (theta-accepted proposal +
+    per-event contribution `c`).  bit-for-bit."""
+
+    def __init__(self, material="C", e_beam=E_BEAM_JLAB, theta_acc=THETA_ACC):
+        self.material = material; self.e_beam = e_beam; self.theta_acc = theta_acc
+
+    def propose(self, key, n):
+        return generate(n, material=self.material, seed=int(key), E_beam=self.e_beam,
+                        records=True, theta_acc=self.theta_acc)
+
+
 if __name__ == "__main__":
     import sys
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 500_000

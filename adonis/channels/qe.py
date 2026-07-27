@@ -167,6 +167,26 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     return dict(w=w, k_nu=k_nu, k_mu=k_mu, p_struck=p_struck, p_out=p_out, sigma=w.mean())
 
 
+from adonis.core.sample import Sampler       # noqa: E402
+
+
+class QEChannel(Sampler):
+    """CC quasi-elastic (nu n -> mu- p) as a detached kind-1 SAMPLER.
+
+    `propose(seed, n)` draws the frozen proposal -- spectral-importance struck nucleon + isotropic
+    two-body (mu, p) -- carrying the NOMINAL per-event weight `w`.  This is the production kind-1
+    split's "sample" half: the knob-differentiable WEIGHT is applied downstream by the production
+    reweight (adonis.reweight.bank_reweight.bank_weight over the banked records), NOT re-derived here.
+    The numerical kernel is the verbatim `sample_importance` function above -- bit-for-bit identical."""
+
+    def __init__(self, sf=None, n_neutron=N_NEUTRON):
+        self.sf = sf
+        self.n_neutron = n_neutron
+
+    def propose(self, key, n):
+        return sample_importance(n, seed=int(key), sf=self.sf, n_neutron=self.n_neutron)
+
+
 if __name__ == "__main__":
     import sys
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 20000

@@ -13,7 +13,7 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
-from adonis.channels import res_xsec
+from adonis.channels import res as res_xsec
 from adonis.channels.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets
 from adonis.reweight.ma_records import (build_res_ma_records, build_res_pw_records,

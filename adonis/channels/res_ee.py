@@ -19,7 +19,7 @@ from adonis.channels import constants as C
 from adonis.channels.spectral import SpectralFunction, SpectralImportanceSampler
 from adonis.channels.backend import flux_factor, MASS_PDG_PROTON, MASS_PDG_NEUTRON
 from adonis.channels.dcc_current import exclusive_amps2_batch
-from adonis.channels.res_xsec import _boost_to_lab, _sqlam, M_PIP, M_PI0
+from adonis.channels.res import _boost_to_lab, _sqlam, M_PIP, M_PI0
 
 _MN = C.mN
 from adonis.flux.electron import M_E as _M_E, E_BEAM_JLAB, electron_k    # e- beam (adonis/flux)
@@ -150,6 +150,21 @@ def dsigma_domega(res, edges, theta_acc=THETA_ACC):
     mth = (res["theta"] >= lo) & (res["theta"] <= hi)
     h, _ = np.histogram(res["omega"][mth], bins=edges, weights=res["c"][mth])
     return h / np.diff(edges)
+
+
+from adonis.core.sample import Sampler       # noqa: E402
+
+
+class RESEEChannel(Sampler):
+    """Inclusive (e,e') RES single-pion (EM probe, monochromatic e- beam) as a detached kind-1
+    SAMPLER.  `propose(seed, n)` = the verbatim `generate(..., records=True)` (all-angle proposal
+    with lepton + hadron kinematics + per-event contribution `c`).  bit-for-bit."""
+
+    def __init__(self, material="C", e_beam=E_BEAM_JLAB):
+        self.material = material; self.e_beam = e_beam
+
+    def propose(self, key, n):
+        return generate(n, material=self.material, seed=int(key), E_beam=self.e_beam, records=True)
 
 
 if __name__ == "__main__":

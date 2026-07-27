@@ -12,7 +12,7 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
-from adonis.channels import qe_xsec
+from adonis.channels import qe as qe_xsec
 from adonis.channels.backend import me_cross_section
 from adonis.primary.dcc.form_factors import axial_reweight_dipole
 

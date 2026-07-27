@@ -528,6 +528,24 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
     return out
 
 
+from adonis.core.sample import Sampler       # noqa: E402
+
+
+class RESChannel(Sampler):
+    """CC single-pion RES production (ANL-Osaka DCC) as a detached kind-1 SAMPLER.  `propose(seed, n)`
+    draws the frozen proposal (beam + struck nucleon + 3-body mu/pi/N) with the NOMINAL weight; the
+    knob-differentiable WEIGHT is the production reweight (adonis.reweight.bank_reweight).  Kernel =
+    the verbatim `generate(..., return_events=True)` -- bit-for-bit."""
+
+    def __init__(self, sf_n=None, sf_p=None, n_neutron=6, n_proton=6, grid=None):
+        self.sf_n = sf_n; self.sf_p = sf_p
+        self.n_neutron = n_neutron; self.n_proton = n_proton; self.grid = grid
+
+    def propose(self, key, n):
+        return generate(n, seed=int(key), return_events=True, sf_n=self.sf_n, sf_p=self.sf_p,
+                        n_neutron=self.n_neutron, n_proton=self.n_proton, grid=self.grid)["events"]
+
+
 if __name__ == "__main__":
     import sys
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 20000
