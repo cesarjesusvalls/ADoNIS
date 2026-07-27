@@ -18,9 +18,8 @@ import numpy as np
 from adonis.oracle.hepmc import parse_events, minkowski2
 
 REF_TOTAL_NB = 4.943360e-05          # Total xsec (CC, 1500 MeV nu_e on 12C)
-NU_PIDS = {12, 14, 16, -12, -14, -16}
-CHG_LEP = {11, 13, -11, -13}
-PI_PIDS = {111, 211, -211}
+from adonis.constants import (PDG_NEUTRINOS as NU_PIDS, PDG_CHARGED_LEPTONS as CHG_LEP,
+                              PDG_PIONS as PI_PIDS)   # single source (adonis.constants)
 
 
 def _boost_to_rest(P, a):

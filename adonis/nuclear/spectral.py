@@ -23,12 +23,12 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.io import achilles_data_root
+from adonis.io import achilles_data_root, achilles_sibling_root
 from adonis.nuclear.base import NuclearModel
 
 from adonis.channels import constants as C
 
-_ACH = Path(__file__).resolve().parents[2].parent / "Achilles"   # sibling checkout (production paths)
+_ACH = achilles_sibling_root()   # sibling checkout (production paths); single source: adonis.io
 SF_DIR = achilles_data_root() / "Spectral_Functions"             # $ACHILLES_DATA (bare-name paths)
 
 

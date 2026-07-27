@@ -219,7 +219,8 @@ def _load_qmc_configs(nmax=36000, name="QMC_configs.out.gz"):
     # Cache as NUMPY (not jnp): a jnp array first created inside a jit trace would leak the
     # tracer context to later traces (cf. meson_baryon_xsec._jax_grids_resolved); asarray per-call is free.
     if name not in _CFG:
-        path = Path(__file__).resolve().parents[2].parent / "Achilles" / "data" / "configurations" / name
+        from adonis.io import achilles_sibling_root
+        path = achilles_sibling_root() / "data" / "configurations" / name   # single source: adonis.io
         with gzip.open(path, "rt") as f:
             # header: [A Nconfigs maxWgt minWgt] (ACHILLES Configuration.cc:30-37).  A is read HERE,
             # not hardcoded -> QMC (A=12, C) and RMF (A=40, Ar) share this parser unchanged.

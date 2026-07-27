@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-COS70 = float(np.cos(np.deg2rad(70.0)))
+from adonis.constants import COS70   # single source (adonis.constants)
 _SCALAR_SENTINELS = {"cos70": COS70, "pi": float(np.pi), "-pi": -float(np.pi), "inf": float("inf")}
 
 

@@ -20,7 +20,8 @@ import numpy as np
 
 from adonis.nuclear.spectral import _polint
 
-_ACH = Path(__file__).resolve().parents[2].parent / "Achilles"
+from adonis.io import achilles_sibling_root
+_ACH = achilles_sibling_root()   # single source: adonis.io
 from adonis.constants import MASS_PDG_MUON as M_MU, MASS_PDG_PROTON as M_P
 
 

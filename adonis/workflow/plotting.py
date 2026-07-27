@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
-COS70 = float(np.cos(np.deg2rad(70.0)))
+from adonis.constants import COS70   # single source (adonis.constants)
 
 
 def hist_with_errors(values, weights, edges):

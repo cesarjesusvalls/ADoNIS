@@ -23,3 +23,10 @@ DEFAULT_ACHILLES_DATA = str(_REPO_ROOT / "data" / "achilles")
 
 def achilles_data_root() -> Path:
     return Path(os.environ.get("ACHILLES_DATA", DEFAULT_ACHILLES_DATA))
+
+
+def achilles_sibling_root() -> Path:
+    """The sibling Achilles/ checkout (../Achilles relative to this repo root) -- holds the production
+    spectral-function tables + QMC configurations addressed by relative 'data/...' paths.  Single home
+    for the path previously recomputed in nuclear/spectral, flux/spectrum, fsi/cascade."""
+    return _REPO_ROOT.parent / "Achilles"

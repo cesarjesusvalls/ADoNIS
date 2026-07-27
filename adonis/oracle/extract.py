@@ -19,11 +19,8 @@ from adonis.oracle.hepmc import parse_events
 from adonis.oracle.hepmc import hepmc_norm
 
 MU, NU_MU, PIP, PROT, NEUT = 13, 14, 211, 2212, 2112
-PIONS = {111, 211, -211}
-MESONS = {111, 211, -211, 221, 130, 310, 311, 321, -321, -311}
-NUCLEONS = {2112, 2212}
-M_A, M_A1 = 11174.862, 10252.547          # 12C, 11B [MeV]
-COS70 = np.cos(70.0 * np.pi / 180.0)
+from adonis.constants import (PDG_PIONS as PIONS, PDG_MESONS as MESONS, PDG_NUCLEONS as NUCLEONS,
+                              M_12C as M_A, M_11B as M_A1, COS70)   # single source (adonis.constants)
 COS20 = np.cos(20.0 * np.pi / 180.0)
 
 # CC0pi muon/proton acceptance windows per experiment: (p_lo, p_hi|None, cos_lo).

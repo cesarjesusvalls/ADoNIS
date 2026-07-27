@@ -165,8 +165,7 @@ def leading_proton_window(B, pmin, pmax, cth=-1.0):
 # reconstruction.  All three particles (mu, pi+, leading p) must be forward: cos(theta) > cos(70 deg), as in
 # workflow.config.SignalDef(cth=COS70) / make_plots.block_cc1pi_stv.
 _MU_LO, _MU_HI = 250.0, 7000.0; _PI_LO, _PI_HI = 150.0, 1200.0; _P_LO, _P_HI = 450.0, 1200.0
-_CTH = float(np.cos(np.deg2rad(70.0)))
-_M12C, _M11B = 11174.862, 10252.547
+from adonis.constants import COS70 as _CTH, M_12C as _M12C, M_11B as _M11B   # single source
 
 
 def signal_cc1pi_stv(B):

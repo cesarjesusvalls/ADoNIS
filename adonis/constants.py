@@ -66,3 +66,19 @@ M_PI = (2 * M_PIP + M_PI0) / 3.0   # = 138.039 ; DCC fpio=(2 f_pi+ + f_pi0)/3 (p
 W_THR = 1076.957          # piN threshold cut [MeV] (= M_NUC + M_PI to 3 dp)
 W_MAX = 2000.0            # upper W cut [MeV]
 Q2_MAX = 5.0e6            # upper Q^2 cut [MeV^2]  (Q2 in [0, 5 GeV^2])
+
+# --- nuclear-target masses (T2K TKI reconstruction: 12C -> p + 11B) -------------------
+M_12C = 11174.862         # 12C nuclear mass [MeV]
+M_11B = 10252.547         # 11B residual mass [MeV]
+
+# --- forward-angle cut sentinel (T2K signal defs) ------------------------------------
+# EXACT expression matching workflow.config / workflow.plotting / reweight.bank_plot (bit-identical);
+# oracle.extract used np.cos(70*pi/180) which can differ by 1 ulp -- it now shares this value.
+COS70 = float(np.cos(np.deg2rad(70.0)))
+
+# --- PDG id sets (membership tests) ---------------------------------------------------
+PDG_NEUTRINOS = frozenset({12, 14, 16, -12, -14, -16})
+PDG_CHARGED_LEPTONS = frozenset({11, 13, -11, -13})
+PDG_PIONS = frozenset({111, 211, -211})
+PDG_NUCLEONS = frozenset({2112, 2212})
+PDG_MESONS = frozenset({111, 211, -211, 221, 130, 310, 311, 321, -321, -311})
