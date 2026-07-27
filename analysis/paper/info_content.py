@@ -29,7 +29,7 @@ This is a documented limitation of the demonstrator (logbook), not of the method
 """
 import os, sys, time, json
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -37,8 +37,8 @@ import jax.numpy as jnp
 import uproot
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
-from analysis.t2k.differentiability import bank_plot as BP, bank_reweight as BR
-from analysis.t2k.differentiability.full_knobs import nominal_knobs, _EB_EPS
+from adonis.reweight import bank_plot as BP, bank_reweight as BR
+from adonis.reweight.full_knobs import nominal_knobs, _EB_EPS
 
 BANKDIR = os.environ.get("ADONIS_EVENT_BANK", "output/event_bank")
 

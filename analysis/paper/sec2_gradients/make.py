@@ -20,7 +20,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "altgen"))
-import physical_fit as PF
+from analysis.paper import physical_fit as PF
 from analysis.paper import style
 
 DSLABEL = {"dpt": "CC0$\\pi$\n$\\delta p_T$", "dat": "CC0$\\pi$\n$\\delta\\alpha_T$",

@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "altgen"))
-import physical_fit as PF                      # OBS_SUBSETS = the single source of truth
+from analysis.paper import physical_fit as PF                      # OBS_SUBSETS = the single source of truth
 from analysis.paper import style
 
 FIT_CUT = 0.5

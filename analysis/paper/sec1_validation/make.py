@@ -65,7 +65,7 @@ MULT = ["n_p", "n_chpi"]
 # ---------------------------------------------------------------- physfit edges (the Gate-I binning) ---
 def physfit_edges():
     """The exact 11-observable bin edges Gate I uses -- from build_physfit_datasets on the same bank."""
-    import physical_fit as PF
+    from analysis.paper import physical_fit as PF
     B = BP.load_bank(BANKDIR)
     w0 = np.asarray(BR.weight_jit(BR.to_jax(B), nominal_knobs(), BR.default_grids()))
     ds = PF.build_physfit_datasets(B, w0, lambda *_: None)
