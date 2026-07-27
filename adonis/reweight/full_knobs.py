@@ -21,47 +21,11 @@ from adonis.reweight.ma_records import (build_qe_ma_records, build_res_ma_record
                                         ma_reweight, strength_reweight)
 from adonis.reweight.sf_reweight import sf_grids, sf_reweight, removal_from_struck
 import adonis.fsi.cascade as _CF
+# knob schema (fields, nominal, metadata) lives in ONE place: adonis.core.params.  Re-exported here so
+# existing `from adonis.reweight.full_knobs import nominal_knobs` importers keep working.
+from adonis.core.params import PhysicsParams, nominal_knobs, knob_specs, _NPW, _EB_EPS    # noqa: F401
 
-_NPW = 14
 _DELTA_WAVE = 5     # DCC partial-wave index of the P33 Delta(1232) (tests: test_res_strength_reweight)
-# Eb_shift nominal: a negligible epsilon (NOT 0).  The SF removal-energy reweight S(p,E-Eb)/S(p,E) has a
-# coherent non-differentiable corner at Eb=0 (every event sits at the ratio=1 symmetric point, and the
-# down-shift direction hits the clamped low-E rise of the heavy-tailed SF).  Anchoring the nominal at a
-# small positive Eb puts the gradient on the smooth one-sided branch.  1e-2 MeV: forward bias vs ACHILLES
-# (Eb=0) is 6e-5 (negligible), and the autodiff gradient closes vs FD (AD/FD~1.00); 1e-4 was too small
-# (still inside the corner, AD/FD~1.14).  sf_reweight clamps Eb<0 -> 0 (one-sided knob).
-_EB_EPS = 1e-2
-
-
-_ISO = {0: "pp", 1: "pn", 2: "nn"}
-
-
-def knob_specs(NOM):
-    """Ordered (knob_name, component_idx|None, display_label, nominal_value) for the PLOTTED/FITTED knobs.
-    pw_norm is excluded (cost); sscat is excluded (dead: superseded by the granular s_piN_*/s_NN_* knobs).
-    Tuple knobs are expanded per component (s_NN_elastic -> [pp]/[pn]/[nn]).  SINGLE SOURCE OF TRUTH for
-    knob metadata -- everything (bank labels, arrow grids, scans, fits) enumerates knobs through this."""
-    out = []
-    for name, val in NOM.items():
-        if name in ("pw_norm", "sscat"):
-            continue
-        if isinstance(val, tuple):
-            for i, vi in enumerate(val):
-                lab = f"{name}[{_ISO[i]}]" if name.startswith("s_NN") else f"{name}[{i}]"
-                out.append((name, i, lab, float(vi)))
-        else:
-            out.append((name, None, name, float(val)))
-    return out
-
-
-def nominal_knobs():
-    # M_A is split per channel: M_A_qe (QE dipole mass) and M_A_res (RES/DCC axial dipole mass) are
-    # INDEPENDENT knobs (each reweights only its own channel's amps2 record); both nominal 1.0.
-    return dict(M_A_qe=1.0, M_A_res=1.0, axial_strength=1.0, vector_strength=1.0, mu_p=1.0, mu_n=1.0, gep=1.0, gen=1.0,
-                res_axial_strength=1.0, pw_norm=tuple([0.0] * _NPW), pion_pole=1.0,
-                sabs=1.0, sscat=1.0, s_piN_elastic=1.0, s_piN_cex=1.0, s_conv=1.0,
-                s_NN_elastic=(1., 1., 1.), s_NN_inelastic=(1., 1., 1.), f_NN_cex=0.5,
-                kF_sf=1.0, Eb_shift=_EB_EPS, sf_norm=1.0, src_tail=1.0, qe_norm=1.0, res_norm=1.0)
 
 
 def build_hv_sf(qe, res, sf, with_pw=True):
@@ -85,40 +49,40 @@ def build_hv_sf(qe, res, sf, with_pw=True):
 
 
 def _hv_qe(k, HV):
-    return (ma_reweight(HV["qe_ma"], k["M_A_qe"]) * strength_reweight(HV["qe_ma"], k["axial_strength"])
-            * strength_reweight(HV["qe_vec"], k["vector_strength"]) * strength_reweight(HV["qe_gmp"], k["mu_p"])
-            * strength_reweight(HV["qe_gmn"], k["mu_n"]) * strength_reweight(HV["qe_gep"], k["gep"])
-            * strength_reweight(HV["qe_gen"], k["gen"]))
+    return (ma_reweight(HV["qe_ma"], k.M_A_qe) * strength_reweight(HV["qe_ma"], k.axial_strength)
+            * strength_reweight(HV["qe_vec"], k.vector_strength) * strength_reweight(HV["qe_gmp"], k.mu_p)
+            * strength_reweight(HV["qe_gmn"], k.mu_n) * strength_reweight(HV["qe_gep"], k.gep)
+            * strength_reweight(HV["qe_gen"], k.gen))
 
 
 def _hv_res(k, HV):
-    w = (ma_reweight(HV["res_ma"], k["M_A_res"]) * strength_reweight(HV["res_ma"], k["res_axial_strength"])
-         * strength_reweight(HV["res_pp"], k["pion_pole"])
-         * strength_reweight(HV["res_delta"], k.get("delta_strength", 1.0)))   # optional Delta-strength knob
+    w = (ma_reweight(HV["res_ma"], k.M_A_res) * strength_reweight(HV["res_ma"], k.res_axial_strength)
+         * strength_reweight(HV["res_pp"], k.pion_pole)
+         * strength_reweight(HV["res_delta"], k.delta_strength))   # P33 Delta-strength knob
     if HV.get("res_pw") is None:                              # pw records skipped (with_pw=False) -> no-op
         return w
-    pw = jnp.asarray(k["pw_norm"])
+    pw = jnp.asarray(k.pw_norm)
     for i in range(_NPW):
         w = w * strength_reweight(HV["res_pw"][i], 1.0 + pw[i])
     return w
 
 
 def _fsi(rec, k):
-    return _CF.pool_fsi_reweight(rec, k["sabs"], k["sscat"], s_piN_elastic=k["s_piN_elastic"],
-                                 s_piN_cex=k["s_piN_cex"], s_conv=k["s_conv"], s_NN_elastic=k["s_NN_elastic"],
-                                 s_NN_inelastic=k["s_NN_inelastic"], f_NN_cex=k["f_NN_cex"])
+    return _CF.pool_fsi_reweight(rec, k.sabs, k.sscat, s_piN_elastic=k.s_piN_elastic,
+                                 s_piN_cex=k.s_piN_cex, s_conv=k.s_conv, s_NN_elastic=k.s_NN_elastic,
+                                 s_NN_inelastic=k.s_NN_inelastic, f_NN_cex=k.f_NN_cex)
 
 
 def model_hist_full(knobs, R, HV, SF, edges, conv=1.0):
     """Differentiable CC0pi dsigma/dx histogram in ALL knobs.  R: build_replica output (FSI records +
     keep/idx + w0); HV/SF: build_hv_sf output; edges: bin edges."""
     k = knobs
-    q_sf = sf_reweight(SF["grids"], SF["qe_pmag"], SF["qe_erem"], kF_sf=k["kF_sf"], Eb_shift=k["Eb_shift"],
-                       sf_norm=k["sf_norm"], src_tail=k["src_tail"])
-    r_sf = sf_reweight(SF["grids"], SF["res_pmag"], SF["res_erem"], kF_sf=k["kF_sf"], Eb_shift=k["Eb_shift"],
-                       sf_norm=k["sf_norm"], src_tail=k["src_tail"])
-    q_w = R["q_w0"] * k["qe_norm"] * _hv_qe(k, HV) * _fsi(R["q_rec"], k) * q_sf
-    r_w = R["r_w0"] * k["res_norm"] * _hv_res(k, HV) * _fsi(R["r_rec"], k) * r_sf
+    q_sf = sf_reweight(SF["grids"], SF["qe_pmag"], SF["qe_erem"], kF_sf=k.kF_sf, Eb_shift=k.Eb_shift,
+                       sf_norm=k.sf_norm, src_tail=k.src_tail)
+    r_sf = sf_reweight(SF["grids"], SF["res_pmag"], SF["res_erem"], kF_sf=k.kF_sf, Eb_shift=k.Eb_shift,
+                       sf_norm=k.sf_norm, src_tail=k.src_tail)
+    q_w = R["q_w0"] * k.qe_norm * _hv_qe(k, HV) * _fsi(R["q_rec"], k) * q_sf
+    r_w = R["r_w0"] * k.res_norm * _hv_res(k, HV) * _fsi(R["r_rec"], k) * r_sf
     nb = len(edges) - 1
     h = (jax.ops.segment_sum(q_w * R["q_keep"], R["q_idx"], num_segments=nb)
          + jax.ops.segment_sum(r_w * R["r_keep"], R["r_idx"], num_segments=nb))

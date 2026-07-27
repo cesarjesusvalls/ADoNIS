@@ -100,7 +100,7 @@ class HadronStructure:
         """Full complex hadron tensor W^{mu,nu}[Q2,W,4,4] (summed over channels)."""
         def per_point(Wv, Q2v):
             vec, isv, axial = self.amp.amplitudes(Wv, Q2v, knobs)
-            r_ax = axial_reweight_dipole(Q2v, knobs.axial_MA)
+            r_ax = axial_reweight_dipole(Q2v, knobs.M_A_res)
             Wmn = jnp.zeros((4, 4), jnp.complex128)
             for c, ker in zip(self.channels, self.kers):
                 zmtx = build_zmtx(vec, isv, axial, Wv, Q2v, self.twoJ, self.twoL,

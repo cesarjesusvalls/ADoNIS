@@ -66,10 +66,10 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
 
     def w_of(theta):
         k = PF.knobs_of(theta, nom)
-        return pool_fsi_reweight(rec, k["sabs"], 1.0, s_piN_elastic=k["s_piN_elastic"],
-                                 s_piN_cex=k["s_piN_cex"], s_conv=k["s_conv"],
-                                 s_NN_elastic=k["s_NN_elastic"], s_NN_inelastic=k["s_NN_inelastic"],
-                                 f_NN_cex=k["f_NN_cex"])
+        return pool_fsi_reweight(rec, k.sabs, 1.0, s_piN_elastic=k.s_piN_elastic,
+                                 s_piN_cex=k.s_piN_cex, s_conv=k.s_conv,
+                                 s_NN_elastic=k.s_NN_elastic, s_NN_inelastic=k.s_NN_inelastic,
+                                 f_NN_cex=k.f_NN_cex)
 
     th0 = jnp.asarray(PF.theta_nominal(nom))
     w0 = np.asarray(w_of(th0))

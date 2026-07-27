@@ -39,13 +39,13 @@ HI = np.array([2.0, 3.0, 1.6, 3.0, 3.0, 3.0])
 
 
 def knobs_from(theta, nom):
-    k = dict(nom)
+    upd = {}
     for i, key in enumerate(FIT):
         if key == "s_NN_el":
-            k["s_NN_elastic"] = theta[i] * jnp.ones(3)
+            upd["s_NN_elastic"] = theta[i] * jnp.ones(3)
         else:
-            k[key] = theta[i]
-    return k
+            upd[key] = theta[i]
+    return nom._replace(**upd)
 
 
 def main():

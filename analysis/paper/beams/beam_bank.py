@@ -246,9 +246,9 @@ def beam_weight(B, knobs):
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
     rec["n_events"] = len(B["w0"])
     k = knobs
-    fsi = pool_fsi_reweight(rec, k["sabs"], 1.0, s_piN_elastic=k["s_piN_elastic"], s_piN_cex=k["s_piN_cex"],
-                            s_conv=k["s_conv"], s_NN_elastic=k["s_NN_elastic"],
-                            s_NN_inelastic=k["s_NN_inelastic"], f_NN_cex=k["f_NN_cex"])
+    fsi = pool_fsi_reweight(rec, k.sabs, 1.0, s_piN_elastic=k.s_piN_elastic, s_piN_cex=k.s_piN_cex,
+                            s_conv=k.s_conv, s_NN_elastic=k.s_NN_elastic,
+                            s_NN_inelastic=k.s_NN_inelastic, f_NN_cex=k.f_NN_cex)
     return jnp.asarray(B["w0"]) * fsi
 
 

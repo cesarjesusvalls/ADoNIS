@@ -68,13 +68,13 @@ def main():
         f"(GENIE chan frac QE/RES/MEC/COH={np.asarray(d['chan_frac'])})")
 
     def knobs_from(theta):
-        k = dict(nom)
+        upd = {}
         for i, key in enumerate(FIT):
             if key == "s_NN_el":                       # common scale on the 3 NN-elastic channels
-                k["s_NN_elastic"] = theta[i] * jnp.ones(3)
+                upd["s_NN_elastic"] = theta[i] * jnp.ones(3)
             else:
-                k[key] = theta[i]
-        return k
+                upd[key] = theta[i]
+        return nom._replace(**upd)
 
     @jax.jit
     def model_hist(theta):
@@ -82,7 +82,7 @@ def main():
         h = jax.ops.segment_sum(w, binidx, num_segments=nb)
         return h / bwj * CONV
 
-    th0 = jnp.array([1.0 if k == "s_NN_el" else float(np.asarray(nom[k])) for k in FIT])
+    th0 = jnp.array([1.0 if k == "s_NN_el" else float(np.asarray(getattr(nom, k))) for k in FIT])
     nomh = model_hist(th0)
     A0 = float((nomh @ COVINV @ DATA) / (nomh @ COVINV @ nomh))
 

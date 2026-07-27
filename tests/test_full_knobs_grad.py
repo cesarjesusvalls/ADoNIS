@@ -39,7 +39,7 @@ def test_nominal_matches_legacy_model_hist():
     epsilon (_EB_EPS=1e-2 MeV, full_knobs) that anchors the gradient off the Eb=0 corner; it deforms the SF
     by a negligible ~6e-5 (verified in test_sf_reweight), which is exactly the (intended) difference from
     the legacy here -- not a bit-identity failure of the reweight machinery."""
-    h_full = np.asarray(_hist({**_NOM, "Eb_shift": 0.0}))
+    h_full = np.asarray(_hist(_NOM._replace(Eb_shift=0.0)))
     h_leg = np.asarray(T.model_hist(jnp.array([1.0, 1.0, 1.0]), _R, _M))
     assert np.allclose(h_full, h_leg, rtol=1e-10, atol=1e-30), (h_full[:5], h_leg[:5])
 
@@ -56,31 +56,31 @@ def _grad_fd(setk, v0, ibin=None):
 
 
 def test_grad_vector_strength():        # hard-vertex amps2 (QE)
-    g_ad, g_fd = _grad_fd(lambda v: {**_NOM, "vector_strength": v}, 1.1)
+    g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(vector_strength=v), 1.1)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-4, (g_ad, g_fd)
 
 
 def test_grad_pion_pole():              # hard-vertex amps2 (RES)
-    g_ad, g_fd = _grad_fd(lambda v: {**_NOM, "pion_pole": v}, 1.1)
+    g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(pion_pole=v), 1.1)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-4, (g_ad, g_fd)
 
 
 def test_grad_s_piN_cex():              # FSI kind-1 pion channel
-    g_ad, g_fd = _grad_fd(lambda v: {**_NOM, "s_piN_cex": v}, 1.2)
+    g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(s_piN_cex=v), 1.2)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)
 
 
 def test_grad_s_NN_inelastic():         # FSI kind-1 nucleon channel (3-vector via scalar)
-    g_ad, g_fd = _grad_fd(lambda v: {**_NOM, "s_NN_inelastic": (v, v, v)}, 1.2)
+    g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(s_NN_inelastic=(v, v, v)), 1.2)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)
 
 
 def test_grad_f_NN_cex():               # branch fraction
-    g_ad, g_fd = _grad_fd(lambda v: {**_NOM, "f_NN_cex": v}, 0.6)
+    g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(f_NN_cex=v), 0.6)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)
 
 
 def test_grad_kF_sf_on_a_bin():         # spectral function, on a single dsigma/dx bin
     nb = len(_EDGES) - 1
-    g_ad, g_fd = _grad_fd(lambda v: {**_NOM, "kF_sf": v}, 1.1, ibin=nb // 3)
+    g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(kF_sf=v), 1.1, ibin=nb // 3)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)

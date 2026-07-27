@@ -24,27 +24,27 @@ def default_grids():
 
 
 def bank_weight(B, knobs, grids):
-    """Exact per-event weight w(theta) (N,).  knobs: full nominal_knobs-style dict; grids: sf_grids output."""
+    """Exact per-event weight w(theta) (N,).  knobs: a PhysicsParams (adonis.core.params); grids: sf_grids output."""
     k = knobs
     def ma(name): return (B[f"hv_{name}_a"], B[f"hv_{name}_b"], B[f"hv_{name}_c"], B[f"hv_{name}_Q2"])
     qe_ma, res_ma = ma("qe_ma"), ma("res_ma")
-    hv = (ma_reweight(qe_ma, k["M_A_qe"]) * ma_reweight(res_ma, k["M_A_res"])
-          * strength_reweight(qe_ma, k["axial_strength"]) * strength_reweight(res_ma, k["res_axial_strength"])
-          * strength_reweight(ma("qe_vec"), k["vector_strength"])
-          * strength_reweight(ma("qe_gmp"), k["mu_p"]) * strength_reweight(ma("qe_gmn"), k["mu_n"])
-          * strength_reweight(ma("qe_gep"), k["gep"]) * strength_reweight(ma("qe_gen"), k["gen"])
-          * strength_reweight(ma("res_pp"), k["pion_pole"]))
+    hv = (ma_reweight(qe_ma, k.M_A_qe) * ma_reweight(res_ma, k.M_A_res)
+          * strength_reweight(qe_ma, k.axial_strength) * strength_reweight(res_ma, k.res_axial_strength)
+          * strength_reweight(ma("qe_vec"), k.vector_strength)
+          * strength_reweight(ma("qe_gmp"), k.mu_p) * strength_reweight(ma("qe_gmn"), k.mu_n)
+          * strength_reweight(ma("qe_gep"), k.gep) * strength_reweight(ma("qe_gen"), k.gen)
+          * strength_reweight(ma("res_pp"), k.pion_pole))
     if "hv_res_delta_a" in B:                      # optional P33 Delta-strength knob (banks that carry it)
-        hv = hv * strength_reweight(ma("res_delta"), k.get("delta_strength", 1.0))
+        hv = hv * strength_reweight(ma("res_delta"), k.delta_strength)
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
     rec["n_events"] = len(B["w0"])               # ragged reduction needs the event count
-    fsi = pool_fsi_reweight(rec, k["sabs"], 1.0, s_piN_elastic=k["s_piN_elastic"], s_piN_cex=k["s_piN_cex"],
-                            s_conv=k["s_conv"], s_NN_elastic=k["s_NN_elastic"], s_NN_inelastic=k["s_NN_inelastic"],
-                            f_NN_cex=k["f_NN_cex"])
+    fsi = pool_fsi_reweight(rec, k.sabs, 1.0, s_piN_elastic=k.s_piN_elastic, s_piN_cex=k.s_piN_cex,
+                            s_conv=k.s_conv, s_NN_elastic=k.s_NN_elastic, s_NN_inelastic=k.s_NN_inelastic,
+                            f_NN_cex=k.f_NN_cex)
     pmag, erem = removal_from_struck(jnp.asarray(B["p_struck"]))
-    sfw = sf_reweight(grids, pmag, erem, kF_sf=k["kF_sf"], Eb_shift=k["Eb_shift"],
-                      sf_norm=k["sf_norm"], src_tail=k["src_tail"])
-    norm = jnp.where(jnp.asarray(B["channel"]) == 0, k["qe_norm"], k["res_norm"])
+    sfw = sf_reweight(grids, pmag, erem, kF_sf=k.kF_sf, Eb_shift=k.Eb_shift,
+                      sf_norm=k.sf_norm, src_tail=k.src_tail)
+    norm = jnp.where(jnp.asarray(B["channel"]) == 0, k.qe_norm, k.res_norm)
     return jnp.asarray(B["w0"]) * norm * hv * fsi * sfw
 
 

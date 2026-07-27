@@ -81,7 +81,7 @@ PNAMES = [f"{s[0]}[{s[1]}]" if s[1] is not None else s[0] for s in SPEC]   # pla
 NPAR = len(SPEC)
 _NOM = nominal_knobs()
 def _nom_val(key, idx):
-    v = _NOM[key]
+    v = getattr(_NOM, key)
     return float(v[idx]) if idx is not None else float(v)
 THETA_NOM = jnp.asarray([_nom_val(s[0], s[1]) for s in SPEC])
 THETA_STAR = np.array([s[5] for s in SPEC])
@@ -197,17 +197,17 @@ def build_datasets(B):
 # keeps JB out of the compiled constant pool.  grids / nominal are small and closed over.
 
 def knobs_of(theta, nominal):
-    """Assemble a full knob dict from the SPEC-selected theta vector (tuple components rebuilt)."""
-    k = dict(nominal)
+    """Assemble a full PhysicsParams from the SPEC-selected theta vector (tuple components rebuilt)."""
+    upd = {}
     tup = {}
     for i, (key, idx, *_rest) in enumerate(SPEC):
         if idx is None:
-            k[key] = theta[i]
+            upd[key] = theta[i]
         else:
-            tup.setdefault(key, list(nominal[key]))[idx] = theta[i]
+            tup.setdefault(key, list(getattr(nominal, key)))[idx] = theta[i]
     for key, comps in tup.items():
-        k[key] = tuple(comps)
-    return k
+        upd[key] = tuple(comps)
+    return nominal._replace(**upd)
 
 
 def bin_w0(d, w):

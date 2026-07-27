@@ -36,7 +36,7 @@ def q2_idx(S):
 
 # data target at MA_TRUE
 Sd = ch.sample(jax.random.PRNGKey(101), N)
-wd, _ = ch.weight(PhysicsParams(axial_MA=MA_TRUE), Sd); wd = np.asarray(wd)
+wd, _ = ch.weight(PhysicsParams(M_A_res=MA_TRUE), Sd); wd = np.asarray(wd)
 idd = np.asarray(q2_idx(Sd))
 d = np.bincount(idd, weights=wd, minlength=nb) / N
 derr = np.sqrt(np.bincount(idd, weights=wd ** 2, minlength=nb)) / N + 1e-15
@@ -48,7 +48,7 @@ dj, ej = jnp.asarray(d), jnp.asarray(derr)
 
 
 def loss(MA):
-    w, _ = ch.weight(PhysicsParams(axial_MA=MA), Sm)
+    w, _ = ch.weight(PhysicsParams(M_A_res=MA), Sm)
     mA = jax.ops.segment_sum(w[:H], idm[:H], num_segments=nb) / H
     mB = jax.ops.segment_sum(w[H:], idm[H:], num_segments=nb) / H
     return jnp.sum((mA - dj) * (mB - dj) / ej ** 2) / nb

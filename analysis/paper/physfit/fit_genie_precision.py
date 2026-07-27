@@ -58,13 +58,13 @@ NP = len(FIT)
 
 
 def knobs_from(theta, nom):
-    k = dict(nom)
+    upd = {}
     for i, key in enumerate(FIT):
         if key == "s_NN_el":
-            k["s_NN_elastic"] = theta[i] * jnp.ones(3)
+            upd["s_NN_elastic"] = theta[i] * jnp.ones(3)
         else:
-            k[key] = theta[i]
-    return k
+            upd[key] = theta[i]
+    return nom._replace(**upd)
 
 
 def design_edges(values, n_bins, mode="uniform", p_hi=99.0):

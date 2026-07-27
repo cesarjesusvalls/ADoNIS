@@ -18,12 +18,12 @@ key = jax.random.PRNGKey(3)
 
 
 def total_xsec(MA):
-    ev = fold_final_state(DCCKnobs(axial_MA=MA), key, n=N, hs=hs)
+    ev = fold_final_state(DCCKnobs(M_A_res=MA), key, n=N, hs=hs)
     return jnp.sum(ev.w)
 
 
 def dsig_dW_bin(MA, lo=1180.0, hi=1240.0):
-    ev = fold_final_state(DCCKnobs(axial_MA=MA), key, n=N, hs=hs)
+    ev = fold_final_state(DCCKnobs(M_A_res=MA), key, n=N, hs=hs)
     Wv = obs.W(ev)
     insel = (Wv > lo) & (Wv < hi)
     return jnp.sum(jnp.where(insel, ev.w, 0.0))

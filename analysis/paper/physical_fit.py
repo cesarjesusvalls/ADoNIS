@@ -50,23 +50,23 @@ PRIOR = np.array([s[3] for s in SPEC])
 def theta_nominal(nom):
     th = np.zeros(NPAR)
     for j, (key, idx, *_ ) in enumerate(SPEC):
-        v = nom[key]
+        v = getattr(nom, key)
         th[j] = float(v[idx]) if idx is not None else float(v)
     return th
 
 
 def knobs_of(theta, nom):
-    """Full knob dict from the SPEC theta vector (tuple components rebuilt)."""
-    k = dict(nom)
+    """Full PhysicsParams from the SPEC theta vector (tuple components rebuilt)."""
+    upd = {}
     tup = {}
     for j, (key, idx, *_ ) in enumerate(SPEC):
         if idx is None:
-            k[key] = theta[j]
+            upd[key] = theta[j]
         else:
-            tup.setdefault(key, list(np.asarray(nom[key])))[idx] = theta[j]
+            tup.setdefault(key, list(np.asarray(getattr(nom, key))))[idx] = theta[j]
     for key, lst in tup.items():
-        k[key] = jnp.asarray(lst)
-    return k
+        upd[key] = jnp.asarray(lst)
+    return nom._replace(**upd)
 
 
 def design_edges(values, n_bins, p_hi=99.0, domain=None):

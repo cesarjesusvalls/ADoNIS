@@ -158,7 +158,7 @@ def weight_from_sample(knobs: DCCKnobs, S, use_spline=True):
     hs = S["hs"]
     amp_fn = hs.amp.amplitudes_spline if use_spline else hs.amp.amplitudes_bilinear
     vec, isv, axial = amp_fn(S["Wc"], S["Q2c"], knobs)
-    r_ax = axial_reweight_dipole(S["Q2c"], knobs.axial_MA)
+    r_ax = axial_reweight_dipole(S["Q2c"], knobs.M_A_res)
     LWc = []
     for c, ch in enumerate(hs.channels):
         zmtx = build_zmtx_batched(vec, isv, axial, S["Wc"], S["Q2c"], hs.twoJ, hs.twoL,
@@ -246,7 +246,7 @@ class DCCSinglePion(Channel):
         S = self.sample(key, n)
 
         def total_xsec(MA):
-            w, _ = self.weight(DCCKnobs(axial_MA=MA), S)
+            w, _ = self.weight(DCCKnobs(M_A_res=MA), S)
             return jnp.sum(w)
 
         return grad_closure(total_xsec, f"{type(self).__name__}.closure",
