@@ -67,8 +67,8 @@ def test_loop_drains_and_collects_output():
 
 # NOTE: the per-step bit-exactness cross-checks (pool _nucleon_step/_pion_step vs the BFS
 # _propagate_*_discrete reference) were removed with the BFS engine in the pool-unification cleanup.
-# The pool per-step physics is now validated end-to-end against ACHILLES
-# (tests/test_cascade_vs_achilles_oracle.py) and via the kind-1 reweight (tests/test_pool_fsi_reweight.py).
+# The pool per-step physics is validated via the kind-1 reweight (tests/test_pool_fsi_reweight.py)
+# and end-to-end against ACHILLES in the analysis/paper high-statistics pipeline (not a unit test).
 
 
 if __name__ == "__main__":
