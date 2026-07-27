@@ -14,7 +14,7 @@ jax.config.update("jax_enable_x64", True)
 
 from adonis.xsec import qe_xsec
 from adonis.xsec.backend import me_cross_section
-from adonis.analysis.ma_records import (build_qe_ma_records, build_qe_vector_records,
+from adonis.reweight.ma_records import (build_qe_ma_records, build_qe_vector_records,
                                         build_qe_ff_records, strength_reweight)
 
 N = 2000

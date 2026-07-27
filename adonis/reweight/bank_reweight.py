@@ -7,8 +7,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.analysis.ma_records import ma_reweight, strength_reweight
-from adonis.analysis.sf_reweight import sf_grids, sf_reweight, removal_from_struck
+from adonis.reweight.ma_records import ma_reweight, strength_reweight
+from adonis.reweight.sf_reweight import sf_grids, sf_reweight, removal_from_struck
 from adonis.fsi.cascade import pool_fsi_reweight
 from adonis.xsec.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets

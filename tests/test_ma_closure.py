@@ -12,7 +12,7 @@ import jax.numpy as jnp
 
 from adonis import ChainConfig, DCCSinglePion, PhysicsParams, observables as obs
 from adonis.core.event import EventRecord
-from adonis.analysis.fit import fit_scalar
+from adonis.reweight.fit import fit_scalar
 
 cfg = ChainConfig(spline=False)
 ch = DCCSinglePion(cfg)

@@ -18,7 +18,7 @@ def _run(flat, n=300, seed=0):
     sys.argv = [sys.argv[0], "dpt"]                     # tune.py reads argv[1] as its observable at import
     import adonis.fsi.cascade as CF
     from adonis.xsec import qe_xsec
-    from analysis.t2k.differentiability import tune as T
+    from adonis.reweight import tune as T
     CF.FLAT_FSI_REC = flat
     caps = (n * 8, n * 24) if flat else T.REC_CAPS       # flat: TOTAL budget; dense: per-event K
     qe = qe_xsec.sample_importance(n, seed=seed)
@@ -47,7 +47,7 @@ def test_flat_overflow_raises():
     sys.argv = [sys.argv[0], "dpt"]
     import adonis.fsi.cascade as CF
     from adonis.xsec import qe_xsec
-    from analysis.t2k.differentiability import tune as T
+    from adonis.reweight import tune as T
     CF.FLAT_FSI_REC = True
     n = 300
     qe = qe_xsec.sample_importance(n, seed=0)

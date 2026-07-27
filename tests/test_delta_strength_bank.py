@@ -25,8 +25,8 @@ def tiny_bank():
 def test_delta_strength_bank(tiny_bank):
     import jax; jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
-    from analysis.t2k.differentiability import bank_reweight as BR
-    from analysis.t2k.differentiability.full_knobs import nominal_knobs
+    from adonis.reweight import bank_reweight as BR
+    from adonis.reweight.full_knobs import nominal_knobs
     B = tiny_bank
     assert "hv_res_delta_a" in B and "res_p_N" in B
     JB = BR.to_jax(B); grids = BR.default_grids(); nom = nominal_knobs()

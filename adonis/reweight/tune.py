@@ -73,11 +73,11 @@ def build_proposal():
     return qe, qw, res, rw
 
 
-from adonis.analysis.ma_records import build_qe_ma_records, build_res_ma_records, ma_reweight
+from adonis.reweight.ma_records import build_qe_ma_records, build_res_ma_records, ma_reweight
 
 
 def build_ma_records(qe, res):
-    """ONE-TIME (per proposal) exact M_A-reweight records (see adonis.analysis.ma_records)."""
+    """ONE-TIME (per proposal) exact M_A-reweight records (see adonis.reweight.ma_records)."""
     qa, qb, qc, qq2 = build_qe_ma_records(qe["k_nu"], qe["k_mu"], qe["p_struck"], qe["p_out"])
     ra, rb, rc, rq2 = build_res_ma_records(res["k_nu"], res["k_mu"], res["p_struck"],
                                            res["p_N"], res["p_pi"], res["ipid"], res["ppid"])
