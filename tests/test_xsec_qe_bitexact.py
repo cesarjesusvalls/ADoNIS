@@ -9,18 +9,44 @@ flux is bit-exact (<1e-8).  amps2 median ~7e-11 (bit-exact); a <=1e-5 tail survi
 events at LOW Q^2 / deep removal energy -- float64 summation-order roundoff between the einsum and
 ACHILLES's explicit Fortran matmul chains (confirmed: NOT mqe, NOT mass, NOT dump precision).
 """
-import sys
+import re
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from scripts.validate_qe_matrix_element import parse
 from adonis.xsec.backend import me_cross_section, MASS_PDG_NEUTRON as MN, MASS_PDG_PROTON as MP
 
 DUMP = Path(__file__).resolve().parent / "data" / "qe_dump_achilles.txt"
+
+# ACHILLES QEDUMP parser (inlined from the retired scripts/validate_qe_matrix_element.py).
+_NUM = r"[-+0-9.eE]+"
+_PAT = re.compile(
+    r"QEDUMP pid=(-?\d+) "
+    rf"liE=({_NUM}) li=({_NUM}),({_NUM}),({_NUM}) "
+    rf"loE=({_NUM}) lo=({_NUM}),({_NUM}),({_NUM}) "
+    rf"hiE=({_NUM}) hi=({_NUM}),({_NUM}),({_NUM}) hiID=(-?\d+) "
+    rf"hoE=({_NUM}) ho=({_NUM}),({_NUM}),({_NUM}) "
+    rf"amps2=({_NUM}) flux=({_NUM}) initwgt=({_NUM}) spinavg=({_NUM}) psw=({_NUM})")
+
+
+def parse(path):
+    rows = []
+    for line in Path(path).read_text().splitlines():
+        m = _PAT.search(line)
+        if not m:
+            continue
+        g = m.groups()
+        rows.append(dict(
+            pid=int(g[0]),
+            li=[float(g[1]), float(g[2]), float(g[3]), float(g[4])],
+            lo=[float(g[5]), float(g[6]), float(g[7]), float(g[8])],
+            hi=[float(g[9]), float(g[10]), float(g[11]), float(g[12])], hiID=int(g[13]),
+            ho=[float(g[14]), float(g[15]), float(g[16]), float(g[17])],
+            amps2=float(g[18]), flux=float(g[19]), initwgt=float(g[20]),
+            spinavg=float(g[21]), psw=float(g[22])))
+    return rows
 
 
 def _compute():
