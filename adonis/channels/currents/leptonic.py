@@ -15,7 +15,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.channels import constants as C
-from adonis.channels.spinor import GAMMA, GAMMA5, ubar, uspinor
+from adonis.channels.currents.spinor import GAMMA, GAMMA5, ubar, uspinor
 
 _I = 1j
 IDENT4 = np.eye(4, dtype=complex)

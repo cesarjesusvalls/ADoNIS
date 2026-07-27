@@ -18,8 +18,8 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.channels import constants as C
-from adonis.channels.spinor import GAMMA, GAMMA5, SIGMA, ubar, uspinor
-from adonis.channels.form_factors import nucleon_ff
+from adonis.channels.currents.spinor import GAMMA, GAMMA5, SIGMA, ubar, uspinor
+from adonis.channels.currents.form_factors import nucleon_ff
 
 _I = 1j
 _GG5 = np.einsum('mij,jk->mik', GAMMA, GAMMA5)            # gamma^mu gamma5  (4,4,4)

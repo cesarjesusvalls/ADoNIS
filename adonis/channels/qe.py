@@ -17,7 +17,7 @@ import jax.numpy as jnp
 from adonis.channels import constants as C
 from adonis.flux.spectrum import SpectrumFlux, M_MU, M_P
 from adonis.channels.spectral import SpectralFunction
-from adonis.channels.backend import me_cross_section, MASS_PDG_NEUTRON
+from adonis.channels.currents.backend import me_cross_section, MASS_PDG_NEUTRON
 
 _MN = C.mN
 _SMIN = (M_MU + M_P) ** 2

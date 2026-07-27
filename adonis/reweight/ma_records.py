@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
-from adonis.channels.backend import me_cross_section
+from adonis.channels.currents.backend import me_cross_section
 from adonis.channels.dcc.form_factors import axial_reweight_dipole
 
 # RES channel constants for the amps2 re-evaluation: (ipid, ppid) -> itiz

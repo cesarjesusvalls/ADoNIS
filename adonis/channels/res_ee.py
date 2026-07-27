@@ -17,7 +17,7 @@ import numpy as np
 
 from adonis.channels import constants as C
 from adonis.channels.spectral import SpectralFunction, SpectralImportanceSampler
-from adonis.channels.backend import flux_factor, MASS_PDG_PROTON, MASS_PDG_NEUTRON
+from adonis.channels.currents.backend import flux_factor, MASS_PDG_PROTON, MASS_PDG_NEUTRON
 from adonis.channels.dcc_current import exclusive_amps2_batch
 from adonis.channels.res import _boost_to_lab, _sqlam, M_PIP, M_PI0
 

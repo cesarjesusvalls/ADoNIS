@@ -8,7 +8,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis.channels import spinor as sp
+from adonis.channels.currents import spinor as sp
 
 
 def _pslash(p):

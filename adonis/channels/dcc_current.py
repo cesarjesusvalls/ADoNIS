@@ -14,7 +14,7 @@ import jax.numpy as jnp
 
 from adonis.channels import constants as C
 from adonis.channels.dcc import conventions as _conv
-from adonis.channels.leptonic import lepton_current
+from adonis.channels.currents.leptonic import lepton_current
 from adonis.channels.dcc_kinematics import boost_matrix, setdfun
 from adonis.channels.dcc.angular import cbg, legendre_ylm, legendre_ylm_batch, ISMI, ISMIX, ISBI
 from adonis.channels.dcc.assembly import build_zmtx

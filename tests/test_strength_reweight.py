@@ -13,7 +13,7 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
 from adonis.channels import qe as qe_xsec
-from adonis.channels.backend import me_cross_section
+from adonis.channels.currents.backend import me_cross_section
 from adonis.reweight.ma_records import (build_qe_ma_records, build_qe_vector_records,
                                         build_qe_ff_records, strength_reweight)
 

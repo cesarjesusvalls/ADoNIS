@@ -14,8 +14,8 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.channels import constants as C
-from adonis.channels.leptonic import lepton_current
-from adonis.channels.dirac import hadron_current_qe_dirac
+from adonis.channels.currents.leptonic import lepton_current
+from adonis.channels.currents.dirac import hadron_current_qe_dirac
 
 _METRIC = jnp.array([1.0, -1.0, -1.0, -1.0])
 # initial-nucleon mass used by FluxFactor = ParticleInfo(<had_in>).Mass() -- the rounded

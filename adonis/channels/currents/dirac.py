@@ -16,7 +16,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.channels import constants as C
-from adonis.channels.form_factors import nucleon_ff, _TCUT as _FF_TCUT
+from adonis.channels.currents.form_factors import nucleon_ff, _TCUT as _FF_TCUT
 
 _I = 1j
 _XMN = C.mN                                  # constants%mqe = 0.5(mp+mn)
