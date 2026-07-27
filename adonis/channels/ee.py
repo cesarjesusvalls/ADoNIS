@@ -26,7 +26,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from adonis.channels import constants as C
-from adonis.channels.spectral import SpectralFunction, SpectralImportanceSampler
+from adonis.nuclear.spectral import SpectralFunction, SpectralImportanceSampler
 from adonis.channels.currents.backend import me_cross_section
 from adonis.constants import MASS_PDG_PROTON, MASS_PDG_NEUTRON
 

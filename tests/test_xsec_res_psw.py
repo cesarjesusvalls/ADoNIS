@@ -186,7 +186,7 @@ def test_res_psw_bit_exact():
 
 def test_res_initwgt_bit_exact():
     """initwgt = N_nucleon * S(|p|, removal) reproduces the RESDUMP bit-exactly."""
-    from adonis.channels.spectral import SpectralFunction
+    from adonis.nuclear.spectral import SpectralFunction
     sfn = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
     sfp = SpectralFunction("data/Spectral_Functions/pke12p_tot.data")
     path = Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"

@@ -14,7 +14,7 @@ jax.config.update("jax_enable_x64", True)
 
 from adonis.channels import qe as qe_xsec
 from adonis.workflow.materials import resolve_targets
-from adonis.channels.spectral import SpectralFunction
+from adonis.nuclear.spectral import SpectralFunction
 from adonis.reweight.sf_reweight import sf_grids, sf_reweight, removal_from_struck
 
 _tg = resolve_targets("C")[0][0]

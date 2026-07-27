@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 import adonis.channels.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.channels import res as res_xsec
-from adonis.channels.spectral import SpectralFunction
+from adonis.nuclear.spectral import SpectralFunction
 from adonis.fsi.cascade import DiscreteCascadeConfig
 from adonis.fsi.cascade import _load_density
 import adonis.fsi.cascade as CF

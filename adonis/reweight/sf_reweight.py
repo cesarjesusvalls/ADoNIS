@@ -26,7 +26,7 @@ import numpy as np
 import jax.numpy as jnp
 from scipy.ndimage import spline_filter1d
 
-from adonis.channels.spectral import SpectralFunction
+from adonis.nuclear.spectral import SpectralFunction
 from adonis.channels import constants as C
 
 

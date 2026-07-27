@@ -18,7 +18,7 @@ import os as _os
 from pathlib import Path
 import numpy as np
 
-from adonis.channels.spectral import _polint
+from adonis.nuclear.spectral import _polint
 
 _ACH = Path(__file__).resolve().parents[2].parent / "Achilles"
 from adonis.constants import MASS_PDG_MUON as M_MU, MASS_PDG_PROTON as M_P
