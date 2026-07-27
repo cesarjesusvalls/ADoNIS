@@ -15,7 +15,6 @@ jax.config.update("jax_enable_x64", True)
 
 def _run(flat, n=300, seed=0):
     import sys
-    sys.argv = [sys.argv[0], "dpt"]                     # tune.py reads argv[1] as its observable at import
     import adonis.fsi.cascade as CF
     from adonis.channels import qe as qe_xsec
     from adonis.reweight import tune as T
@@ -44,7 +43,6 @@ def test_flat_overflow_raises():
     """Undersized flat budget must fail LOUD (not silently truncate) -- via compact_fsi_record AND the
     direct reweight path (pool_fsi_reweight on a raw flat record)."""
     import sys
-    sys.argv = [sys.argv[0], "dpt"]
     import adonis.fsi.cascade as CF
     from adonis.channels import qe as qe_xsec
     from adonis.reweight import tune as T

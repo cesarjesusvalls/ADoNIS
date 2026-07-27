@@ -108,9 +108,8 @@ def leading_proton(B):
 # ---- observables + selections (reuse the validated tune formulas) ------------------------------------ #
 def _tune():
     if not hasattr(_tune, "_T"):
-        keep = sys.argv; sys.argv = [keep[0], "dpt"]
-        from adonis.reweight import tune as T
-        sys.argv = keep; _tune._T = T
+        from adonis.reweight import tune as T   # import is now side-effect-free (no argv/data at import)
+        _tune._T = T
     return _tune._T
 
 

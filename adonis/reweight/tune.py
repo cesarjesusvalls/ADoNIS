@@ -25,21 +25,25 @@ MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
 NQE, NRES = 120000, 120000
 CONV = 1e-33 / 12.0 * 1000.0 * 1e38                       # nb/MeV per-12C -> 1e-38 cm^2/(GeV/c)/nucleon
 
-# ---- observable: delta_pT (default) or delta_alphaT (argv[1] = "dat") ------------------------- #
-OBS = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "dpt"
-assert OBS in ("dpt", "dat"), OBS
-
-# ---- T2K data + covariance (1e-38 units) ------------------------------------------------------ #
-_r = uproot.open(f"../nuisance/data/T2K/CC0pi/STV/{'dpt' if OBS == 'dpt' else 'dat'}Results.root")
-if OBS == "dpt":
-    EDGES = np.asarray(_r["Result"].axis().edges()) * 1000.0    # MeV
-else:
-    EDGES = np.asarray(_r["Result"].axis().edges())             # rad
-    CONV = 1e-33 / 12.0 * 1e38                                  # nb/rad per-12C -> 1e-38 cm^2/rad/nucleon
-DATA = jnp.asarray(np.asarray(_r["Result"].values()) * 1e38)
-D_ERR = np.asarray(_r["Result"].errors()) * 1e38
-COV = np.asarray(_r["Covariance_Matrix"].values())
-COVINV = jnp.asarray(np.linalg.inv(COV + 1e-12 * np.eye(8)))
+# ---- observable + T2K CC0pi-Np STV data/covariance (1e-38 units) ------------------------------------
+# _set_obs() loads these into module globals.  IMPORTING tune has no argv/data side effect (it defaults
+# to "dpt" via the call after the observable fns below); main()/callers switch to "dat" via _set_obs("dat").
+def _set_obs(obs="dpt"):
+    global OBS, EDGES, DATA, D_ERR, COV, COVINV, CONV, _obs
+    assert obs in ("dpt", "dat"), obs
+    OBS = obs
+    _r = uproot.open(f"../nuisance/data/T2K/CC0pi/STV/{'dpt' if obs == 'dpt' else 'dat'}Results.root")
+    if obs == "dpt":
+        EDGES = np.asarray(_r["Result"].axis().edges()) * 1000.0    # MeV
+        CONV = 1e-33 / 12.0 * 1000.0 * 1e38
+    else:
+        EDGES = np.asarray(_r["Result"].axis().edges())             # rad
+        CONV = 1e-33 / 12.0 * 1e38                                  # nb/rad per-12C -> 1e-38 cm^2/rad/nucleon
+    DATA = jnp.asarray(np.asarray(_r["Result"].values()) * 1e38)
+    D_ERR = np.asarray(_r["Result"].errors()) * 1e38
+    COV = np.asarray(_r["Covariance_Matrix"].values())
+    COVINV = jnp.asarray(np.linalg.inv(COV + 1e-12 * np.eye(8)))
+    _obs = _dpt if obs == "dpt" else _dat
 
 
 def _dpt(kmu, lead):
@@ -55,7 +59,7 @@ def _dat(kmu, lead):
     return jnp.arccos(jnp.clip(num / den, -1.0, 1.0))
 
 
-_obs = _dpt if OBS == "dpt" else _dat
+_set_obs("dpt")   # module default (dpt); no import-time argv read -- main()/callers switch via _set_obs
 
 
 def _sel(kmu, lead):
@@ -181,6 +185,7 @@ def model_hist(theta, R, M=None):
 def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:6.1f}s] {m}", flush=True)
+    _set_obs(sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "dpt")
     # ENGINE: the pool is the single faithful + differentiable cascade core.  N and NREP are env-tunable;
     # size them to the statistics the fit needs.
     global NQE, NRES

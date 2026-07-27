@@ -12,7 +12,6 @@ import numpy as np
 import jax, jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
-_sys.argv = [_sys.argv[0], "dpt"]                      # tune.py reads OBS from argv[1] at import
 import adonis.reweight.tune as T
 from adonis.reweight.reweight_model import (nominal_knobs, build_hv_sf, model_hist_full)
 from adonis.workflow.materials import resolve_targets

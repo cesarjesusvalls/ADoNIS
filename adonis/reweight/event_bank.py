@@ -34,8 +34,7 @@ def run():
     import jax.numpy as jnp
     sys.argv_kept = [a for a in sys.argv[1:] if not a.startswith("-")]
     outdir = sys.argv_kept[0] if sys.argv_kept else OUTDIR
-    sys.argv = [sys.argv[0], "dpt"]
-    from adonis.reweight import tune as T
+    from adonis.reweight import tune as T   # import is now side-effect-free (no argv read at import)
     from adonis.reweight.reweight_model import nominal_knobs, build_hv_sf
     from adonis.workflow.materials import resolve_targets
     from adonis.nuclear.spectral import SpectralFunction
