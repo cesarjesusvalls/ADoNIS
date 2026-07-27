@@ -3,11 +3,14 @@
 Run as a module (from the repo root):
 
   # one process (in-process; JIT compiles once for this run)
-  python -u -m adonis.workflow.cli configs/gen_c_qe.yaml --n-seeds 5 --n-per-seed 25000 --n-w 2048
+  python -u -m adonis.workflow.cli configs/gen_c_qe_t2k.yaml --n-seeds 5 --n-per-seed 25000 --n-w 2048
+
+  # electron (e,e') probe -- SAME entry point, probe=EM in the config (monochromatic e- beam):
+  python -u -m adonis.workflow.cli configs/gen_c_qe_jlab.yaml     # inclusive QE dsigma/domega bank
 
   # parallel production: K worker processes, each M seeds of N events in ONE process (JIT once per
   # worker, reused across its seeds), each writing its own checkpointed `..._batchWW.npz`.
-  python -u -m adonis.workflow.cli configs/gen_c_qe.yaml \
+  python -u -m adonis.workflow.cli configs/gen_c_qe_t2k.yaml \
       --workers 6 --seeds-per-worker 5 --n-per-seed 25000 --n-w 2048 --single-thread --tag _myqe
 
 `--workers <= 1` runs the generation in-process; `--workers > 1` re-invokes THIS module once per shard
@@ -31,7 +34,7 @@ from adonis.workflow.generate import _CHAN_OUT, run_generation
 
 
 def _bankpath(gc, chanout, tag):
-    return os.path.join(gc.out_dir, f"{gc.flux}_{gc.material}_{chanout}{tag}.npz")
+    return os.path.join(gc.out_dir, f"{gc.bank_prefix}_{gc.material}_{chanout}{tag}.npz")
 
 
 def _apply_overrides(gc, a):
@@ -86,7 +89,7 @@ def _run_batched(a):
             if os.path.exists(gw):
                 os.remove(gw)
         # 2. auto-increment batch index from existing batch files
-        existing = glob.glob(os.path.join(gc.out_dir, f"{gc.flux}_{gc.material}_{chanout}{gc.tag}_batch*.npz"))
+        existing = glob.glob(os.path.join(gc.out_dir, f"{gc.bank_prefix}_{gc.material}_{chanout}{gc.tag}_batch*.npz"))
         idxs = [int(m.group(1)) for f in existing for m in [re.search(r"_batch(\d+)\.npz$", f)] if m]
         start = (max(idxs) + 1) if idxs else 0
         print(f"[batched] {channel}: {len(existing)} existing batch(es); starting at batch {start}", flush=True)
@@ -133,9 +136,11 @@ def main(argv=None):
 
     # Export ADONIS_FLUX_FILE from the config's flux key BEFORE the generators (or subprocess workers)
     # import adonis.flux.spectrum, so a non-T2K beam is actually used and the bank name stays consistent.
+    # EM (electron) runs have no flux table -- the beam is monochromatic -- so skip the export there.
     from adonis.workflow.config import load_gen_config as _lgc, FLUX_FILES as _FF
-    _flux = _lgc(a.config).flux
-    os.environ.setdefault("ADONIS_FLUX_FILE", _FF[_flux])
+    _gc = _lgc(a.config)
+    if _gc.beam == "spectrum":
+        os.environ.setdefault("ADONIS_FLUX_FILE", _FF[_gc.flux])
 
     if a.workers and a.workers > 1:
         if a.n_per_seed is None:

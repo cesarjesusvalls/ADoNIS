@@ -1,0 +1,11 @@
+# Inclusive (e,e') RES (single-pion) on AR -- EM probe, monochromatic e- beam (JLab 2.222 GeV).
+name: gen_ar_res_jlab
+probe: EM
+beam: electron
+material: AR
+channels: [res]
+e_beam: 2222.0
+theta_acc: [14.0, 17.0]
+fsi: false
+n_per_seed: 500000
+n_seeds: 1

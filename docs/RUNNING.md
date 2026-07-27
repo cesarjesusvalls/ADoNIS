@@ -27,17 +27,17 @@ runs. RES warms up the VEGAS grid ONCE up front (cached) before the workers fan 
 
 ```bash
 # QE / CC0π — 6 workers × 5 seeds × 25k = 750k events, distance-sync (default), refill
-.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_qe.yaml \
+.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_qe_t2k.yaml \
     --workers 6 --seeds-per-worker 5 --n-per-seed 25000 --n-w 2048 --single-thread \
     > /tmp/gen_qe.log 2>&1 &
 
 # RES / CC1π — same; builds + caches the VEGAS importance grid up front, then cascades
-.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_res.yaml \
+.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_res_t2k.yaml \
     --workers 6 --seeds-per-worker 5 --n-per-seed 25000 --n-w 2048 --single-thread \
     > /tmp/gen_res.log 2>&1 &
 
 # one process (in-process), e.g. a quick smoke run
-.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_qe.yaml --n-seeds 1 --n-per-seed 1000 --n-w 256
+.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_qe_t2k.yaml --n-seeds 1 --n-per-seed 1000 --n-w 256
 ```
 
 Key flags / env:

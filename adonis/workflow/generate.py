@@ -25,11 +25,40 @@ from adonis.workflow.materials import resolve_targets
 _CHAN_OUT = {"res": "cc1pi", "qe": "cc0pi"}
 
 
-def gen_events(channel, n, seed, sf_n=None, sf_p=None, n_neutron=6, n_proton=6, grid=None):
+def _gen_events_EM(channel, n, seed, material="C", e_beam=None, theta_acc=None):
+    """EM (electron) probe primaries, mapped onto the SAME event schema as the weak path so the
+    downstream cascade / pre-FSI record are probe-agnostic: k_e->k_nu, (k_le|k_e_out)->k_mu, c->w.
+    QE via ee_xsec (no pion; nucleon species unchanged p->p / n->n), RES via res_ee_xsec (1 pion)."""
+    from adonis.flux.electron import E_BEAM_JLAB
+    eb = E_BEAM_JLAB if e_beam is None else float(e_beam)
+    if channel == "res":
+        from adonis.xsec import res_ee_xsec
+        r = res_ee_xsec.generate(n, material=material, seed=seed, E_beam=eb, records=True)  # all angles
+        return dict(k_nu=np.asarray(r["k_e"]), k_mu=np.asarray(r["k_le"]),
+                    p_struck=np.asarray(r["p_struck"]), p_pi=np.asarray(r["p_pi"]),
+                    p_N=np.asarray(r["p_N"]), w=np.asarray(r["c"]),
+                    ppid=np.asarray(r["ppid"]).astype(np.int64),
+                    ipid=np.asarray(r["ipid"]).astype(np.int64),
+                    Npid=np.asarray(r["Npid"]).astype(np.int64))
+    from adonis.xsec import ee_xsec
+    ta = ee_xsec.THETA_ACC if theta_acc is None else tuple(theta_acc)
+    e = ee_xsec.generate(n, material=material, seed=seed, E_beam=eb, records=True, theta_acc=ta)  # in-acceptance
+    is_p = np.asarray(e["is_p"]); ipid = np.where(is_p, 2212, 2112).astype(np.int64)
+    return dict(k_nu=np.asarray(e["k_e"]), k_mu=np.asarray(e["k_e_out"]),
+                p_struck=np.asarray(e["p_struck"]), p_N=np.asarray(e["p_out"]), w=np.asarray(e["c"]),
+                ipid=ipid, Npid=ipid.copy(),                 # EM QE: elastic, nucleon species unchanged
+                ppid=np.zeros(len(is_p), np.int64))          # no pion
+
+
+def gen_events(channel, n, seed, sf_n=None, sf_p=None, n_neutron=6, n_proton=6, grid=None,
+               probe="weak", material="C", e_beam=None, theta_acc=None):
     """Primary events for one seed (verbatim gen_cc_engine_rich.gen_events).  sf_n/sf_p = the target's
     neutron/proton SpectralFunction (None -> carbon default inside the generator).  CC QE struck
     nucleon is a neutron (n->p) so it uses sf_n; RES uses both.  n_neutron/n_proton (target A-Z / Z)
-    scale the initwgt = N*S normalization per species (default 6/6 = carbon)."""
+    scale the initwgt = N*S normalization per species (default 6/6 = carbon).
+    probe='EM' switches to the electron leptonic current (monochromatic e- beam) via _gen_events_EM."""
+    if probe == "EM":
+        return _gen_events_EM(channel, n, seed, material=material, e_beam=e_beam, theta_acc=theta_acc)
     if channel == "res":
         e = res_xsec.generate(n, seed=seed, return_events=True, sf_n=sf_n, sf_p=sf_p,
                               n_neutron=n_neutron, n_proton=n_proton, grid=grid)["events"]
@@ -68,10 +97,12 @@ def _prefsi_record(channel, a):
 
 
 def run_one_seed(channel, n, seed, cas, cfg_cascade, track=False, fsi=True, sf_n=None, sf_p=None,
-                 n_neutron=6, n_proton=6, grid=None, n_w=None):
+                 n_neutron=6, n_proton=6, grid=None, n_w=None,
+                 probe="weak", material="C", e_beam=None, theta_acc=None):
     """One seed -> (record dict, truth dict|None, overflow).  Verbatim gen_cc_engine_rich.one (fsi=True);
     fsi=False returns the PRE-FSI primary record (no cascade)."""
-    a = gen_events(channel, n, seed, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton, grid=grid)
+    a = gen_events(channel, n, seed, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton, grid=grid,
+                   probe=probe, material=material, e_beam=e_beam, theta_acc=theta_acc)
     if not fsi:
         return _prefsi_record(channel, a), None, 0
     nn = len(a["w"]); ar = np.arange(nn)
@@ -150,7 +181,7 @@ def run_channel(channel, gc, target, n_w=None):
     os.makedirs(gc.out_dir, exist_ok=True)            # create the output tree on first run (e.g. output/adonis)
     # bank name = {flux}_{material}_{chanout}{tag}.npz (tag empty for the canonical run) -- every
     # context property threaded from the config, none asserted as a literal.
-    out = os.path.join(gc.out_dir, f"{gc.flux}_{gc.material}_{_CHAN_OUT[channel]}{gc.tag}.npz")
+    out = os.path.join(gc.out_dir, f"{gc.bank_prefix}_{gc.material}_{_CHAN_OUT[channel]}{gc.tag}.npz")
     truth_out = out.replace(".npz", "_truth.npz")
     # Optional frozen VegasGrid (RES importance estimator only) over the 6 final-state hypercube dims
     # (beam + 3-body).  Default OFF -> `grid=None` -> bit-identical sampling.  QE has no grid (its
@@ -158,7 +189,7 @@ def run_channel(channel, gc, target, n_w=None):
     # a reproducible sidecar, so `cache="auto"` reuses it across runs (warm-up is deterministic anyway).
     grid = None
     vg = getattr(gc, "vegas", None)
-    if vg is not None and vg.enabled and channel == "res":
+    if vg is not None and vg.enabled and channel == "res" and gc.probe == "weak":
         from adonis.xsec import res_xsec as _R
         from adonis.xsec.vegas_grid import VegasGrid
         # Grid cache key = the PHYSICS that determines the proposal: material (spectral fns + N counts)
@@ -188,7 +219,8 @@ def run_channel(channel, gc, target, n_w=None):
         _t_seed = time.time()
         rec, truth, ofl = run_one_seed(channel, gc.n_per_seed, sd, cas, cfg_cascade, gc.tracking.enabled,
                                        gc.fsi, sf_n=sf_n, sf_p=sf_p, n_neutron=n_neutron, n_proton=n_proton,
-                                       grid=grid, n_w=n_w)
+                                       grid=grid, n_w=n_w, probe=gc.probe, material=gc.material,
+                                       e_beam=gc.e_beam, theta_acc=gc.theta_acc)
         _dt = time.time() - _t_seed                       # seed wall time (seed 0 includes JIT compile)
         parts.append(rec)
         bank = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}

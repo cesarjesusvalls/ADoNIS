@@ -27,10 +27,11 @@ REACTION COUNTING is post-Pauli, as in ACHILLES (Cascade.cc:903 records the vert
 we use the per-particle nsc (realized interactions), NEVER the kind-1 `hh`/`nh` (which is the pre-Pauli
 sampled hit and would over-count Pauli-blocked interactions).
 
-Usage:
-    python -m analysis.paper.beams.beam_bank pip  --n 500000 --pmin 50   --pmax 1000 --out output/beam_pip_C
-    python -m analysis.paper.beams.beam_bank prot --n 500000 --pmin 300  --pmax 1400 --out output/beam_prot_C
-    python -m analysis.paper.beams.beam_bank neut --n 500000 --pmin 300  --pmax 1400 --out output/beam_neut_C
+Usage (config-driven, mirrors adonis.workflow.cli):
+    python -m analysis.paper.beams.beam_bank configs/beam_pip_C.yaml
+    python -m analysis.paper.beams.beam_bank configs/beam_prot_C.yaml
+    python -m analysis.paper.beams.beam_bank configs/beam_neut_C.yaml
+Any config field is overridable on the CLI (--n, --pmin, --pmax, --chunk, --seed, --tag, --out, --no-pauli).
 """
 import argparse
 import json
@@ -252,23 +253,35 @@ def beam_weight(B, knobs):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("beam", choices=sorted(BEAMS))
-    ap.add_argument("--n", type=int, default=500_000)
-    ap.add_argument("--pmin", type=float, required=True)
-    ap.add_argument("--pmax", type=float, required=True)
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--out", default=None)
-    ap.add_argument("--chunk", type=int, default=50_000,
+    from adonis.workflow.config import load_beam_config
+    ap = argparse.ArgumentParser(description="Tagged-beam cascade bank (config-driven; mirrors adonis.workflow.cli).")
+    ap.add_argument("config", help="configs/beam_*.yaml (BeamGenConfig)")
+    # per-run overrides onto the loaded config (all optional; None -> keep the config value)
+    ap.add_argument("--n", type=int, default=None)
+    ap.add_argument("--pmin", type=float, default=None)
+    ap.add_argument("--pmax", type=float, default=None)
+    ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--tag", type=str, default=None)
+    ap.add_argument("--out", default=None, help="override the bank dir (default <out_dir>/beam_<beam>_<material><tag>)")
+    ap.add_argument("--chunk", type=int, default=None,
                     help="events per chunk.  The DENSE record buffers (n x 96 pion + n x 256 nucleon "
                          "slots) are allocated per chunk BEFORE the ragged compaction, so peak memory "
                          "scales with THIS, not with the bank size.  250k thrashed a 16 GB box "
                          "(6.6 GB RSS, 8.2/9.2 GB swap); 50k is comfortable.")
     ap.add_argument("--no-pauli", action="store_true", help="DEBUG: disable Pauli blocking (ablation)")
-    ap.add_argument("--target", default="C", help="nucleus (C, Ar, ...) -- resolve_targets key")
     a = ap.parse_args()
-    out = a.out or f"output/beam_{a.beam}_{a.target}"
+
+    bc = load_beam_config(a.config)
+    if a.n is not None:     bc.n = a.n
+    if a.pmin is not None:  bc.pmin = a.pmin
+    if a.pmax is not None:  bc.pmax = a.pmax
+    if a.seed is not None:  bc.seed = a.seed
+    if a.chunk is not None: bc.chunk = a.chunk
+    if a.tag is not None:   bc.tag = a.tag
+    if a.no_pauli:          bc.pauli = False
+    bc.__post_init__()                                  # re-validate after overrides
+    out = a.out or bc.bank_dir
     t0 = time.time()
-    build(a.beam, n=a.n, pmin=a.pmin, pmax=a.pmax, seed=a.seed, target=a.target, outdir=out, chunk=a.chunk,
-          pauli=not a.no_pauli,
+    build(bc.beam, n=bc.n, pmin=bc.pmin, pmax=bc.pmax, seed=bc.seed, target=bc.material, outdir=out,
+          chunk=bc.chunk, pauli=bc.pauli,
           log=lambda s: print(f"[{time.time()-t0:7.1f}s] {s}", flush=True))

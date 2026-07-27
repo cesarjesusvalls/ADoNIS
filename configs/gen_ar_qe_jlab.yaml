@@ -1,0 +1,13 @@
+# Inclusive (e,e') QE on AR -- EM probe, monochromatic e- beam (JLab 2.222 GeV point).
+# Nothing electron-special: same hard-vertex generator as the neutrino gen_*, with probe=EM.
+# fsi:false -> inclusive (dsigma/domega); flip to true for an exclusive EM cascade bank.
+name: gen_ar_qe_jlab
+probe: EM
+beam: electron
+material: AR
+channels: [qe]
+e_beam: 2222.0
+theta_acc: [14.0, 17.0]
+fsi: false
+n_per_seed: 500000
+n_seeds: 1

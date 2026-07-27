@@ -94,13 +94,26 @@ FLUX_FILES = {
 }
 
 
+PROBES = ("weak", "EM")         # weak = CC neutrino current ; EM = electron (photon) current
+GEN_BEAMS = ("spectrum", "electron")  # spectrum = flux-weighted nu beam ; electron = monochromatic e-
+E_BEAM_JLAB = 2222.0            # default monochromatic e- energy [MeV] (JLab 2.222 GeV); adonis.flux.electron
+
+
 @dataclass
 class GenConfig:
-    flux: str = "t2k"           # beam flux key (bank-name + physics); see FLUX_FILES
+    """Hard-vertex (QE/RES) generation, generic over the PROBE.  The probe (weak CC-neutrino vs EM
+    electron) selects the leptonic current and the beam; inclusive-vs-FSI is the orthogonal `fsi` flag
+    (there is nothing probe-specific about running inclusive -- any probe with fsi=False is a pre-FSI
+    bank).  beam=spectrum uses a neutrino flux table (FLUX_FILES); beam=electron is a monochromatic e-."""
+    flux: str = "t2k"           # neutrino flux key (beam=spectrum only); bank-name + physics; see FLUX_FILES
+    probe: str = "weak"         # weak | EM  -- leptonic current (adonis.xsec: qe/res vs ee/res_ee)
+    beam: str = "spectrum"      # spectrum | electron
     material: str = "C"
     n_per_seed: int = 30000
     n_seeds: int = 56
     channels: tuple = ("res",)              # subset of {"res","qe"}
+    e_beam: float = E_BEAM_JLAB             # monochromatic e- energy [MeV] (beam=electron only)
+    theta_acc: tuple = (14.0, 17.0)         # outgoing-lepton polar HardCut [deg] (beam=electron only)
     cascade: CascadeHyperparams = field(default_factory=CascadeHyperparams)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     vegas: VegasConfig = field(default_factory=VegasConfig)
@@ -113,14 +126,30 @@ class GenConfig:
         bad = set(self.channels) - {"res", "qe"}
         if bad:
             raise ValueError(f"channels: {sorted(bad)} not in {{'res','qe'}}")
-        if self.flux not in FLUX_FILES:
-            raise ValueError(f"flux {self.flux!r} not in {sorted(FLUX_FILES)}")
-        # guard against a mislabelled bank: if ADONIS_FLUX_FILE is set it MUST match this key's table.
-        import os
-        want = FLUX_FILES[self.flux]
-        have = os.environ.get("ADONIS_FLUX_FILE")
-        if have is not None and have != want:
-            raise ValueError(f"flux key {self.flux!r} expects ADONIS_FLUX_FILE={want!r} but env has {have!r}")
+        if self.probe not in PROBES:
+            raise ValueError(f"probe {self.probe!r} not in {sorted(PROBES)}")
+        if self.beam not in GEN_BEAMS:
+            raise ValueError(f"beam {self.beam!r} not in {sorted(GEN_BEAMS)}")
+        # probe <-> beam are 1:1 today (weak<->spectrum, EM<->electron); enforce so a bank can't be mislabelled
+        if (self.probe == "EM") != (self.beam == "electron"):
+            raise ValueError(f"probe={self.probe!r} is inconsistent with beam={self.beam!r} "
+                             f"(weak<->spectrum, EM<->electron)")
+        self.theta_acc = tuple(_resolve_seq(self.theta_acc))
+        if self.beam == "spectrum":
+            if self.flux not in FLUX_FILES:
+                raise ValueError(f"flux {self.flux!r} not in {sorted(FLUX_FILES)}")
+            # guard against a mislabelled bank: if ADONIS_FLUX_FILE is set it MUST match this key's table.
+            import os
+            want = FLUX_FILES[self.flux]
+            have = os.environ.get("ADONIS_FLUX_FILE")
+            if have is not None and have != want:
+                raise ValueError(f"flux key {self.flux!r} expects ADONIS_FLUX_FILE={want!r} but env has {have!r}")
+
+    @property
+    def bank_prefix(self) -> str:
+        """Bank-name beam tag: the flux key for a neutrino run, or `ee<E>` for an electron run
+        (e.g. ee2222) so an (e,e') bank never collides with a neutrino one."""
+        return self.flux if self.beam == "spectrum" else f"ee{int(round(self.e_beam))}"
 
 
 def load_gen_config(path) -> GenConfig:
@@ -131,7 +160,46 @@ def load_gen_config(path) -> GenConfig:
     d["vegas"] = _coerce(VegasConfig, d.get("vegas"))
     if "channels" in d:
         d["channels"] = tuple(d["channels"])
+    if "theta_acc" in d:
+        d["theta_acc"] = tuple(d["theta_acc"])
     return _coerce(GenConfig, d)
+
+
+# ----------------------------------------------------------------------------- tagged-beam generation
+# projectile keys (adonis.flux.hadron.BEAMS); duplicated here so config validation stays import-light.
+BEAM_KEYS = ("pip", "prot", "neut")
+
+
+@dataclass
+class BeamGenConfig:
+    """Tagged-beam cascade bank (pi+/p/n on a nucleus, ACHILLES CrossSection geometry).  The imperative
+    twin of GenConfig for the FSI-only beams -- see analysis/paper/beams/beam_bank.build()."""
+    beam: str = "pip"           # projectile: pip | prot | neut  (adonis.flux.hadron.BEAMS)
+    material: str = "C"         # nucleus (resolve_targets key: C, Ar, ...)
+    n: int = 500_000            # total events
+    pmin: float = 50.0          # beam |p| window [MeV/c] (uniform in [pmin, pmax])
+    pmax: float = 1000.0
+    chunk: int = 50_000         # events per chunk (dense FSI record buffers scale with THIS, not n)
+    seed: int = 0
+    pauli: bool = True          # False -> DEBUG ablation (no Pauli blocking)
+    out_dir: str = "output"     # bank dir = <out_dir>/beam_<beam>_<material><tag>
+    tag: str = ""
+
+    def __post_init__(self):
+        if self.beam not in BEAM_KEYS:
+            raise ValueError(f"beam {self.beam!r} not in {sorted(BEAM_KEYS)}")
+        if self.pmax <= self.pmin:
+            raise ValueError(f"pmax {self.pmax} must exceed pmin {self.pmin}")
+
+    @property
+    def bank_dir(self) -> str:
+        return f"{self.out_dir}/beam_{self.beam}_{self.material}{self.tag}"
+
+
+def load_beam_config(path) -> BeamGenConfig:
+    d = yaml.safe_load(Path(path).read_text()) or {}
+    d.pop("name", None)
+    return _coerce(BeamGenConfig, d)
 
 
 # ----------------------------------------------------------------------------- analysis

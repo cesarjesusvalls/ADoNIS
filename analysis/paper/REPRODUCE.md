@@ -62,10 +62,10 @@ CC0PI_N=1000000 CHUNK=250000 python -u -m adonis.reweight.event_bank output/even
 ADONIS_EVENT_BANK=output/event_bank_v2 PHYSFIT_OBS=full ADONIS_LABEL=physfit_gate1_full_v2 \
   python -u -m analysis.paper.physical_fit          # -> output/altgen/physfit_gate1_full_v2.npz
 
-# tagged-beam cascade banks
-python -u -m analysis.paper.beams.beam_bank pip  --n 500000 --pmin 50  --pmax 1000 --chunk 50000 --out output/beam_pip_C
-python -u -m analysis.paper.beams.beam_bank prot --n 500000 --pmin 300 --pmax 1400 --chunk 50000 --out output/beam_prot_C
-python -u -m analysis.paper.beams.beam_bank neut --n 500000 --pmin 300 --pmax 1400 --chunk 50000 --out output/beam_neut_C
+# tagged-beam cascade banks (config-driven, like the neutrino gen above; CLI flags override any field)
+python -u -m analysis.paper.beams.beam_bank configs/beam_pip_C.yaml
+python -u -m analysis.paper.beams.beam_bank configs/beam_prot_C.yaml
+python -u -m analysis.paper.beams.beam_bank configs/beam_neut_C.yaml
 ```
 
 On S3DF, submit generation to the GPU via `jobs/submit.py --gpu` (turing); env.sh auto-selects the

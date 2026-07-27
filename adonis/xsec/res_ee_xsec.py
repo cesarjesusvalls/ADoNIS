@@ -97,7 +97,8 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
     Z, N, sf_p_path, sf_n_path = MATERIALS[material]
     imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))
     imp_n = SpectralImportanceSampler(SpectralFunction(sf_n_path))
-    keys = ["c", "omega", "theta"] + (["p_N", "p_pi", "ppid", "Npid", "ipid"] if records else [])
+    keys = ["c", "omega", "theta"] + (["k_e", "k_le", "p_struck", "p_N", "p_pi",
+                                        "ppid", "Npid", "ipid"] if records else [])
     out = {k: [] for k in keys}
     for ci, (spid, itiz, ppid, m_Nf, is_p) in enumerate(EM_CHANNELS):
         imp = imp_p if is_p else imp_n
@@ -128,6 +129,10 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
                 # SUM(c) is unchanged.  Per-event pids are the channel's (broadcast to the kept events).
                 sel = v
                 out["c"].append((w / n)[sel]); out["omega"].append(omega[sel]); out["theta"].append(theta[sel])
+                # lepton kinematics (in/out e- + struck nucleon) -- needed to fill the unified generation
+                # bank schema (adonis.workflow.generate.gen_events, probe="EM"): k_e->k_nu, k_le->k_mu.
+                out["k_e"].append(s["k_e"][sel]); out["k_le"].append(s["k_le"][sel])
+                out["p_struck"].append(s["p_struck"][sel])
                 out["p_N"].append(s["p_N"][sel]); out["p_pi"].append(s["p_pi"][sel])
                 nk = int(sel.sum())
                 out["ppid"].append(np.full(nk, ppid, np.int32))
