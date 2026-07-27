@@ -16,6 +16,7 @@ Observables:
   p/n beam : reaction   (every written event)  and  pion production (any final-state pion = the
              NN -> N Delta -> NN pi inelastic channel -- the handle on s_NN_inelastic)
 """
+import os
 import sys
 from pathlib import Path
 
@@ -24,7 +25,9 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper.beams.beam_bank import BEAMS, PIR2_MB          # noqa: E402
 
-ACH_DIR = Path(__file__).resolve().parents[3] / "output" / "achilles"
+# ACHILLES cascade hepmc dir; ACHILLES_BEAM_DIR overrides (e.g. a repro tree with per-shard subdirs).
+ACH_DIR = Path(os.environ.get("ACHILLES_BEAM_DIR",
+                              str(Path(__file__).resolve().parents[3] / "output" / "achilles")))
 PION_PIDS = (211, 111, -211)
 
 
@@ -70,7 +73,7 @@ def sigma_of_p(beam, edges, target="C"):
         "Ar": {"pip": "run_cascade_pip_Ar_broad", "prot": "run_cascade_prot_Ar", "neut": "run_cascade_neut_Ar"},
     }
     stem = _STEM[target][beam]
-    paths = sorted(ACH_DIR.glob(f"{stem}*.hepmc"))
+    paths = sorted(ACH_DIR.glob(f"**/{stem}*.hepmc"))    # recursive: finds flat OR per-shard subdirs
     if not paths:
         raise FileNotFoundError(f"no ACHILLES hepmc for {beam} ({stem}*)")
     nb = len(edges) - 1
