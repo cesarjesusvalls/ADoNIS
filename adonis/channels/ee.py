@@ -42,15 +42,7 @@ MATERIALS = {
 }
 
 
-def _boost(p4, beta):
-    """Boost 4-vector(s) p4 (...,4) by beta (...,3) (CM->lab when beta = P/E of total).  Verbatim qe_xsec."""
-    b2 = np.sum(beta ** 2, axis=-1, keepdims=True)
-    g = 1.0 / np.sqrt(np.clip(1 - b2, 1e-15, None))
-    bp = np.sum(beta * p4[..., 1:], axis=-1, keepdims=True)
-    E = (g[..., 0] * (p4[..., 0] + bp[..., 0]))
-    fac = (g - 1.0) * np.where(b2 > 1e-15, bp / np.clip(b2, 1e-15, None), 0.0) + g * p4[..., :1]
-    vec = p4[..., 1:] + fac * beta
-    return np.concatenate([E[..., None], vec], axis=-1)
+from adonis.kinematics import boost_np as _boost   # shared (was byte-identical in qe/ee)
 
 
 STRUCK_MASS_MODE = "species"    # "species" (DEFAULT: struck energy = m_species - E_rm) -- (e,e') strikes

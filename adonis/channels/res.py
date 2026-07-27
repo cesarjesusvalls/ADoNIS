@@ -59,8 +59,11 @@ CHANNELS = [
 ]
 
 
+from adonis.kinematics import kallen   # Kallen lambda(s,s1,s2) (adonis.kinematics)
+
+
 def _sqlam(s, s1, s2):
-    a = (s - s1 - s2) ** 2 - 4 * s1 * s2
+    a = kallen(s, s1, s2)
     return np.where(a > 0, np.sqrt(np.clip(a, 0, None)) / s, 0.0)
 
 
@@ -120,8 +123,7 @@ SAMPLER_3BODY = "resonance"          # "resonance" (BW-importance hadronic mass,
                                      #   found no other importance map above ~noise (Q2/angle <=+3%).
 
 
-def _m2(p):
-    return p[:, 0] ** 2 - np.sum(p[:, 1:] ** 2, axis=1)
+from adonis.kinematics import mass2_np as _m2   # shared Minkowski invariant p.p (adonis.kinematics)
 
 
 def _boost_to_rest(ph, q):
