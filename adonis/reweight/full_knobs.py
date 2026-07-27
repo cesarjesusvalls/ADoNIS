@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 import jax, jax.numpy as jnp
 
-from adonis.reweight.ma_records import (build_qe_ma_records, build_res_ma_records, build_qe_vector_records,
+from adonis.reweight.amps2_records import (build_qe_ma_records, build_res_ma_records, build_qe_vector_records,
                                         build_qe_ff_records, build_res_pw_records, build_res_pionpole_records,
                                         ma_reweight, strength_reweight)
 from adonis.reweight.sf_reweight import sf_grids, sf_reweight, removal_from_struck

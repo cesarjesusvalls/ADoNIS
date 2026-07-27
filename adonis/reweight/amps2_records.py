@@ -1,4 +1,6 @@
-"""Exact M_A-reweight records for frozen QE/RES proposals.
+"""Exact quadratic-amps2 reweight records for frozen QE/RES proposals -- the ONE mechanism for every
+hard-vertex knob (axial mass, axial/vector strength, Sachs form factors, DCC partial-wave norms, pion
+pole), NOT just M_A.
 
 amps2 is QUADRATIC in the axial scale r (the hadron current is linear in FA/FAP for QE and
 in the axial amplitudes for RES), so 3 evals (r = 0, 1, -1) give per-event (a, b, c) with

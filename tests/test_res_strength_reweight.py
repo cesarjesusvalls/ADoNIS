@@ -16,7 +16,7 @@ jax.config.update("jax_enable_x64", True)
 from adonis.channels import res as res_xsec
 from adonis.nuclear.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets
-from adonis.reweight.ma_records import (build_res_ma_records, build_res_pw_records,
+from adonis.reweight.amps2_records import (build_res_ma_records, build_res_pw_records,
                                         build_res_pionpole_records, strength_reweight, RES_ITIZ)
 from adonis.channels import dcc_current as dcc
 from adonis.core.params import DCCKnobs
@@ -36,7 +36,7 @@ def test_res_axial_strength_nominal_identity():
 
 def test_res_axial_strength_matches_amps2():
     """Per RES channel, w(s)*amps2(r=1) == amps2(r=s) on valid (non-placeholder) events."""
-    from adonis.reweight.ma_records import RES_ITIZ
+    from adonis.reweight.amps2_records import RES_ITIZ
     a, b, c, _ = (np.asarray(x) for x in _REC)
     w_full = {s: np.asarray(strength_reweight(_REC, s)) for s in (0.7, 1.3)}
     for (ip, pp), itiz in RES_ITIZ.items():
