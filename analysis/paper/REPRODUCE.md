@@ -71,20 +71,36 @@ python -u -m analysis.paper.beams.beam_bank neut --n 500000 --pmin 300 --pmax 14
 On S3DF, submit generation to the GPU via `jobs/submit.py --gpu` (turing); env.sh auto-selects the
 `adonis-cuda` venv + `JAX_PLATFORMS=cuda,cpu` there.
 
-## 5. Regenerate the figures
+## 4b. Sections 4-5 (closures + unknown-unknowns)
+These render from persisted npz under `output/altgen/`. To regenerate from scratch you also need
+GENIE/NEUT fake data (a separate GENIE container, `analysis/paper/physfit/run_genie.sh`):
 ```bash
-python -m analysis.paper.sec1_validation.make     # ADoNIS-vs-ACHILLES validation (neutrino) + beams
-python -m analysis.paper.sec2_gradients.make      # gradients for all 27 knobs (reads the Gate-I npz)
-python -m analysis.paper.sec3_fisher.make         # Fisher per observable subset
-python -m analysis.paper.methods_report           # -> output/paper/methods_report.html
+analysis/paper/physfit/run_genie.sh                                     # -> output/altgen/genie_*.gst.root
+PHYSFIT_MODE=closure PHYSFIT_METHOD=all GATE1_NPZ=output/altgen/physfit_gate1_full_v2.npz \
+  ADONIS_LABEL=physfit_closure5 python -u -m analysis.paper.physfit.physical_fit_run   # sec4
+#  sec5 modes: PHYSFIT_MODE in {inject2x, genie, q2mod, closure_q2mod, mecmix}
 ```
 
-## Status / gaps (post-refactor)
-- **sec1 / sec2 / sec3 + beams: reproducible** — generators recovered to `adonis.reweight.event_bank`,
-  `adonis.oracle.*`, `analysis.paper.{physical_fit,info_content,beams.beam_bank}`.
-- **sec4 (closures) / sec5 (unknown-unknowns) + the physfit report figures: NOT currently reproducible.**
-  Their drivers (`physical_fit_run.py`, `physfit_*_fig.py`, GENIE/NEUT fake-data via `run_genie.sh`)
-  lived in the retired `scripts/altgen/` and were not recovered; `sec4_closure`/`sec5_unknowns` are
-  empty placeholders. Recover from git (`git show <pre-removal>:scripts/altgen/...`) if needed.
+## 5. Regenerate the figures
+```bash
+python -m analysis.paper.sec1_validation.make      # ADoNIS-vs-ACHILLES validation (neutrino) + beams
+python -m analysis.paper.sec2_gradients.make       # gradients for all 27 knobs (reads the Gate-I npz)
+python -m analysis.paper.sec3_fisher.make          # Fisher per observable subset
+python -m analysis.paper.beams.beam_fisher --syst 0.05      # knob x sample Fisher -> output/altgen/beam_fisher.npz
+# sec4-5 figures (from the §4b npz):
+python -m analysis.paper.physfit.physfit_closure5_fig      # fig7 closure5   (sec4)
+python -m analysis.paper.physfit.physfit_report           # fig1-4 + PDF
+python -m analysis.paper.physfit.physfit_q2nuis_fig       # fig9  (sec5)
+python -m analysis.paper.physfit.physfit_mecmix_fig       # fig10 (sec5)
+python -m analysis.paper.methods_report                   # -> output/paper/methods_report.html
+```
+
+## Status (post-refactor)
+Everything is reproducible; all generators were recovered into the refactored layout:
+- reweight bank -> `adonis.reweight.event_bank`; ACHILLES oracles -> `adonis.oracle.*`
+- beam studies -> `analysis.paper.beams.{beam_bank,beam_fisher}`
+- fit engine + sec4/5 + report figs -> `analysis.paper.{physical_fit,info_content}` +
+  `analysis.paper.physfit.{physical_fit_run, physfit_*_fig, physfit_report, build_fakedata}`
+(GENIE/NEUT fake-data generation for some sec5 modes still needs the external GENIE container.)
 
 Sanity after a rebuild: `python -m pytest tests/test_pool_fsi_reweight.py -q` (FSI reweight identity).

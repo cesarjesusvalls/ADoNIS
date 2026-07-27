@@ -279,7 +279,7 @@ BODY = f"""
   11-observable set: <b>10/27 FIT</b>.</p>
   <p><b>Precision-relative.</b> At 15% systematic only 4 knobs pass instead of 10 — measurability is a
   property of the knob <em>and</em> the dataset's precision.</p>
-  <p class="deffile mono">scripts/altgen/physical_fit.py (Gate I) · analysis/paper/sec3_fisher/make.py</p>
+  <p class="deffile mono">analysis/paper/physical_fit.py (Gate I) · analysis/paper/sec3_fisher/make.py</p>
   </div>
   {figure("paper/sec3_shrinkage_subsets.png", "<b>Shrinkage per observable class</b>, marginalized (left) vs raw (right). Red box = FIT (fit measures it); green box = data sees it with other knobs fixed. Green-without-red = DEGENERATE.")}
   {figure("paper/sec3_failure_modes.png", "<b>The two failure modes.</b> x = can the data see it (raw), y = can the fit deliver it (marginalized). qe_norm is the extreme: raw 0.033 (one of the most sensitive knobs) → marginalized 0.86, a 26× degeneracy penalty against axial/vector_strength + sf_norm.")}
@@ -287,7 +287,7 @@ BODY = f"""
   <div class="reading">
   <h3>Knob × sample (the tagged-beam payoff)</h3>
   <p>Fisher is additive: <code>F = F_T2K + Σ_beam F_beam</code>, each beam just extra rows of J
-  (<code>analysis/beams/beam_fisher.py</code>). Each beam is <b>pure FSI</b> (no competing hard-vertex/SF
+  (<code>analysis/paper/beams/beam_fisher.py</code>). Each beam is <b>pure FSI</b> (no competing hard-vertex/SF
   knobs) and its <b>energy opens a channel shut at T2K</b>. Each rescues exactly its target knob:</p>
   </div>
   <div class="wrapscroll"><table><thead><tr><th>sample</th><th>#FIT</th><th>knob gained vs T2K</th><th>mechanism</th></tr></thead><tbody>
@@ -310,7 +310,7 @@ BODY = f"""
   per-knob Cochran's Q + vector split-fit → freeze / flag / excise-refit), M2 (Huber IRLS). The fit subset
   is read <em>blind</em> from the Gate-I npz (<code>shrink &lt; 0.5</code>). Binned data/σ/model curves are
   persisted, so the figure re-renders with no bank pass.</p>
-  <p class="deffile mono">scripts/altgen/physical_fit_run.py · physfit_closure5_fig.py</p>
+  <p class="deffile mono">analysis/paper/physfit/physical_fit_run.py · physfit_closure5_fig.py</p>
   </div>
   {figure("figures/physfit_fig7_closure5.png", "<b>5-parameter closure.</b> Injected θ* (M_A_res, kF_sf, Eb_shift, s_NN_elastic[pn], f_NN_cex) recovered to ≤ 0.5σ; M0 and M2 agree. Bands = ADoNIS-MC; model curves as bin-edge steps.")}
 </section>
@@ -328,7 +328,7 @@ BODY = f"""
   split-fit flag pre-fit, then contiguous-residual flagging and <b>region excision → refit</b>. Inside →
   the Q²-nuisance recovers truth; outside → coherence gating + excision localizes the artifact instead of
   biasing the knobs.</p>
-  <p class="deffile mono">scripts/altgen/physical_fit_run.py (apply_mode, gate2_Q, gate2_split) · physfit_*_fig.py</p>
+  <p class="deffile mono">analysis/paper/physfit/physical_fit_run.py (apply_mode, gate2_Q, gate2_split) · physfit_*_fig.py</p>
   </div>
   {figure("figures/physfit_fig3_inject2x.png", "<b>Outside-manifold artifact (×2 on δp_T&gt;300).</b> M0 (naive) biases −27σ; M1 refuses the pull (split-fit p=3e-12) and localizes the artifact to the excised region.")}
   {figure("figures/physfit_fig4_genie.png", "<b>GENIE-3M as data.</b> Foreign-generator mismatch; M1 excise-refit recovers the on-manifold parameters with the artifact confined.")}
@@ -357,7 +357,7 @@ BODY = f"""
   the fit stalls in an FSI-compensation valley. Short damped steps (PHYSFIT_STEP_SCALE=0.5) plus an
   Eb≥ε box constraint (below zero the clamped model is exactly flat — an absorbing trap) are the
   robust optimizer settings, adopted for the §4/§5 fits; no multi-start anywhere.</p>
-  <p class="deffile mono">scripts/altgen/physfit_traj.py · physfit_traj_fig.py · physfit_coverage.py ·
+  <p class="deffile mono">analysis/paper/physfit/physfit_traj.py · physfit_traj_fig.py · physfit_coverage.py ·
   physfit_coverage_fig.py</p>
   </div>
   {figure("figures/physfit_traj_closure5_params_vs_iter.png", "<b>Fit trajectory.</b> All 9 Gate-I knobs vs LM/GN iteration (short steps, STEP_SCALE=0.55): smooth convergence onto the injected truth within the final ±1σ bands; χ² 2585 → 2.3 in ~10 iterations.")}
