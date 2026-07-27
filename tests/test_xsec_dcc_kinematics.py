@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
-from adonis.xsec.dcc_kinematics import boost_matrix, setdfun
+from adonis.channels.dcc_kinematics import boost_matrix, setdfun
 
 
 def test_boost_to_rest_and_roundtrip():

@@ -5,13 +5,13 @@ the generator itself uses both, and bit-exact reproduction requires matching eac
 path's own choice.
 
 * `Constants.hh` precision values (lowercase: ``mp``, ``mn``, ``HBARC``, ``GF``, ...) —
-  used by the transliterated cross-section code (``adonis/xsec``) and the Oset port.
+  used by the transliterated cross-section code (``adonis/channels``) and the Oset port.
 * `Particles.yml` rounded masses (``MASS_PDG_*``) — used wherever ACHILLES goes through
   ``ParticleInfo::Mass()`` (FluxFactor's struck-nucleon mass, channel rest masses, ...).
 
 The uppercase aliases (``M_P``, ``MQE``, ``M_PI``, ``W_THR``, ...) serve the
 differentiable DCC path (hard cuts from ``currents_pi_dcc.f90``).
-``adonis/xsec/constants.py`` re-exports the lowercase family for back-compat.
+``adonis/channels/constants.py`` re-exports the lowercase family for back-compat.
 Mass-convention ROLES (which mass plays which part in RES) live in
 ``adonis/primary/dcc/conventions.py``, not here.
 """

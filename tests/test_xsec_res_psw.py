@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
-from adonis.xsec import constants as C
+from adonis.channels import constants as C
 from adonis.flux.spectrum import SpectrumFlux
 
 MN = C.mN                                  # Constant::mN (isoscalar) used in the mappers
@@ -186,7 +186,7 @@ def test_res_psw_bit_exact():
 
 def test_res_initwgt_bit_exact():
     """initwgt = N_nucleon * S(|p|, removal) reproduces the RESDUMP bit-exactly."""
-    from adonis.xsec.spectral import SpectralFunction
+    from adonis.channels.spectral import SpectralFunction
     sfn = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
     sfp = SpectralFunction("data/Spectral_Functions/pke12p_tot.data")
     path = Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"

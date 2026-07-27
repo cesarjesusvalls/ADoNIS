@@ -25,14 +25,14 @@ import jax
 import jax.numpy as jnp
 
 from adonis.io import achilles_data_root
-from adonis.xsec.spectral import _neville_batch          # the validated ACHILLES Polint (Neville)
+from adonis.channels.spectral import _neville_batch          # the validated ACHILLES Polint (Neville)
 
 SF_DIR = achilles_data_root() / "Spectral_Functions"
 
 
 def _polint_SE(mom, energy, S, pf, Ef):
     """S(pf, Ef) via the ACHILLES Polint -- cubic (4pt) in |p|, linear (2pt) in E -- on the fine
-    output grids.  S is the raw (np, ne) table.  Mirrors adonis/xsec/spectral.py SpectralFunction.batch
+    output grids.  S is the raw (np, ne) table.  Mirrors adonis/channels/spectral.py SpectralFunction.batch
     (same window selection + Neville), so the importance sampler reproduces ACHILLES's S exactly."""
     mom = np.asarray(mom); energy = np.asarray(energy); S = np.asarray(S)
     nx, ny = len(mom), len(energy); pox, poy = 4, 2
@@ -96,7 +96,7 @@ class SpectralSampler:
         # density within each coarse bin while S / |p|^2 n_p are sloped, so it smears the peak (under-
         # samples low E_rm) and biases |p|.  Rebuild on ~0.25 MeV (E) and ~1 MeV (|p|) grids, linear-
         # interpolating S onto them, so the inverse-CDFs reproduce |p|^2 S(p,E) -- unbiased, matching
-        # ACHILLES's per-point S-weighted draw.  (Same fix as adonis/xsec/spectral.py.)
+        # ACHILLES's per-point S-weighted draw.  (Same fix as adonis/channels/spectral.py.)
         mom = np.asarray(table.mom); Eraw = np.asarray(table.energy); S = np.clip(table.S, 0, None)
         Ef = np.linspace(Eraw[0], Eraw[-1], max(int((Eraw[-1] - Eraw[0]) / 0.25) + 1, len(Eraw)))
         pf = np.linspace(mom[0], mom[-1], max(int((mom[-1] - mom[0]) / 1.0) + 1, len(mom)))

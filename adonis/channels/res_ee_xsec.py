@@ -1,4 +1,4 @@
-"""Inclusive (e,e') RES (single-pion) cross section + dsigma/domega, mirroring adonis/xsec/res_xsec but
+"""Inclusive (e,e') RES (single-pion) cross section + dsigma/domega, mirroring adonis/channels/res_xsec but
 for the ELECTROMAGNETIC probe.  Three changes vs the CC RES driver:
 
   1. BEAM   : monochromatic e- at fixed E (J_beam = 1).
@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from adonis.xsec import constants as C
-from adonis.xsec.spectral import SpectralFunction, SpectralImportanceSampler
-from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON, MASS_PDG_NEUTRON
-from adonis.xsec.dcc_current import exclusive_amps2_batch
-from adonis.xsec.res_xsec import _boost_to_lab, _sqlam, M_PIP, M_PI0
+from adonis.channels import constants as C
+from adonis.channels.spectral import SpectralFunction, SpectralImportanceSampler
+from adonis.channels.backend import flux_factor, MASS_PDG_PROTON, MASS_PDG_NEUTRON
+from adonis.channels.dcc_current import exclusive_amps2_batch
+from adonis.channels.res_xsec import _boost_to_lab, _sqlam, M_PIP, M_PI0
 
 _MN = C.mN
 from adonis.flux.electron import M_E as _M_E, E_BEAM_JLAB, electron_k    # e- beam (adonis/flux)

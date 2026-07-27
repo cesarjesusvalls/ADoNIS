@@ -9,7 +9,7 @@ centres.  m_min/max_energy = edges.front()/back() (GeV).
 Beam sampling (single ran u): min = max(seed_GeV, edges[0]); E_GeV = u*(max-min)+min; lab E = 1000*E.
 J_beam (the event.Weight() beam factor) = (delta * m_flux(E_GeV)) / flux_integral, delta=max-min.
 
-(Consolidated 2026-07-26 from the retired adonis/xsec/flux.py::T2KFlux -- renamed honestly since it
+(Consolidated 2026-07-26 from the retired adonis/channels/flux.py::T2KFlux -- renamed honestly since it
 reads any experiment's spectrum, not just T2K -- absorbing the dead adonis/flux Spectrum duplicate.)
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ import os as _os
 from pathlib import Path
 import numpy as np
 
-from adonis.xsec.spectral import _polint
+from adonis.channels.spectral import _polint
 
 _ACH = Path(__file__).resolve().parents[2].parent / "Achilles"
 from adonis.constants import MASS_PDG_MUON as M_MU, MASS_PDG_PROTON as M_P

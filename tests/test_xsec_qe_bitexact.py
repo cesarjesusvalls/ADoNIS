@@ -1,4 +1,4 @@
-"""Bit-exact regression: the JAX QE matrix-element port (adonis.xsec) vs instrumented ACHILLES.
+"""Bit-exact regression: the JAX QE matrix-element port (adonis.channels) vs instrumented ACHILLES.
 
 tests/data/qe_dump_achilles.txt holds 300 QEDUMP rows from a real ACHILLES QE_Spectral_Func run
 (XSecBackend.cc instrumentation, %.17e): the lab momenta + ACHILLES amps2/flux/spinavg.  The port
@@ -16,7 +16,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis.xsec.backend import me_cross_section, MASS_PDG_NEUTRON as MN, MASS_PDG_PROTON as MP
+from adonis.channels.backend import me_cross_section, MASS_PDG_NEUTRON as MN, MASS_PDG_PROTON as MP
 
 DUMP = Path(__file__).resolve().parent / "data" / "qe_dump_achilles.txt"
 

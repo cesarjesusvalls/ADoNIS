@@ -14,10 +14,10 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis.xsec import constants as C
+from adonis.channels import constants as C
 from adonis.flux.spectrum import SpectrumFlux, M_MU, M_P
-from adonis.xsec.spectral import SpectralFunction
-from adonis.xsec.backend import me_cross_section, MASS_PDG_NEUTRON
+from adonis.channels.spectral import SpectralFunction
+from adonis.channels.backend import me_cross_section, MASS_PDG_NEUTRON
 
 _MN = C.mN
 _SMIN = (M_MU + M_P) ** 2
@@ -109,7 +109,7 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     (now in the sampling); they are replaced by the constant N_neutron (the # of target NEUTRONS,
     A-Z; CC QE is nu n->mu- p).  Default 6 = carbon; pass the target's A-Z for other nuclei.
     Beam + TwoBody final state sampled as in sample()."""
-    from adonis.xsec.spectral import SpectralImportanceSampler, SpectralFunction as _SF
+    from adonis.channels.spectral import SpectralImportanceSampler, SpectralFunction as _SF
     rng = np.random.default_rng(seed)
     u = rng.random((n, 7))
     flux = SpectrumFlux()

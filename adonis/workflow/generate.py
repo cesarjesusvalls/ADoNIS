@@ -13,9 +13,9 @@ import os, time
 import numpy as np
 import jax
 import jax.numpy as jnp
-import adonis.xsec.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
-from adonis.xsec import res_xsec
-from adonis.xsec.spectral import SpectralFunction
+import adonis.channels.dcc_current as dcc; dcc.BATCH_INTERP = "spline"
+from adonis.channels import res_xsec
+from adonis.channels.spectral import SpectralFunction
 from adonis.fsi.cascade import DiscreteCascadeConfig
 from adonis.fsi.cascade import _load_density
 import adonis.fsi.cascade as CF
@@ -32,7 +32,7 @@ def _gen_events_EM(channel, n, seed, material="C", e_beam=None, theta_acc=None):
     from adonis.flux.electron import E_BEAM_JLAB
     eb = E_BEAM_JLAB if e_beam is None else float(e_beam)
     if channel == "res":
-        from adonis.xsec import res_ee_xsec
+        from adonis.channels import res_ee_xsec
         r = res_ee_xsec.generate(n, material=material, seed=seed, E_beam=eb, records=True)  # all angles
         return dict(k_nu=np.asarray(r["k_e"]), k_mu=np.asarray(r["k_le"]),
                     p_struck=np.asarray(r["p_struck"]), p_pi=np.asarray(r["p_pi"]),
@@ -40,7 +40,7 @@ def _gen_events_EM(channel, n, seed, material="C", e_beam=None, theta_acc=None):
                     ppid=np.asarray(r["ppid"]).astype(np.int64),
                     ipid=np.asarray(r["ipid"]).astype(np.int64),
                     Npid=np.asarray(r["Npid"]).astype(np.int64))
-    from adonis.xsec import ee_xsec
+    from adonis.channels import ee_xsec
     ta = ee_xsec.THETA_ACC if theta_acc is None else tuple(theta_acc)
     e = ee_xsec.generate(n, material=material, seed=seed, E_beam=eb, records=True, theta_acc=ta)  # in-acceptance
     is_p = np.asarray(e["is_p"]); ipid = np.where(is_p, 2212, 2112).astype(np.int64)
@@ -64,7 +64,7 @@ def gen_events(channel, n, seed, sf_n=None, sf_p=None, n_neutron=6, n_proton=6, 
                               n_neutron=n_neutron, n_proton=n_proton, grid=grid)["events"]
         return {k: np.asarray(e[k]) for k in
                 ("k_nu", "k_mu", "p_struck", "p_pi", "p_N", "w", "ppid", "ipid", "Npid")}
-    from adonis.xsec import qe_xsec
+    from adonis.channels import qe_xsec
     r = qe_xsec.sample_importance(n, seed=seed, sf=sf_n, n_neutron=n_neutron); m = len(r["w"])
     return dict(k_nu=np.asarray(r["k_nu"]), k_mu=np.asarray(r["k_mu"]), p_struck=np.asarray(r["p_struck"]),
                 p_N=np.asarray(r["p_out"]), w=np.asarray(r["w"]) / n,
@@ -190,8 +190,8 @@ def run_channel(channel, gc, target, n_w=None):
     grid = None
     vg = getattr(gc, "vegas", None)
     if vg is not None and vg.enabled and channel == "res" and gc.probe == "weak":
-        from adonis.xsec import res_xsec as _R
-        from adonis.xsec.vegas_grid import VegasGrid
+        from adonis.channels import res_xsec as _R
+        from adonis.channels.vegas_grid import VegasGrid
         # Grid cache key = the PHYSICS that determines the proposal: material (spectral fns + N counts)
         # and flux mode.  Flux is T2K-neutrino only today, so the canonical key is the material -> one
         # shared grid auto-reused across tags/seed-counts of the same nucleus.  (When a nubar/other flux

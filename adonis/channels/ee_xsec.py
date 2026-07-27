@@ -1,11 +1,11 @@
 """Absolute ACHILLES inclusive (e,e') cross section + dsigma/domega, by MC over the struck-nucleon
 spectral function + isotropic two-body final state, using the SAME ported integrand as the CC QE
-driver (adonis/xsec/qe_xsec.py) with three changes for the electromagnetic probe:
+driver (adonis/channels/qe_xsec.py) with three changes for the electromagnetic probe:
 
   1. BEAM        : monochromatic e- at fixed E (2.222 GeV JLab point), so J_beam = 1 (no flux weight).
   2. PROBE       : me_cross_section(probe="EM", is_proton=...) -> photon leptonic current + the struck
                    nucleon's OWN vector form factors (no axial), spin_avg = 1/4 (2 e- helicities x 2
-                   nucleon spins).  See adonis/xsec/dirac.py probe="EM" and electron_scattering.md.
+                   nucleon spins).  See adonis/channels/dirac.py probe="EM" and electron_scattering.md.
   3. BOTH SPECIES: protons AND neutrons are struck incoherently (CC QE hits neutrons only), each
                    weighted by its target count (Z protons, N neutrons) and its own spectral function.
 
@@ -25,9 +25,9 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from adonis.xsec import constants as C
-from adonis.xsec.spectral import SpectralFunction, SpectralImportanceSampler
-from adonis.xsec.backend import me_cross_section
+from adonis.channels import constants as C
+from adonis.channels.spectral import SpectralFunction, SpectralImportanceSampler
+from adonis.channels.backend import me_cross_section
 from adonis.constants import MASS_PDG_PROTON, MASS_PDG_NEUTRON
 
 _MN = C.mN                       # average nucleon mass (struck-nucleon kinematics; mirrors qe_xsec)
@@ -122,7 +122,7 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000, records
     (SUM = sigma), omega [MeV], theta_e' [deg], and the struck-species tag.  Chunked to bound JAX mem.
     records=True also keeps the per-event kinematics (k_e, k_e_out, p_struck, p_out, me, had_mass,
     n_target) for the theta-ACCEPTED events only -- the inputs a knob reweight needs to recompute the
-    EM matrix element (adonis/xsec/ee_xsec + analysis/beams/ee_fisher)."""
+    EM matrix element (adonis/channels/ee_xsec + analysis/beams/ee_fisher)."""
     Z, N, sf_p_path, sf_n_path = MATERIALS[material]
     sf_p = SpectralFunction(sf_p_path); sf_n = SpectralFunction(sf_n_path)
     lo, hi = theta_acc

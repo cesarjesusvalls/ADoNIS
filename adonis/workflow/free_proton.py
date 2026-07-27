@@ -9,12 +9,12 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-import adonis.xsec.dcc_current as dcc
+import adonis.channels.dcc_current as dcc
 dcc.BATCH_INTERP = "spline"
 from adonis.flux.spectrum import SpectrumFlux, M_MU, M_P
-from adonis.xsec.res_xsec import _sample_3body, _sample_3body_dispatch, _pi_kin_mass, M_PIP, SPIN_AVG
-from adonis.xsec.dcc_current import exclusive_amps2_batch
-from adonis.xsec.backend import flux_factor, MASS_PDG_PROTON
+from adonis.channels.res_xsec import _sample_3body, _sample_3body_dispatch, _pi_kin_mass, M_PIP, SPIN_AVG
+from adonis.channels.dcc_current import exclusive_amps2_batch
+from adonis.channels.backend import flux_factor, MASS_PDG_PROTON
 from adonis.fsi.cascade import DiscreteCascadeConfig
 from adonis.fsi.pool_fsi import run_fsi
 

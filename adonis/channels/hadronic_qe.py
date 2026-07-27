@@ -8,7 +8,7 @@ combination F1 = coupl (F1p - F1n) etc. (CouplingsFF for the {neutron,-24} entry
 Returns H of shape (..., 4_spincombo, 4_mu), spin-combo order (i,j)=(00,01,10,11).
 
 NOTE: currently UNUSED by the event chain -- the paper runs use the FORTRAN QE current
-(FortranModel QE_Spectral_Func), ported in `adonis/xsec/dirac.py`, which is what
+(FortranModel QE_Spectral_Func), ported in `adonis/channels/dirac.py`, which is what
 `backend.me_cross_section` calls.  Retained as a working reference port of the
 alternative C++ Weyl QESpectral path.
 """
@@ -17,9 +17,9 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
-from adonis.xsec import constants as C
-from adonis.xsec.spinor import GAMMA, GAMMA5, SIGMA, ubar, uspinor
-from adonis.xsec.form_factors import nucleon_ff
+from adonis.channels import constants as C
+from adonis.channels.spinor import GAMMA, GAMMA5, SIGMA, ubar, uspinor
+from adonis.channels.form_factors import nucleon_ff
 
 _I = 1j
 _GG5 = np.einsum('mij,jk->mik', GAMMA, GAMMA5)            # gamma^mu gamma5  (4,4,4)

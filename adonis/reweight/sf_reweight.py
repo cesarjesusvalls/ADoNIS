@@ -26,8 +26,8 @@ import numpy as np
 import jax.numpy as jnp
 from scipy.ndimage import spline_filter1d
 
-from adonis.xsec.spectral import SpectralFunction
-from adonis.xsec import constants as C
+from adonis.channels.spectral import SpectralFunction
+from adonis.channels import constants as C
 
 
 def sf_grids(sf: SpectralFunction):

@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
-from adonis.xsec.dcc_current import exclusive_amps2
+from adonis.channels.dcc_current import exclusive_amps2
 
 DUMP = Path(__file__).resolve().parent / "data" / "res_dump_achilles.txt"
 

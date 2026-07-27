@@ -10,7 +10,7 @@ import jax.numpy as jnp
 from adonis.reweight.ma_records import ma_reweight, strength_reweight
 from adonis.reweight.sf_reweight import sf_grids, sf_reweight, removal_from_struck
 from adonis.fsi.cascade import pool_fsi_reweight
-from adonis.xsec.spectral import SpectralFunction
+from adonis.channels.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets
 
 # RAGGED kind-1 FSI record (see cascade.compact_fsi_record): flat per-slot arrays + a per-slot event

@@ -16,7 +16,7 @@ _sys.argv = [_sys.argv[0], "dpt"]                      # tune.py reads OBS from 
 import adonis.reweight.tune as T
 from adonis.reweight.full_knobs import (nominal_knobs, build_hv_sf, model_hist_full)
 from adonis.workflow.materials import resolve_targets
-from adonis.xsec.spectral import SpectralFunction
+from adonis.channels.spectral import SpectralFunction
 
 T.NQE = T.NRES = 5000
 _qe, _qw, _res, _rw = T.build_proposal()

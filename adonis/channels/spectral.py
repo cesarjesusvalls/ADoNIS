@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 
-from adonis.xsec import constants as C
+from adonis.channels import constants as C
 
 _ACH = Path(__file__).resolve().parents[2].parent / "Achilles"
 

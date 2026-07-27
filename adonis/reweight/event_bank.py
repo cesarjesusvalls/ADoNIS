@@ -38,8 +38,8 @@ def run():
     from adonis.reweight import tune as T
     from adonis.reweight.full_knobs import nominal_knobs, build_hv_sf
     from adonis.workflow.materials import resolve_targets
-    from adonis.xsec.spectral import SpectralFunction
-    from adonis.xsec import qe_xsec, res_xsec
+    from adonis.channels.spectral import SpectralFunction
+    from adonis.channels import qe_xsec, res_xsec
     import adonis.fsi.cascade as CF
 
     N_TOTAL = int(os.environ.get("CC0PI_N", "100000"))

@@ -2,7 +2,7 @@
 
 ZERO FITTED CONSTANTS: every value here is a physical input (a PDG/ACHILLES mass) or a derived
 combination of them -- never a calibration.  This module is imported by BOTH the fast event
-generator (adonis.xsec.res_xsec / dcc_current) AND the differentiable JAX path (adonis.primary.dcc
+generator (adonis.channels.res_xsec / dcc_current) AND the differentiable JAX path (adonis.primary.dcc
 channel/structure), so the two implementations cannot drift on conventions again.
 
 The pion mass plays THREE distinct roles, empirically separated from the ACHILLES free-proton
@@ -20,7 +20,7 @@ Nucleon mass also has two roles:
   * amplitude-internal (qc, qc0):                 m_N = 938.919  (mp+mn)/2 average (== ACHILLES MQE).
   * absolute-norm _NORM = 2pi/(|FResV|^2 (2 m_N)^2):  m_N = 939.566 neutron (ACHILLES Fortran xmn).
 """
-from adonis.xsec import constants as C
+from adonis.channels import constants as C
 
 # --- physical masses [MeV]: PDG / ACHILLES Constants.hh -- inputs, not fits -----------------------
 M_P   = C.mp            # 938.272  proton

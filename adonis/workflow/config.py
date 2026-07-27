@@ -106,7 +106,7 @@ class GenConfig:
     (there is nothing probe-specific about running inclusive -- any probe with fsi=False is a pre-FSI
     bank).  beam=spectrum uses a neutrino flux table (FLUX_FILES); beam=electron is a monochromatic e-."""
     flux: str = "t2k"           # neutrino flux key (beam=spectrum only); bank-name + physics; see FLUX_FILES
-    probe: str = "weak"         # weak | EM  -- leptonic current (adonis.xsec: qe/res vs ee/res_ee)
+    probe: str = "weak"         # weak | EM  -- leptonic current (adonis.channels: qe/res vs ee/res_ee)
     beam: str = "spectrum"      # spectrum | electron
     material: str = "C"
     n_per_seed: int = 30000

@@ -13,12 +13,12 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
-from adonis.xsec import res_xsec
-from adonis.xsec.spectral import SpectralFunction
+from adonis.channels import res_xsec
+from adonis.channels.spectral import SpectralFunction
 from adonis.workflow.materials import resolve_targets
 from adonis.reweight.ma_records import (build_res_ma_records, build_res_pw_records,
                                         build_res_pionpole_records, strength_reweight, RES_ITIZ)
-from adonis.xsec import dcc_current as dcc
+from adonis.channels import dcc_current as dcc
 from adonis.core.params import DCCKnobs
 
 _tg = resolve_targets("C")[0][0]

@@ -14,12 +14,12 @@ import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
 
-from adonis.xsec import constants as C
+from adonis.channels import constants as C
 from adonis.flux.spectrum import SpectrumFlux
-from adonis.xsec.spectral import SpectralFunction
-from adonis.xsec.backend import flux_factor, MASS_PDG_NEUTRON, MASS_PDG_PROTON
-from adonis.xsec.dcc_current import exclusive_amps2_batch
-from adonis.xsec.spectral import SpectralImportanceSampler
+from adonis.channels.spectral import SpectralFunction
+from adonis.channels.backend import flux_factor, MASS_PDG_NEUTRON, MASS_PDG_PROTON
+from adonis.channels.dcc_current import exclusive_amps2_batch
+from adonis.channels.spectral import SpectralImportanceSampler
 
 _MN = C.mN
 _SF_N = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")   # default = carbon
@@ -462,7 +462,7 @@ def warmup_vegas(n=100000, iters=6, nbins=50, alpha=1.5, seed=987654321, sf_n=No
     3-channel weight at nominal knobs.  Grid dims = [beam, hadronic-mass(BW), ctA, phA, ctB, phB].
     One shared grid across the 3 (kinematically similar) channels.  Returns the frozen VegasGrid.
     `progress` shows a tqdm-style bar (iters x channels steps) with ETA for the integration phase."""
-    from adonis.xsec.vegas_grid import VegasGrid
+    from adonis.channels.vegas_grid import VegasGrid
     sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
     flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     grid = VegasGrid(6, nbins)

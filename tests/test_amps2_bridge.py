@@ -12,10 +12,10 @@ SIGMA_UNIT_NB: the amplitude+coupling part of the absolute scale is derived, not
 import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
-import adonis.xsec.dcc_current as dcc
+import adonis.channels.dcc_current as dcc
 dcc.BATCH_INTERP = "spline"
-from adonis.xsec.dcc_current import exclusive_amps2_batch, _NORM
-from adonis.xsec import constants as C
+from adonis.channels.dcc_current import exclusive_amps2_batch, _NORM
+from adonis.channels import constants as C
 from adonis.primary.dcc.channel import sample_final_state, weight_from_sample
 from adonis.primary.dcc.structure import HadronStructure
 from adonis.core.params import DCCKnobs

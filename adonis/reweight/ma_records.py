@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
-from adonis.xsec.backend import me_cross_section
+from adonis.channels.backend import me_cross_section
 from adonis.primary.dcc.form_factors import axial_reweight_dipole
 
 # RES channel constants for the amps2 re-evaluation: (ipid, ppid) -> itiz
@@ -66,7 +66,7 @@ def build_qe_ff_records(k_nu, k_mu, p_struck, p_out, key):
 
 def build_res_ma_records(k_nu, k_mu, p_struck, p_N, p_pi, ipid, ppid):
     """Per-event (a, b, c, Q2) for the RES sample (channel = (ipid, ppid))."""
-    from adonis.xsec import dcc_current as dcc
+    from adonis.channels import dcc_current as dcc
     n = len(np.asarray(k_nu))
     A = np.ones(n); B = np.zeros(n); Cq = np.zeros(n); Q2r = np.ones(n)
     ipid = np.asarray(ipid); ppid = np.asarray(ppid)
@@ -88,7 +88,7 @@ def build_res_pw_records(k_nu, k_mu, p_struck, p_N, p_pi, ipid, ppid, wave, npw=
     """Per-event (a, b, c, Q2) for a single DCC partial-wave norm `wave` in [0,npw).  amps2 is quadratic
     in s = 1 + pw_norm[wave] (the wave's amplitude is scaled by s), so 3 numeric evals at s=0,1,2 give
     (a,b,c) with amps2(s)=a+b s+c s^2.  Weight = strength_reweight(rec, 1 + pw_norm[wave]); ==1 at 0."""
-    from adonis.xsec import dcc_current as dcc
+    from adonis.channels import dcc_current as dcc
     from adonis.core.params import DCCKnobs
     n = len(np.asarray(k_nu))
     A = np.ones(n); B = np.zeros(n); Cq = np.zeros(n); Q2r = np.ones(n)
@@ -117,7 +117,7 @@ def build_res_pionpole_records(k_nu, k_mu, p_struck, p_N, p_pi, ipid, ppid):
     """Per-event (a, b, c, Q2) for the RES pion-pole (induced-pseudoscalar / F_P) scale.  amps2 is
     quadratic in pion_pole (it scales the longitudinal pion-pole term added to zmtx), 3-eval at {0,1,2}.
     Weight = strength_reweight(rec, pion_pole); == 1 at pion_pole = 1.0 (nominal)."""
-    from adonis.xsec import dcc_current as dcc
+    from adonis.channels import dcc_current as dcc
     n = len(np.asarray(k_nu))
     A = np.ones(n); B = np.zeros(n); Cq = np.zeros(n); Q2r = np.ones(n)
     ipid = np.asarray(ipid); ppid = np.asarray(ppid)

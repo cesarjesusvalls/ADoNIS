@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
-from adonis.xsec import constants as C
+from adonis.channels import constants as C
 
 # Kelly (FormFactors.yml)
 _LAMBDASQ = 0.7174
