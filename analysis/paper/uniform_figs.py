@@ -151,9 +151,13 @@ def _observables(pid, p4, seg, w, n):
 KEYS = ["n_p", "n_n", "n_chpi", "p_lead_p", "p_lead_pi", "cos_lead_p"]
 LABELS = {"n_p": "$N_p$", "n_n": "$N_n$", "n_chpi": "$N_{\\pi^\\pm}$", "p_lead_p": "leading $p$  $|p|$ [MeV/c]",
           "p_lead_pi": "leading $\\pi^\\pm$  $|p|$ [MeV/c]", "cos_lead_p": "leading $p$  $\\cos\\theta$"}
-EDGES = {"n_p": np.arange(-0.5, 6.5), "n_n": np.arange(-0.5, 6.5), "n_chpi": np.arange(-0.5, 4.5),
+EDGES = {"n_p": np.arange(-0.5, 4.5), "n_n": np.arange(-0.5, 4.5), "n_chpi": np.arange(-0.5, 3.5),
          "p_lead_p": np.linspace(0, 1500, 26), "p_lead_pi": np.linspace(0, 1200, 26),
          "cos_lead_p": np.linspace(-1, 1, 26)}
+# Multiplicity overflow: high multiplicities are largely undetectable, so cap them into a top ">=CAP"
+# bin -- nucleons N>=3, pions N>=2.  Values are clipped to CAP before histogramming (BOTH ADoNIS and the
+# oracle, in make()), so EDGES' top bin is the overflow.  Module-level -> every bank (C and Ar), no bespoke.
+CAP = {"n_p": 3, "n_n": 3, "n_chpi": 2}
 
 
 def make(bank):
@@ -162,6 +166,8 @@ def make(bank):
                            squeeze=False, sharex="col")
     for c, k in enumerate(KEYS):
         av, aw = ach[k]; dv, dw = ado[k]
+        if k in CAP:                                       # clip N>=CAP into the top overflow bin (both sides)
+            av = np.minimum(av, CAP[k]); dv = np.minimum(dv, CAP[k])
         mask_a = np.isfinite(av); mask_d = np.isfinite(dv)
         res = chi2_ratio_panel(ax[0, c], ax[1, c], EDGES[k],
                                {"values": av[mask_a], "w": aw[mask_a]}, {"values": dv[mask_d], "w": dw[mask_d]},
@@ -171,6 +177,10 @@ def make(bank):
               f"(ndf={res['ndf']}, shadowed={res.get('n_shadow',0)})", flush=True)
         ax[0, c].text(0.05, 0.88, f"$\\chi^2$/ndf {res['chi2']/max(res['ndf'],1):.2f}",
                       transform=ax[0, c].transAxes, fontsize=7.5)
+        if k in CAP:                                        # label the top tick as ">=CAP" (0,1,..,>=N)
+            t = list(range(CAP[k] + 1))
+            ax[1, c].set_xticks(t)
+            ax[1, c].set_xticklabels([str(i) for i in t[:-1]] + [rf"$\geq${CAP[k]}"])
         if c == 0:
             ax[0, c].legend(fontsize=7); ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]")
     fig.suptitle(f"ADoNIS vs ACHILLES — {TITLE[bank]}  (final state)", fontsize=11)
