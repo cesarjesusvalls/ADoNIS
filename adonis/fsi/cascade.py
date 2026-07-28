@@ -2087,8 +2087,9 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
                                                                     # (1=p) | pion charge (0:+,1:0,2:-).
                                                                     # ADDITIVE -- pid unchanged (golden-safe);
                                                                     # lets consumers count pions by charge.
-                   p4=p4o, alive=al, origin=out["origin"], gen=out["gen"], nsc=out["nsc"])]  # nsc: uniform
-    #   cascade-outcome record needs the per-particle scatter count (additive; existing consumers key-access)
+                   p4=p4o, alive=al, origin=out["origin"], gen=out["gen"], nsc=out["nsc"],
+                   track_id=out["track_id"])]                            # nsc + track_id: uniform cascade-outcome
+    #   record needs the per-particle scatter count + primary index (additive; existing consumers key-access)
     is_surv_pi = (sp == PION) & al                                     # escaped pions (output is escape-only)
     if channel == "qe":
         pim = jnp.linalg.norm(p4o[:, :, 1:], axis=2) * is_surv_pi

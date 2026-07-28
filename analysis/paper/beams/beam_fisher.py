@@ -53,8 +53,10 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
     idx = np.clip(np.digitize(p, edges) - 1, 0, nbins - 1)
     n_tried = np.bincount(idx, minlength=nbins).astype(float)        # theta-INDEPENDENT
-    react = np.asarray(B["reacted"], float)
-    second = np.asarray(B["absorbed"], float) if man["species"] == "PION" \
+    from adonis.workflow import records as REC
+    _fl = REC.derive_flags(B)                            # reacted/absorbed derived from prim_fate + nsc_prim
+    react = _fl["reacted"].astype(float)
+    second = _fl["absorbed"].astype(float) if man["species"] == "PION" \
         else (np.asarray(B["n_pi_out"]) > 0).astype(float)
     PIR2 = man["pir2_mb"]
 

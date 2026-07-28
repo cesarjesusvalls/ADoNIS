@@ -47,8 +47,10 @@ def adonis_sigma(beam, nbins, target="C", suffix=""):
     edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
     idx = np.clip(np.digitize(p, edges) - 1, 0, nbins - 1)
     ntry = np.bincount(idx, minlength=nbins).astype(float)
-    react = np.asarray(B["reacted"], float)
-    second = np.asarray(B["absorbed"], float) if man["species"] == "PION" \
+    from adonis.workflow import records as REC
+    _fl = REC.derive_flags(B)                            # reacted/absorbed derived from prim_fate + nsc_prim
+    react = _fl["reacted"].astype(float)
+    second = _fl["absorbed"].astype(float) if man["species"] == "PION" \
         else (np.asarray(B["n_pi_out"]) > 0).astype(float)
     nr = np.bincount(idx, weights=react, minlength=nbins)
     ns = np.bincount(idx, weights=second, minlength=nbins)

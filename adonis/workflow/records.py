@@ -19,7 +19,8 @@ from __future__ import annotations
 import numpy as np
 
 import adonis.fsi.cascade as CF
-from adonis.fsi.cascade import PION, NUCLEON, FATE_ABSORB, FATE_CONVERT, FATE_CAPTURE
+from adonis.fsi.cascade import (PION, NUCLEON, FATE_NONE, FATE_ABSORB, FATE_CONVERT, FATE_CAPTURE,
+                                _TRACK_OFFSET)
 
 PMAX = 1e4   # MeV ceiling: drop the rare (~0.1%) cascade-artifact nucleons (inf/sentinel momenta)
 _PI_PID = np.array([211, 111, -211, 221])    # pion charge idx 0:+ 1:0 2:- 3:eta (the eta rides the PION slot)
@@ -62,40 +63,48 @@ def multiplicities(out):
 
 
 def kicked_secondaries(out):
-    """Flat per-escaped-particle kinematics: species/charge/|p|/cos_theta(+z) + primary tag + event idx."""
+    """Flat per-escaped-particle kinematics: species/charge/|p|/cos_theta(+z) + primary tag + event idx.
+    ks_prim tags the escaped PRIMARIES via track_id (< _TRACK_OFFSET) -- the ONE uniform primary criterion
+    for every probe.  (gen==0 over-counted knocked-out background nucleons; origin==_ORIG_PRIM_PI was
+    hadron-beam specific -- track_id subsumes both and equals the beam reference byte-for-byte.)"""
     sp = np.asarray(out["species"]); chg = np.asarray(out["charge"]); al = np.asarray(out["alive"])
-    gen = np.asarray(out["gen"]); p3 = np.asarray(out["p4"])[:, :, 1:]
+    tid = np.asarray(out["track_id"]); p3 = np.asarray(out["p4"])[:, :, 1:]
     pm = np.linalg.norm(p3, axis=2); cth = p3[:, :, 2] / np.clip(pm, 1e-9, None)
     eidx = np.broadcast_to(np.arange(sp.shape[0], dtype=np.int32)[:, None], al.shape)
     return dict(ks_eidx=eidx[al].astype(np.int32), ks_species=sp[al].astype(np.int8),
                 ks_charge=chg[al].astype(np.int8), ks_pmag=pm[al].astype(np.float32),
-                ks_cth=cth[al].astype(np.float32), ks_prim=(gen[al] == 0))
+                ks_cth=cth[al].astype(np.float32), ks_prim=(tid[al] < _TRACK_OFFSET))
 
 
-# --------------------------------------------------------------------------- reacted / absorbed --------
-def reaction_flags(out, prim_fate, primary):
-    """Primary-interaction flags from the fates -- uniform over probes.  `primary` in {'pion','nucleon'}
-    is the tagged/primary species whose reaction we report (a hadron beam's projectile; a ν/e⁻ vertex's
-    ejected pion [RES] or proton [QE]).  Reproduces beam_bank's per-species definition byte-for-byte."""
-    sp = np.asarray(out["species"]); chg = np.asarray(out["charge"]); al = np.asarray(out["alive"])
-    gen = np.asarray(out["gen"]); nsc = np.asarray(out["nsc"]); pf = np.asarray(prim_fate)
-    # gen==0 tags the PRIMARY particle(s) uniformly across probes: the tagged beam projectile, the RES
-    # ejected pion, or the QE vertex nucleon.  For a tagged hadron beam this selects exactly the beam
-    # particle (the only gen-0 particle), so it stays byte-for-byte with beam_bank's origin criterion.
-    is_prim = gen == 0
-    if primary == "pion":
-        prim_pi = is_prim & (sp == PION) & (chg != 3) & al
-        nsc_prim = (nsc * prim_pi).max(axis=1)
-        reacted = (pf == FATE_ABSORB) | (pf == FATE_CONVERT) | (nsc_prim > 0)
-        has_pi = ((sp == PION) & (chg != 3) & al).any(axis=1)
-        absorbed = reacted & ~has_pi
-    else:  # nucleon primary
-        prim_N = is_prim & (sp == NUCLEON)
-        nsc_prim = (nsc * prim_N).max(axis=1)
-        reacted = (nsc_prim > 0) | (pf == FATE_CAPTURE)
-        absorbed = np.zeros(sp.shape[0], bool)
-    return dict(reacted=reacted, absorbed=absorbed, nsc_prim=nsc_prim.astype(np.int16),
-                prim_fate=pf.astype(np.int8))
+# --------------------------------------------------------------------------- primary scatter count -----
+def primary_nsc(out, prim_fate):
+    """The surviving primary's scatter count, per event: nsc of the escaped primary (track_id w), maxed
+    over primaries -- 0 for primaries that reacted terminally (not in the final state; their reaction is
+    carried by prim_fate).  This + prim_fate ARE the per-primary ground truth; every reaction flag is a
+    view over them (see `derive_flags`), so nothing derived is persisted."""
+    tid = np.asarray(out["track_id"]); nsc = np.asarray(out["nsc"]); al = np.asarray(out["alive"])
+    n, Wp = np.asarray(prim_fate).shape
+    nsc_prim = np.zeros(n, np.int16)
+    for w in range(Wp):
+        nsc_w = (nsc * (al & (tid == w))).max(axis=1)                  # scatters of escaped primary w
+        nsc_prim = np.maximum(nsc_prim, nsc_w.astype(np.int16))
+    return dict(nsc_prim=nsc_prim)
+
+
+# --------------------------------------------------------------------------- derived reaction flags ----
+def derive_flags(bank):
+    """THE single definition of the event-level primary-interaction flags, computed from the ONLY two
+    stored ground-truth arrays: per-primary fate `prim_fate` (n, Wmax; FATE_NONE-padded) and per-event
+    scatter count `nsc_prim` (n,).  Nothing derived is persisted -- consumers call this.  Fate-derived,
+    no species branch (nucleons never carry ABSORB/CONVERT, mesons never CAPTURE, so physics separates
+    the flags, not an `if`):
+      absorbed = a primary meson was consumed  (fate in {ABSORB, CONVERT} -- true piNN->NN OR pi->eta)
+      reacted  = any primary reaction fate  OR  the primary escaped after scattering (nsc_prim>0)
+    `bank` is any mapping exposing prim_fate / nsc_prim (e.g. a loaded npz)."""
+    pf = np.asarray(bank["prim_fate"]); nsc = np.asarray(bank["nsc_prim"])   # (n, Wmax), (n,)
+    absorbed = np.isin(pf, (FATE_ABSORB, FATE_CONVERT)).any(axis=1)
+    reacted = np.isin(pf, (FATE_ABSORB, FATE_CONVERT, FATE_CAPTURE)).any(axis=1) | (nsc > 0)
+    return dict(reacted=reacted, absorbed=absorbed)
 
 
 # --------------------------------------------------------------------------- FSI kind-1 record ---------
@@ -123,22 +132,32 @@ def fsi_kind1(recs, ns):
 def cascade_outcome_record(blocks, fsi_recs, ns):
     """The full uniform cascade-outcome record for one chunk, concatenated across the present BLOCKS
     (one block for a hadron beam; the qe then res blocks for a weak/EM bank).  Each block is
-    (out, prim_fate, primary): out = raw escaped batch, primary in {'pion','nucleon'}.  fsi_recs/ns =
-    the per-block compacted FSI records + event counts.  Returns (save_dict, meta)."""
+    (out, prim_fate): out = raw escaped batch, prim_fate = (nb, Wp) per-primary terminal fate (one
+    column per primary track_id).  The ground truth is exactly TWO arrays: `prim_fate` stored as a
+    padded rectangle (n, Wmax) -- FATE_NONE fills the shorter (QE, 1-primary) block up to the widest
+    (RES, 2-primary) -- and `nsc_prim` (n,).  A padded rectangle is self-describing (no companion count
+    array) and concatenates cleanly across chunks (axis 0) under the naive beam loader.  Every reaction
+    flag is a view over these two (see `derive_flags`); none is persisted.  Returns (save_dict, meta)."""
     fs_offs, fs_pid, fs_chg, fs_p4, ndrop = [], [], [], [], 0
-    acc = {}                                             # multiplicities + ks_* + reaction flags
+    acc = {}                                             # multiplicities + ks_* + nsc_prim
+    prim_fates = []                                      # per-block (nb, Wp) fate rectangles
     base = 0
-    for (out, pf, primary), nb in zip(blocks, ns):
+    for (out, pfate), nb in zip(blocks, ns):
         fs = final_state(out); ndrop += fs.pop("_ndrop")
         fs_offs.append(fs["fs_off"]); fs_pid.append(fs["fs_pid"]); fs_chg.append(fs["fs_chg"]); fs_p4.append(fs["fs_p4"])
-        part = {**multiplicities(out), **kicked_secondaries(out), **reaction_flags(out, pf, primary)}
+        part = {**multiplicities(out), **kicked_secondaries(out), **primary_nsc(out, pfate)}
         part["ks_eidx"] = part["ks_eidx"] + base         # offset ks event-index into the global numbering
         for k, v in part.items():
             acc.setdefault(k, []).append(v)
+        prim_fates.append(np.asarray(pfate).astype(np.int8))
         base += nb
     save = dict(fs_off=merge_fs_off(fs_offs), fs_pid=np.concatenate(fs_pid),
                 fs_chg=np.concatenate(fs_chg), fs_p4=np.concatenate(fs_p4))
     save.update({k: np.concatenate(v) for k, v in acc.items()})
+    Wmax = max(pf.shape[1] for pf in prim_fates)         # widest channel (RES=2); pad the rest with FATE_NONE
+    pad = lambda pf: pf if pf.shape[1] == Wmax else np.pad(
+        pf, ((0, 0), (0, Wmax - pf.shape[1])), constant_values=FATE_NONE)
+    save["prim_fate"] = np.concatenate([pad(pf) for pf in prim_fates], axis=0)   # (n, Wmax) ground truth
     fsi, npslot, nnslot = fsi_kind1(fsi_recs, ns)
     save.update(fsi)
     return save, dict(ndrop=ndrop, pion_slots=npslot, nucleon_slots=nnslot)

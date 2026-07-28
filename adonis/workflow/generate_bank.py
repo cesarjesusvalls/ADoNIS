@@ -120,7 +120,6 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, material=cfg.material,
                     channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res), **m_extra)
 
-    _PRIMARY = {"qe": "nucleon", "res": "pion"}
     for c in range(n_chunks):
         kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)
         evs, cols, rec_blocks, out_blocks, ns, pterms = [], [], [], [], [], []
@@ -128,7 +127,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             ev = (gen_qe if chan == "qe" else gen_res)(CHUNK, SEED0 + c); nb = len(ev["p_N"])
             _pt, nt, _o, _cr, rec, pf = cascade(ev, key, caps, chan)
             evs.append((chan, ev)); cols.append(np.zeros(nb, np.int8) if chan == "qe" else np.ones(nb, np.int8))
-            out_blocks.append((nt[0], pf, _PRIMARY[chan])); rec_blocks.append(CF.compact_fsi_record(dict(rec)))
+            out_blocks.append((nt[0], pf)); rec_blocks.append(CF.compact_fsi_record(dict(rec)))
             ns.append(nb); pterms.append(_pt)
         log(f"chunk {c+1}/{n_chunks}: cascades done ({', '.join('%s=%d' % (e[0], n) for e, n in zip(evs, ns))})")
 
@@ -175,4 +174,69 @@ def _generate_hardvertex(cfg, outdir, log, t0):
 
 # =========================================================================== tagged hadron beam =====
 def _generate_hadron(cfg, outdir, log, t0):
-    raise NotImplementedError("hadron primary fold pending (next step)")
+    import jax
+    jax.config.update("jax_enable_x64", True)
+    import jax.numpy as jnp
+    from adonis.workflow.materials import resolve_targets
+    from adonis.flux.hadron import BEAMS, R_DISK, PIR2_MB, HadronBeam
+    from adonis.fsi.cascade import (DiscreteCascadeConfig, _load_density, sample_nucleons, _CH_MASS,
+                                    _MP_PHYS, _MN_PHYS)
+    import adonis.fsi.cascade as CF
+
+    pid, species, charge = BEAMS[cfg.beam]
+    tg = resolve_targets(cfg.material)[0][0]
+    ccfg = DiscreteCascadeConfig(nucleus=tg.density_p, density_n=tg.density_n, configs=tg.configs,
+                                 step=cfg.cascade.step, pauli=cfg.pauli, nn_inelastic=cfg.cascade.nn_inelastic,
+                                 engine="pool")
+    _rg, _rp, _rn, radius = _load_density(ccfg.nucleus, ccfg.density_n)
+    z0 = -1.05 * float(radius)                   # InitCrossSection: 5% outside the nuclear surface
+    mass = float(_CH_MASS[charge]) if species == "PION" else (_MP_PHYS if charge == 1 else _MN_PHYS)
+    hb = HadronBeam(cfg.beam, mass)              # on-shell beam particle (adonis/flux/hadron)
+    CHUNK = cfg.chunk or cfg.n_per_seed
+    n_total = CHUNK * cfg.n_seeds
+    n_chunks = cfg.n_seeds
+    log(f"beam[{cfg.beam}] pid={pid} {species} q={charge} m={mass:.3f} | |p| in [{cfg.pmin},{cfg.pmax}] "
+        f"| N={n_total:,} in {n_chunks} chunk(s) | R_disk={R_DISK} fm (pi R^2 = {PIR2_MB:.1f} mb) -> {outdir}")
+
+    for c in range(n_chunks):
+        m = CHUNK
+        key = jax.random.PRNGKey(cfg.seed0 + 1000 * c)
+        k_mom, k_disk, k_nuc, k_run = jax.random.split(key, 4)
+        mom, p4, pos0 = hb.sample(k_mom, k_disk, m, cfg.pmin, cfg.pmax, z0)
+        kn, kp = jax.random.split(k_nuc, 2)
+        npos, nmom, nisp = sample_nucleons(kn, m, ccfg); A = nisp.shape[1]
+        _sc = max(1, -(-A // 12))                # ceil(A/12): FSI record caps scale with the nucleus
+        su = dict(npos=npos, nmom=nmom, nisp=nisp, pos0=pos0, consumed0=jnp.zeros((m, A), bool),
+                  ch0=jnp.full(m, charge if species == "PION" else 0, jnp.int32), kp=kp)
+        _k1, knuc, _k2 = jax.random.split(su["kp"], 3)
+        g0 = CF.empty_batch(m, 1)
+        g0["alive"] = jnp.ones((m, 1), bool)
+        g0["species"] = jnp.full((m, 1), CF.PION if species == "PION" else CF.NUCLEON, jnp.int32)
+        g0["charge"] = jnp.full((m, 1), charge, jnp.int32)
+        g0["p4"] = p4[:, None, :]; g0["pos"] = pos0[:, None, :]
+        g0["origin"] = jnp.full((m, 1), CF._ORIG_PRIM_PI, jnp.int32)
+        g0["external_test"] = jnp.ones((m, 1), bool)   # CrossSection beam -> z-plane escape
+        _base = jax.vmap(lambda e: jax.random.fold_in(knuc, e))(jnp.arange(m))
+        g0["pkey"] = jax.vmap(lambda b: jax.random.fold_in(b, 0))(_base)[:, None, :]
+        stepper = CF.make_pool_stepper(su, ccfg, with_rec=True)
+        out, _sofl, _oofl, prim_fate, (rec, rofl) = CF.run_cascade_pool(
+            g0, stepper, knuc, su["consumed0"], M=12, max_steps=2000, M_out=24,
+            prim_origin=CF._ORIG_PRIM_PI, rec_caps=(96 * _sc, 256 * _sc))
+        assert int(rofl) == 0, f"FSI record overflow in chunk {c}"
+        log(f"chunk {c+1}/{n_chunks}: cascade done ({m:,} ev, {time.time()-t0:.0f}s)")
+
+        O = {k: np.asarray(v) for k, v in out.items()}
+        comp = CF.compact_fsi_record({k: np.asarray(v) for k, v in rec.items()})
+        save, meta = REC.cascade_outcome_record([(O, np.asarray(prim_fate))], [comp], [m])
+        save["beam_p"] = np.asarray(mom, np.float32)
+        save["w0"] = np.full(m, PIR2_MB, np.float64)     # pi R^2 [mb]; sigma(bin) = <w0 * X * w(theta)>
+        np.savez(f"{outdir}/chunk_{c:03d}.npz", **save)
+        _fl = REC.derive_flags(save)                     # reacted/absorbed are views over prim_fate+nsc_prim
+        log(f"chunk {c+1}/{n_chunks}: written | reacted {_fl['reacted'].mean():.3f} | absorbed "
+            f"{_fl['absorbed'].mean():.3f} | <n_pi_out> {save['n_pi_out'].mean():.3f}")
+        del O, save, out
+    json.dump(dict(beam=cfg.beam, pid=pid, species=species, charge=charge, pmin=cfg.pmin, pmax=cfg.pmax,
+                   n_total=n_total, n_chunks=n_chunks, R_disk=R_DISK, pir2_mb=PIR2_MB, material=cfg.material,
+                   seed0=cfg.seed0, probe="hadron"), open(f"{outdir}/manifest.json", "w"), indent=1)
+    log(f"DONE: hadron bank in {outdir}/ ({n_chunks} chunks)")
+    return outdir
