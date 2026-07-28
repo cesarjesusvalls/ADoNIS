@@ -24,7 +24,7 @@ _HEAVY = {
     "test_ma_reweight.py", "test_res_strength_reweight.py",
     "test_sf_reweight.py", "test_strength_reweight.py",   # module-level sample_importance + amps2 records
     "test_amps2_bridge.py", "test_build_zmtx_equiv.py",   # DCC amplitude builds
-    "test_reweight_bank_unify.py",                        # builds weak+EM reweight banks (QE+RES cascade) at import
+    "test_generate_bank_unify.py",                        # builds weak+EM+hadron banks (QE+RES cascade) at import
 }
 
 

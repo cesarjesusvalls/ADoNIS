@@ -203,12 +203,13 @@ two arrays use disjoint `--array` ranges to keep seeds distinct).
 - `test_all_achilles.sh` — small-tests every ACHILLES card (all images) → OK/FAIL summary.
 
 ### Sharding
-- **ADoNIS event bank** — seeds by chunk index, so a `SEED0` env offset was added to
-  `analysis/t2k/differentiability/event_bank.py` (default 0 = original behaviour). Each array task
-  runs one 250k chunk with `SEED0=$SLURM_ARRAY_TASK_ID` into `event_bank_10M/part_<id>`, then
-  `merge_bank.py` combines them. 40 shards × 250k = 10M.
-- **ADoNIS beam banks** — `beam_bank` already takes `--seed`; shard = `--seed $SLURM_ARRAY_TASK_ID
-  --out .../part_<id>`, then `merge_bank.py`.
+- **ADoNIS banks (all probes)** — ONE CLI, `adonis.workflow.cli <config> --out <dir>`; a shard is one
+  array task with `--seed0 $SLURM_ARRAY_TASK_ID --n-per-seed N --n-seeds K --out .../part_<id>`, then
+  `merge_bank.py` combines the `part_*/chunk_*.npz`. E.g. 40 shards × 250k = 10M:
+  `... $ADONIS_PY -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --n-per-seed 250000
+  --n-seeds 1 --seed0 $SLURM_ARRAY_TASK_ID --out $ADONIS_OUT/nu_T2K_C_10M/part_$SLURM_ARRAY_TASK_ID`.
+  Beam banks (`configs/beam_*.yaml`, probe=hadron) and (e,e') banks (`configs/paper_banks/ee_*.yaml`, probe=EM)
+  shard identically — same command, different config.
 - **ACHILLES oracles** — shard over seeds (`achilles_run.py --seed $SLURM_ARRAY_TASK_ID`), each a
   separate hepmc, then `analysis.utils.extract` per shard and combine.
 

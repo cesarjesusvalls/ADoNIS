@@ -1,10 +1,10 @@
-# Tagged pi+ beam on 12C (FSI-only cascade bank; ACHILLES CrossSection geometry).
-# pi+ window opens piN -> eta N' above |p| ~ 680 MeV/c (reaches the s_conv knob).
+# Tagged pi+ beam (FSI-only cascade). piN->etaN' opens above |p|~680 MeV/c (reaches s_conv).
 name: beam_pip_C
+probe: hadron
 beam: pip
 material: C
-n: 500000
 pmin: 50.0
 pmax: 1000.0
-chunk: 50000
-seed: 0
+n_per_seed: 50000      # events/chunk (dense FSI buffers scale with this)
+n_seeds: 10            # chunks -> 500k total by default (jobs override --n-seeds/--seed0 per shard)
+seed0: 0

@@ -1,165 +1,54 @@
-"""ADoNIS generation CLI -- the single entry point for forward generation.
+"""ADoNIS bank-generation CLI -- THE single entry point for every probe.
 
-Run as a module (from the repo root):
+  python -u -m adonis.workflow.cli <config.yaml> --out <outdir> [shard overrides]
 
-  # one process (in-process; JIT compiles once for this run)
-  python -u -m adonis.workflow.cli configs/gen_c_qe_t2k.yaml --n-seeds 5 --n-per-seed 25000 --n-w 2048
+There is exactly ONE generator, `generate_bank(cfg, outdir)`, which dispatches on `cfg.probe`
+(weak | EM | hadron); ALL diversity lives in the config, not in the command.  Examples:
 
-  # electron (e,e') probe -- SAME entry point, probe=EM in the config (monochromatic e- beam):
-  python -u -m adonis.workflow.cli configs/gen_c_qe_jlab.yaml     # inclusive QE dsigma/domega bank
+  # neutrino reweight bank (weak hard vertex, T2K flux, QE+RES)
+  python -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C
 
-  # parallel production: K worker processes, each M seeds of N events in ONE process (JIT once per
-  # worker, reused across its seeds), each writing its own checkpointed `..._batchWW.npz`.
-  python -u -m adonis.workflow.cli configs/gen_c_qe_t2k.yaml \
-      --workers 6 --seeds-per-worker 5 --n-per-seed 25000 --n-w 2048 --single-thread --tag _myqe
+  # electron (e,e') bank -- same command, probe=EM in the config (monochromatic e- beam)
+  python -u -m adonis.workflow.cli configs/ee_C.yaml --out $OUT/ee_C
 
-`--workers <= 1` runs the generation in-process; `--workers > 1` re-invokes THIS module once per shard
-as a subprocess (so each worker gets a fresh JAX JIT cache and -- with --single-thread -- one core),
-auto-incrementing the batch index from existing `_batch*` files so reruns ADD batches.  The RES VEGAS
-grid is warmed up ONCE up front (a tiny shard) before the workers fan out so they don't race to build it;
-the workers then load it from cache.  Total events = workers x seeds-per-worker x n-per-seed.
+  # tagged pi+ beam (pure-FSI cascade) -- same command, probe=hadron in the config
+  python -u -m adonis.workflow.cli configs/beam_pip_C.yaml --out $OUT/beam_pip_C
 
-The generation logic itself lives in `adonis.workflow.generate` (run_generation); this file is only the
-thin argparse + parallel-orchestration shell.
+Production sharding is one independent SLURM array task per seed block: pass
+`--seed0 $SLURM_ARRAY_TASK_ID` (+ --n-per-seed/--n-seeds) and a per-task `--out .../part_$TASK`.
+Every bank is chunk_NNN.npz + manifest.json; read it back with generate_bank.load_bank().
 """
 import argparse
-import glob
-import os
-import re
-import subprocess
-import sys
 
 from adonis.workflow.config import load_gen_config
-from adonis.workflow.generate import _CHAN_OUT, run_generation
-
-
-def _bankpath(gc, chanout, tag):
-    return os.path.join(gc.out_dir, f"{gc.bank_prefix}_{gc.material}_{chanout}{tag}.npz")
+from adonis.workflow.generate_bank import generate_bank
 
 
 def _apply_overrides(gc, a):
-    """Apply the per-shard overrides onto a loaded GenConfig (shared by the single-shard path)."""
-    if a.no_fsi:                 gc.fsi = False
+    """Per-shard overrides onto a loaded GenConfig (the config carries the physics; these carry scale)."""
     if a.n_per_seed is not None: gc.n_per_seed = a.n_per_seed
     if a.n_seeds is not None:    gc.n_seeds = a.n_seeds
     if a.seed0 is not None:      gc.seed0 = a.seed0
+    if a.chunk is not None:      gc.chunk = a.chunk
     if a.tag is not None:        gc.tag = a.tag
-    if a.vegas_cache is not None and getattr(gc, "vegas", None) is not None:
-        gc.vegas.cache = a.vegas_cache
     return gc
 
 
-def _run_single(a):
-    """One process: run generation in-process (the former adonis_generate.py)."""
-    gc = _apply_overrides(load_gen_config(a.config), a)
-    out = run_generation(gc, n_w=a.n_w)
-    print("DONE:", out, flush=True)
-
-
-def _run_batched(a):
-    """K persistent workers, each re-invoking this module for one shard (the former batched driver)."""
-    gc = load_gen_config(a.config)
-    K, M, N = a.workers, a.seeds_per_worker, a.n_per_seed
-    if a.tag is not None:
-        gc.tag = a.tag
-    if a.no_fsi:
-        gc.tag = gc.tag + "_nofsi"
-    extra = ["--no-fsi"] if a.no_fsi else []
-    vegas_on = getattr(gc, "vegas", None) is not None and gc.vegas.enabled
-
-    env = dict(os.environ)
-    if a.single_thread:
-        env["XLA_FLAGS"] = (env.get("XLA_FLAGS", "") + " --xla_cpu_multi_thread_eigen=false").strip()
-        env["OMP_NUM_THREADS"] = "1"
-    me = [sys.executable, "-u", "-m", "adonis.workflow.cli"]     # re-invoke THIS module for each shard
-
-    print(f"[batched] config={a.config} channels={gc.channels} workers={K} seeds/worker={M} "
-          f"n/seed={N} -> {K*M*N} events total  (M=1 serial cascade) "
-          f"single_thread={a.single_thread} fsi={not a.no_fsi}", flush=True)
-
-    for channel in gc.channels:
-        chanout = _CHAN_OUT[channel]
-        # 1. VEGAS grid (RES only): build/cache ONCE before the parallel workers (else they race).
-        if vegas_on and channel == "res":
-            print(f"[batched] {channel}: ensuring VEGAS grid (cache=auto warm-up) ...", flush=True)
-            subprocess.run(me + [a.config, "--n-seeds", "1", "--n-per-seed", "2000",
-                                 "--seed0", "999000", "--tag", "_gridwarm", "--n-w", "0",
-                                 "--vegas-cache", "auto"], check=True, env=env)
-            gw = _bankpath(gc, chanout, "_gridwarm")
-            if os.path.exists(gw):
-                os.remove(gw)
-        # 2. auto-increment batch index from existing batch files
-        existing = glob.glob(os.path.join(gc.out_dir, f"{gc.bank_prefix}_{gc.material}_{chanout}{gc.tag}_batch*.npz"))
-        idxs = [int(m.group(1)) for f in existing for m in [re.search(r"_batch(\d+)\.npz$", f)] if m]
-        start = (max(idxs) + 1) if idxs else 0
-        print(f"[batched] {channel}: {len(existing)} existing batch(es); starting at batch {start}", flush=True)
-
-        # 3. spawn K persistent workers; each runs M seeds in ONE process (JIT once) -> its own _batchWW.npz
-        procs, tags = [], []
-        for w in range(K):
-            idx = start + w
-            seed0 = gc.seed0 + idx * M                              # disjoint contiguous seed block per worker
-            tag = f"{gc.tag}_batch{idx:02d}"; tags.append(tag)
-            cache = "load" if (vegas_on and channel == "res") else "auto"
-            procs.append(subprocess.Popen(
-                me + [a.config, "--n-seeds", str(M), "--n-per-seed", str(N),
-                      "--seed0", str(seed0), "--tag", tag, "--n-w", str(a.n_w),
-                      "--vegas-cache", cache] + extra,
-                stdout=open(f"/tmp/worker_{chanout}_b{idx:02d}.log", "w"), stderr=subprocess.STDOUT, env=env))
-        rcs = [p.wait() for p in procs]
-        paths = [_bankpath(gc, chanout, t) for t in tags]
-        ok = [r == 0 and os.path.exists(p) for r, p in zip(rcs, paths)]
-        if not all(ok):
-            print(f"[batched] {channel}: WORKER FAILURE rcs={rcs} exists={[os.path.exists(p) for p in paths]}"
-                  f" -- see /tmp/worker_{chanout}_b*.log", flush=True)
-            sys.exit(1)
-        print(f"[batched] {channel}: {K} workers done -> {K} batch files ({M} seeds x {N} ev each)", flush=True)
-    print("BATCHED DONE", flush=True)
-
-
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="ADoNIS forward generation (single process or K parallel workers).")
-    ap.add_argument("config")
-    # parallelism (workers<=1 -> in-process; workers>1 -> spawn this module per shard)
-    ap.add_argument("--workers", type=int, default=1)
-    ap.add_argument("--seeds-per-worker", type=int, default=1, help="seeds each worker runs in ONE process")
-    ap.add_argument("--single-thread", action="store_true", help="1 XLA/Eigen thread per worker (K workers ~ K cores)")
-    # generation knobs (shared single + per-shard)
-    ap.add_argument("--n-per-seed", type=int, default=None)
-    ap.add_argument("--n-seeds", type=int, default=None)           # single-process / per-shard seed count
-    ap.add_argument("--seed0", type=int, default=None)
-    ap.add_argument("--tag", type=str, default=None)
-    ap.add_argument("--n-w", type=int, default=None, help="cascade refill working set (0 = full-batch lock-step)")
-    ap.add_argument("--vegas-cache", type=str, default=None, choices=[None, "auto", "load", "rebuild"])
-    ap.add_argument("--no-fsi", action="store_true", help="PRE-FSI bank (primary products, no cascade)")
-    ap.add_argument("--reweight-bank", type=str, default=None, metavar="OUTDIR",
-                    help="build the DIFFERENTIABLE reweight bank (hv_* amps2 + f_* FSI kind-1 records; "
-                         "chunk_NNN.npz) into OUTDIR via generate_reweight_bank, for ANY probe (weak|EM). "
-                         "One chunk per seed (n-per-seed events/chunk, n-seeds chunks, seed0+c). This is "
-                         "the paper-banks generator (replaces the retired reweight/event_bank + ee_event_bank).")
+    ap = argparse.ArgumentParser(description="ADoNIS bank generation -- one backbone for weak/EM/hadron.")
+    ap.add_argument("config", help="a GenConfig YAML (configs/*.yaml)")
+    ap.add_argument("--out", default=None,
+                    help="bank output dir (default: <config out_dir>/<prefix>_<material><tag>)")
+    ap.add_argument("--n-per-seed", type=int, default=None, help="events per chunk (one seed = one chunk)")
+    ap.add_argument("--n-seeds", type=int, default=None, help="number of chunks (seeds) this shard runs")
+    ap.add_argument("--seed0", type=int, default=None, help="first seed (shard offset; e.g. $SLURM_ARRAY_TASK_ID)")
+    ap.add_argument("--chunk", type=int, default=None, help="override events/chunk (dense FSI buffers scale w/ this)")
+    ap.add_argument("--tag", type=str, default=None, help="bank-name suffix")
     a = ap.parse_args(argv)
 
-    # Export ADONIS_FLUX_FILE from the config's flux key BEFORE the generators (or subprocess workers)
-    # import adonis.flux.spectrum, so a non-T2K beam is actually used and the bank name stays consistent.
-    # EM (electron) runs have no flux table -- the beam is monochromatic -- so skip the export there.
-    from adonis.workflow.config import load_gen_config as _lgc, FLUX_FILES as _FF
-    _gc = _lgc(a.config)
-    if _gc.beam == "spectrum":
-        os.environ.setdefault("ADONIS_FLUX_FILE", _FF[_gc.flux])
-
-    if a.reweight_bank:                         # differentiable reweight bank (the paper-banks generator)
-        from adonis.workflow.reweight_bank import generate_reweight_bank
-        gc = _apply_overrides(load_gen_config(a.config), a)
-        generate_reweight_bank(gc, a.reweight_bank)
-        print("DONE:", a.reweight_bank, flush=True)
-        return
-
-    if a.workers and a.workers > 1:
-        if a.n_per_seed is None:
-            ap.error("--workers > 1 requires --n-per-seed")
-        _run_batched(a)
-    else:
-        _run_single(a)
+    gc = _apply_overrides(load_gen_config(a.config), a)
+    out = generate_bank(gc, a.out)
+    print("DONE:", out, flush=True)
 
 
 if __name__ == "__main__":

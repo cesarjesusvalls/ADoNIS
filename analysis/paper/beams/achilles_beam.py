@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from analysis.paper.beams.beam_bank import BEAMS, PIR2_MB          # noqa: E402
+from adonis.flux.hadron import BEAMS, PIR2_MB                      # noqa: E402
 
 # ACHILLES cascade hepmc dir; ACHILLES_BEAM_DIR overrides (e.g. a repro tree with per-shard subdirs).
 ACH_DIR = Path(os.environ.get("ACHILLES_BEAM_DIR",

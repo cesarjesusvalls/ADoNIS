@@ -1,19 +1,19 @@
-"""ADoNIS workflow API: YAML-config-driven generation and analysis.
+"""ADoNIS workflow API: YAML-config-driven bank generation and analysis.
 
     from adonis.workflow import (load_gen_config, load_analysis_config,
-                                 run_generation, run_analysis)
+                                 generate_bank, run_analysis)
 
-Generation describes a target material, channels (QE/RES), cascade hyperparameters and tracking;
-analysis describes input banks, a signal topology, observables+binning, and an optional data overlay
--- both as standardized YAML files run by the thin drivers scripts/adonis_{generate,analyze}.py.
+Generation is ONE backbone: `generate_bank(cfg, outdir)` builds every bank (weak / EM / hadron) from a
+single GenConfig, driven by config fields not code paths (adonis.workflow.cli is the thin CLI shell).
+Analysis describes input banks, a signal topology, observables+binning, and an optional data overlay.
 """
 from adonis.workflow.materials import (NuclearTarget, REGISTRY, UnsupportedMaterial,  # noqa: F401
                                        parse_formula, resolve_targets, stoichiometric_weights)
 from adonis.workflow.config import load_gen_config, load_analysis_config  # noqa: F401
 
 
-def run_generation(*a, **k):
-    from adonis.workflow.generate import run_generation as _f
+def generate_bank(*a, **k):
+    from adonis.workflow.generate_bank import generate_bank as _f
     return _f(*a, **k)
 
 

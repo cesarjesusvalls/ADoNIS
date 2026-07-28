@@ -10,7 +10,7 @@ fs_* final state, f_* FSI kind-1, n_* multiplicities, ks_* escaped list, reacted
 primary's own kinematics/weight (weak: k_nu/k_mu/hv_*; EM: c/omega/theta; hadron: beam_p/w0).
 """
 from __future__ import annotations
-import os, time, json, math, gc as _gc
+import os, time, json, math, glob, gc as _gc
 from pathlib import Path
 import numpy as np
 
@@ -240,3 +240,26 @@ def _generate_hadron(cfg, outdir, log, t0):
                    seed0=cfg.seed0, probe="hadron"), open(f"{outdir}/manifest.json", "w"), indent=1)
     log(f"DONE: hadron bank in {outdir}/ ({n_chunks} chunks)")
     return outdir
+
+
+# =========================================================================== bank reader ============
+def load_bank(outdir):
+    """Concatenate the chunk_*.npz of a bank dir into ONE in-memory dict (+ ["manifest"]).  The ragged
+    per-slot event indices (FSI f_*_eidx, escaped-list ks_eidx) are OFFSET into the global event
+    numbering; everything else -- including prim_fate (n, Wmax) and nsc_prim (n,) -- concatenates on
+    axis 0.  Moved here from the retired beams/beam_bank.py so the ONE generator owns read + write."""
+    man = json.load(open(f"{outdir}/manifest.json"))
+    files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
+    per, ev_off = {}, 0
+    for f in files:
+        d = np.load(f)
+        nev = len(d["prim_fate"])                        # per-event ground truth present in EVERY probe
+        for k in d.files:
+            v = d[k]
+            if k in ("f_p_eidx", "f_n_eidx", "ks_eidx"):
+                v = v.astype(np.int64) + ev_off          # per-slot event index -> global numbering
+            per.setdefault(k, []).append(v)
+        ev_off += nev
+    B = {k: np.concatenate(v) for k, v in per.items()}
+    B["manifest"] = man
+    return B

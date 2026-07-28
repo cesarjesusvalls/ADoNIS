@@ -19,7 +19,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from analysis.paper.beams import beam_bank as BB, achilles_beam as AB       # noqa: E402
+from analysis.paper.beams import achilles_beam as AB                        # noqa: E402
+from adonis.workflow.generate_bank import load_bank as _load_bank           # noqa: E402
 from analysis.paper import style                                       # noqa: E402
 
 BEAMS = ("pip", "prot", "neut")
@@ -40,7 +41,7 @@ def adonis_sigma(beam, nbins, target="C", suffix=""):
     path = pattern.format(beam=beam, target=target, suffix=suffix)
     if suffix and not Path(path).is_dir():
         path = pattern.format(beam=beam, target=target, suffix="")
-    B = BB.load(path)
+    B = _load_bank(path)
     man = B["manifest"]
     adonis_sigma.last = (path, int(man.get("n_total", 0)))    # for labelling the panel
     p = np.asarray(B["beam_p"], float)

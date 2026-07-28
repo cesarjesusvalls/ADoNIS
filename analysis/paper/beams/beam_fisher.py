@@ -42,11 +42,11 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
-    from analysis.paper.beams import beam_bank as BB
+    from adonis.workflow.generate_bank import load_bank as _load_bank
     from adonis.reweight.reweight_model import nominal_knobs
     import physical_fit as PF                      # SPEC / knobs_of / theta_nominal: the SAME 27 knobs
 
-    B = BB.load(BEAM_DIRS[beam])
+    B = _load_bank(BEAM_DIRS[beam])
     man = B["manifest"]
     nom = nominal_knobs()
     p = np.asarray(B["beam_p"], float)

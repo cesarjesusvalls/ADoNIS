@@ -1,10 +1,10 @@
-# Tagged proton beam on 12C (FSI-only cascade bank; ACHILLES CrossSection geometry).
-# NN -> N Delta -> NN pi opens above KE ~ 290 MeV (reaches s_NN_inelastic).
+# Tagged proton beam (FSI-only cascade). NN->NDelta->NNpi opens above KE~290 MeV (s_NN_inelastic).
 name: beam_prot_C
+probe: hadron
 beam: prot
 material: C
-n: 500000
 pmin: 300.0
 pmax: 1400.0
-chunk: 50000
-seed: 0
+n_per_seed: 50000      # events/chunk (dense FSI buffers scale with this)
+n_seeds: 10            # chunks -> 500k total by default (jobs override --n-seeds/--seed0 per shard)
+seed0: 0

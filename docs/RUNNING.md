@@ -16,47 +16,46 @@ stream long jobs to a logfile, never pipe through `tail`).
 
 ---
 
-## 1. Generate ADoNIS banks (one CLI, single process or K workers)
+## 1. Generate ADoNIS banks (ONE CLI, ONE generator, every probe)
 
-`python -m adonis.workflow.cli <config>` is the single entry point (the generation logic lives in
-`adonis.workflow.generate`). `--workers <= 1` runs in-process; `--workers K` re-invokes the CLI once per
-shard as a subprocess — each runs M seeds of N events in one process (JIT once, reused across its seeds)
-and writes its own checkpointed `…_batch<NN>.npz`. Total events = K × M × N. Workers checkpoint after
-every seed, so a bank is a valid (correctly normalized) partial-σ estimate at all times — plot live as it
-runs. RES warms up the VEGAS grid ONCE up front (cached) before the workers fan out.
+`python -m adonis.workflow.cli <config> --out <dir>` is the single entry point. There is exactly one
+generator, `adonis.workflow.generate_bank.generate_bank(cfg, outdir)`, which dispatches on `cfg.probe`
+(`weak` | `EM` | `hadron`) — all diversity is in the config, not the command. Every bank is a directory
+of `chunk_NNN.npz` + `manifest.json` (one chunk per seed); read it back with `generate_bank.load_bank`.
 
 ```bash
-# QE / CC0π — 6 workers × 5 seeds × 25k = 750k events, distance-sync (default), refill
-.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_qe_t2k.yaml \
-    --workers 6 --seeds-per-worker 5 --n-per-seed 25000 --n-w 2048 --single-thread \
-    > /tmp/gen_qe.log 2>&1 &
+# neutrino reweight bank (weak hard vertex, T2K flux, QE+RES)
+$PY -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C \
+    --n-per-seed 25000 --n-seeds 4
 
-# RES / CC1π — same; builds + caches the VEGAS importance grid up front, then cascades
-.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_res_t2k.yaml \
-    --workers 6 --seeds-per-worker 5 --n-per-seed 25000 --n-w 2048 --single-thread \
-    > /tmp/gen_res.log 2>&1 &
+# electron (e,e') bank — SAME command, probe=EM in the config
+$PY -u -m adonis.workflow.cli configs/paper_banks/ee_C.yaml --out $OUT/ee_C --n-per-seed 25000 --n-seeds 4
 
-# one process (in-process), e.g. a quick smoke run
-.venv/bin/python -u -m adonis.workflow.cli configs/gen_c_qe_t2k.yaml --n-seeds 1 --n-per-seed 1000 --n-w 256
+# tagged pi+ beam (pure-FSI cascade) — SAME command, probe=hadron in the config
+$PY -u -m adonis.workflow.cli configs/beam_pip_C.yaml --out $OUT/beam_pip_C --n-per-seed 50000 --n-seeds 10
+
+# quick smoke run
+$PY -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --out /tmp/smoke --n-per-seed 1000 --n-seeds 1
 ```
+
+Parallel production is one independent SLURM array task per seed block — no in-process workers:
+pass `--seed0 $SLURM_ARRAY_TASK_ID` (+ `--n-per-seed`/`--n-seeds`) and a per-task `--out .../part_$TASK`,
+then merge the parts.
 
 Key flags / env:
 
 | knob | meaning |
 |---|---|
-| `--workers K` | parallel worker processes (`>1` ⇒ batched). **Use ≤ 6** on this 8-core machine. `1` (default) ⇒ in-process. |
-| `--seeds-per-worker M`, `--n-per-seed N` | total = K·M·N events, in K bank files of M·N each (single process: `--n-seeds`/`--n-per-seed`). |
-| `--n-w 2048` | **refill** working set (events in flight). **Always use refill.** `--n-w 0` is lock-step: one slow event stalls the whole seed. |
-| `--single-thread` | 1 thread/worker → K workers fit K cores without oversubscribing |
-| `--tag _foo` | extra bank suffix; lets one config produce several named bank sets (no throwaway configs). Canonical run: omit (empty). |
-| `--no-fsi` | PRE-FSI banks (primary products, no cascade); tag → `_nofsi` |
-| `ADONIS_TIMESTEP=0\|1` | stepping clock: **0 = distance-sync (default, committed engine)**; 1 = time-sync (experimental, physics-equivalent on forward observables). Default 0 is the right choice. |
+| `--out DIR` | bank output dir (default: `<config out_dir>/<prefix>_<material><tag>`) |
+| `--n-per-seed N`, `--n-seeds K` | N events per chunk, K chunks (seeds); total = N·K |
+| `--seed0 S` | first seed (shard offset; e.g. `$SLURM_ARRAY_TASK_ID`) |
+| `--chunk` | override events/chunk (dense FSI record buffers scale with this) |
+| `--tag _foo` | bank-name suffix; one config → several named bank sets (no throwaway configs) |
+| `ADONIS_TIMESTEP=0\|1` | stepping clock: **0 = distance-sync (default, committed engine)**; 1 = time-sync (experimental, physics-equivalent on forward observables). |
 
-Configs: `configs/gen_{c,ar}_{qe,res}.yaml`. Each sets `flux` (t2k; only flux wired today), `material`
-(`C`/`Ar`), `channels`, the `cascade` block (`step`, `nn_inelastic`, `mprot` → `CascadeHyperparams`),
-`vegas:` (RES only), `out_dir: output/adonis`, and `tag` (empty). CLI flags override the YAML.
-
-Roughly (6 workers, refill): **1M QE ≈ 18 min, 1M RES ≈ 37 min**.
+Configs: `configs/paper_banks/*.yaml` (weak/EM), `configs/beam_*.yaml` (hadron). Each sets `probe`,
+`beam`, `material`, and the probe-specific fields (weak: `flux`, `channels`; EM: `e_beam`, `theta_acc`;
+hadron: `pmin`/`pmax`), plus the `cascade` block and sharding defaults. CLI flags override the YAML.
 
 ---
 

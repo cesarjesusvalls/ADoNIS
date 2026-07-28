@@ -186,41 +186,9 @@ def load_gen_config(path) -> GenConfig:
     return _coerce(GenConfig, d)
 
 
-# ----------------------------------------------------------------------------- tagged-beam generation
-# projectile keys (adonis.flux.hadron.BEAMS); duplicated here so config validation stays import-light.
-BEAM_KEYS = ("pip", "prot", "neut")
-
-
-@dataclass
-class BeamGenConfig:
-    """Tagged-beam cascade bank (pi+/p/n on a nucleus, ACHILLES CrossSection geometry).  The imperative
-    twin of GenConfig for the FSI-only beams -- see analysis/paper/beams/beam_bank.build()."""
-    beam: str = "pip"           # projectile: pip | prot | neut  (adonis.flux.hadron.BEAMS)
-    material: str = "C"         # nucleus (resolve_targets key: C, Ar, ...)
-    n: int = 500_000            # total events
-    pmin: float = 50.0          # beam |p| window [MeV/c] (uniform in [pmin, pmax])
-    pmax: float = 1000.0
-    chunk: int = 50_000         # events per chunk (dense FSI record buffers scale with THIS, not n)
-    seed: int = 0
-    pauli: bool = True          # False -> DEBUG ablation (no Pauli blocking)
-    out_dir: str = "output"     # bank dir = <out_dir>/beam_<beam>_<material><tag>
-    tag: str = ""
-
-    def __post_init__(self):
-        if self.beam not in BEAM_KEYS:
-            raise ValueError(f"beam {self.beam!r} not in {sorted(BEAM_KEYS)}")
-        if self.pmax <= self.pmin:
-            raise ValueError(f"pmax {self.pmax} must exceed pmin {self.pmin}")
-
-    @property
-    def bank_dir(self) -> str:
-        return f"{self.out_dir}/beam_{self.beam}_{self.material}{self.tag}"
-
-
-def load_beam_config(path) -> BeamGenConfig:
-    d = yaml.safe_load(Path(path).read_text()) or {}
-    d.pop("name", None)
-    return _coerce(BeamGenConfig, d)
+# Tagged-beam generation is no longer a separate config/driver: a hadron beam is just GenConfig with
+# probe="hadron", beam in HADRON_BEAMS -- built by the ONE generate_bank(cfg).  (BeamGenConfig + its
+# load_beam_config retired in P3; adonis.flux.hadron.BEAMS is the single projectile registry.)
 
 
 # ----------------------------------------------------------------------------- analysis
