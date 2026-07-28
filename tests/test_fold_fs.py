@@ -10,7 +10,7 @@ from adonis.channels.dcc.amplitudes import DCCKnobs
 from adonis.channels.dcc.structure import HadronStructure
 from adonis.channels.dcc.fold_integrated import fold_full_events
 from adonis.channels.dcc.channel import fold_final_state
-from adonis import observables as obs
+from adonis import kinematics as obs
 
 # The angle-integrated fold's intermediate scales as N * n_theta * n_phi, so a single
 # large fold needs many GB and OOMs a ~7 GB CI runner. The fine 16x16 grid is required
@@ -65,8 +65,8 @@ print(f"dsigma/dQ2  max rel diff (bins>1% peak): {np.max(np.abs(dQm-dQf)[dQf>0.0
 from adonis.constants import M_PI, MQE
 from adonis.channels.dcc.conventions import kin_m_pi
 keep = wm != 0
-mpi2 = obs._mink_dot(ev.p_pi, ev.p_pi)
-mN2 = obs._mink_dot(ev.p_N, ev.p_N)
+mpi2 = obs.mink_dot(ev.p_pi, ev.p_pi)
+mN2 = obs.mink_dot(ev.p_N, ev.p_N)
 print(f"pion mass  recon: {np.sqrt(np.asarray(mpi2)[keep]).mean():.3f}  (M_PI={M_PI:.3f})")
 print(f"nucl mass  recon: {np.sqrt(np.asarray(mN2)[keep]).mean():.3f}  (MQE={MQE:.3f})")
 W_had = np.asarray(obs.W(ev))

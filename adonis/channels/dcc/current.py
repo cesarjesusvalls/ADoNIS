@@ -15,7 +15,7 @@ import jax.numpy as jnp
 from adonis.channels import constants as C
 from adonis.channels.dcc import conventions as _conv
 from adonis.channels.currents.leptonic import lepton_current
-from adonis.channels.dcc.kinematics import boost_matrix, setdfun
+from adonis.channels.dcc.wigner import boost_matrix, setdfun
 from adonis.channels.dcc.angular import cbg, legendre_ylm, legendre_ylm_batch, ISMI, ISMIX, ISBI
 from adonis.channels.dcc.assembly import build_zmtx
 from adonis.channels.dcc.amplitudes import DCCAmplitudes, DCCKnobs
@@ -180,7 +180,7 @@ def exclusive_amps2(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID):
 
 # ---- vectorised (batched) version for high-N MC ------------------------------------------ #
 import jax
-from adonis.channels.dcc.kinematics import boost_matrix_batch, setdfun_batch
+from adonis.channels.dcc.wigner import boost_matrix_batch, setdfun_batch
 
 _BUILD_ZMTX_V = None
 

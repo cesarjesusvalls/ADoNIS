@@ -25,7 +25,7 @@ adonis/                 the package
   observables/          W, Q2, cos(theta*), |p_pi|, lepton/nucleon kin, TKI + registry
   signal/               SignalDef (particle-content / kinematic selections)
   analysis/             fit (forward-mode), comparison utilities
-  data/oracle/          ACHILLES hepmc parsers (event_kin_full)
+  data/oracle/          ACHILLES hepmc parsers
 scripts/                thin drivers (validate / make figures / generate oracle)
 tests/                  per-module closure (autodiff==FD) + oracle gates
 data/                   oracle/ (targets+inputs), model/ (events), cache/ (fit/plot caches)

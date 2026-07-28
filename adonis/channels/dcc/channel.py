@@ -264,7 +264,7 @@ class DCCSinglePion(Channel):
         when every observable in `gate` has chi2/ndf <= `chi2_ndf_max`.  `W` is
         intentionally not gated by default (a known near-threshold residual)."""
         from adonis.core.validation import TestResult, chi2_ndf
-        from adonis import observables as obs
+        from adonis import kinematics as obs
         od = np.load(oracle) if isinstance(oracle, (str, bytes)) else oracle
         key = jax.random.PRNGKey(5000) if key is None else key
         params = DCCKnobs() if params is None else params

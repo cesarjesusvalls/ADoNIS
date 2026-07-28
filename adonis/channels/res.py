@@ -123,7 +123,8 @@ SAMPLER_3BODY = "resonance"          # "resonance" (BW-importance hadronic mass,
                                      #   found no other importance map above ~noise (Q2/angle <=+3%).
 
 
-from adonis.kinematics import mass2_np as _m2   # shared Minkowski invariant p.p (adonis.kinematics)
+def _m2(p):   # Minkowski invariant p.p over a batch (N,4); res-private numpy (ACHILLES ThreeBodyMapper path)
+    return p[:, 0] ** 2 - np.sum(p[:, 1:] ** 2, axis=1)
 
 
 def _boost_to_rest(ph, q):

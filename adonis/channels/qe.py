@@ -25,7 +25,7 @@ _TWO_PI = 2 * np.pi
 N_NEUTRON = 6
 
 
-from adonis.kinematics import boost_np as _boost   # shared (was byte-identical in qe/ee)
+from adonis.kinematics import boost as _boost      # shared JAX CM->lab boost (qe/ee); np.asarray keeps the sampler dict numpy
 
 
 def sample(n, seed=0):
@@ -68,7 +68,7 @@ def sample(n, seed=0):
     beta = p01[:, 1:] / p01[:, 0:1]
     k_mu_cm = np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1)
     p_out_cm = np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1)
-    k_mu = _boost(k_mu_cm, beta); p_out = _boost(p_out_cm, beta)
+    k_mu = np.asarray(_boost(k_mu_cm, beta)); p_out = np.asarray(_boost(p_out_cm, beta))
     J_2body = (cts * 0 + 2.0) * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
     # validity mask
     valid = (dp > 0) & (emax > 0) & (s > _SMIN) & (lam > 0) & (radical >= 0)

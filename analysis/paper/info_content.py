@@ -123,7 +123,8 @@ def freeH_offsets(edges_by_name):
     survives (no nuclear FSI); acceptance mirrors signal_cc1pi_stv (windows + cos70 forward cut); observables via the
     validated O.tki (NUISANCE hydrogen daT randomization included)."""
     from adonis.channels.free_proton import generate_H
-    import adonis.observables.kinematics_np as O
+    from adonis import kinematics as O
+    from adonis.workflow.selection import hydrogen_daT
     NH, NSEED = 50000, 4
     acc = {"pn": [], "dptt": [], "daT": []}; wl = []
     def _acc(p4, lo, hi):
@@ -132,8 +133,9 @@ def freeH_offsets(edges_by_name):
     for s in range(NSEED):
         knu, kmu, pN, pPi, w = (np.asarray(x) for x in generate_H(NH, seed=s))
         m = (w > 0) & _acc(kmu, *_MU) & _acc(pPi, *_PI) & _acc(pN, *_P)
-        dptt, pn, dat, _ = O.tki(kmu[m], pPi[m], pN[m], np.ones(int(m.sum()), bool), s)
-        acc["pn"].append(pn); acc["dptt"].append(dptt); acc["daT"].append(np.degrees(dat)); wl.append(w[m])
+        dptt, pn, dat, _ = O.tki(kmu[m], pPi[m], pN[m])
+        dat = hydrogen_daT(dptt, dat, np.ones(int(m.sum()), bool), s)
+        acc["pn"].append(np.asarray(pn)); acc["dptt"].append(np.asarray(dptt)); acc["daT"].append(np.degrees(dat)); wl.append(w[m])
     W = np.concatenate(wl) / NSEED
     vals = {k: np.concatenate(v) for k, v in acc.items()}
     out = {}

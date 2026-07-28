@@ -20,6 +20,8 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
+from adonis.kinematics import mink_dot as _mink_dot, boost_to_rest   # single-source primitives
+
 ETA = jnp.array([1.0, -1.0, -1.0, -1.0])           # metric diag (+,-,-,-)
 
 # Levi-Civita eps^{mu nu alpha beta} with eps^{0123} = +1
@@ -34,24 +36,6 @@ for _p in __import__("itertools").permutations(range(4)):
                 _sign = -_sign
     _EPS[_i, _j, _k, _l] = _sign
 _EPS = jnp.asarray(_EPS)
-
-
-def _mink_dot(a, b):
-    return a[..., 0] * b[..., 0] - jnp.sum(a[..., 1:] * b[..., 1:], axis=-1)
-
-
-def boost_to_rest(P, a):
-    """Boost 4-vector(s) `a` into the rest frame of 4-vector(s) `P`.  Batched on a
-    leading event axis; P,a shape (...,4).  Returns a' shape (...,4)."""
-    M = jnp.sqrt(jnp.clip(_mink_dot(P, P), 1e-9, None))
-    gamma = P[..., 0] / M
-    beta = P[..., 1:] / P[..., 0:1]                 # (...,3)
-    b2 = jnp.clip(jnp.sum(beta ** 2, axis=-1), 1e-30, None)
-    bda = jnp.sum(beta * a[..., 1:], axis=-1)        # beta . avec
-    a0 = gamma * (a[..., 0] - bda)
-    coef = ((gamma - 1.0) * bda / b2 - gamma * a[..., 0])[..., None]
-    avec = a[..., 1:] + coef * beta
-    return jnp.concatenate([a0[..., None], avec], axis=-1)
 
 
 def cm_lepton_momenta(k, kp, p_struck):

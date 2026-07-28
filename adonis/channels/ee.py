@@ -42,7 +42,7 @@ MATERIALS = {
 }
 
 
-from adonis.kinematics import boost_np as _boost   # shared (was byte-identical in qe/ee)
+from adonis.kinematics import boost as _boost      # shared JAX CM->lab boost (qe/ee); np.asarray keeps the sampler dict numpy
 
 
 STRUCK_MASS_MODE = "species"    # "species" (DEFAULT: struck energy = m_species - E_rm) -- (e,e') strikes
@@ -75,8 +75,8 @@ def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target
     cts = 2 * u[:, 0] - 1; sts = np.sqrt(np.clip(1 - cts ** 2, 0, None)); php = _TWO_PI * u[:, 1]
     dirn = np.stack([sts * np.cos(php), sts * np.sin(php), cts], axis=1)
     beta = P[:, 1:] / P[:, 0:1]
-    k_e_out = _boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta)
-    p_out = _boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta)
+    k_e_out = np.asarray(_boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta))
+    p_out = np.asarray(_boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta))
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
     # ---- removal-energy ceiling (HadronicMapper.cc:50-53), Smin = (m_e + m_species)^2, mono beam ----
     Smin = (_M_E + m_species) ** 2

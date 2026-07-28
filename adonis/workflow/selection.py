@@ -13,7 +13,16 @@ own rich schema: select_reference -> _ach_cc1pi for CC1pi and mirrors the CC0pi 
 """
 from __future__ import annotations
 import numpy as np
-import adonis.observables.kinematics_np as O
+from adonis import kinematics as O
+
+
+def hydrogen_daT(dptt, dat, is_h, seed):
+    """NUISANCE hydrogen prescription overlay (a data-comparison detail, NOT an observable): randomize
+    delta-alpha_T where the event is hydrogen-like (is_h) or |dptt|<0.5.  Applied on top of the
+    deterministic kinematics.tki output."""
+    import numpy as _np
+    flat = is_h | (_np.abs(dptt) < 0.5)
+    return _np.where(flat, _np.random.default_rng(seed).uniform(0.0, _np.pi, len(dat)), _np.asarray(dat))
 
 _PIONS = (211, 111, -211)
 _OTHER_MESON = (111, -211, -1)            # vs a pi+ signal: pi0 / pi- / converted(eta,K)
@@ -101,7 +110,8 @@ def select_signal(bank, sd, carbon_only=True):
         W, Q2 = O.vertex_W_Q2(nu[s], mu[s], struck[s]); mo = O.muon_obs(mu[s], nu[s])
         out = dict(W=W, Q2=Q2, pi_p=O.mom(pi_f[s]), p_mu=mo["p_mu"], cos_mu=mo["cos_mu"])
     elif pi_f is not None:                                    # CC1pi TKI observables
-        dptt, pn, dat, _ = O.tki(mu[s], pi_f[s], best[s], np.zeros(int(s.sum()), bool), 0)
+        dptt, pn, dat, _ = O.tki(mu[s], pi_f[s], best[s])
+        dat = hydrogen_daT(dptt, dat, np.zeros(int(s.sum()), bool), 0)
         W, Q2 = O.vertex_W_Q2(nu[s], mu[s], struck[s])
         out = dict(pn=pn, dptt=dptt, dalphat=dat, W=W, Q2=Q2,
                    pi_p=O.mom(pi_f[s]), lp_p=O.mom(best[s]))
@@ -147,7 +157,8 @@ def _ach_cc1pi(b, sd):
     if pc == "eq0":                                                  # CC1pi 0-proton: pion+muon obs
         mu = b["mu"][s]; W, Q2 = O.vertex_W_Q2(b["nu"][s], mu, b["struck"][s]); mo = O.muon_obs(mu, b["nu"][s])
         return dict(W=W, Q2=Q2, pi_p=O.mom(pi[s]), p_mu=mo["p_mu"], cos_mu=mo["cos_mu"], w=b["w"][s])
-    dptt, pn, dat, dpt = O.tki(b["mu"][s], pi[s], lead[s], is_h[s], 0)
+    dptt, pn, dat, dpt = O.tki(b["mu"][s], pi[s], lead[s])
+    dat = hydrogen_daT(dptt, dat, is_h[s], 0)
     W, Q2 = O.vertex_W_Q2(b["nu"][s], b["mu"][s], b["struck"][s])
     return dict(dptt=dptt, pn=pn, dalphat=dat, dpt=dpt, pi_p=O.mom(pi[s]), lp_p=O.mom(lead[s]),
                 W=W, Q2=Q2, w=b["w"][s], chan=np.asarray(b["struck_pid"])[s])

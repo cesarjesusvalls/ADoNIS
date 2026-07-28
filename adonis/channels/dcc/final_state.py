@@ -16,21 +16,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from adonis.channels.dcc.lepton import boost_to_rest, _mink_dot
-
-
-def boost_from_rest(P, a):
-    """Inverse of `boost_to_rest`: boost a 4-vector `a` given in the rest frame of P
-    back to the lab frame.  Batched on a leading axis; P, a shape (...,4)."""
-    M = jnp.sqrt(jnp.clip(_mink_dot(P, P), 1e-9, None))
-    gamma = P[..., 0] / M
-    beta = P[..., 1:] / P[..., 0:1]
-    b2 = jnp.clip(jnp.sum(beta ** 2, axis=-1), 1e-30, None)
-    bda = jnp.sum(beta * a[..., 1:], axis=-1)
-    a0 = gamma * (a[..., 0] + bda)
-    coef = ((gamma - 1.0) * bda / b2 + gamma * a[..., 0])[..., None]
-    avec = a[..., 1:] + coef * beta
-    return jnp.concatenate([a0[..., None], avec], axis=-1)
+from adonis.kinematics import boost_to_rest, boost_from_rest, mink_dot as _mink_dot   # single-source primitives
 
 
 def _unit(v, axis=-1, eps=1e-12):
