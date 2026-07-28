@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 
 import adonis.fsi.cascade as CF
-from adonis.fsi.cascade import PION, NUCLEON, FATE_ABSORB, FATE_CONVERT, FATE_CAPTURE, _ORIG_PRIM_PI
+from adonis.fsi.cascade import PION, NUCLEON, FATE_ABSORB, FATE_CONVERT, FATE_CAPTURE
 
 PMAX = 1e4   # MeV ceiling: drop the rare (~0.1%) cascade-artifact nucleons (inf/sentinel momenta)
 _PI_PID = np.array([211, 111, -211, 221])    # pion charge idx 0:+ 1:0 2:- 3:eta (the eta rides the PION slot)
@@ -64,12 +64,12 @@ def multiplicities(out):
 def kicked_secondaries(out):
     """Flat per-escaped-particle kinematics: species/charge/|p|/cos_theta(+z) + primary tag + event idx."""
     sp = np.asarray(out["species"]); chg = np.asarray(out["charge"]); al = np.asarray(out["alive"])
-    org = np.asarray(out["origin"]); p3 = np.asarray(out["p4"])[:, :, 1:]
+    gen = np.asarray(out["gen"]); p3 = np.asarray(out["p4"])[:, :, 1:]
     pm = np.linalg.norm(p3, axis=2); cth = p3[:, :, 2] / np.clip(pm, 1e-9, None)
     eidx = np.broadcast_to(np.arange(sp.shape[0], dtype=np.int32)[:, None], al.shape)
     return dict(ks_eidx=eidx[al].astype(np.int32), ks_species=sp[al].astype(np.int8),
                 ks_charge=chg[al].astype(np.int8), ks_pmag=pm[al].astype(np.float32),
-                ks_cth=cth[al].astype(np.float32), ks_prim=(org[al] == _ORIG_PRIM_PI))
+                ks_cth=cth[al].astype(np.float32), ks_prim=(gen[al] == 0))
 
 
 # --------------------------------------------------------------------------- reacted / absorbed --------
@@ -78,8 +78,11 @@ def reaction_flags(out, prim_fate, primary):
     is the tagged/primary species whose reaction we report (a hadron beam's projectile; a ν/e⁻ vertex's
     ejected pion [RES] or proton [QE]).  Reproduces beam_bank's per-species definition byte-for-byte."""
     sp = np.asarray(out["species"]); chg = np.asarray(out["charge"]); al = np.asarray(out["alive"])
-    org = np.asarray(out["origin"]); nsc = np.asarray(out["nsc"]); pf = np.asarray(prim_fate)
-    is_prim = org == _ORIG_PRIM_PI
+    gen = np.asarray(out["gen"]); nsc = np.asarray(out["nsc"]); pf = np.asarray(prim_fate)
+    # gen==0 tags the PRIMARY particle(s) uniformly across probes: the tagged beam projectile, the RES
+    # ejected pion, or the QE vertex nucleon.  For a tagged hadron beam this selects exactly the beam
+    # particle (the only gen-0 particle), so it stays byte-for-byte with beam_bank's origin criterion.
+    is_prim = gen == 0
     if primary == "pion":
         prim_pi = is_prim & (sp == PION) & (chg != 3) & al
         nsc_prim = (nsc * prim_pi).max(axis=1)
@@ -117,15 +120,25 @@ def fsi_kind1(recs, ns):
     return save, len(flat["p_eidx"]), len(flat["n_eidx"])
 
 
-def cascade_outcome_record(out, prim_fate, fsi_recs, ns, primary):
-    """The full uniform cascade-outcome record for one chunk (one probe).  `out` = raw escaped batch,
-    `fsi_recs`/`ns` = the compacted FSI record(s) + event counts, `primary` = the reacting species tag."""
-    save = {}
-    save.update(final_state(out)); ndrop = save.pop("_ndrop")
-    save.update(multiplicities(out))
-    save.update(kicked_secondaries(out))
-    save.update(reaction_flags(out, prim_fate, primary))
+def cascade_outcome_record(blocks, fsi_recs, ns):
+    """The full uniform cascade-outcome record for one chunk, concatenated across the present BLOCKS
+    (one block for a hadron beam; the qe then res blocks for a weak/EM bank).  Each block is
+    (out, prim_fate, primary): out = raw escaped batch, primary in {'pion','nucleon'}.  fsi_recs/ns =
+    the per-block compacted FSI records + event counts.  Returns (save_dict, meta)."""
+    fs_offs, fs_pid, fs_chg, fs_p4, ndrop = [], [], [], [], 0
+    acc = {}                                             # multiplicities + ks_* + reaction flags
+    base = 0
+    for (out, pf, primary), nb in zip(blocks, ns):
+        fs = final_state(out); ndrop += fs.pop("_ndrop")
+        fs_offs.append(fs["fs_off"]); fs_pid.append(fs["fs_pid"]); fs_chg.append(fs["fs_chg"]); fs_p4.append(fs["fs_p4"])
+        part = {**multiplicities(out), **kicked_secondaries(out), **reaction_flags(out, pf, primary)}
+        part["ks_eidx"] = part["ks_eidx"] + base         # offset ks event-index into the global numbering
+        for k, v in part.items():
+            acc.setdefault(k, []).append(v)
+        base += nb
+    save = dict(fs_off=merge_fs_off(fs_offs), fs_pid=np.concatenate(fs_pid),
+                fs_chg=np.concatenate(fs_chg), fs_p4=np.concatenate(fs_p4))
+    save.update({k: np.concatenate(v) for k, v in acc.items()})
     fsi, npslot, nnslot = fsi_kind1(fsi_recs, ns)
     save.update(fsi)
-    save["_meta"] = dict(ndrop=ndrop, pion_slots=npslot, nucleon_slots=nnslot)
-    return save
+    return save, dict(ndrop=ndrop, pion_slots=npslot, nucleon_slots=nnslot)

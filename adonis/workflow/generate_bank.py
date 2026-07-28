@@ -1,0 +1,178 @@
+"""generate_bank(GenConfig): THE one bank generator for every probe.
+
+Replaces run_generation + reweight_bank + beam_bank.  The ONLY probe-specific code is the primary
+interaction (weak/EM hard vertex vs a tagged hadron projectile) -- irreducible physics.  Everything
+downstream is shared: one cascade engine, one centralized cascade-outcome record builder
+(adonis.workflow.records), one chunk/seed loop, one save.  All diversity is in the config fields.
+
+Per chunk (seed = cfg.seed0 + c) -> chunk_NNN.npz + manifest.json.  Uniform record set (all probes):
+fs_* final state, f_* FSI kind-1, n_* multiplicities, ks_* escaped list, reacted/absorbed.  Plus the
+primary's own kinematics/weight (weak: k_nu/k_mu/hv_*; EM: c/omega/theta; hadron: beam_p/w0).
+"""
+from __future__ import annotations
+import os, time, json, math, gc as _gc
+from pathlib import Path
+import numpy as np
+
+from adonis.workflow import records as REC
+
+
+def _idma(n):  # amps2 identity (a,b,c,Q2)=(1,0,0,1) on the OTHER channel
+    return [np.ones(n, np.float32), np.zeros(n, np.float32), np.zeros(n, np.float32), np.ones(n, np.float32)]
+
+
+def _outdir(cfg):
+    return os.path.join(cfg.out_dir, f"{cfg.bank_prefix}_{cfg.material}{cfg.tag}")
+
+
+def generate_bank(cfg, outdir=None, log=None):
+    outdir = outdir or _outdir(cfg)
+    t0 = time.time()
+    if log is None:
+        def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    os.makedirs(outdir, exist_ok=True)
+    if cfg.probe == "hadron":
+        return _generate_hadron(cfg, outdir, log, t0)
+    return _generate_hardvertex(cfg, outdir, log, t0)
+
+
+# =========================================================================== weak / EM hard vertex ===
+def _generate_hardvertex(cfg, outdir, log, t0):
+    import jax
+    jax.config.update("jax_enable_x64", True)
+    import jax.numpy as jnp
+    from adonis.reweight import tune as T
+    from adonis.workflow.materials import resolve_targets
+    from adonis.nuclear.spectral import SpectralFunction
+    import adonis.fsi.cascade as CF
+
+    EM = (cfg.probe == "EM")
+    CHUNK = cfg.chunk or cfg.n_per_seed
+    n_chunks = cfg.n_seeds
+    SEED0 = cfg.seed0
+    do_qe = "qe" in cfg.channels
+    do_res = "res" in cfg.channels
+    if not EM:
+        from adonis.workflow.config import FLUX_FILES
+        os.environ["ADONIS_FLUX_FILE"] = FLUX_FILES[cfg.flux]
+    tgt = resolve_targets(cfg.material)[0][0]
+    n_neutron = tgt.A - tgt.Z; n_proton = tgt.Z
+    CF.FLAT_FSI_REC = True
+    _MARGIN = float(os.environ.get("ADONIS_REC_MARGIN", "1.5"))
+    POOL = lambda **k: T.POOLCFG(nucleus=tgt.density_p, density_n=tgt.density_n, configs=tgt.configs, **k)
+
+    if EM:
+        from adonis.channels import ee as ee_x, res_ee as res_ee_x
+        EB = float(cfg.e_beam); TACC = tuple(cfg.theta_acc)
+
+        def gen_qe(n, seed):
+            r = ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=TACC)
+            pid = np.where(r["is_p"], 2212, 2112).astype(np.int32)
+            return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
+                        p_N=np.asarray(r["p_out"]), p_pi=np.zeros((len(pid), 4)),
+                        ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid)
+
+        def gen_res(n, seed):
+            r = res_ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=TACC)
+            return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
+                        p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
+                        ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
+                        Npid=np.asarray(r["Npid"], np.int32))
+        m_extra = dict(probe="ee", E_beam=EB, theta_acc=list(TACC))
+    else:
+        from adonis.reweight.reweight_model import build_hv_sf
+        from adonis.channels import qe as qe_x, res as res_x
+        sf = SpectralFunction(tgt.spectral_n); sf_p = SpectralFunction(tgt.spectral_p)
+
+        def gen_qe(n, seed):
+            q = qe_x.sample_importance(n, seed=seed, sf=sf, n_neutron=n_neutron); nq = len(q["w"])
+            return dict(w=np.asarray(q["w"]) / CHUNK, k_nu=np.asarray(q["k_nu"]), p_struck=np.asarray(q["p_struck"]),
+                        k_mu=np.asarray(q["k_mu"]), p_N=np.asarray(q["p_out"]), p_pi=np.zeros((nq, 4)),
+                        ppid=np.zeros(nq, np.int32), ipid=np.full(nq, 2112, np.int32),
+                        Npid=np.full(nq, 2212, np.int32), _raw=q)
+
+        def gen_res(n, seed):
+            r = res_x.generate(n, seed=seed, return_events=True, sf_n=sf, sf_p=sf_p,
+                               n_neutron=n_neutron, n_proton=n_proton)["events"]
+            return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]), p_struck=np.asarray(r["p_struck"]),
+                        k_mu=np.asarray(r["k_mu"]), p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
+                        ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
+                        Npid=np.asarray(r["Npid"], np.int32), _raw=r)
+        m_extra = dict(probe="weak", flux=cfg.flux)
+
+    def cascade(ev, key, caps, chan):     # returns (pterm,nterms,ofl,created,fsi_rec,prim_fate)
+        return CF.cascade_nucleus(jnp.asarray(ev["p_pi"]), jnp.asarray(ev["p_N"]),
+                                  jnp.asarray(ev["ppid"]).astype(jnp.int32), jnp.asarray(ev["ipid"]).astype(jnp.int32),
+                                  jnp.asarray(ev["Npid"]).astype(jnp.int32),
+                                  POOL(seed=(2 if chan == "qe" else 1)), key, channel=chan,
+                                  rec_caps=caps, return_fate=True)
+
+    def cal_caps(gen, chan):
+        ncal = min(CHUNK, int(os.environ.get("ADONIS_REC_NCAL", "100")))
+        ev = gen(ncal, SEED0); rec = cascade(ev, jax.random.PRNGKey(7), (8, 8), chan)[4]
+        scale = CHUNK / ncal * _MARGIN
+        t = max(max(64, math.ceil(int(rec["gc_p"]) * scale)), max(64, math.ceil(int(rec["gc_n"]) * scale)))
+        return (t, t)
+
+    CAPS_qe = CAPS_res = (64, 64)
+    if do_qe: CAPS_qe = cal_caps(gen_qe, "qe"); log(f"flat FSI caps qe -> {CAPS_qe}")
+    if do_res: CAPS_res = cal_caps(gen_res, "res"); log(f"flat FSI caps res -> {CAPS_res}")
+    manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, material=cfg.material,
+                    channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res), **m_extra)
+
+    _PRIMARY = {"qe": "nucleon", "res": "pion"}
+    for c in range(n_chunks):
+        kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)
+        evs, cols, rec_blocks, out_blocks, ns, pterms = [], [], [], [], [], []
+        for chan, key, caps in ([("qe", kq, CAPS_qe)] if do_qe else []) + ([("res", kr, CAPS_res)] if do_res else []):
+            ev = (gen_qe if chan == "qe" else gen_res)(CHUNK, SEED0 + c); nb = len(ev["p_N"])
+            _pt, nt, _o, _cr, rec, pf = cascade(ev, key, caps, chan)
+            evs.append((chan, ev)); cols.append(np.zeros(nb, np.int8) if chan == "qe" else np.ones(nb, np.int8))
+            out_blocks.append((nt[0], pf, _PRIMARY[chan])); rec_blocks.append(CF.compact_fsi_record(dict(rec)))
+            ns.append(nb); pterms.append(_pt)
+        log(f"chunk {c+1}/{n_chunks}: cascades done ({', '.join('%s=%d' % (e[0], n) for e, n in zip(evs, ns))})")
+
+        save, meta = REC.cascade_outcome_record(out_blocks, rec_blocks, ns)
+        if meta["ndrop"]: log(f"chunk {c+1}: dropped {meta['ndrop']} non-physical final-state particles")
+        log(f"chunk {c+1}: FSI record -> pion {meta['pion_slots']} slots, nucleon {meta['nucleon_slots']} slots")
+        save["channel"] = np.concatenate(cols)
+
+        if EM:
+            cat = lambda k: np.concatenate([e[1][k] for e in evs])
+            save.update(c=cat("c").astype(np.float64), omega=cat("omega").astype(np.float32),
+                        theta=cat("theta").astype(np.float32))
+        else:
+            nq = ns[0] if do_qe else 0; nr = ns[-1] if do_res else 0
+            qref = evs[0][1] if do_qe else None; rref = evs[-1][1] if do_res else None
+            save["prim_pi_pid"] = np.concatenate([np.asarray(pt["pid"]) for pt in pterms]).astype(np.int32)
+            save.update(w0=np.concatenate([e[1]["w"] for e in evs]),
+                        k_nu=np.concatenate([e[1]["k_nu"] for e in evs]).astype(np.float32),
+                        p_struck=np.concatenate([e[1]["p_struck"] for e in evs]).astype(np.float32),
+                        k_mu=np.concatenate([e[1]["k_mu"] for e in evs]).astype(np.float32))
+            if do_qe and do_res:
+                HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False)
+                hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
+                hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
+                qe_ma = [np.concatenate([np.asarray(HV["qe_ma"][i], np.float32), _idma(nr)[i]]) for i in range(4)]
+                res_ma = [np.concatenate([_idma(nq)[i], np.asarray(HV["res_ma"][i], np.float32)]) for i in range(4)]
+                hv = dict(qe_ma=qe_ma, res_ma=res_ma, qe_vec=hv_q(HV["qe_vec"]), qe_gmp=hv_q(HV["qe_gmp"]),
+                          qe_gmn=hv_q(HV["qe_gmn"]), qe_gep=hv_q(HV["qe_gep"]), qe_gen=hv_q(HV["qe_gen"]),
+                          res_pp=hv_r(HV["res_pp"]), res_delta=hv_r(HV["res_delta"]))
+                save.update({f"hv_{nm}_{abc}": comp[i].astype(np.float32) for nm, comp in hv.items()
+                             for i, abc in enumerate(["a", "b", "c", "Q2"][:len(comp)])})
+                save.update(res_p_N=np.concatenate([np.zeros((nq, 4), np.float32), np.asarray(rref["p_N"], np.float32)]),
+                            res_p_pi=np.concatenate([np.zeros((nq, 4), np.float32), np.asarray(rref["p_pi"], np.float32)]),
+                            res_ipid=np.concatenate([np.zeros(nq, np.int32), np.asarray(rref["ipid"], np.int32)]),
+                            res_ppid=np.concatenate([np.zeros(nq, np.int32), np.asarray(rref["ppid"], np.int32)]))
+
+        np.savez(f"{outdir}/chunk_{c:03d}.npz", **save)
+        del evs, out_blocks, save; _gc.collect()
+        log(f"chunk {c+1}/{n_chunks}: written")
+    json.dump(manifest, open(f"{outdir}/manifest.json", "w"), indent=2)
+    log(f"DONE: {cfg.probe} bank in {outdir}/ ({n_chunks} chunks)")
+    return outdir
+
+
+# =========================================================================== tagged hadron beam =====
+def _generate_hadron(cfg, outdir, log, t0):
+    raise NotImplementedError("hadron primary fold pending (next step)")

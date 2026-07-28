@@ -2110,7 +2110,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
     jc = jnp.argmax(cim, axis=1); has_cr = cim[ar, jc] > 0.0
     created = dict(pid=jnp.where(has_cr, _CH_PID[chg[ar, jc]], 0), p4=p4o[ar, jc],
                    w=jnp.ones((n,)), alive=has_cr)
-    return pterm, nterms, sofl + oofl, created, fsi_rec
+    return pterm, nterms, sofl + oofl, created, fsi_rec, prim_fate
 
 
 def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, sabs=1.0, sscat=1.0,
