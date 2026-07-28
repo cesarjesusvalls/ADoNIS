@@ -9,7 +9,7 @@ There is exactly ONE generator, `generate_bank(cfg, outdir)`, which dispatches o
   python -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C
 
   # electron (e,e') bank -- same command, probe=EM in the config (monochromatic e- beam)
-  python -u -m adonis.workflow.cli configs/ee_C.yaml --out $OUT/ee_C
+  python -u -m adonis.workflow.cli configs/beam_e_C.yaml --out $OUT/beam_e_C
 
   # tagged pi+ beam (pure-FSI cascade) -- same command, probe=hadron in the config
   python -u -m adonis.workflow.cli configs/beam_pip_C.yaml --out $OUT/beam_pip_C

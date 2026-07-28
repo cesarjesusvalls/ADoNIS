@@ -24,13 +24,13 @@ from analysis.paper import style                           # noqa: E402
 
 BANKS = ["nu_T2K_C", "nu_MINERvA_C", "nu_uBooNE_Ar",
          "beam_prot_C", "beam_pip_C", "beam_neut_C", "beam_prot_Ar", "beam_pip_Ar", "beam_neut_Ar",
-         "ee_C", "ee_Ar"]
-# bank -> rich-oracle npz stem(s) under output/achilles/fsrich/ (ee combines qe+res to match the bank)
+         "beam_e_C", "beam_e_Ar"]
+# bank -> rich-oracle npz stem(s) under output/achilles/fsrich/ (beam_e combines qe+res to match the bank)
 ORACLE = {b: [b] for b in BANKS}
-# ee uses the FSI-ON oracles (rebuilt-from-source achilles; the prebuilt image segfaulted on (e,e')+cascade)
-# so it's post-FSI vs post-FSI, matching the ADoNIS ee bank.  _fsi combined by combine_fsrich.
-ORACLE["ee_C"] = ["ee_C_qe_fsi", "ee_C_res_fsi"]
-ORACLE["ee_Ar"] = ["ee_Ar_qe_fsi", "ee_Ar_res_fsi"]
+# beam_e (electron) uses the FSI-ON (e,e') oracles (rebuilt-from-source achilles; the prebuilt image
+# segfaulted on (e,e')+cascade) -- post-FSI vs post-FSI.  The oracle npz stems keep their ACHILLES names.
+ORACLE["beam_e_C"] = ["ee_C_qe_fsi", "ee_C_res_fsi"]
+ORACLE["beam_e_Ar"] = ["ee_Ar_qe_fsi", "ee_Ar_res_fsi"]
 BANKDIR = ROOT / "output" / "paper_banks"
 ORADIR = ROOT / "output" / "achilles" / "fsrich"
 # SHADOWING (opt-in): ADONIS_SHADOW=1 greys out + drops-from-chi2 bins contributing < ADONIS_SHADOW_FRAC
@@ -42,7 +42,7 @@ TITLE = {"nu_T2K_C": "T2K $\\nu_\\mu$ on $^{12}$C", "nu_MINERvA_C": "MINERvA $\\
          "nu_uBooNE_Ar": "MicroBooNE $\\nu_\\mu$ on $^{40}$Ar",
          "beam_prot_C": "p on $^{12}$C", "beam_pip_C": "$\\pi^+$ on $^{12}$C", "beam_neut_C": "n on $^{12}$C",
          "beam_prot_Ar": "p on $^{40}$Ar", "beam_pip_Ar": "$\\pi^+$ on $^{40}$Ar", "beam_neut_Ar": "n on $^{40}$Ar",
-         "ee_C": "(e,e') on $^{12}$C", "ee_Ar": "(e,e') on $^{40}$Ar"}
+         "beam_e_C": "(e,e') on $^{12}$C", "beam_e_Ar": "(e,e') on $^{40}$Ar"}
 
 
 def _seg_max(val, seg_ids, n_events):
@@ -64,9 +64,9 @@ def bank_obs(bank):
     """final-state observables + per-event weight from a paper_banks bank (fs_* ragged)."""
     import json
     fs = sorted((BANKDIR / bank / "merged").glob("chunk_*.npz"))
-    is_ee = bank.startswith("ee"); is_beam = bank.startswith("beam")
+    from adonis.workflow import records as REC
+    is_ee = bank.startswith("beam_e"); is_beam = bank.startswith("beam") and not is_ee
     wk = "c" if is_ee else "w0"
-    xkey = "theta" if is_ee else ("reacted" if is_beam else None)   # per-event field for the acceptance mask
     W, PID, P4, SEG, X = [], [], [], [], []
     ev_base = 0
     for f in fs:
@@ -75,8 +75,10 @@ def bank_obs(bank):
         cnt = np.diff(np.asarray(d["fs_off"], np.int64))      # particles per event
         SEG.append(np.repeat(np.arange(ne) + ev_base, cnt))   # event index per particle
         W.append(w); PID.append(np.asarray(d["fs_pid"])); P4.append(np.asarray(d["fs_p4"], float))
-        if xkey:
-            X.append(np.asarray(d[xkey]))
+        if is_ee:                                             # per-event acceptance field:
+            X.append(np.asarray(d["theta"]))                  #   (e,e') outgoing-e- polar angle [deg]
+        elif is_beam:                                         #   hadron beam: reacted, DERIVED from
+            X.append(REC.derive_flags(d)["reacted"])          #   prim_fate + nsc_prim (no longer stored)
         ev_base += ne
     w = np.concatenate(W); pid = np.concatenate(PID); p4 = np.concatenate(P4); seg = np.concatenate(SEG)
     n_all = len(w)

@@ -61,7 +61,7 @@ python -m adonis.oracle.run_achilles configs/achilles/run_cascade_neut_C.yml    
 # The 11 paper samples: 3 neutrino + 2 electron below; 6 hadron beams via beam_bank (further down).
 python -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml    --reweight-bank output/event_bank_v2 \
        --n-per-seed 250000 --n-seeds 4 --seed0 0
-# nu_MINERvA_C, nu_uBooNE_Ar (weak; flux+material from the config), ee_C, ee_Ar (EM electron) -- same call,
+# nu_MINERvA_C, nu_uBooNE_Ar (weak; flux+material from the config), beam_e_C, beam_e_Ar (EM electron) -- same call,
 # swap the config.  (This replaces the retired env-driven event_bank + ee_event_bank; byte-for-byte identical.)
 
 # Gate-I Jacobian (27 knobs x bins; shared J for sec2 + sec3)

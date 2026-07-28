@@ -1,0 +1,10 @@
+# Monochromatic e- beam (e,e') on 40Ar -- EM hard vertex, QE+RES.  The electron is a beam probe,
+# so this sits with the other beams (beam_pip/prot/neut); probe=EM (hard vertex) vs hadron (pure FSI).
+name: beam_e_Ar
+probe: EM
+beam: electron
+material: Ar
+channels: [qe, res]
+e_beam: 2222.0
+theta_acc: [5.0, 45.0]   # outgoing-e- polar acceptance [deg] (generation window; >5 cuts the forward 1/q^4 divergence)
+fsi: true

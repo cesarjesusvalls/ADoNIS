@@ -29,7 +29,7 @@ $PY -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --out $OUT/nu_T2
     --n-per-seed 25000 --n-seeds 4
 
 # electron (e,e') bank — SAME command, probe=EM in the config
-$PY -u -m adonis.workflow.cli configs/paper_banks/ee_C.yaml --out $OUT/ee_C --n-per-seed 25000 --n-seeds 4
+$PY -u -m adonis.workflow.cli configs/beam_e_C.yaml --out $OUT/beam_e_C --n-per-seed 25000 --n-seeds 4
 
 # tagged pi+ beam (pure-FSI cascade) — SAME command, probe=hadron in the config
 $PY -u -m adonis.workflow.cli configs/beam_pip_C.yaml --out $OUT/beam_pip_C --n-per-seed 50000 --n-seeds 10

@@ -208,7 +208,7 @@ two arrays use disjoint `--array` ranges to keep seeds distinct).
   `merge_bank.py` combines the `part_*/chunk_*.npz`. E.g. 40 shards × 250k = 10M:
   `... $ADONIS_PY -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --n-per-seed 250000
   --n-seeds 1 --seed0 $SLURM_ARRAY_TASK_ID --out $ADONIS_OUT/nu_T2K_C_10M/part_$SLURM_ARRAY_TASK_ID`.
-  Beam banks (`configs/beam_*.yaml`, probe=hadron) and (e,e') banks (`configs/paper_banks/ee_*.yaml`, probe=EM)
+  Beam banks (`configs/beam_*.yaml`, probe=hadron) and (e,e') banks (`configs/beam_e_*.yaml`, probe=EM)
   shard identically — same command, different config.
 - **ACHILLES oracles** — shard over seeds (`achilles_run.py --seed $SLURM_ARRAY_TASK_ID`), each a
   separate hepmc, then `analysis.utils.extract` per shard and combine.
