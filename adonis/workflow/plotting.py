@@ -42,7 +42,7 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
         shadow = m & (np.maximum(ca, cd) < float(shadow_frac))
     keep = m & ~shadow
     # ADoNIS points: kept normal (C0), shadowed greyed; + a grey band over each shadowed bin (both panels)
-    a0.errorbar(ctr[keep], dd[keep], yerr=ed[keep], fmt="s", color="C0", ms=3, capsize=2, lw=0.9, label=ado_label)
+    a0.errorbar(ctr[keep], dd[keep], yerr=ed[keep], fmt="s", color="darkorange", ms=6, capsize=2, lw=0.9, label=ado_label)
     if shadow.any():
         a0.errorbar(ctr[shadow], dd[shadow], yerr=ed[shadow], fmt="s", color="0.6", ms=3, capsize=2, lw=0.9,
                     alpha=0.6, label=f"shadowed (<{100*float(shadow_frac):.2g}%)")
@@ -63,14 +63,15 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     chi2 = float(np.sum((da[keep] - dd[keep]) ** 2 / (ea[keep] ** 2 + ed[keep] ** 2))); ndf = int(keep.sum())
     with np.errstate(divide="ignore", invalid="ignore"):
         r = da / dd; re = r * np.sqrt((ed / dd) ** 2 + (ea / da) ** 2)
-    a1.axhspan(ratio_band[0], ratio_band[1], color="green", alpha=0.12)
-    a1.axhline(1.0, ls="--", color="green", lw=0.7)
-    a1.errorbar(ctr[keep], r[keep], yerr=re[keep], fmt="o", color="C3", ms=3, capsize=2, lw=0.8)
+    a1.axhline(1.0, ls="-", color="0.6", lw=0.8)                 # central reference
+    for off in (0.1, 0.2):                                       # +/-10% and +/-20% shift guides (thin grey lines)
+        a1.axhline(1.0 - off, ls="--", color="0.7", lw=0.6)
+        a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
+    a1.errorbar(ctr[keep], r[keep], yerr=re[keep], fmt="o", color="navy", ms=4, capsize=2, lw=0.8)
     if shadow.any():
         a1.errorbar(ctr[shadow], r[shadow], yerr=re[shadow], fmt="o", color="0.6", ms=3, capsize=2, lw=0.8, alpha=0.6)
     a1.set_ylim(*ratio_ylim); a1.set_xlabel(label, fontsize=8)
     a0.set_xlim(edges[0], edges[-1])           # clamp to bin edges (sharex -> a1 too): no "floating" margin
-    a1.text(0.04, 0.83, f"{chi2/max(ndf,1):.1f}", transform=a1.transAxes, fontsize=9)
     ach_ado = float(np.sum(da * bw) / max(np.sum(dd * bw), 1e-30))
     return dict(chi2=chi2, ndf=ndf, ach_ado=ach_ado, n_shadow=int(shadow.sum()))
 

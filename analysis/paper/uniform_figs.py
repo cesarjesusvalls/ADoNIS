@@ -162,7 +162,8 @@ CAP = {"n_p": 3, "n_n": 3, "n_chpi": 2}
 
 def make(bank):
     ado = bank_obs(bank); ach = oracle_obs(bank)
-    fig, ax = plt.subplots(2, len(KEYS), figsize=(3.1 * len(KEYS), 5.4), height_ratios=[3, 1],
+    fig, ax = plt.subplots(2, len(KEYS), figsize=(3.1 * len(KEYS), 5.4),
+                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0},
                            squeeze=False, sharex="col")
     for c, k in enumerate(KEYS):
         av, aw = ach[k]; dv, dw = ado[k]
@@ -172,19 +173,19 @@ def make(bank):
         res = chi2_ratio_panel(ax[0, c], ax[1, c], EDGES[k],
                                {"values": av[mask_a], "w": aw[mask_a]}, {"values": dv[mask_d], "w": dw[mask_d]},
                                label=LABELS[k], ado_label="ADoNIS", ref_label="ACHILLES",
-                               ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.5), shadow_frac=SHADOW_FRAC)
+                               ratio_band=(0.9, 1.1), ratio_ylim=(0.75, 1.25), shadow_frac=SHADOW_FRAC)
         print(f"  chi2/ndf  {bank:14s} {k:12s} {res['chi2']/max(res['ndf'],1):8.2f}  "
               f"(ndf={res['ndf']}, shadowed={res.get('n_shadow',0)})", flush=True)
-        ax[0, c].text(0.05, 0.88, f"$\\chi^2$/ndf {res['chi2']/max(res['ndf'],1):.2f}",
-                      transform=ax[0, c].transAxes, fontsize=7.5)
         if k in CAP:                                        # label the top tick as ">=CAP" (0,1,..,>=N)
             t = list(range(CAP[k] + 1))
             ax[1, c].set_xticks(t)
             ax[1, c].set_xticklabels([str(i) for i in t[:-1]] + [rf"$\geq${CAP[k]}"])
         if c == 0:
             ax[0, c].legend(fontsize=7); ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]")
+            ax[1, c].set_ylabel("ratio")           # ACHILLES / ADoNIS per bin
     fig.suptitle(f"ADoNIS vs ACHILLES — {TITLE[bank]}  (final state)", fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.subplots_adjust(hspace=0.0)          # top + ratio panels share one x-axis, no gap between them
     style.save(fig, f"fs_{bank}")
 
 

@@ -15,6 +15,7 @@ C_DATA = "k"
 
 RC = {
     "figure.dpi": 130, "savefig.dpi": 300, "savefig.bbox": "tight",
+    "font.family": "serif",
     "font.size": 9, "axes.titlesize": 9, "axes.labelsize": 9,
     "legend.fontsize": 8, "legend.frameon": False,
     "xtick.labelsize": 8, "ytick.labelsize": 8,
