@@ -1774,6 +1774,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     Returns (out_batch, stack_overflow, out_overflow, prim_fate[, fsi_record | (log, counts, log_overflow)])."""
     with_rec = rec_caps is not None
     do_log = log_cap is not None
+    Wprim = init["species"].shape[1]                 # number of PRIMARY slots per event (per-primary fate cols)
     assert not (with_rec and do_log), "rec_caps and log_cap are mutually exclusive"
     Kp, Kn = rec_caps if with_rec else (1, 1)
     L = int(log_cap) if do_log else 1                                # dummy (.,1) buffers when not logging
@@ -1809,13 +1810,16 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         extra = _step[4] if len(_step) >= 5 else None
         term_batch = {**stk2, "alive": terminal}
         out2, oo = compact({k: jnp.concatenate([out[k], term_batch[k]], axis=1) for k in out}, M_out)
-        # Latch the PRIMARY's terminal fate.  Was PION-only (RES primary pion); now species-agnostic so a
-        # nucleon-beam primary's fate (ESCAPE or CAPTURE) is also latched -- only the continuing primary
-        # carries origin==prim_origin, so this catches exactly it (pion for RES, nucleon for a beam; T2K
-        # QE has prim_origin=-999 -> no match, unchanged).
-        isprim = (stk2["origin"] == prim_origin) & (stk2["fate"] != FATE_NONE)
-        anyp = jnp.any(isprim, axis=1); j = jnp.argmax(isprim, axis=1)
-        prim = jnp.where(anyp & (prim == FATE_NONE), stk2["fate"][ar, j], prim)
+        # Latch each PRIMARY's terminal fate into prim[:, track_id] -- one column per primary, NO assumption
+        # on the number of primaries (QE 1, RES 2, beam 1, ...).  Primaries are track_id < _TRACK_OFFSET
+        # (daughters start at _TRACK_OFFSET), so this catches every primary species-agnostically -- the RES
+        # pion AND its recoil nucleon, the QE nucleon, a beam projectile.  First-come latch (once set, keep).
+        # prim[:, 0] reproduces the old single prim_fate (the pion for RES / the projectile for a beam).
+        isprim = (stk2["track_id"] < _TRACK_OFFSET) & (stk2["fate"] != FATE_NONE)
+        for _w in range(prim.shape[1]):
+            _m = isprim & (stk2["track_id"] == _w)
+            _any = jnp.any(_m, axis=1); _j = jnp.argmax(_m, axis=1)
+            prim = prim.at[:, _w].set(jnp.where(_any & (prim[:, _w] == FATE_NONE), stk2["fate"][ar, _j], prim[:, _w]))
         if with_rec:
             rec = extra
             pion_vals = [rec["pi_bc"], rec["pi_sa"], rec["pi_ss_el"], rec["pi_ss"], rec["pi_si"],
@@ -1893,7 +1897,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
                     log2, wptr2, logofl2, newwait, evt_id, nstep + jnp.int32(1), round_gt2, betamax2)
 
         init_st = (jnp.int32(0), stack, state0, out0, jnp.int32(0), jnp.int32(0),
-                   jnp.full(n, FATE_NONE, jnp.int32), rec0, jnp.int32(0), log0, wptr0, logofl0, wait0,
+                   jnp.full((n, Wprim), FATE_NONE, jnp.int32), rec0, jnp.int32(0), log0, wptr0, logofl0, wait0,
                    evt_id0, nstep0, jnp.full(n, -1, jnp.int32), jnp.ones(n))
         (_i_fin, stack, _, out, sofl, oofl, prim, rb, rofl, log, wptr, logofl, _wait,
          _evt, _ns, _rg, _bm) = jax.lax.while_loop(cond, body, init_st)
@@ -1925,7 +1929,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     pbg = (pending["npos"], pending["nmom"], pending["nisp"])
     pcons = pending["consumed0"]
     # global per-event buffers (filled by flush-on-finish, indexed by evt_id)
-    g_out = empty_batch(Ntot, M_out); g_prim = jnp.full(Ntot, FATE_NONE, jnp.int32)
+    g_out = empty_batch(Ntot, M_out); g_prim = jnp.full((Ntot, Wprim), FATE_NONE, jnp.int32)
     g_rb = {} if _flat else _empty_fsi_record(Ntot, Kp, Kn)   # flat: unused (rb is the global buffer)
     g_log = _logbuf(Ntot); g_wptr = jnp.zeros(Ntot, jnp.int32)
     # initial working set = first W events
@@ -1935,7 +1939,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     out0 = empty_batch(W, M_out)
     rb0 = _empty_flat_fsi_record(Kp, Kn, Ntot) if _flat else _empty_fsi_record(W, Kp, Kn)
     log0 = _logbuf(W); wptr0 = jnp.zeros(W, jnp.int32)
-    prim0 = jnp.full(W, FATE_NONE, jnp.int32)
+    prim0 = jnp.full((W, Wprim), FATE_NONE, jnp.int32)
     wait0 = _take_rows(pwait, idx0) if Q > 0 else empty_batch(W, max(Q, 1))   # recoil rides in wait from t=0
     cursor0 = jnp.int32(W); evt0 = idx0; nstep0 = jnp.zeros(W, jnp.int32)
 
@@ -1994,7 +1998,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
             e_rb = _empty_fsi_record(W, Kp, Kn)
             rb3 = {k: _sel(e_rb[k], rb2[k], finished) for k in rb2}
         log3 = {k: _sel(e_log[k], log2[k], finished) for k in log2}
-        prim3 = jnp.where(finished, FATE_NONE, prim2)
+        prim3 = jnp.where(finished[:, None], FATE_NONE, prim2)
         wptr3 = jnp.where(finished, 0, wptr2)
         evt3 = jnp.where(finished, jnp.where(take, new_id, jnp.int32(-1)), evt)
         nstep3 = jnp.where(finished, jnp.int32(0), nstep2)
@@ -2099,9 +2103,11 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
     is_prim = is_surv_pi & (out["origin"] == _ORIG_PRIM_PI)            # escaped primary pion (>=0 per event)
     jp = jnp.argmax(is_prim, axis=1); esc_prim = jnp.any(is_prim, axis=1)
     prim_ch = chg[ar, jp]
-    # pterm pid: escaped -> charge->pid; converted -> -1 (vetoes); absorbed/none -> 0.
-    pterm_pid = jnp.where(prim_fate == FATE_ESCAPE, _CH_PID[prim_ch],
-                jnp.where(prim_fate == FATE_CONVERT, -1, 0)).astype(jnp.int32)
+    # pterm pid: escaped -> charge->pid; converted -> -1 (vetoes); absorbed/none -> 0.  prim_fate is now
+    # per-primary (n, Wprim); the RES primary PION is track_id 0 -> column 0 == the old single prim_fate.
+    _pf0 = prim_fate[:, 0]
+    pterm_pid = jnp.where(_pf0 == FATE_ESCAPE, _CH_PID[prim_ch],
+                jnp.where(_pf0 == FATE_CONVERT, -1, 0)).astype(jnp.int32)
     pterm = dict(species=jnp.full((n,), PION, jnp.int32), pid=pterm_pid,
                  p4=jnp.where(esc_prim[:, None], p4o[ar, jp], 0.0), charge=prim_ch,
                  w=jnp.ones((n,)), alive=jnp.ones((n,), bool), nsc=jnp.zeros((n,), jnp.int32))

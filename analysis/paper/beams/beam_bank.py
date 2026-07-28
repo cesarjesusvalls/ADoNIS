@@ -110,7 +110,8 @@ def build(beam="pip", n=500_000, pmin=50.0, pmax=1000.0, seed=0, target="C",
         log(f"  chunk {c+1}/{n_chunks}: cascade done ({m:,} ev, {time.time()-t0:.0f}s)")
 
         O = {k: np.asarray(v) for k, v in out.items()}
-        prim_fate = np.asarray(prim_fate)
+        prim_fate = np.asarray(prim_fate)[:, 0]     # run_cascade_pool now returns per-primary (n,Wprim);
+        #   a beam has one primary (col 0) -- keeps this reference generator byte-for-byte for validation
         is_prim = (O["origin"] == CF._ORIG_PRIM_PI)
         # charge==3 tags an ETA meson (propagated after piN->etaN conversion; routed through the PION
         # species slot).  A surviving eta is NOT a pion -> excluded from pi_alive so an eta that escapes
