@@ -31,8 +31,8 @@ ORACLE = {b: [b] for b in BANKS}
 # segfaulted on (e,e')+cascade) -- post-FSI vs post-FSI.  The oracle npz stems keep their ACHILLES names.
 ORACLE["beam_e_C"] = ["ee_C_qe_fsi", "ee_C_res_fsi"]
 ORACLE["beam_e_Ar"] = ["ee_Ar_qe_fsi", "ee_Ar_res_fsi"]
-BANKDIR = ROOT / "output" / "paper_banks"
-ORADIR = ROOT / "output" / "achilles" / "fsrich"
+BANKDIR = Path(os.environ.get("ADONIS_BANKDIR", ROOT / "output" / "paper_banks"))   # ADoNIS bank dirs
+ORADIR = Path(os.environ.get("ADONIS_ORADIR", ROOT / "output" / "achilles" / "fsrich"))  # rich oracles
 # SHADOWING (opt-in): ADONIS_SHADOW=1 greys out + drops-from-chi2 bins contributing < ADONIS_SHADOW_FRAC
 # (default 0.01 = 1%) of the panel's total cross section.  ADONIS_SHADOW=0 (default) -> all bins count.
 SHADOW_FRAC = (float(os.environ.get("ADONIS_SHADOW_FRAC", "0.01"))
@@ -104,7 +104,7 @@ def oracle_obs(bank):
     ev_w, plead, pcos, pilead, npr, npi, nneu = [], [], [], [], [], [], []
     import json
     bnorm = None
-    if bank.startswith("beam"):
+    if bank.startswith("beam") and not bank.startswith("beam_e"):   # hadron beams only (geometric norm); beam_e (EM) uses weight_to_nb
         bn = json.load(open(ORADIR / "beam_norm.json"))[bank[5:]]
         bnorm = bn["pir2_mb"] * 1e6 / bn["n_tried"]     # geometric CrossSection-mode: sigma = PIR2*N/n_tried
     for stem in ORACLE[bank]:
