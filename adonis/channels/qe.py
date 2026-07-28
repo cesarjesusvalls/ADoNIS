@@ -122,8 +122,8 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     cts = 2 * u[:, 5] - 1; sts = np.sqrt(np.clip(1 - cts ** 2, 0, None)); php = _TWO_PI * u[:, 6]
     dirn = np.stack([sts * np.cos(php), sts * np.sin(php), cts], axis=1)
     beta = P[:, 1:] / P[:, 0:1]
-    k_mu = _boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta)
-    p_out = _boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta)
+    k_mu = np.asarray(_boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta))
+    p_out = np.asarray(_boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta))
     # Kinematically-degenerate events (s->0 => CM boost beta->1) blow the boost up to ~1e17 MeV.
     # They are rejected below (valid=False => w=0), but the garbage momenta are toxic to any downstream
     # consumer: the FSI cascade (absurd momenta sit on escape/Pauli thresholds -> CPU/GPU divergence)
