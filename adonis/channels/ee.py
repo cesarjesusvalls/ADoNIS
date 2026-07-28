@@ -110,7 +110,7 @@ _REC_EXTRA = ("me", "had_mass", "n_target")
 
 def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000, records=False,
              theta_acc=THETA_ACC):
-    """Inclusive (e,e') MC: n samples per species (p + n).  Returns per-event contribution c [nb]
+    """Inclusive (e,e') MC: n TOTAL samples, split across the struck species (p, n).  Returns per-event contribution c [nb]
     (SUM = sigma), omega [MeV], theta_e' [deg], and the struck-species tag.  Chunked to bound JAX mem.
     records=True also keeps the per-event kinematics (k_e, k_e_out, p_struck, p_out, me, had_mass,
     n_target) for the theta-ACCEPTED events only -- the inputs a knob reweight needs to recompute the
@@ -122,13 +122,19 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000, records
     out = {k: [] for k in keep}
     species = [(True, MASS_PDG_PROTON, MASS_PDG_PROTON, sf_p, Z),
                (False, MASS_PDG_NEUTRON, MASS_PDG_NEUTRON, sf_n, N)]
-    for is_p, m_kin, m_flux, sf, n_tgt in species:
+    # n is the TOTAL draw count, SPLIT across the struck species (was n per species -> 2n) so generate(n)
+    # yields ~n events -- the SAME stratified convention as the neutrino res.generate_importance (m=n//nch
+    # per stratum).  Each species' weighted sum is an unbiased estimate of sigma_species regardless of its
+    # draw count, so SUM(c)=sigma is preserved (just at the nu statistics, not 2x).
+    nsp = len(species)
+    for si, (is_p, m_kin, m_flux, sf, n_tgt) in enumerate(species):
+        n_s = n // nsp + (1 if si < n % nsp else 0)                       # this species' share of n
         done = 0; sd = seed * 100 + (0 if is_p else 50)
-        while done < n:
-            m = min(chunk, n - done)
+        while done < n_s:
+            m = min(chunk, n_s - done)
             rng = np.random.default_rng(sd); sd += 1
             r = _sample_species(m, rng, E_beam, m_kin, m_flux, is_p, sf, n_tgt)
-            r["c"] = r["c"] * m / n                                       # SUM over all chunks = sigma
+            r["c"] = r["c"] * m / n_s                                     # per-species MC norm (SUM = sigma_species)
             # records: keep only VALID & theta-accepted events -- invalid events carry c=0 (no observable
             # contribution) but a NaN matrix element that would poison the reweight ratio me_new/me_nom.
             sel = np.ones(m, bool) if not records else \

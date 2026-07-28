@@ -88,27 +88,36 @@ def _sample_channel_ee(n, rng, E_beam, m_pi, m_Nf, m_struck, imp):
                 J=tb["J_3body"], mom=mom, energy=energy, valid=valid)
 
 
-def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records=False):
-    """Inclusive (e,e') RES MC: n samples per EM channel.  Returns per-event contribution c [nb]
+def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records=False, theta_acc=None):
+    """Inclusive (e,e') RES MC: n TOTAL samples, split across the 4 EM channels.  Returns per-event contribution c [nb]
     (SUM = sigma), omega [MeV], theta_e' [deg].
-    records=True ALSO returns the hadronic final state for VALID events only (all angles) -- p_N, p_pi
-    [4-mom], ppid (pion), Npid (final nucleon), ipid (struck nucleon) -- everything cascade_nucleus needs
-    to run the recorded FSI cascade (mirrors res_xsec.generate(return_events=True) for the neutrino bank)."""
+    records=True returns the hadronic final state for the kept events -- p_N, p_pi [4-mom], ppid (pion),
+    Npid (final nucleon), ipid (struck nucleon) -- everything cascade_nucleus needs to run the recorded FSI
+    cascade (mirrors res_xsec.generate(return_events=True) for the neutrino bank).
+    theta_acc=(lo,hi) [deg] applies the SAME outgoing-e- angular acceptance the QE channel (ee.generate)
+    applies -- both EM channels then honor the config's acceptance identically (default None = all angles,
+    kept for the raw dsigma/domega estimator; the bank generator always passes cfg.theta_acc)."""
     Z, N, sf_p_path, sf_n_path = MATERIALS[material]
     imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))
     imp_n = SpectralImportanceSampler(SpectralFunction(sf_n_path))
     keys = ["c", "omega", "theta"] + (["k_e", "k_le", "p_struck", "p_N", "p_pi",
                                         "ppid", "Npid", "ipid"] if records else [])
     out = {k: [] for k in keys}
+    # n is the TOTAL draw count, SPLIT across the 4 EM channels (was n per channel -> 4n) so generate(n)
+    # yields ~n events -- the SAME stratified convention as the neutrino res.generate_importance (m=n//nch).
+    # Each channel's weighted sum is an unbiased estimate of sigma_channel regardless of its draw count, so
+    # SUM(c)=sigma is preserved (at the nu statistics, not 4x).
+    nch = len(EM_CHANNELS)
     for ci, (spid, itiz, ppid, m_Nf, is_p) in enumerate(EM_CHANNELS):
         imp = imp_p if is_p else imp_n
         n_tgt = Z if is_p else N
         m_struck = MASS_PDG_PROTON if is_p else MASS_PDG_NEUTRON
         Npid = 2212 if m_Nf == MASS_PDG_PROTON else 2112     # final nucleon pid from its mass
         m_pi = _M_PI[ppid]
+        n_ch = n // nch + (1 if ci < n % nch else 0)         # this channel's share of n
         done = 0; sd = seed * 1000 + ci * 100
-        while done < n:
-            m = min(chunk, n - done)
+        while done < n_ch:
+            m = min(chunk, n_ch - done)
             rng = np.random.default_rng(sd); sd += 1
             s = _sample_channel_ee(m, rng, E_beam, m_pi, m_Nf, m_struck, imp)
             a2 = np.zeros(m); v = s["valid"]
@@ -125,10 +134,10 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
             kmag = np.linalg.norm(k_le[:, 1:], axis=1)
             theta = np.degrees(np.arccos(np.clip(k_le[:, 3] / np.clip(kmag, 1e-9, None), -1, 1)))
             if records:
-                # keep VALID events only (clean kinematics for the cascade); invalid carry w=0 so the stored
-                # SUM(c) is unchanged.  Per-event pids are the channel's (broadcast to the kept events).
-                sel = v
-                out["c"].append((w / n)[sel]); out["omega"].append(omega[sel]); out["theta"].append(theta[sel])
+                # keep valid events INSIDE the angular acceptance (same cut QE applies) -- this is what
+                # excludes the forward 1/q^4 photon-propagator divergence.  theta_acc=None -> all angles.
+                sel = v if theta_acc is None else (v & (theta >= theta_acc[0]) & (theta <= theta_acc[1]))
+                out["c"].append((w / n_ch)[sel]); out["omega"].append(omega[sel]); out["theta"].append(theta[sel])
                 # lepton kinematics (in/out e- + struck nucleon) -- needed to fill the unified generation
                 # bank schema (adonis.workflow.generate.gen_events, probe="EM"): k_e->k_nu, k_le->k_mu.
                 out["k_e"].append(s["k_e"][sel]); out["k_le"].append(s["k_le"][sel])
@@ -139,7 +148,7 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
                 out["Npid"].append(np.full(nk, Npid, np.int32))
                 out["ipid"].append(np.full(nk, spid, np.int32))
             else:
-                out["c"].append(w / n)         # per-event contribution; SUM over all chunks+channels = sigma
+                out["c"].append(w / n_ch)      # per-event contribution; SUM over all chunks+channels = sigma
                 out["omega"].append(omega); out["theta"].append(theta)
             done += m
     return {k: np.concatenate(v) for k, v in out.items()}
@@ -156,15 +165,16 @@ from adonis.core.sample import Sampler       # noqa: E402
 
 
 class RESEEChannel(Sampler):
-    """Inclusive (e,e') RES single-pion (EM probe, monochromatic e- beam) as a detached kind-1
-    SAMPLER.  `propose(seed, n)` = the verbatim `generate(..., records=True)` (all-angle proposal
-    with lepton + hadron kinematics + per-event contribution `c`).  bit-for-bit."""
+    """Inclusive (e,e') RES single-pion (EM probe, monochromatic e- beam) as a detached kind-1 SAMPLER.
+    `propose(seed, n)` = `generate(records=True, theta_acc=...)` -- n events, angular acceptance applied
+    (the SAME contract as EEChannel, so both (e,e') channels are homogeneous)."""
 
-    def __init__(self, material="C", e_beam=E_BEAM_JLAB):
-        self.material = material; self.e_beam = e_beam
+    def __init__(self, material="C", e_beam=E_BEAM_JLAB, theta_acc=THETA_ACC):
+        self.material = material; self.e_beam = e_beam; self.theta_acc = theta_acc
 
     def propose(self, key, n):
-        return generate(n, material=self.material, seed=int(key), E_beam=self.e_beam, records=True)
+        return generate(n, material=self.material, seed=int(key), E_beam=self.e_beam,
+                        records=True, theta_acc=self.theta_acc)
 
 
 if __name__ == "__main__":

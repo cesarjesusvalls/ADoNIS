@@ -113,21 +113,22 @@ def generate_reweight_bank(gc, outdir, log=None):
     if EM:
         from adonis.channels import ee as ee_xsec, res_ee as res_ee_xsec
         E_BEAM = float(gc.e_beam)
+        TACC = tuple(gc.theta_acc)          # ONE acceptance, applied to BOTH (e,e') channels (config-driven)
 
         def gen_qe(n, seed):
-            r = ee_xsec.generate(n, material=MATERIAL, seed=seed, E_beam=E_BEAM, records=True, theta_acc=(0.0, 180.0))
+            r = ee_xsec.generate(n, material=MATERIAL, seed=seed, E_beam=E_BEAM, records=True, theta_acc=TACC)
             pid = np.where(r["is_p"], 2212, 2112).astype(np.int32)   # EM: struck species unchanged
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
                         p_N=np.asarray(r["p_out"]), p_pi=np.zeros((len(pid), 4)),
                         ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid)
 
         def gen_res(n, seed):
-            r = res_ee_xsec.generate(n, material=MATERIAL, seed=seed, E_beam=E_BEAM, records=True)
+            r = res_ee_xsec.generate(n, material=MATERIAL, seed=seed, E_beam=E_BEAM, records=True, theta_acc=TACC)
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32))
-        manifest_extra = dict(probe="ee", E_beam=E_BEAM)
+        manifest_extra = dict(probe="ee", E_beam=E_BEAM, theta_acc=list(TACC))
     else:
         from adonis.reweight.reweight_model import build_hv_sf
         from adonis.channels import qe as qe_xsec, res as res_xsec

@@ -2083,7 +2083,8 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
                                                                     # (1=p) | pion charge (0:+,1:0,2:-).
                                                                     # ADDITIVE -- pid unchanged (golden-safe);
                                                                     # lets consumers count pions by charge.
-                   p4=p4o, alive=al, origin=out["origin"], gen=out["gen"])]
+                   p4=p4o, alive=al, origin=out["origin"], gen=out["gen"], nsc=out["nsc"])]  # nsc: uniform
+    #   cascade-outcome record needs the per-particle scatter count (additive; existing consumers key-access)
     is_surv_pi = (sp == PION) & al                                     # escaped pions (output is escape-only)
     if channel == "qe":
         pim = jnp.linalg.norm(p4o[:, :, 1:], axis=2) * is_surv_pi
@@ -2093,7 +2094,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
         pterm = dict(species=jnp.zeros((n,), jnp.int32), pid=jnp.zeros((n,), jnp.int32),
                      p4=jnp.zeros((n, 4)), charge=jnp.zeros((n,), jnp.int32), w=jnp.ones((n,)),
                      alive=jnp.ones((n,), bool), nsc=jnp.zeros((n,), jnp.int32))
-        return pterm, nterms, sofl + oofl, created, fsi_rec
+        return pterm, nterms, sofl + oofl, created, fsi_rec, prim_fate
     # RES: split surviving pions into primary (origin tag) vs created
     is_prim = is_surv_pi & (out["origin"] == _ORIG_PRIM_PI)            # escaped primary pion (>=0 per event)
     jp = jnp.argmax(is_prim, axis=1); esc_prim = jnp.any(is_prim, axis=1)
@@ -2114,7 +2115,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
 
 def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, sabs=1.0, sscat=1.0,
                       channel="res", rec_caps=None, log_cap=None, n_w=None, q_cap=None, per_event_cap=None,
-                      su_external=None):
+                      su_external=None, return_fate=False):
     """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
                    pion knockouts}; pterm = the surviving pion.
@@ -2146,9 +2147,13 @@ def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, sabs=1.0, sscat=1
     if log_cap is not None:
         return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, log_cap=log_cap,
                              n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
-    res5 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=rec_caps,
+    res6 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=rec_caps,
                          n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
-    return res5 if rec_caps is not None else res5[:4]
+    # res6 = (pterm, nterms, overflow, created, fsi_rec, prim_fate).  Default: the legacy 5-/4-tuple
+    # (fsi_rec only when rec_caps).  return_fate=True appends prim_fate (the uniform cascade-outcome
+    # driver uses it to derive reacted/absorbed for ANY probe, not just tagged beams).
+    base = res6[:5] if rec_caps is not None else res6[:4]
+    return (base + (res6[5],)) if return_fate else base
 
 
 # ---------------------------------------------------------------------------- #
