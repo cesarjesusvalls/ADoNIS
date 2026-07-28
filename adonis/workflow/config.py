@@ -123,8 +123,10 @@ class GenConfig:
     flux: str = "t2k"           # neutrino flux key (beam=spectrum only); see FLUX_FILES
     # --- EM (electron) ---
     e_beam: float = E_BEAM_JLAB             # monochromatic e- energy [MeV]
-    theta_acc: tuple = (5.0, 180.0)         # outgoing-lepton polar acceptance [deg], applied to ALL EM
-    #                                         channels at generation (cuts the forward 1/q^4 divergence)
+    theta_acc: tuple = (0.0, 180.0)         # outgoing-lepton polar acceptance [deg], applied UNIFORMLY to
+    #                                         every hard-vertex channel (weak muon + EM electron) at
+    #                                         generation.  Default (0,180) = full acceptance (no-op);
+    #                                         EM configs set (5,180) to cut the forward 1/q^4 divergence.
     # --- hadron (tagged beam) ---
     pmin: float = 50.0                      # projectile |p| window [MeV/c] (uniform)
     pmax: float = 1000.0

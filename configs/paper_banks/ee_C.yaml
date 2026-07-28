@@ -4,4 +4,5 @@ beam: electron
 material: C
 channels: [qe, res]
 e_beam: 2222.0
+theta_acc: [5.0, 180.0]   # outgoing-e- polar HardCut [deg]: cuts the forward 1/q^4 photon-propagator divergence
 fsi: true

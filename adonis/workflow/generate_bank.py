@@ -21,6 +21,26 @@ def _idma(n):  # amps2 identity (a,b,c,Q2)=(1,0,0,1) on the OTHER channel
     return [np.ones(n, np.float32), np.zeros(n, np.float32), np.zeros(n, np.float32), np.ones(n, np.float32)]
 
 
+def _lepton_theta_deg(k_lep):
+    """Outgoing-lepton polar angle [deg] about +z (the neutrino / e- beam axis)."""
+    p3 = np.asarray(k_lep)[:, 1:]
+    return np.degrees(np.arccos(np.clip(p3[:, 2] / np.clip(np.linalg.norm(p3, axis=1), 1e-9, None), -1.0, 1.0)))
+
+
+def _accept_lepton(d, theta_acc, kkey=None, theta=None):
+    """THE uniform outgoing-lepton angular acceptance -- ONE mechanism for every hard-vertex channel
+    (weak muon + EM electron).  Keeps events whose lepton polar angle is within [lo,hi] deg, masking
+    every length-n field of the per-event dict `d`.  The angle is the precomputed `theta` (the EM
+    channels already expose it) else computed from d[kkey] (the weak outgoing muon, k_mu).  Full
+    acceptance (lo<=0 and hi>=180) short-circuits to the identity -> byte-for-byte (the weak default)."""
+    lo, hi = theta_acc
+    if lo <= 0.0 and hi >= 180.0:
+        return d
+    th = np.asarray(theta) if theta is not None else _lepton_theta_deg(d[kkey])
+    m = (th >= lo) & (th <= hi); n = len(th)
+    return {k: (v[m] if isinstance(v, np.ndarray) and v.shape[:1] == (n,) else v) for k, v in d.items()}
+
+
 def _outdir(cfg):
     return os.path.join(cfg.out_dir, f"{cfg.bank_prefix}_{cfg.material}{cfg.tag}")
 
@@ -61,31 +81,36 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     _MARGIN = float(os.environ.get("ADONIS_REC_MARGIN", "1.5"))
     POOL = lambda **k: T.POOLCFG(nucleus=tgt.density_p, density_n=tgt.density_n, configs=tgt.configs, **k)
 
+    LACC = tuple(cfg.theta_acc)             # outgoing-lepton polar acceptance, UNIFORM across all channels
+    _ALL = (0.0, 180.0)                     # channels sample all-angle; the ONE acceptance is applied below
     if EM:
         from adonis.channels import ee as ee_x, res_ee as res_ee_x
-        EB = float(cfg.e_beam); TACC = tuple(cfg.theta_acc)
+        EB = float(cfg.e_beam)
 
         def gen_qe(n, seed):
-            r = ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=TACC)
+            r = ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=_ALL)
+            r = _accept_lepton(r, LACC, theta=r["theta"])
             pid = np.where(r["is_p"], 2212, 2112).astype(np.int32)
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
                         p_N=np.asarray(r["p_out"]), p_pi=np.zeros((len(pid), 4)),
                         ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid)
 
         def gen_res(n, seed):
-            r = res_ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=TACC)
+            r = res_ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=_ALL)
+            r = _accept_lepton(r, LACC, theta=r["theta"])
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32))
-        m_extra = dict(probe="ee", E_beam=EB, theta_acc=list(TACC))
+        m_extra = dict(probe="ee", E_beam=EB, theta_acc=list(LACC))
     else:
         from adonis.reweight.reweight_model import build_hv_sf
         from adonis.channels import qe as qe_x, res as res_x
         sf = SpectralFunction(tgt.spectral_n); sf_p = SpectralFunction(tgt.spectral_p)
 
         def gen_qe(n, seed):
-            q = qe_x.sample_importance(n, seed=seed, sf=sf, n_neutron=n_neutron); nq = len(q["w"])
+            q = qe_x.sample_importance(n, seed=seed, sf=sf, n_neutron=n_neutron)
+            q = _accept_lepton(q, LACC, kkey="k_mu"); nq = len(q["w"])   # outgoing-muon acceptance
             return dict(w=np.asarray(q["w"]) / CHUNK, k_nu=np.asarray(q["k_nu"]), p_struck=np.asarray(q["p_struck"]),
                         k_mu=np.asarray(q["k_mu"]), p_N=np.asarray(q["p_out"]), p_pi=np.zeros((nq, 4)),
                         ppid=np.zeros(nq, np.int32), ipid=np.full(nq, 2112, np.int32),
@@ -94,11 +119,12 @@ def _generate_hardvertex(cfg, outdir, log, t0):
         def gen_res(n, seed):
             r = res_x.generate(n, seed=seed, return_events=True, sf_n=sf, sf_p=sf_p,
                                n_neutron=n_neutron, n_proton=n_proton)["events"]
+            r = _accept_lepton(r, LACC, kkey="k_mu")                    # outgoing-muon acceptance
             return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]), p_struck=np.asarray(r["p_struck"]),
                         k_mu=np.asarray(r["k_mu"]), p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32), _raw=r)
-        m_extra = dict(probe="weak", flux=cfg.flux)
+        m_extra = dict(probe="weak", flux=cfg.flux, theta_acc=list(LACC))
 
     def cascade(ev, key, caps, chan):     # returns (pterm,nterms,ofl,created,fsi_rec,prim_fate)
         return CF.cascade_nucleus(jnp.asarray(ev["p_pi"]), jnp.asarray(ev["p_N"]),
