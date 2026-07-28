@@ -83,12 +83,12 @@ def bank_obs(bank):
     w = np.concatenate(W); pid = np.concatenate(PID); p4 = np.concatenate(P4); seg = np.concatenate(SEG)
     n_all = len(w)
     # per-event acceptance mask to make ADoNIS the IDENTICAL measurement as the oracle:
-    #  (e,e'): electron in [14,17] deg (the oracle's window; Mott is forward-peaked so "all angles" differs).
+    #  (e,e'): electron in [5,45] deg (the oracle's HardCut window; Mott is forward-peaked so it matters).
     #  beam:   REACTED events only (ACHILLES CrossSection-mode writes only reacted; ADoNIS fs_* also holds the
     #          non-reacted beam pass-through, which must be excluded).
     if is_ee or is_beam:
         x = np.concatenate(X)
-        keep = ((x >= 14.0) & (x <= 17.0)) if is_ee else x.astype(bool)
+        keep = ((x >= 5.0) & (x <= 45.0)) if is_ee else x.astype(bool)
         pk = keep[seg]; seg = (np.cumsum(keep) - 1)[seg[pk]]; pid = pid[pk]; p4 = p4[pk]; w = w[keep]
     # absolute-nb normalization to match the oracle sigma:
     if is_beam:
