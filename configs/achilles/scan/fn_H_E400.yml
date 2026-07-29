@@ -1,0 +1,82 @@
+# ACHILLES free-nucleon RES single-pion sigma(E_nu) -- nu_mu CC on a FREE PROTON (Name: 1H, p -> p pi+).
+# Paper Fig. anl_bnl / pion_prod_validation (ADoNIS reproduces ACHILLES; data overlay = ANL/BNL in
+# data/experiment/anl_bnl_cc1pi).  Monochromatic beam: the sigma(E) CURVE is a SCAN over `Energy` --
+# the runner overrides it per point.  achilles:oracle image, Cascade OFF (free nucleon, no FSI).
+#   docker run --rm --platform linux/amd64 -v "$PWD/output/achilles:/out" \
+#     --entrypoint /achilles/bin/achilles ghcr.io/cesarjesusvalls/achilles:oracle /out/run_freenucleon_res_H.yml
+Main:
+  NEvents: 200000
+  HardCuts: false
+  EventCuts: false
+  DoRotate: false
+  RunDecays: False
+  Output:
+      Format: NuHepMC
+      Name: /out/freenucleon_res_H_E400.hepmc
+      Zipped: False
+
+SherpaOptions: !include "data/default/SherpaOptions.yml"
+
+Processes:
+  - Leptons: [14, [13]]
+
+Beams:
+  - Beam:
+      PID: 14
+      Beam Params:
+        Type: Monochromatic
+        Energy: 400                 # SCAN POINT -- runner overrides this for the sigma(E) curve
+
+Cascade:
+  Run: False
+  Interactions:
+    - Name: NucleonNucleon
+      Options:
+        Mode: GiBUU
+        ResonanceMode: Decay
+        ExpSup: 0.0
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+
+NuclearModels:
+ - NuclearModel:
+    Model: FortranModel
+    Name: RES_Spectral_Func
+    ConfigFile: data/info_C12_pke.data
+    FormFactorFile: "FormFactors.yml"
+    Ward: None
+
+Nuclei:
+  - Nucleus:
+      Name: 1H
+      Binding: 0.0
+      Fermi Momentum: 225
+      Density:
+        ProtonFile: data/densities/c12.prova.txt
+        NeutronFile: data/densities/c12.prova.txt
+        FilePotential: data/realOP_12C_EDAI.dat
+        Function: configuration
+        Configs: data/configurations/QMC_configs.out.gz
+      FermiGas:
+        Type: Local
+        Correlated: False
+        SRCfraction: 0.2
+        LambdaSRC: 2.75
+        Params: []
+      Potential:
+        Name: Schroedinger
+        r0: 0.16
+        Mode: 3
+
+Options: !include "data/default/OptionDefaults.yml"
+
+Cache:
+  Save: False
+  Load: False
+
+Backend:
+  Name: Default
+  Options: []
