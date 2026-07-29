@@ -34,12 +34,16 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     a0.fill_between(edges, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
                     step="post", color="0.55", alpha=0.55, lw=0, label="ACH stat")
     a0.step(edges, np.append(da, da[-1]), where="post", color="0.3", lw=1.3, label=ref_label)
-    if ref_parts:                               # reference QE/RES breakdown (thin dashed component steps)
+    def _components(parts, ls, prefix):         # QE/RES component steps + light error bands
         _pc = {"QE": "tab:blue", "RES": "tab:green"}
-        for lbl, part in ref_parts.items():
-            dp, _ = hist_with_errors(part["values"], part["w"], edges)
-            a0.step(edges, np.append(dp, dp[-1]), where="post", color=_pc.get(lbl, "0.6"),
-                    lw=1.0, ls="--", label=f"{ref_label} {lbl}")
+        for lbl, part in parts.items():
+            dp, dpe = hist_with_errors(part["values"], part["w"], edges); col = _pc.get(lbl, "0.6")
+            a0.fill_between(edges, np.append(dp - dpe, (dp - dpe)[-1]), np.append(dp + dpe, (dp + dpe)[-1]),
+                            step="post", color=col, alpha=0.15, lw=0)
+            a0.step(edges, np.append(dp, dp[-1]), where="post", color=col, lw=1.0, ls=ls,
+                    label=f"{prefix} {lbl}")
+    if ref_parts:                               # reference QE/RES (dashed)
+        _components(ref_parts, "--", ref_label)
     m = (da > 0) & (dd > 0)                     # bins with content on both sides
     shadow = np.zeros(len(bw), bool)            # low-contribution bins: shown greyed, excluded from chi2
     if shadow_frac:
@@ -53,12 +57,8 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     a0.fill_between(edges, np.append(ddm - edm, (ddm - edm)[-1]), np.append(ddm + edm, (ddm + edm)[-1]),
                     step="post", color="darkorange", alpha=0.30, lw=0)
     a0.step(edges, np.append(ddm, ddm[-1]), where="post", color="darkorange", lw=1.4, label=ado_label)
-    if ado_parts:                               # ADoNIS QE/RES breakdown (SOLID; ACH parts are dashed)
-        _pc = {"QE": "tab:blue", "RES": "tab:green"}
-        for lbl, part in ado_parts.items():
-            dp, _ = hist_with_errors(part["values"], part["w"], edges)
-            a0.step(edges, np.append(dp, dp[-1]), where="post", color=_pc.get(lbl, "0.6"),
-                    lw=1.0, ls="-", label=f"{ado_label} {lbl}")
+    if ado_parts:                               # ADoNIS QE/RES (solid; ACH parts are dashed)
+        _components(ado_parts, "-", ado_label)
     if shadow.any():                            # shadowed bins: grey vertical spans in both panels (no markers)
         for i in np.where(shadow)[0]:
             a0.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
