@@ -20,6 +20,30 @@ def hist_with_errors(values, weights, edges):
     return h / bw, np.sqrt(h2) / bw
 
 
+def _curve_panel(a0, a1, ref, ado, *, label, ratio_band, ratio_ylim, ado_label, ref_label):
+    """Precomputed-curve/points variant: ref/ado are {x, y, yerr} (NOT per-event {values, w}).
+    For sigma-vs-scan (E_nu, W) curves and per-bin efficiency points -- same line+band + ratio style as
+    the histogram panel, but the y is handed in already reduced (integrated sigma / per-bin efficiency)."""
+    x = np.asarray(ref["x"]); ry = np.asarray(ref["y"]); rye = np.asarray(ref.get("yerr", np.zeros_like(ry)))
+    ay = np.asarray(ado["y"]); aye = np.asarray(ado.get("yerr", np.zeros_like(ay)))
+    for y, ye, ls, lab, lw in [(ry, rye, "--", ref_label, 1.3), (ay, aye, "-", ado_label, 1.4)]:
+        a0.fill_between(x, y - ye, y + ye, color="0.1", alpha=0.22, lw=0)
+        a0.plot(x, y, color="0.1", lw=lw, ls=ls, label=lab)
+    a0.set_title(label, fontsize=9); a0.set_ylim(bottom=0)
+    m = (ry > 0) & (ay > 0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        r = np.where(m, ry / ay, np.nan)
+        re = np.where(m, r * np.sqrt((aye / ay) ** 2 + (rye / ry) ** 2), np.nan)
+    a1.axhline(1.0, ls="-", color="0.6", lw=0.8)
+    for off in (0.1, 0.2):
+        a1.axhline(1.0 - off, ls="--", color="0.7", lw=0.6); a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
+    a1.fill_between(x, r - re, r + re, color="navy", alpha=0.25, lw=0)
+    a1.plot(x, r, color="navy", lw=1.2)
+    a1.set_ylim(*ratio_ylim); a1.set_xlabel(label, fontsize=8); a0.set_xlim(x[0], x[-1])
+    chi2 = float(np.nansum((ry[m] - ay[m]) ** 2 / (rye[m] ** 2 + aye[m] ** 2 + 1e-30))); ndf = int(m.sum())
+    return dict(chi2=chi2, ndf=ndf, ach_ado=float(np.nansum(ry[m]) / max(np.nansum(ay[m]), 1e-30)), n_shadow=0)
+
+
 def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
                      ratio_ylim=(0.5, 1.6), ado_label="ENGINE", ref_label="ACHILLES", data=None,
                      logy=False, shadow_frac=None, ref_parts=None, ado_parts=None):
@@ -27,7 +51,12 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado).
     shadow_frac (opt-in, e.g. 0.01): bins contributing < this fraction of the panel's TOTAL cross section
     (max of the ACH and ADO integrals, so a real discrepancy is never hidden) are SHADOWED (greyed) and
-    EXCLUDED from chi2/ndf -- removes stat-inflated low-sigma tail bins.  None -> off (all bins count)."""
+    EXCLUDED from chi2/ndf -- removes stat-inflated low-sigma tail bins.  None -> off (all bins count).
+    CURVE/POINTS mode: if ref/ado carry precomputed {x, y, yerr} (not {values, w}), delegate to
+    _curve_panel (sigma-vs-scan curves, per-bin efficiency) -- same style, y handed in already reduced."""
+    if "y" in ref:
+        return _curve_panel(a0, a1, ref, ado, label=label, ratio_band=ratio_band, ratio_ylim=ratio_ylim,
+                            ado_label=ado_label, ref_label=ref_label)
     bw = np.diff(edges); ctr = 0.5 * (edges[1:] + edges[:-1])
     da, ea = hist_with_errors(ref["values"], ref["w"], edges)
     dd, ed = hist_with_errors(ado["values"], ado["w"], edges)
