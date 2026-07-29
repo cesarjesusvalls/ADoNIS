@@ -63,6 +63,10 @@ def bank_signal(bank_dir, sd):
         pl = np.linalg.norm(lead[:, 1:], axis=1); cl = _cos(lead, pl)
         sel = (hasp & (n_meson == 0) & _mu_pass(pmu, cmu, sd)
                & (pl > sd.p_win[0]) & (pl < sd.p_win[1]) & (cl > sd.cth))
+        if sd.proton_count == "eq1":                           # exactly ONE proton in acceptance (CC1p0pi)
+            pid = B["fs_pid"]; p4p = B["fs_p4"]; pmp = np.linalg.norm(p4p[:, 1:], axis=1)
+            inacc = (pid == 2212) & (pmp > sd.p_win[0]) & (pmp < sd.p_win[1]) & (_cos(p4p, pmp) > sd.cth)
+            sel = sel & (BP._event_sum(B, inacc.astype(float)).astype(int) == 1)
     else:                                                      # ---- CC1pi+ ----
         npip, npi0, npim = BP.pion_counts(B); pip = BP.single_pip(B)
         lead, hasp = BP.leading_proton_window(B, sd.p_win[0], sd.p_win[1], cth=sd.cth)
@@ -91,6 +95,10 @@ def oracle_signal(oracle_npz, sd):
         pip = np.zeros_like(mu)
         sel = ((n_meson == 0) & _mu_pass(pmu, cmu, sd)
                & (pl > sd.p_win[0]) & (pl < sd.p_win[1]) & (cl > sd.cth))
+        if sd.proton_count == "eq1":                          # exactly ONE proton in acceptance (CC1p0pi)
+            czp = _cos(prot.reshape(-1, 4), pm.reshape(-1)).reshape(pm.shape)
+            nprot = ((pm > sd.p_win[0]) & (pm < sd.p_win[1]) & (czp > sd.cth)).sum(1)
+            sel = sel & (nprot == 1)
     else:                                                     # ---- CC1pi+ ----
         is_pip = (pipid == 211)
         npip = is_pip.sum(1); npi0 = (pipid == 111).sum(1); npim = (pipid == -211).sum(1)
