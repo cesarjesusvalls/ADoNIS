@@ -136,8 +136,9 @@ def cc1pi(path, seed=0, **_):
         zhat = np.cross(beam, mu3); zhat = zhat / (np.linalg.norm(zhat) + 1e-9)
         had3 = pi3 + p3; dptt_v = float(np.dot(had3, zhat)); dptt.append(dptt_v)
         lt = mu3[:2]; dpt_vec = lt + had3[:2]; dptmag = np.linalg.norm(dpt_vec); dpt.append(float(dptmag))
-        if is_h or abs(dptt_v) < 0.5:
-            dat.append(float(rng.uniform(0.0, np.pi)))      # NUISANCE hydrogen prescription
+        if is_h or abs(dptt_v) < 0.5:                       # NUISANCE hydrogen prescription -- SAME
+            dat.append(float(rng.uniform(0.0, np.pi)))      # convention as data_overlay.hydrogen_daT
+        #                                                     (scalar inline here; keep the two in sync)
         else:
             c = -np.dot(lt, dpt_vec) / (np.linalg.norm(lt) * dptmag + 1e-9)
             dat.append(float(np.arccos(np.clip(c, -1, 1))))

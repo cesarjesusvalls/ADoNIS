@@ -124,7 +124,7 @@ def freeH_offsets(edges_by_name):
     validated O.tki (NUISANCE hydrogen daT randomization included)."""
     from adonis.channels.free_proton import generate_H
     from adonis import kinematics as O
-    from adonis.workflow.selection import hydrogen_daT
+    from adonis.workflow.data_overlay import hydrogen_daT
     NH, NSEED = 50000, 4
     acc = {"pn": [], "dptt": [], "daT": []}; wl = []
     def _acc(p4, lo, hi):

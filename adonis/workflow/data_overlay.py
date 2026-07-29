@@ -43,6 +43,17 @@ def _from_nuisance_txt(cfg, specs):
     return out
 
 
+def hydrogen_daT(dptt, dat, is_h, seed):
+    """NUISANCE hydrogen-prescription overlay (a data-comparison CONVENTION, not an observable):
+    randomize delta-alpha_T where the event is hydrogen-like (is_h) or transverse-degenerate
+    (|dptt| < 0.5), on top of the deterministic kinematics.tki output.  This lives here (with the
+    data-overlay machinery), NOT in kinematics.py, which stays deterministic by design.
+    NOTE: adonis/oracle/extract.py:cc1pi applies the SAME convention inline in its per-event hepmc
+    loop (a scalar draw); keep the two in sync (not merged -- the extractor loop is per-event)."""
+    flat = np.asarray(is_h) | (np.abs(dptt) < 0.5)
+    return np.where(flat, np.random.default_rng(seed).uniform(0.0, np.pi, len(dat)), np.asarray(dat))
+
+
 def load_overlay(cfg, specs):
     if not cfg.data.enabled:
         return None

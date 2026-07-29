@@ -16,13 +16,9 @@ import numpy as np
 from adonis import kinematics as O
 
 
-def hydrogen_daT(dptt, dat, is_h, seed):
-    """NUISANCE hydrogen prescription overlay (a data-comparison detail, NOT an observable): randomize
-    delta-alpha_T where the event is hydrogen-like (is_h) or |dptt|<0.5.  Applied on top of the
-    deterministic kinematics.tki output."""
-    import numpy as _np
-    flat = is_h | (_np.abs(dptt) < 0.5)
-    return _np.where(flat, _np.random.default_rng(seed).uniform(0.0, _np.pi, len(dat)), _np.asarray(dat))
+# hydrogen_daT moved to adonis/workflow/data_overlay.py (data-comparison convention, not selection).
+# The rest of this module (select_signal/select_reference + engine helpers) is DEAD and removed in the
+# next step, when analyze.py is rewritten onto the bank_plot adapter.
 
 _PIONS = (211, 111, -211)
 _OTHER_MESON = (111, -211, -1)            # vs a pi+ signal: pi0 / pi- / converted(eta,K)
