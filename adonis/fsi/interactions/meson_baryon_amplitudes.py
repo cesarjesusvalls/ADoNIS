@@ -94,7 +94,7 @@ def pip_p_total(W=None, norm=1.0):
     return Wt, _channel_sigma(amps, Wt, {3: 1.0}, norm)
 
 
-def dsigma_dOmega(W, cos_theta, cg={3: 1.0}):
+def dsigma_dOmega(W, cos_theta, cg={3: 1.0}, i=0, f=0):
     """piN -> piN differential cross section dsigma/dOmega(theta) [arb. shape] at fixed W,
     via the standard spin-non-flip f and spin-flip g partial-wave amplitudes:
 
@@ -104,9 +104,13 @@ def dsigma_dOmega(W, cos_theta, cg={3: 1.0}):
 
     a_{L,J} is the isospin-combined amplitude sum_I cg_I A^I_{L,J}.  At the Delta (W~1232)
     P33 (L=1, J=3/2=L+1/2) dominates -> the classic 1 + 3 cos^2(theta) shape.
+
+    (i, f) select the ANL channel table load_anl(i, f); the default (0, 0) is elastic piN, the
+    ONLY case this f/g construction is validated for -- the kwargs exist so callers can share this
+    one implementation, not to claim off-diagonal (i != f) support.
     """
     from numpy.polynomial.legendre import Legendre
-    Wt, amps = load_anl(0, 0)
+    Wt, amps = load_anl(i, f)
     a = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])])  # (20,) at this W
     # a_{L,+/-}: index by (L, sign) where + is J=L+1/2 (twoJ=2L+1), - is J=L-1/2 (twoJ=2L-1)
     aLp, aLm = {}, {}

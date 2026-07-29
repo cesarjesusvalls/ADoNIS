@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 from adonis.fsi.interactions.meson_baryon_amplitudes import (      # noqa: E402
-    load_anl, _channel_sigma, pim_p_total, WAVES, wave_qn,
+    load_anl, _channel_sigma, pim_p_total, dsigma_dOmega,
     conversion_sigma_grid, eta_elastic_sigma_grid, eta_backconv_sigma_grid)
 from adonis.fsi.interactions.meson_baryon_xsec import jax_sample_cos_cm   # noqa: E402
 from analysis.paper import style                                   # noqa: E402
@@ -99,7 +99,7 @@ def main():
     # ---- RIGHT: analytic dsigma/dOmega (line) + ADoNIS angular sampler (histogram) at p=300 MeV ----
     W300 = float(_W_of_p(300.0, M_PI))
     cg = np.linspace(-1, 1, 200)
-    d = _dsig_dOmega(0, 0, {3: 1.0}, W300, cg)
+    d = dsigma_dOmega(W300, cg, {3: 1.0}, i=0, f=0)              # core partial-wave differential (elastic piN)
     _trap = getattr(np, "trapezoid", None) or np.trapz
     ax[1].plot(cg, d / (_trap(d, cg) * 2 * np.pi), "-", color="tab:red", lw=1.8,
                label=rf"ANL-Osaka  ($W$={W300/1000:.2f} GeV)")
@@ -117,30 +117,6 @@ def main():
     fig.suptitle(r"ADoNIS vs ANL-Osaka --- meson-baryon DCC (shared cascade cross sections)", fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     style.save(fig, "fig13_piN_sigma")
-
-
-def _dPL(L, c):
-    return np.polynomial.legendre.legval(c, np.polynomial.legendre.legder([0] * L + [1]))
-
-
-def _dsig_dOmega(i, f, cg, W, cos_theta):
-    Wt, amps = load_anl(i, f)
-    a = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])])
-    aLp, aLm = {}, {}
-    for k, name in enumerate(WAVES):
-        L, twoI, twoJ = wave_qn(name); amp = cg.get(twoI, 0.0) * a[k]
-        if twoJ == 2 * L + 1:
-            aLp[L] = aLp.get(L, 0j) + amp
-        elif twoJ == 2 * L - 1:
-            aLm[L] = aLm.get(L, 0j) + amp
-    c = np.asarray(cos_theta, float); s = np.sqrt(np.clip(1 - c ** 2, 0, 1)); Lmax = 5
-    PL = [np.polynomial.legendre.legval(c, [0] * L + [1]) for L in range(Lmax + 1)]
-    PL1 = [-s * _dPL(L, c) for L in range(Lmax + 1)]
-    fa = np.zeros_like(c, complex); ga = np.zeros_like(c, complex)
-    for L in range(Lmax + 1):
-        fa += ((L + 1) * aLp.get(L, 0j) + L * aLm.get(L, 0j)) * PL[L]
-        ga += (aLp.get(L, 0j) - aLm.get(L, 0j)) * PL1[L]
-    return np.abs(fa) ** 2 + np.abs(ga) ** 2
 
 
 if __name__ == "__main__":
