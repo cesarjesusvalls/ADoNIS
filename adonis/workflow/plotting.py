@@ -22,7 +22,7 @@ def hist_with_errors(values, weights, edges):
 
 def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
                      ratio_ylim=(0.5, 1.6), ado_label="ENGINE", ref_label="ACHILLES", data=None,
-                     logy=False, shadow_frac=None, ref_parts=None):
+                     logy=False, shadow_frac=None, ref_parts=None, ado_parts=None):
     """Render one observable into top axis a0 (dsigma/dx) + bottom a1 (ACH/ADO ratio).
     ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado).
     shadow_frac (opt-in, e.g. 0.01): bins contributing < this fraction of the panel's TOTAL cross section
@@ -53,6 +53,12 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     a0.fill_between(edges, np.append(ddm - edm, (ddm - edm)[-1]), np.append(ddm + edm, (ddm + edm)[-1]),
                     step="post", color="darkorange", alpha=0.30, lw=0)
     a0.step(edges, np.append(ddm, ddm[-1]), where="post", color="darkorange", lw=1.4, label=ado_label)
+    if ado_parts:                               # ADoNIS QE/RES breakdown (SOLID; ACH parts are dashed)
+        _pc = {"QE": "tab:blue", "RES": "tab:green"}
+        for lbl, part in ado_parts.items():
+            dp, _ = hist_with_errors(part["values"], part["w"], edges)
+            a0.step(edges, np.append(dp, dp[-1]), where="post", color=_pc.get(lbl, "0.6"),
+                    lw=1.0, ls="-", label=f"{ado_label} {lbl}")
     if shadow.any():                            # shadowed bins: grey vertical spans in both panels (no markers)
         for i in np.where(shadow)[0]:
             a0.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
@@ -99,17 +105,21 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
         ref = {"values": np.asarray(ref_sel[key]), "w": np.asarray(ref_sel["w"])}
         ado = {"values": np.asarray(ado_sel[key]), "w": np.asarray(ado_sel["w"])}
         d = None if data is None else data.get(key)
-        rp = None                                    # reference QE/RES breakdown (from the 'chan' column)
-        chan = ref_sel.get("chan")
-        if chan is not None and len(np.unique(chan)) > 1:
-            rp = {}
+
+        def _parts(sel):                             # QE/RES breakdown from a selection's 'chan' column
+            chan = sel.get("chan")
+            if chan is None or len(np.unique(chan)) < 2:
+                return None
+            out = {}
             for cv, lbl in ((0, "QE"), (1, "RES")):
                 mk = np.asarray(chan) == cv
                 if mk.any():
-                    rp[lbl] = {"values": np.asarray(ref_sel[key])[mk], "w": np.asarray(ref_sel["w"])[mk]}
+                    out[lbl] = {"values": np.asarray(sel[key])[mk], "w": np.asarray(sel["w"])[mk]}
+            return out
         res = chi2_ratio_panel(ax[0, c], ax[1, c], np.asarray(edges), ref, ado, label=label,
                                ratio_band=ratio_band, ratio_ylim=ratio_ylim,
-                               ado_label=ado_label, ref_label=ref_label, data=d, ref_parts=rp)
+                               ado_label=ado_label, ref_label=ref_label, data=d,
+                               ref_parts=_parts(ref_sel), ado_parts=_parts(ado_sel))
         if c == 0:
             ax[0, c].legend(fontsize=7); ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]")
             ax[1, c].set_ylabel("ratio")
