@@ -12,9 +12,8 @@ import jax.numpy as jnp
 import adonis.channels.dcc.current as dcc
 dcc.BATCH_INTERP = "spline"
 from adonis.flux.spectrum import SpectrumFlux, M_MU, M_P
-from adonis.channels.res import _sample_3body, _sample_3body_dispatch, _pi_kin_mass, M_PIP, SPIN_AVG
-from adonis.channels.dcc.current import exclusive_amps2_batch
-from adonis.channels.currents.matrix_element import flux_factor, MASS_PDG_PROTON
+from adonis.channels.res import free_nucleon_weights, _pi_kin_mass, M_PIP
+from adonis.channels.currents.matrix_element import MASS_PDG_PROTON
 from adonis.fsi.cascade import DiscreteCascadeConfig
 from adonis.fsi.pool_fsi import run_fsi
 
@@ -23,6 +22,8 @@ _CFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool"
 
 
 def generate_H(n, seed=0):
+    """T2K-flux-averaged nu_mu p -> mu- p pi+ on a FREE proton at rest (thin caller over the shared
+    res.free_nucleon_weights primitive: multiply the per-event weight by the flux-sampling J_beam, sum)."""
     rng = np.random.default_rng(seed)
     flux = SpectrumFlux()
     m_pi = _pi_kin_mass(M_PIP); m_Nf = M_P            # outgoing N = proton; kinematic pion mass
@@ -33,18 +34,11 @@ def generate_H(n, seed=0):
     E_GeV = u[:, 0] * dE + minE; Enu = E_GeV * 1000.0
     J_beam = (dE * flux.f(E_GeV)) / flux.flux_integral
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
-    p_struck = np.tile([M_P, 0, 0, 0], (n, 1)).astype(float)    # FREE proton at rest
-    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u[:, 1:6])   # honors SAMPLER_3BODY
-    k_mu, p_N, p_pi, J3, valid = tb["k_mu"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
-    a2 = np.zeros(n); ch = 1000
-    idx = np.where(valid & (J3 > 0))[0]
-    for i in range(0, len(idx), ch):
-        sl = idx[i:i + ch]
-        a2[sl] = np.asarray(exclusive_amps2_batch(k_nu[sl], k_mu[sl], p_struck[sl], p_N[sl], p_pi[sl], +1, 211))
-    fl = np.asarray(flux_factor(k_nu, p_struck, had_mass=MASS_PDG_PROTON))
-    w = np.where(valid, a2 * fl * SPIN_AVG * J3 * J_beam, 0.0)
+    # p -> p pi+ : itiz=+1, out N = proton, pion 211; struck proton at rest (had_mass = MASS_PDG_PROTON)
+    w0, kin = free_nucleon_weights(k_nu, +1, M_P, 211, M_PIP, MASS_PDG_PROTON, u[:, 1:6])
+    w = w0 * J_beam
     w = np.where(np.isfinite(w) & (w > 0), w, 0.0) / n           # absolute nb per event (mean)
-    return k_nu, k_mu, p_N, p_pi, w
+    return k_nu, kin["k_mu"], kin["p_N"], kin["p_pi"], w
 
 
 def _cc0pi_obs(knu, mu, lead, w):

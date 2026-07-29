@@ -27,44 +27,28 @@ sys.path.insert(0, str(ROOT))
 
 import adonis.channels.dcc.current as _dcc                         # noqa: E402
 _dcc.BATCH_INTERP = "spline"                                       # jitted spline (fast, 2e-12 vs bilinear)
-from adonis.channels.res import (_sample_3body_dispatch, _pi_kin_mass, SPIN_AVG,  # noqa: E402
-                                 M_PIP, M_PI0, M_P, M_N)
-from adonis.channels.dcc.current import exclusive_amps2_batch      # noqa: E402
-from adonis.channels.currents.matrix_element import (flux_factor,  # noqa: E402
-                                                     MASS_PDG_PROTON, MASS_PDG_NEUTRON)
-from adonis.flux.spectrum import M_MU                              # noqa: E402
+from adonis.channels.res import sigma_free_nucleon, CHANNELS as RES_CHANNELS   # noqa: E402
 from analysis.paper import style                                  # noqa: E402
 
 NB_TO_1E38 = 1.0e5                                                 # 1 nb = 1e-33 cm^2 = 1e5 x 10^-38 cm^2
 ENERGIES = np.array([400, 600, 800, 1000, 1300, 1600, 2000, 2600, 3400, 4400.0])   # MeV
 SCAN = "/sdf/data/neutrino/cjesus/ADoNIS/output/oracle_freenucleon_scan"
 
-# (tex, itiz, m_Nf_out, pi_pid, m_pi_physical, flux_had_mass, ACH species, ACH pi_pid)  -- res.py table 55-58
+# The ADoNIS-side physics comes from the CORE evaluator adonis.channels.res.sigma_free_nucleon over the
+# shared res.CHANNELS table -- no cross-section code lives here.  Each row below pairs a res.CHANNELS entry
+# (pdg_in, itiz, m_Nf, pi_pid, m_pi_phys, had_mass) with (tex label, ACHILLES scan species, ACHILLES pi_pid).
+# res.CHANNELS order is [n->n pi+, n->p pi0, p->p pi+]; we plot p pi+, n pi+, n pi0.
+_R = {(2212, 211): RES_CHANNELS[2], (2112, 211): RES_CHANNELS[0], (2112, 111): RES_CHANNELS[1]}
 CHANNELS = [
-    (r"$\nu_\mu\, p\to\mu^- p\,\pi^+$", +1, M_P, 211, M_PIP, MASS_PDG_PROTON,  "H", 211),
-    (r"$\nu_\mu\, n\to\mu^- n\,\pi^+$", -1, M_N, 211, M_PIP, MASS_PDG_NEUTRON, "N", 211),
-    (r"$\nu_\mu\, n\to\mu^- p\,\pi^0$", -1, M_P, 111, M_PI0, MASS_PDG_NEUTRON, "N", 111),
+    (r"$\nu_\mu\, p\to\mu^- p\,\pi^+$", _R[(2212, 211)], "H", 211),
+    (r"$\nu_\mu\, n\to\mu^- n\,\pi^+$", _R[(2112, 211)], "N", 211),
+    (r"$\nu_\mu\, n\to\mu^- p\,\pi^0$", _R[(2112, 111)], "N", 111),
 ]
 
 
-def adonis_sigma(E, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, n, seed):
-    """sigma(E) in nb + standard error, monochromatic free-nucleon (J_beam = 1)."""
-    rng = np.random.default_rng(seed)
-    m_pi = _pi_kin_mass(m_pi_phys)
-    u = rng.random((n, 6))
-    k_nu = np.stack([np.full(n, E), np.zeros(n), np.zeros(n), np.full(n, E)], axis=1)
-    p_struck = np.tile([had_mass, 0.0, 0.0, 0.0], (n, 1))          # free nucleon at rest (mass = had_mass)
-    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u[:, 1:6])
-    k_mu, p_N, p_pi, J3, valid = tb["k_mu"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
-    a2 = np.zeros(n); idx = np.where(valid & (J3 > 0))[0]
-    for i in range(0, len(idx), 50_000):
-        sl = idx[i:i + 50_000]
-        a2[sl] = np.asarray(exclusive_amps2_batch(k_nu[sl], k_mu[sl], p_struck[sl], p_N[sl], p_pi[sl],
-                                                  int(itiz), int(pi_pid)))
-    fl = np.asarray(flux_factor(k_nu, p_struck, had_mass=had_mass))
-    w = np.where(valid, a2 * fl * SPIN_AVG * J3, 0.0)
-    w = np.where(np.isfinite(w) & (w > 0), w, 0.0)
-    return float(w.mean()), float(w.std() / np.sqrt(n))           # sigma (nb), SE of the mean
+def adonis_sigma(E, channel, n, seed):
+    """sigma(E) in nb + SE, monochromatic free-nucleon (J_beam=1) -- thin call to the core evaluator."""
+    return sigma_free_nucleon(E, channel, n=n, seed=seed)
 
 
 def achilles_sigma(E, species, pi_pid):
@@ -87,10 +71,10 @@ def main():
     style.use()
     fig, ax = plt.subplots(2, 3, figsize=(12.5, 5.4), sharex="col",
                            gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0, "wspace": 0.28})
-    for c, (tex, itiz, m_Nf, pi_pid, m_pi, had, sp, ach_pi) in enumerate(CHANNELS):
+    for c, (tex, channel, sp, ach_pi) in enumerate(CHANNELS):
         aS, aE, hS, hE = [], [], [], []
         for j, E in enumerate(ENERGIES):
-            s, e = adonis_sigma(E, itiz, m_Nf, pi_pid, m_pi, had, n, seed=1000 * c + j)
+            s, e = adonis_sigma(E, channel, n, seed=1000 * c + j)
             aS.append(s); aE.append(e)
             s2, e2 = achilles_sigma(E, sp, ach_pi); hS.append(s2); hE.append(e2)
         aS = np.array(aS) * NB_TO_1E38; aE = np.array(aE) * NB_TO_1E38

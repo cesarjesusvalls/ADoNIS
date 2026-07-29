@@ -267,6 +267,45 @@ def _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u):
     return _sample_3body(k_nu, p_struck, m_pi, m_Nf, u)
 
 
+def free_nucleon_weights(k_nu, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, u, chunk=50_000):
+    """Per-event FREE-nucleon single-pion RES weight w = amps2 * flux_factor * SPIN_AVG * J_3body
+    (NO beam/flux J_beam factor), for a nucleon AT REST.  The one primitive behind BOTH the T2K-flux
+    free-proton generator (free_proton.generate_H) and the monochromatic sigma(E_nu) scan (analysis Fig 2,
+    anl_bnl) -- so the free-nucleon weight algebra lives in exactly one place.
+
+    k_nu (n,4): neutrino 4-momentum per event.  (itiz, pi_pid) select the amps2 channel.  The struck nucleon
+    is placed AT REST with mass `had_mass` (the INCOMING nucleon); the 3-body phase space is sampled toward the
+    OUTGOING nucleon mass `m_Nf`.  These DIFFER for n -> p pi0 (struck neutron, outgoing proton) -- keep them
+    two distinct params.  u (n,>=5): uniforms for the 3-body sampler.  Returns (w, dict(k_mu, p_N, p_pi, valid));
+    w is already filtered finite & > 0 (but NOT divided by n and NOT multiplied by any flux Jacobian)."""
+    n = len(k_nu)
+    m_pi = _pi_kin_mass(m_pi_phys)
+    p_struck = np.tile([had_mass, 0.0, 0.0, 0.0], (n, 1)).astype(float)   # nucleon at rest (incoming mass)
+    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u)            # honors SAMPLER_3BODY
+    k_mu, p_N, p_pi, J3, valid = tb["k_mu"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
+    a2 = np.zeros(n)
+    idx = np.where(valid & (J3 > 0))[0]
+    for i in range(0, len(idx), chunk):
+        sl = idx[i:i + chunk]
+        a2[sl] = np.asarray(exclusive_amps2_batch(k_nu[sl], k_mu[sl], p_struck[sl], p_N[sl], p_pi[sl],
+                                                  int(itiz), int(pi_pid)))
+    fl = np.asarray(flux_factor(k_nu, p_struck, had_mass=had_mass))
+    w = np.where(valid, a2 * fl * SPIN_AVG * J3, 0.0)
+    w = np.where(np.isfinite(w) & (w > 0), w, 0.0)
+    return w, dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, valid=valid)
+
+
+def sigma_free_nucleon(Enu_MeV, channel, n=80_000, seed=0):
+    """Monochromatic free-nucleon single-pion sigma(E_nu) [nb] + standard error, nucleon at rest (J_beam=1)
+    -> sigma = <w>.  `channel` is a row of res.CHANNELS: (pdg_in, itiz, m_Nf, pi_pid, m_pi_phys, had_mass)."""
+    _pdg_in, itiz, m_Nf, pi_pid, m_pi_phys, had_mass = channel
+    rng = np.random.default_rng(seed)
+    u = rng.random((n, 6))                                                # col 0 unused: keep the generate_H stream
+    E = float(Enu_MeV); k_nu = np.stack([np.full(n, E), np.zeros(n), np.zeros(n), np.full(n, E)], axis=1)
+    w, _ = free_nucleon_weights(k_nu, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, u[:, 1:6])
+    return float(w.mean()), float(w.std() / np.sqrt(n))
+
+
 def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None, defensive=0.0):
     """One RES channel for the importance estimator: spectrum beam + importance struck nucleon
     (imp = the nucleus's |p|^2 S_n sampler; defaults to carbon _IMP) + the shared 3-body core.
