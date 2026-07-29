@@ -29,7 +29,7 @@ from analysis.paper import style                               # noqa: E402
 NUC_TEX = {"C": r"$^{12}$C", "Ar": r"$^{40}$Ar"}
 
 
-def main(nbins=15, out="fig03_pi_nucleus_sigma"):
+def main(nbins=30, out="fig03_pi_nucleus_sigma"):
     style.use()
     fig, ax = plt.subplots(4, 2, figsize=(8.4, 8.2), sharex="col",
                            gridspec_kw={"height_ratios": [3, 1, 3, 1], "hspace": 0.0, "wspace": 0.24})
@@ -64,5 +64,5 @@ def main(nbins=15, out="fig03_pi_nucleus_sigma"):
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--nbins", type=int, default=15)
+    ap.add_argument("--nbins", type=int, default=30)
     main(nbins=ap.parse_args().nbins)
