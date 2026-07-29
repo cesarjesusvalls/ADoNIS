@@ -32,8 +32,8 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     da, ea = hist_with_errors(ref["values"], ref["w"], edges)
     dd, ed = hist_with_errors(ado["values"], ado["w"], edges)
     a0.fill_between(edges, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
-                    step="post", color="0.55", alpha=0.55, lw=0, label="ACH stat")
-    a0.step(edges, np.append(da, da[-1]), where="post", color="0.3", lw=1.3, label=ref_label)
+                    step="post", color="0.1", alpha=0.22, lw=0)
+    a0.step(edges, np.append(da, da[-1]), where="post", color="0.1", lw=1.3, ls="--", label=ref_label)
     def _components(parts, ls, prefix):         # QE/RES component steps + light error bands
         _pc = {"QE": "tab:blue", "RES": "tab:green"}
         for lbl, part in parts.items():
@@ -55,8 +55,8 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     # nan-mask non-kept bins so the line/band break cleanly at empties/shadowed bins.
     ddm = np.where(keep, dd, np.nan); edm = np.where(keep, ed, np.nan)
     a0.fill_between(edges, np.append(ddm - edm, (ddm - edm)[-1]), np.append(ddm + edm, (ddm + edm)[-1]),
-                    step="post", color="darkorange", alpha=0.30, lw=0)
-    a0.step(edges, np.append(ddm, ddm[-1]), where="post", color="darkorange", lw=1.4, label=ado_label)
+                    step="post", color="0.1", alpha=0.22, lw=0)
+    a0.step(edges, np.append(ddm, ddm[-1]), where="post", color="0.1", lw=1.4, ls="-", label=ado_label)
     if ado_parts:                               # ADoNIS QE/RES (solid; ACH parts are dashed)
         _components(ado_parts, "-", ado_label)
     if shadow.any():                            # shadowed bins: grey vertical spans in both panels (no markers)
