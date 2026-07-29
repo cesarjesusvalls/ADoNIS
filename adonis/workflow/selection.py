@@ -48,12 +48,13 @@ def _finish(obs, sel, w, chan):
     out = {k: v[sel] for k, v in obs.items()}
     out["w"] = np.asarray(w)[sel]
     out["chan"] = np.asarray(chan)[sel]          # 0 = QE, 1 = RES (for the reference QE/RES breakdown)
+    out["idx"] = np.where(np.asarray(sel))[0]    # bank-event indices of the selected events (for gradients)
     return out
 
 
 # --------------------------------------------------------------------------- ADoNIS paper_banks side
-def bank_signal(bank_dir, sd):
-    B = BP.load_bank(bank_dir)                                 # w0 already /n_chunks -> absolute nb
+def bank_signal(bank_dir, sd, B=None):
+    B = BP.load_bank(bank_dir) if B is None else B            # w0 already /n_chunks -> absolute nb (pass B to reuse)
     mu = B["k_mu"].astype(np.float64)
     pmu = np.linalg.norm(mu[:, 1:], axis=1); cmu = _cos(mu, pmu)
     if sd.pion_id == "none":                                   # ---- CC0pi ----
