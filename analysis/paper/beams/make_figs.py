@@ -58,7 +58,9 @@ def adonis_sigma(beam, nbins, target="C", suffix=""):
     PIR2 = man["pir2_mb"]
     with np.errstate(divide="ignore", invalid="ignore"):
         sr, ss = PIR2 * nr / ntry, PIR2 * ns / ntry
-        er, es = PIR2 * np.sqrt(nr) / ntry, PIR2 * np.sqrt(ns) / ntry
+        # BINOMIAL error on the reacted/tried efficiency (was Poisson sqrt(nr)); = Poisson * sqrt(1-eps)
+        er = PIR2 * np.sqrt(nr * np.clip(1.0 - nr / ntry, 0.0, 1.0)) / ntry
+        es = PIR2 * np.sqrt(ns * np.clip(1.0 - ns / ntry, 0.0, 1.0)) / ntry
     return edges, sr, ss, er, es
 
 

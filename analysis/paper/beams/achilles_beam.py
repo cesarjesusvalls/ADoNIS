@@ -94,8 +94,9 @@ def sigma_of_p(beam, edges, target="C"):
     with np.errstate(divide="ignore", invalid="ignore"):
         sr = PIR2_MB * n_r / ntot
         ss = PIR2_MB * n_s / ntot
-        er = PIR2_MB * np.sqrt(n_r) / ntot
-        es = PIR2_MB * np.sqrt(n_s) / ntot
+        # BINOMIAL error on the reacted/tried efficiency (was Poisson sqrt(n_r)); = Poisson * sqrt(1-eps)
+        er = PIR2_MB * np.sqrt(n_r * np.clip(1.0 - n_r / ntot, 0.0, 1.0)) / ntot
+        es = PIR2_MB * np.sqrt(n_s * np.clip(1.0 - n_s / ntot, 0.0, 1.0)) / ntot
     return sr, ss, er, es, n_r, n_s, n_tried
 
 
