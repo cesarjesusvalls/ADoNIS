@@ -6,5 +6,5 @@ beam: electron
 material: C
 channels: [qe, res]
 e_beam: 2222.0
-theta_acc: [5.0, 45.0]   # outgoing-e- polar acceptance [deg] (generation window; >5 cuts the forward 1/q^4 divergence)
+theta_acc: [14.0, 17.0]   # outgoing-e- polar acceptance [deg]: JLab (e,e) spectrometer window bracketing theta=15.541 (paper Fig 1)
 fsi: true

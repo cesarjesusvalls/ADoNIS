@@ -122,7 +122,7 @@ Nuclei:
 HardCuts:
   - Type: AngleTheta
     PIDs: 11
-    range: [5.0, 45.0]
+    range: [14.0, 17.0]
 
 Options: !include "data/default/OptionDefaults.yml"
 
