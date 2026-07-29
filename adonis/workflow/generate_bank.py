@@ -92,6 +92,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             r = _accept_lepton(r, LACC, theta=r["theta"])
             pid = np.where(r["is_p"], 2212, 2112).astype(np.int32)
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
+                        k_lep=np.asarray(r["k_e_out"]),            # outgoing e- 4-vector (for TKI/P_T)
                         p_N=np.asarray(r["p_out"]), p_pi=np.zeros((len(pid), 4)),
                         ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid)
 
@@ -99,6 +100,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             r = res_ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=_ALL)
             r = _accept_lepton(r, LACC, theta=r["theta"])
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
+                        k_lep=np.asarray(r["k_le"]),               # outgoing e- 4-vector (for TKI/P_T)
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32))
@@ -165,7 +167,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
         if EM:
             cat = lambda k: np.concatenate([e[1][k] for e in evs])
             save.update(c=cat("c").astype(np.float64), omega=cat("omega").astype(np.float32),
-                        theta=cat("theta").astype(np.float32))
+                        theta=cat("theta").astype(np.float32),
+                        k_e=cat("k_lep").astype(np.float32))     # outgoing e- 4-vector (TKI/P_T: Fig 6)
         else:
             nq = ns[0] if do_qe else 0; nr = ns[-1] if do_res else 0
             qref = evs[0][1] if do_qe else None; rref = evs[-1][1] if do_res else None
