@@ -23,7 +23,7 @@ Everything is per-event (values, weight) fed to the ONE validated panel `plottin
 (weighted dsigma/dx, sqrt(sum w^2) errors, ACH stat band + ADO points, ratio, per-bin chi2).  Weights are
 absolute nb on both sides (bank w0; oracle w * weight_to_nb, = 1 here).
 
-Usage:  python -m analysis.paper.sec1_validation.make [--no-beams]
+Usage:  python -m analysis.paper.old_sec1_validation.make [--no-beams]
 """
 import os
 import argparse
