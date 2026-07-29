@@ -20,7 +20,7 @@ def hist_with_errors(values, weights, edges):
     return h / bw, np.sqrt(h2) / bw
 
 
-def _curve_panel(a0, a1, ref, ado, *, label, ratio_band, ratio_ylim, ado_label, ref_label):
+def _curve_panel(a0, a1, ref, ado, *, label, ratio_band, ratio_ylim, ado_label, ref_label, xlabel=None):
     """Precomputed-curve/points variant: ref/ado are {x, y, yerr} (NOT per-event {values, w}).
     For sigma-vs-scan (E_nu, W) curves and per-bin efficiency points -- same line+band + ratio style as
     the histogram panel, but the y is handed in already reduced (integrated sigma / per-bin efficiency)."""
@@ -39,14 +39,14 @@ def _curve_panel(a0, a1, ref, ado, *, label, ratio_band, ratio_ylim, ado_label, 
         a1.axhline(1.0 - off, ls="--", color="0.7", lw=0.6); a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
     a1.fill_between(x, r - re, r + re, color="navy", alpha=0.25, lw=0)
     a1.plot(x, r, color="navy", lw=1.2)
-    a1.set_ylim(*ratio_ylim); a1.set_xlabel(label, fontsize=8); a0.set_xlim(x[0], x[-1])
+    a1.set_ylim(*ratio_ylim); a1.set_xlabel(xlabel or label, fontsize=8); a0.set_xlim(x[0], x[-1])
     chi2 = float(np.nansum((ry[m] - ay[m]) ** 2 / (rye[m] ** 2 + aye[m] ** 2 + 1e-30))); ndf = int(m.sum())
     return dict(chi2=chi2, ndf=ndf, ach_ado=float(np.nansum(ry[m]) / max(np.nansum(ay[m]), 1e-30)), n_shadow=0)
 
 
 def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
                      ratio_ylim=(0.5, 1.6), ado_label="ENGINE", ref_label="ACHILLES", data=None,
-                     logy=False, shadow_frac=None, ref_parts=None, ado_parts=None):
+                     logy=False, shadow_frac=None, ref_parts=None, ado_parts=None, xlabel=None):
     """Render one observable into top axis a0 (dsigma/dx) + bottom a1 (ACH/ADO ratio).
     ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado).
     shadow_frac (opt-in, e.g. 0.01): bins contributing < this fraction of the panel's TOTAL cross section
@@ -56,7 +56,7 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     _curve_panel (sigma-vs-scan curves, per-bin efficiency) -- same style, y handed in already reduced."""
     if "y" in ref:
         return _curve_panel(a0, a1, ref, ado, label=label, ratio_band=ratio_band, ratio_ylim=ratio_ylim,
-                            ado_label=ado_label, ref_label=ref_label)
+                            ado_label=ado_label, ref_label=ref_label, xlabel=xlabel)
     bw = np.diff(edges); ctr = 0.5 * (edges[1:] + edges[:-1])
     da, ea = hist_with_errors(ref["values"], ref["w"], edges)
     dd, ed = hist_with_errors(ado["values"], ado["w"], edges)
