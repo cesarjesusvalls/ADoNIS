@@ -41,6 +41,8 @@ def parse_args():
     p.add_argument("--gpu", action="store_true", help="run on the GPU partition (turing) with a GPU (bank gen)")
     p.add_argument("--gres", default=None, help="SLURM generic resource, e.g. 'gpu:1' (implied by --gpu)")
     p.add_argument("--array", default=None, help="SLURM array spec, e.g. '0-7' or '0-47%8' (optional)")
+    p.add_argument("--dependency", default=None,
+                   help="SLURM dependency spec, e.g. 'afterany:12345' (run after that job/array finishes)")
     p.add_argument("--submit", action="store_true", help="actually sbatch (default: dry run)")
     return p.parse_args()
 
@@ -54,6 +56,7 @@ def main():
     arr = "%A_%a" if a.array else "%j"
     log = LOGS / f"{a.name}_{ts}_{arr}.log"
     array_line = f"#SBATCH --array={a.array}\n" if a.array else ""
+    dep_line = f"#SBATCH --dependency={a.dependency}\n" if a.dependency else ""
     # Resolve partition/gres: --gpu -> turing + gpu:1 (bank generation); else milano, no gres.
     part = a.partition or (os.environ.get("ADONIS_SLURM_GPU_PARTITION", "turing") if a.gpu
                            else os.environ.get("ADONIS_SLURM_PARTITION", "milano"))
@@ -72,7 +75,7 @@ def main():
 #SBATCH --mem={a.mem}
 #SBATCH --time={a.time}
 #SBATCH --requeue
-{gres_line}{array_line}
+{gres_line}{array_line}{dep_line}
 echo "=========================================="
 echo "job $SLURM_JOB_ID ($SLURM_JOB_NAME)  array_task=${{SLURM_ARRAY_TASK_ID:-none}}"
 echo "node $SLURM_NODELIST  started $(date)"
