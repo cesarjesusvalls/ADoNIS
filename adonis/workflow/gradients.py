@@ -28,6 +28,17 @@ KNOB_LABELS = [s[2] for s in _SPECS]
 N_KNOBS = len(_SPECS)
 
 
+def _jac_via_jvp(fn, theta0, nknob):
+    """Forward-mode Jacobian as `nknob` sequential JVPs (one unit tangent each) instead of jax.jacfwd, which
+    materialises all tangents at once -- the loop caps peak memory for the big (~5M-event) banks."""
+    cols = []
+    for k in range(nknob):
+        e = jnp.zeros(nknob).at[k].set(1.0)
+        _, col = jax.jvp(fn, (theta0,), (e,))
+        cols.append(np.asarray(col))
+    return np.stack(cols, axis=1)                 # (n_out, nknob)
+
+
 def pack():
     """The 28-vector of NOMINAL knob values (the point we differentiate at), in knob_specs order."""
     return jnp.asarray([float(s[3]) for s in _SPECS])
@@ -79,11 +90,55 @@ def bin_jacobian(bank_dir, sd, obs_key, edges, material, B=None):
 
     theta0 = pack()
     nominal = np.asarray(binned(theta0))
-    J = np.asarray(jax.jacfwd(binned)(theta0))             # (nb, 28)
+    J = _jac_via_jvp(binned, theta0, N_KNOBS)              # (nb, 28) -- memory-bounded jvp loop
     # stat error per bin: sqrt(sum w0^2) over the selected events in the bin (nominal weights)
     w0 = np.asarray(B["w0"])[idx][keep]
     stat = np.sqrt(np.bincount(binid[keep], weights=w0 ** 2, minlength=nb))
     return J, nominal, stat
+
+
+_FSI_COLS = list(range(11, 22))            # knob_specs indices of the 11 FSI knobs (sabs .. f_NN_cex)
+
+
+def fsi_jacobian_beam(bank_dir, nbins=30, B=None):
+    """FSI-knob Jacobian for a HADRON (pion) beam bank -- the clean FSI anchor (no hard vertex / SF).
+    Reweights the reacted fraction via the kind-1 pool_fsi_reweight on the f_* records:
+    eff_b(theta) = Σ_{i in p-bin b} reacted_i · w_fsi_i(theta) / n_tried_b   (πR² cancels in the fractional
+    response, so we return the efficiency Jacobian).  Returns J_full (nbins, 28) with only the 11 FSI columns
+    populated, nominal efficiency (nbins,), and the p-bin edges."""
+    import json
+    from adonis.fsi.cascade import pool_fsi_reweight
+    from adonis.workflow.records import derive_flags
+    B = BP.load_bank(bank_dir) if B is None else B
+    man = json.load(open(f"{bank_dir}/manifest.json"))
+    p = np.asarray(B["beam_p"], float)
+    edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
+    binid = np.clip(np.digitize(p, edges) - 1, 0, nbins - 1)
+    reacted = derive_flags(B)["reacted"].astype(float)
+    ntry = np.bincount(binid, minlength=nbins).astype(float)
+    rec = {f: jnp.asarray(B[f"f_{f}"]) for f in BR._FSI_F}; rec["n_events"] = len(p)
+    react_j = jnp.asarray(reacted); bid = jnp.asarray(binid.astype(np.int32))
+    ntry_j = jnp.asarray(np.where(ntry > 0, ntry, 1.0))
+    fsi_specs = _SPECS[11:22]                                   # (name, idx) for the 11 FSI knobs
+
+    def eff(theta_fsi):
+        vals, tup = {}, {}
+        for j, (name, idx, _l, _n) in enumerate(fsi_specs):
+            if idx is None:
+                vals[name] = theta_fsi[j]
+            else:
+                tup.setdefault(name, [None, None, None])[idx] = theta_fsi[j]
+        wf = pool_fsi_reweight(rec, vals["sabs"], 1.0, s_piN_elastic=vals["s_piN_elastic"],
+                               s_piN_cex=vals["s_piN_cex"], s_conv=vals["s_conv"],
+                               s_NN_elastic=tuple(tup["s_NN_elastic"]),
+                               s_NN_inelastic=tuple(tup["s_NN_inelastic"]), f_NN_cex=vals["f_NN_cex"])
+        return jax.ops.segment_sum(react_j * wf, bid, num_segments=nbins) / ntry_j
+
+    theta0 = jnp.asarray([float(s[3]) for s in fsi_specs])
+    nominal = np.asarray(eff(theta0))
+    Jfsi = _jac_via_jvp(eff, theta0, len(fsi_specs))           # (nbins, 11) -- memory-bounded jvp loop
+    Jfull = np.zeros((nbins, N_KNOBS)); Jfull[:, _FSI_COLS] = Jfsi
+    return Jfull, nominal, edges
 
 
 def finite_diff_check(bank_dir, sd, obs_key, edges, material, knob_index, eps=1e-3, B=None):

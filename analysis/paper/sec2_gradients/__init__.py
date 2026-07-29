@@ -1,1 +1,1 @@
-"""Paper section 2: exact per-bin gradients for all 27 knobs (autodiff through the frozen bank)."""
+"""Section 2: ADoNIS gradient information (autodiff Jacobian of the measurable distributions vs all knobs)."""
