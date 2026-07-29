@@ -44,9 +44,10 @@ def _mu_pass(pmu, cmu, sd):
     return (pmu >= sd.mu_win[0]) & (pmu <= sd.mu_win[1]) & (cmu > cut)
 
 
-def _finish(obs, sel, w):
+def _finish(obs, sel, w, chan):
     out = {k: v[sel] for k, v in obs.items()}
     out["w"] = np.asarray(w)[sel]
+    out["chan"] = np.asarray(chan)[sel]          # 0 = QE, 1 = RES (for the reference QE/RES breakdown)
     return out
 
 
@@ -68,7 +69,7 @@ def bank_signal(bank_dir, sd):
         ppi = np.linalg.norm(pip[:, 1:], axis=1); cpi = _cos(pip, ppi)
         sel = ((npip == 1) & (npi0 == 0) & (npim == 0) & hasp & _mu_pass(pmu, cmu, sd)
                & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
-    return _finish(_obs(mu, lead, pip), sel, B["w0"])
+    return _finish(_obs(mu, lead, pip), sel, B["w0"], B["channel"])       # channel: 0 QE, 1 RES
 
 
 # --------------------------------------------------------------------------- ACHILLES fs_rich side
@@ -81,6 +82,8 @@ def oracle_signal(oracle_npz, sd):
     pm = np.linalg.norm(prot[:, :, 1:], axis=2)
     pipid = np.asarray(d["pi_pid"]); pi4 = np.asarray(d["pi_p4"], float)
     n_other = np.asarray(d["n_other_meson"]) if "n_other_meson" in d.files else np.zeros(len(mu))
+    proc = np.asarray(d["proc"]) if "proc" in d.files else np.full(len(mu), 200)
+    chan = (proc != 200).astype(int)                          # ACHILLES proc: 200 = QE, 401/402 = RES
     idx = np.arange(len(mu))
     if sd.pion_id == "none":                                  # ---- CC0pi ----
         n_meson = (pipid != 0).sum(1) + n_other.astype(int)
@@ -99,4 +102,4 @@ def oracle_signal(oracle_npz, sd):
         haslead = key[idx, j] > 0
         sel = ((npip == 1) & (npi0 == 0) & (npim == 0) & haslead & _mu_pass(pmu, cmu, sd)
                & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
-    return _finish(_obs(mu, lead, pip), sel, w)
+    return _finish(_obs(mu, lead, pip), sel, w, chan)
