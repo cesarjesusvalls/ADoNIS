@@ -25,17 +25,17 @@ of `chunk_NNN.npz` + `manifest.json` (one chunk per seed); read it back with `ge
 
 ```bash
 # neutrino reweight bank (weak hard vertex, T2K flux, QE+RES)
-$PY -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C \
+$PY -u -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C \
     --n-per-seed 25000 --n-seeds 4
 
 # electron (e,e') bank — SAME command, probe=EM in the config
-$PY -u -m adonis.workflow.cli configs/beam_e_C.yaml --out $OUT/beam_e_C --n-per-seed 25000 --n-seeds 4
+$PY -u -m adonis.workflow.cli configs/banks/beam_e_C.yaml --out $OUT/beam_e_C --n-per-seed 25000 --n-seeds 4
 
 # tagged pi+ beam (pure-FSI cascade) — SAME command, probe=hadron in the config
-$PY -u -m adonis.workflow.cli configs/beam_pip_C.yaml --out $OUT/beam_pip_C --n-per-seed 50000 --n-seeds 10
+$PY -u -m adonis.workflow.cli configs/banks/beam_pip_C.yaml --out $OUT/beam_pip_C --n-per-seed 50000 --n-seeds 10
 
 # quick smoke run
-$PY -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --out /tmp/smoke --n-per-seed 1000 --n-seeds 1
+$PY -u -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml --out /tmp/smoke --n-per-seed 1000 --n-seeds 1
 ```
 
 Parallel production is one independent SLURM array task per seed block — no in-process workers:
@@ -53,7 +53,7 @@ Key flags / env:
 | `--tag _foo` | bank-name suffix; one config → several named bank sets (no throwaway configs) |
 | `ADONIS_TIMESTEP=0\|1` | stepping clock: **0 = distance-sync (default, committed engine)**; 1 = time-sync (experimental, physics-equivalent on forward observables). |
 
-Configs: `configs/paper_banks/*.yaml` (weak/EM), `configs/beam_*.yaml` (hadron). Each sets `probe`,
+Configs: `configs/banks/*.yaml` (all probes: nu weak, beam_e EM, beam_{pip,prot,neut} hadron). Each sets `probe`,
 `beam`, `material`, and the probe-specific fields (weak: `flux`, `channels`; EM: `e_beam`, `theta_acc`;
 hadron: `pmin`/`pmax`), plus the `cascade` block and sharding defaults. CLI flags override the YAML.
 

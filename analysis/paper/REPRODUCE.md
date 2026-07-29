@@ -59,7 +59,7 @@ python -m adonis.oracle.run_achilles configs/achilles/run_cascade_neut_C.yml    
 # generator for EVERY probe (weak nu | EM electron), via adonis.workflow.cli --reweight-bank.  One chunk
 # per seed (n-per-seed events/chunk, n-seeds chunks, seed0+c) so SLURM shards over seed0 stay independent.
 # The 11 paper samples: 3 neutrino + 2 electron below; 6 hadron beams via beam_bank (further down).
-python -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml    --reweight-bank output/event_bank_v2 \
+python -u -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml    --reweight-bank output/event_bank_v2 \
        --n-per-seed 250000 --n-seeds 4 --seed0 0
 # nu_MINERvA_C, nu_uBooNE_Ar (weak; flux+material from the config), beam_e_C, beam_e_Ar (EM electron) -- same call,
 # swap the config.  (This replaces the retired env-driven event_bank + ee_event_bank; byte-for-byte identical.)
@@ -69,9 +69,9 @@ ADONIS_EVENT_BANK=output/event_bank_v2 PHYSFIT_OBS=full ADONIS_LABEL=physfit_gat
   python -u -m analysis.paper.physical_fit          # -> output/altgen/physfit_gate1_full_v2.npz
 
 # tagged-beam cascade banks (config-driven BeamGenConfig; CLI flags override any field)
-python -u -m analysis.paper.beams.beam_bank configs/beam_pip_C.yaml
-python -u -m analysis.paper.beams.beam_bank configs/beam_prot_C.yaml
-python -u -m analysis.paper.beams.beam_bank configs/beam_neut_C.yaml
+python -u -m analysis.paper.beams.beam_bank configs/banks/beam_pip_C.yaml
+python -u -m analysis.paper.beams.beam_bank configs/banks/beam_prot_C.yaml
+python -u -m analysis.paper.beams.beam_bank configs/banks/beam_neut_C.yaml
 ```
 
 On S3DF, submit generation to the GPU via `jobs/submit.py --gpu` (turing); env.sh auto-selects the

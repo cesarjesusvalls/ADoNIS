@@ -6,13 +6,13 @@ There is exactly ONE generator, `generate_bank(cfg, outdir)`, which dispatches o
 (weak | EM | hadron); ALL diversity lives in the config, not in the command.  Examples:
 
   # neutrino reweight bank (weak hard vertex, T2K flux, QE+RES)
-  python -u -m adonis.workflow.cli configs/paper_banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C
+  python -u -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C
 
   # electron (e,e') bank -- same command, probe=EM in the config (monochromatic e- beam)
-  python -u -m adonis.workflow.cli configs/beam_e_C.yaml --out $OUT/beam_e_C
+  python -u -m adonis.workflow.cli configs/banks/beam_e_C.yaml --out $OUT/beam_e_C
 
   # tagged pi+ beam (pure-FSI cascade) -- same command, probe=hadron in the config
-  python -u -m adonis.workflow.cli configs/beam_pip_C.yaml --out $OUT/beam_pip_C
+  python -u -m adonis.workflow.cli configs/banks/beam_pip_C.yaml --out $OUT/beam_pip_C
 
 Production sharding is one independent SLURM array task per seed block: pass
 `--seed0 $SLURM_ARRAY_TASK_ID` (+ --n-per-seed/--n-seeds) and a per-task `--out .../part_$TASK`.
