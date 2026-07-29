@@ -47,11 +47,13 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
         cd = dd * bw / max(float(np.sum(dd * bw)), 1e-30)
         shadow = m & (np.maximum(ca, cd) < float(shadow_frac))
     keep = m & ~shadow
-    # ADoNIS points: kept normal (C0), shadowed greyed; + a grey band over each shadowed bin (both panels)
-    a0.errorbar(ctr[keep], dd[keep], yerr=ed[keep], fmt="s", color="darkorange", ms=6, capsize=2, lw=0.9, label=ado_label)
-    if shadow.any():
-        a0.errorbar(ctr[shadow], dd[shadow], yerr=ed[shadow], fmt="s", color="0.6", ms=3, capsize=2, lw=0.9,
-                    alpha=0.6, label=f"shadowed (<{100*float(shadow_frac):.2g}%)")
+    # ADoNIS: step line + shaded error band (SAME visual language as the ACHILLES total/QE/RES);
+    # nan-mask non-kept bins so the line/band break cleanly at empties/shadowed bins.
+    ddm = np.where(keep, dd, np.nan); edm = np.where(keep, ed, np.nan)
+    a0.fill_between(edges, np.append(ddm - edm, (ddm - edm)[-1]), np.append(ddm + edm, (ddm + edm)[-1]),
+                    step="post", color="darkorange", alpha=0.30, lw=0)
+    a0.step(edges, np.append(ddm, ddm[-1]), where="post", color="darkorange", lw=1.4, label=ado_label)
+    if shadow.any():                            # shadowed bins: grey vertical spans in both panels (no markers)
         for i in np.where(shadow)[0]:
             a0.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
             a1.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
@@ -73,9 +75,10 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     for off in (0.1, 0.2):                                       # +/-10% and +/-20% shift guides (thin grey lines)
         a1.axhline(1.0 - off, ls="--", color="0.7", lw=0.6)
         a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
-    a1.errorbar(ctr[keep], r[keep], yerr=re[keep], fmt="o", color="navy", ms=4, capsize=2, lw=0.8)
-    if shadow.any():
-        a1.errorbar(ctr[shadow], r[shadow], yerr=re[shadow], fmt="o", color="0.6", ms=3, capsize=2, lw=0.8, alpha=0.6)
+    rm = np.where(keep, r, np.nan); rem = np.where(keep, re, np.nan)     # ratio: navy step + shaded band
+    a1.fill_between(edges, np.append(rm - rem, (rm - rem)[-1]), np.append(rm + rem, (rm + rem)[-1]),
+                    step="post", color="navy", alpha=0.25, lw=0)
+    a1.step(edges, np.append(rm, rm[-1]), where="post", color="navy", lw=1.2)
     a1.set_ylim(*ratio_ylim); a1.set_xlabel(label, fontsize=8)
     a0.set_xlim(edges[0], edges[-1])           # clamp to bin edges (sharex -> a1 too): no "floating" margin
     ach_ado = float(np.sum(da * bw) / max(np.sum(dd * bw), 1e-30))
