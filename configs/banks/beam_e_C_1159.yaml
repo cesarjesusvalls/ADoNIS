@@ -1,0 +1,10 @@
+# e4nu (e,e') on 12C at 1.159 GeV (Khachatryan et al., Nature 599 565 (2021); CLAS6).
+# Electron acceptance 15<=theta_e<=45 deg, E_e>=0.4 GeV (E_e cut applied in analysis).
+name: beam_e_C_1159
+probe: EM
+beam: electron
+material: C
+channels: [qe, res]
+e_beam: 1159.0
+theta_acc: [15.0, 45.0]   # e4nu/CLAS6 electron polar acceptance
+fsi: true
