@@ -14,21 +14,21 @@ OUT = ROOT / "output"
 DEST = OUT / "paper" / "validation_figs.html"
 MAXW = 1200
 
-# (file, one-line title) in reading order; grouped by section header (None = figure)
+# (file, one-line title) in reading order; grouped by section header (H = section header).
+# The ACHILLES-paper (arXiv:2508.19213) reproduction set built by sec1_validation/make.py.
 ITEMS = [
-    ("H", "T2K flux · ¹²C  —  the primary validation"),
-    ("paper/sec1_cc0pi.png",        "CC0π kinematics (δp_T, δα_T, p_μ, cosθ_μ)"),
-    ("paper/sec1_cc1pi.png",        "CC1π⁺ STV (p_N, δp_TT, δα_T, p_π, cosθ_π)"),
-    ("paper/sec1_multiplicity.png", "CC-inclusive multiplicities (N_p, N_π±)"),
-    ("paper/beams_validation.png",  "Tagged beams π⁺/p/n on ¹²C (pure transport)"),
-    ("H", "MINERvA flux (NuMI ~4 GeV) · ¹²C  —  different flux"),
-    ("paper/xval_minerva_stv.png",  "CC0π STV (δp_T, δα_T)"),
-    ("paper/xval_minerva_muon.png", "CC0π muon kinematics (p_μ, cosθ_μ)"),
-    ("H", "MicroBooNE flux (BNB ~0.8 GeV) · ⁴⁰Ar  —  different target"),
-    ("paper/xval_uboone_incl.png",  "CC-inclusive muon kinematics (p_μ, cosθ_μ)"),
-    ("paper/xval_uboone_cc0pi.png", "CC0πNp (δp_T, p_μ)"),
-    ("H", "Fully-inclusive cross-section ratio (no cuts)"),
-    ("paper/xval_inclusive_ratio.png", "Total CC σ, ADoNIS/ACHILLES vs E_ν — C and Ar"),
+    ("H", "Inclusive & free-nucleon / pion-nucleus cross sections"),
+    ("paper/fig01_ee_domega.png",       "Fig 1 — inclusive (e,e') dσ/dω, ⁴⁰Ar & ¹²C @2.222 GeV (QE/RES/total)"),
+    ("paper/fig02_anl_sigma.png",       "Fig 2 — free-nucleon RES single-pion σ(E_ν), 3 CC channels"),
+    ("paper/fig03_pi_nucleus_sigma.png", "Fig 3 — π⁺ nucleus absorption + reaction σ(p), ¹²C & ⁴⁰Ar"),
+    ("paper/fig13_piN_sigma.png",       "Fig 13 — meson-baryon DCC σ(W) + angular (ADoNIS MC vs ANL-Osaka)"),
+    ("H", "e4ν electron scattering · ¹²C @1.159 GeV"),
+    ("paper/fig456_e4nu.png",           "Figs 4/5/6 — e4ν (e,e'): E_QE (0π), E_cal (1p0π), P_T (1p0π)"),
+    ("H", "Neutrino transverse-kinematics (TKI/STV)"),
+    ("paper/fig07_t2k_cc0pi.png",       "Fig 7 — T2K CC0π TKI (δp_T, δα_T, …) on ¹²C"),
+    ("paper/fig08_t2k_cc1pi.png",       "Fig 8 — T2K CC1π⁺ STV (p_N, δp_TT, …) on ¹²C"),
+    ("paper/fig09_minerva_cc0pi.png",   "Fig 9 — MINERvA CC0π TKI (δα_T, p_n^reco, …) on ¹²C"),
+    ("paper/fig10_uboone_cc1p0pi.png",  "Fig 10 — MicroBooNE CC1p0π δp_T in δα_T slices on ⁴⁰Ar"),
 ]
 
 

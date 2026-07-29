@@ -134,8 +134,9 @@ def spine():
 
 READINESS = [
     ("1", "Validation: ADoNIS reproduces ACHILLES",
-     "sec1_cc0pi · sec1_cc1pi · sec1_multiplicity · beams_validation", "ok", "figure-complete",
-     "9 kin obs χ²/ndf ≤ 1.83 (±5%); mult tails 4.6–5.5 @10M stats; beams reaction 1.4/4.1/2.2"),
+     "fig01_ee_domega · fig02_anl_sigma · fig03_pi_nucleus_sigma · fig456_e4nu · fig07/08/09 · fig10_uboone · fig13_piN_sigma",
+     "ok", "figure-complete",
+     "all non-NC ACHILLES-paper figures; ratios within a few % (near-threshold outliers documented: fig2 pπ⁺, fig13 ηN cusp)"),
     ("2", "Gradient information for all 27 knobs", "sec2_gradients_all27 · sec2_gradient_reach",
      "ok", "figure-complete", "exact per-bin ∂(dσ/dx)/∂θ, autodiff, all 27"),
     ("3", "Fisher information per observable subset",
@@ -237,13 +238,18 @@ BODY = f"""
   <p class="deffile mono">analysis/paper/sec1_validation/make.py</p>
   </div>
   <div class="callout warn"><b>Selection note.</b> CC0π signal is <b>topological</b> (no final-state pion)
-  on both sides — the only definition the oracle can express, and what an experiment measures. Gate I uses
-  the primary-pion-absorbed definition internally; the two differ only by the rare cascade-created
-  surviving pion (~1–3% at T2K).</div>
-  {figure("paper/sec1_cc0pi.png", "<b>CC0π kinematics.</b> δp_T (χ²/ndf 1.82), δα_T (1.16), p_μ (1.08), cosθ_μ (1.21). ADoNIS points on the ACHILLES step+stat-band; ratio in the ±5% band. δp_T is driven by the thin high-tail bins; peak and bulk are exact.")}
-  {figure("paper/sec1_cc1pi.png", "<b>CC1π STV kinematics.</b> p_N (0.72), δp_TT (1.83), δα_T (0.71), p_π (0.90), cosθ_π (1.31). T2K CC1π+Np acceptance (momentum windows + cosθ&gt;cos70° on μ/π/leading-p).")}
-  {figure("paper/sec1_multiplicity.png", "<b>CC-inclusive multiplicities.</b> N_p&gt;300 MeV/c (5.46) and N_π± (4.58) — at 10M statistics the percent-level high-multiplicity tails (N_p≥3 +2–5%, N_π±=2 +7%) become statistically resolved; bulk bins agree to &lt;1%. Integer bins with a top overflow bin.")}
-  {figure("paper/beams_validation.png", "<b>Tagged beams, pure transport.</b> π⁺/p/n on 12C, reaction (top) + absorption|π-production. Reaction χ²/ndf 1.37/4.07/2.17, ratios within ±1–2% (2.5–4.0M ACHILLES tried/beam). π-production matches through the NN→NNπ threshold turn-on. π⁺ absorption drifts ~10–15% high above 700 MeV/c (thin stats + known absorption residual).")}
+  on both sides — the only definition the oracle can express, and what an experiment measures. The same
+  SignalDef-driven <code>bank_signal</code>/<code>oracle_signal</code> selection + validated STV formulas
+  run on the ADoNIS paper_banks bank and the ACHILLES fs_rich oracle.</div>
+  {figure("paper/fig01_ee_domega.png", "<b>Fig 1 — inclusive (e,e') dσ/dω.</b> ⁴⁰Ar & ¹²C @2.222 GeV, θ_e'≈15.5°, QE/RES/total; ADoNIS (solid) vs ACHILLES (dashed). χ²/ndf 1.04 / 1.56.")}
+  {figure("paper/fig02_anl_sigma.png", "<b>Fig 2 — free-nucleon RES σ(E_ν).</b> pπ⁺ / nπ⁺ / pπ⁰; ADoNIS monochromatic free-nucleon evaluator vs the ACHILLES scan. χ²/ndf 32.8 / 3.4 / 0.9 (pπ⁺ dominated by the near-threshold E=400 point).")}
+  {figure("paper/fig03_pi_nucleus_sigma.png", "<b>Fig 3 — π⁺ nucleus σ(p).</b> absorption + reaction on ¹²C & ⁴⁰Ar (ADoNIS = Virtual Resonances). χ²/ndf 0.58–1.3.")}
+  {figure("paper/fig456_e4nu.png", "<b>Figs 4/5/6 — e4ν (e,e') on ¹²C @1.159 GeV.</b> E_QE (0π), E_cal (1p0π), P_T (1p0π). χ²/ndf 1.83 / 2.14 / 1.16.")}
+  {figure("paper/fig07_t2k_cc0pi.png", "<b>Fig 7 — T2K CC0π TKI.</b> δp_T + δα_T (+ p_μ, cosθ_μ) on ¹²C. χ²/ndf 0.7–1.7.")}
+  {figure("paper/fig08_t2k_cc1pi.png", "<b>Fig 8 — T2K CC1π⁺ STV.</b> p_N + δp_TT (+ δα_T, p_π, cosθ_π); CC1π+Np acceptance (momentum windows + cosθ&gt;cos70° on μ/π/leading-p).")}
+  {figure("paper/fig09_minerva_cc0pi.png", "<b>Fig 9 — MINERvA CC0π TKI.</b> δα_T + p_n^reco (+ δp_T) on ¹²C.")}
+  {figure("paper/fig10_uboone_cc1p0pi.png", "<b>Fig 10 — MicroBooNE CC1p0π.</b> double-differential δp_T in four δα_T slices on ⁴⁰Ar.")}
+  {figure("paper/fig13_piN_sigma.png", "<b>Fig 13 — meson-baryon DCC.</b> total σ(W) off proton (pi+/pi0/pi-/eta) + angular at p=300 MeV; ADoNIS Monte-Carlo cascade sampler vs ANL-Osaka analytic.")}
 </section>
 
 <section class="sec">

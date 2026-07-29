@@ -18,7 +18,7 @@ resolvable above the errors).
 
 | # | Section | Status | Assets / pointers | To do |
 |---|---|---|---|---|
-| 1 | **Validation: ADoNIS reproduces ACHILLES** — T2K CC0π, CC1π, multiplicities + tagged beams | ✅ figure-complete | `analysis/paper/sec1_validation/make.py` → `sec1_cc0pi`, `sec1_cc1pi`, `sec1_multiplicity`, `beams_validation` | fold into the paper |
+| 1 | **Validation: ADoNIS reproduces ACHILLES** — the paper's non-NC figures (inclusive e,e'; free-nucleon & π-nucleus σ; e4ν; T2K/MINERvA/MicroBooNE TKI; DCC σ(W)) | ✅ figure-complete | `analysis/paper/sec1_validation/make.py` → `fig01_ee_domega`, `fig02_anl_sigma`, `fig03_pi_nucleus_sigma`, `fig456_e4nu`, `fig07/08/09`, `fig10_uboone_cc1p0pi`, `fig13_piN_sigma` | fold into the paper |
 | 2 | **Compact "we have gradient information for all knobs"** | ✅ figure-complete | `analysis/paper/sec2_gradients/make.py` → `sec2_gradients_all27` (27×188 signed-log pull heatmap), `sec2_gradient_reach` | fold into the paper |
 | 3 | **Fisher information per observable subset** → what is worth fitting | ✅ figure-complete | `analysis/paper/sec3_fisher/make.py` → `sec3_shrinkage_subsets`, `sec3_failure_modes`, `sec3_degeneracy`; engine = `physical_fit.py` Gate I with `PHYSFIT_OBS` | fold into the paper |
 | 4 | **Closures** with Fisher-selected parameters | ✅ figure-complete | `physfit_fig7_closure5.png` (5-param, ≤0.5σ), 7-param on the 9-obs suite (`p9_closure.npz`, ≤0.4σ); `scripts/altgen/physfit_closure5_fig.py` | fold into the paper; optionally a fluctuated closure (null calibration) |
@@ -28,20 +28,24 @@ resolvable above the errors).
 
 ## Section 1 figures (2026-07-15)
 
-`analysis/paper/sec1_validation/make.py` — one script, ADoNIS-vs-ACHILLES overlay + ratio + χ²/ndf for
-**every observable the analysis uses**, each from the same source the Fisher uses (ADoNIS: the frozen
-event bank via `build_physfit_datasets`, i.e. the identical 11 datasets and bin edges; ACHILLES: the rich
-oracle `t2k_cc1pi_rich_ach_FSI_proc.npz`, STV formulas reused verbatim). CC0π is topological on both sides
-(the only definition the oracle can express; Gate I's primary-pion choice differs by the rare cascade
-pion, ~1–3%). All fed to the one validated `plotting.chi2_ratio_panel`.
+`analysis/paper/sec1_validation/make.py` — builds every non-NC ACHILLES-paper (arXiv:2508.19213) figure as
+an ADoNIS-vs-ACHILLES overlay + ratio, from the live paper_banks banks (ADoNIS) and fs_rich oracles
+(ACHILLES), through the one validated `plotting.chi2_ratio_panel` under the paper style. Config-driven
+per-event TKI figures come from `configs/analysis/*.yaml` via `adonis.workflow.analyze.run_analysis`; the
+non-histogram figures (σ(E), σ(p), σ(W), dσ/dω, angular) are standalone drivers in the same package.
+`python -m analysis.paper.sec1_validation.make [--light]` builds them all (--light skips the heavy amps2/MC
+drivers fig2/fig13).
 
-- `sec1_cc0pi` — δp_T (χ²/ndf 1.79), δα_T (1.17), p_μ (0.62), cosθ_μ (1.53)
-- `sec1_cc1pi` — p_N (0.95), δp_TT (0.58), δα_T (0.84), p_π (0.80), cosθ_π (1.22)
-- `sec1_multiplicity` — N_p (0.34), N_π± (0.58)
-- `beams_validation` — π⁺/p/n reaction + (absorption | π-production); reaction χ²/ndf 0.67/0.69/1.29
+- `fig01_ee_domega` — inclusive (e,e') dσ/dω on ⁴⁰Ar/¹²C, QE/RES/total (χ²/ndf 1.04 / 1.56)
+- `fig02_anl_sigma` — free-nucleon RES σ(E_ν): pπ⁺ / nπ⁺ / pπ⁰ (χ²/ndf 32.8 / 3.4 / 0.9; pπ⁺ driven by the near-threshold point)
+- `fig03_pi_nucleus_sigma` — π⁺ absorption + reaction σ(p) on ¹²C/⁴⁰Ar (χ²/ndf 0.58–1.3)
+- `fig456_e4nu` — e4ν (e,e') E_QE / E_cal / P_T (χ²/ndf 1.83 / 2.14 / 1.16)
+- `fig07 / fig08 / fig09` — T2K CC0π / T2K CC1π⁺ / MINERvA CC0π TKI (χ²/ndf 0.7–1.7)
+- `fig10_uboone_cc1p0pi` — MicroBooNE CC1p0π δp_T in δα_T slices (χ²/ndf ~1)
+- `fig13_piN_sigma` — meson-baryon DCC σ(W) + angular, ADoNIS MC vs ANL-Osaka
 
-Every neutrino ratio sits in the ±5% band; every beam reaction ratio in ±1%. The only >1.5 is CC0π δp_T
-(1.79), driven by the thin high-δp_T tail. `python -m analysis.paper.sec1_validation.make [--no-beams]`.
+Every ratio sits within a few percent; the outliers are documented near-threshold analytic features (fig2
+pπ⁺ E=400, fig13 ηN cusp). NC figures are intentionally out of scope.
 
 ## Section 3 result (2026-07-14): Gate I per observable subset
 
