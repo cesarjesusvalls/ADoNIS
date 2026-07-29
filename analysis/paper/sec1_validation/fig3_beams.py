@@ -42,14 +42,16 @@ def main(nbins=30, out="fig03_pi_nucleus_sigma"):
                 ax[2 * ni + r, 0].text(0.5, 0.5, f"{nuc}: {e}", ha="center", fontsize=7,
                                        transform=ax[2 * ni + r, 0].transAxes)
             continue
-        cen = 0.5 * (edges[:-1] + edges[1:])
+        cen = 0.5 * (edges[:-1] + edges[1:]) / 1000.0        # GeV/c (paper axis)
+        PMAX = {"absorption": 0.5, "reaction": 1.0}          # paper Fig 3 shown ranges [GeV/c]
         for oi, (A, EA, H, EH, lab) in enumerate(((ss, es, hs, hes, "absorption"),
                                                   (sr, er, hr, her, "reaction"))):
             a0, a1 = ax[2 * ni, oi], ax[2 * ni + 1, oi]
-            res = chi2_ratio_panel(a0, a1, None, {"x": cen, "y": H, "yerr": EH},
-                                   {"x": cen, "y": A, "yerr": EA},
+            k = cen <= PMAX[lab]                             # crop to the paper's shown |p| range
+            res = chi2_ratio_panel(a0, a1, None, {"x": cen[k], "y": H[k], "yerr": EH[k]},
+                                   {"x": cen[k], "y": A[k], "yerr": EA[k]},
                                    label=rf"$\pi^+$ {NUC_TEX[nuc]}: $\sigma$ ({lab})",
-                                   xlabel=r"beam $|p|$ [MeV/c]", ratio_ylim=(0.75, 1.25),
+                                   xlabel=r"beam $|p|$ [GeV/c]", ratio_ylim=(0.75, 1.25),
                                    ado_label="ADoNIS", ref_label="ACHILLES")
             a0.set_ylabel(r"$\sigma$ [mb]"); a1.set_ylabel("ratio")
             print(f"  {nuc} {lab:10s} chi2/ndf {res['chi2']/max(res['ndf'],1):6.2f} (ndf={res['ndf']})", flush=True)
