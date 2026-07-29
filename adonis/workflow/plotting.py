@@ -82,7 +82,8 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'})."""
     nv = len(specs)
     total_w = max(panel_w * nv, 7.5)          # floor so single-panel figs are not narrow/clipped
-    fig, ax = plt.subplots(2, nv, figsize=(total_w, 6.4), height_ratios=[3, 1],
+    fig, ax = plt.subplots(2, nv, figsize=(total_w, 6.4),
+                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0},
                            squeeze=False, sharex="col")
     results = {}
     for c, (key, edges, label) in enumerate(specs):
@@ -93,11 +94,13 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                                ratio_band=ratio_band, ratio_ylim=ratio_ylim,
                                ado_label=ado_label, ref_label=ref_label, data=d)
         if c == 0:
-            ax[0, c].legend(fontsize=7)
+            ax[0, c].legend(fontsize=7); ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]")
+            ax[1, c].set_ylabel("ratio")
         results[key] = res
     sr, sa = float(np.sum(ref_sel["w"])), float(np.sum(ado_sel["w"]))
     sig = {"ref": sr, "ado": sa, "ach_ado": sr / max(sa, 1e-30)}
     if title:
-        fig.suptitle(title + f"  ACH/ADO {sig['ach_ado']:.3f}", fontsize=12, wrap=True)
+        fig.suptitle(title, fontsize=12, wrap=True)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.subplots_adjust(hspace=0.0)          # top + ratio panels share one x-axis (no gap)
     return fig, results, sig

@@ -1,0 +1,23 @@
+# Paper Fig 8 — T2K CC1pi+Np TKI (PRD 103 112009 signal), ADoNIS vs ACHILLES on 12C.
+name: fig08_t2k_cc1pi
+inputs:
+  adonis_bank: [output/paper_banks_p4/nu_T2K_C/merged]
+  reference:   [output/achilles/fsrich/nu_T2K_C.npz]
+signal:      # CC1pi+: exactly 1 pi+ ; mu/pi/lead-p in window & all forward cos>cos70
+  mu_win: [250.0, 7000.0]
+  p_win: [450.0, 1200.0]
+  pi_win: [150.0, 1200.0]
+  cth: cos70
+  cos_mu: null
+  pion_id: pip
+  proton_lead: in_window
+observables:
+  - {key: pn,      label: 'CC1$\pi^+$  $p_N$ [MeV/c]',            linspace: [0.0, 800.0, 21]}
+  - {key: dptt,    label: 'CC1$\pi^+$  $\delta p_{TT}$ [MeV/c]',  linspace: [-700.0, 700.0, 29]}
+  - {key: dalphat, label: 'CC1$\pi^+$  $\delta\alpha_T$ [rad]',   linspace: [0.0, pi, 19]}
+  - {key: ppi,     label: 'CC1$\pi^+$  $p_\pi$ [MeV/c]',          linspace: [150.0, 1200.0, 22]}
+  - {key: cos_pi,  label: 'CC1$\pi^+$  $\cos\theta_\pi$',         linspace: [0.3, 1.0, 15]}
+out_path: output/paper/fig08_t2k_cc1pi.png
+title: 'ADoNIS vs ACHILLES --- T2K CC1$\pi^+$ TKI on $^{12}$C'
+ratio_band: [0.9, 1.1]
+ratio_ylim: [0.75, 1.25]
