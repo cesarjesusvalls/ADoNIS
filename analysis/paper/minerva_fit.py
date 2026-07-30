@@ -6,7 +6,7 @@ Jacobian can be stacked into the multi-sample gradient figure.  The engine (bank
 
   * bank    : output/paper_banks_p4/nu_MINERvA_C (weak probe, MINERvA flux, carbon)
   * signal  : MINERvA CC0pi-Np (Cai et al., MINERvA:2018hba / NUISANCE MINERvA_CC0pinp)
-              - muon  : 1.5 <= p_mu <= 20 GeV  (1500-20000 MeV), theta_mu < 20 deg (cos > cos20)
+              - muon  : 1.5 <= p_mu <= 10 GeV  (1500-10000 MeV), theta_mu < 20 deg (cos > cos20)
               - lead p: 0.45 <= p_p <= 1.2 GeV/c (450-1200 MeV), theta_p < 70 deg (cos > cos70)
               - CC0pi : zero final-state mesons; >= 1 proton in the acceptance (global-leading, ge1)
   * observables : dat [deg] (0-180), pn [MeV] (p_n^recon), dpt [MeV]
@@ -42,7 +42,7 @@ LABEL = os.environ.get("ADONIS_LABEL", "physfit_minerva")
 # ---- MINERvA CC0pi-Np acceptance (Cai et al. 2018 / NUISANCE MINERvA_CC0pinp) --------------------- #
 COS20 = float(np.cos(np.deg2rad(20.0)))     # muon forward cut, theta_mu < 20 deg
 COS70 = float(np.cos(np.deg2rad(70.0)))     # leading-proton forward cut, theta_p < 70 deg
-MU_WIN = (1500.0, 20000.0)                  # p_mu [MeV]
+MU_WIN = (1500.0, 10000.0)                  # p_mu [MeV] -- NUISANCE isCC0piNp_MINERvA_STV caps at 10 GeV
 P_WIN = (450.0, 1200.0)                     # leading-proton |p| [MeV]
 _MESONS = list(PDG_MESONS)                  # np.isin needs a list -- a frozenset matches NOTHING
 # per-nucleon 1e-38 conversion (carbon), identical to info_content.load_cc0pi("dat")'s conv; MeV-binned

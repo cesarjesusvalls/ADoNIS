@@ -31,11 +31,15 @@ DSLABEL = {"dpt": "T2K CC0$\\pi$\n$\\delta p_T$", "dat": "T2K CC0$\\pi$\n$\\delt
            "daT": "T2K CC1$\\pi$\n$\\delta\\alpha_T$", "ppi": "T2K CC1$\\pi$\n$p_\\pi$",
            "cospi": "T2K CC1$\\pi$\n$\\cos\\theta_\\pi$",
            "n_p": "T2K $N_p^{\\rm incl}$", "n_chpi": "T2K $N_{\\pi^\\pm}^{\\rm incl}$",
-           "mnv_dat": "MINERvA CC0$\\pi$\n$\\delta\\alpha_T$", "mnv_pn": "MINERvA CC0$\\pi$\n$p_n$",
-           "mnv_dpt": "MINERvA CC0$\\pi$\n$\\delta p_T$",
+           "mnv_dat": "MINERvA\nCC0$\\pi$ $\\delta\\alpha_T$", "mnv_pn": "MINERvA\nCC0$\\pi$ $p_n$",
+           "mnv_dpt": "MINERvA\nCC0$\\pi$ $\\delta p_T$",
            "pip_react": "$\\pi^+$C\n$\\sigma_{\\rm reac}$", "pip_abs": "$\\pi^+$C\n$\\sigma_{\\rm abs}$",
            "prot_react": "$p$C\n$\\sigma_{\\rm reac}$", "prot_pipro": "$p$C\n$\\sigma_{\\pi\\rm prod}$",
-           "e_qe": "$(e,e')$C\n$\\omega_{\\rm QE}$", "e_res": "$(e,e')$C\n$\\omega_{\\rm RES}$"}
+           "neut_react": "$n$C\n$\\sigma_{\\rm reac}$", "neut_pipro": "$n$C\n$\\sigma_{\\pi\\rm prod}$",
+           "e_qe": "$(e,e')$C\n$\\omega_{\\rm QE}$", "e_res": "$(e,e')$C\n$\\omega_{\\rm RES}$",
+           "t2k_pcos": "T2K CC0$\\pi$\n2D $p_\\mu$-$\\cos\\theta_\\mu$",
+           "mnv_ptmu": "MINERvA\n$p_T^\\mu$", "mnv_pzmu": "MINERvA\n$p_\\parallel^\\mu$",
+           "mnv_ptpl": "MINERvA qe\n2D $p_T$-$p_\\parallel$"}
 
 # compact, physics-intuitive LaTeX for each knob (physical_fit SPEC names -> symbol).  QE/RES form-factor
 # strengths S_{A,V}; Sachs FFs; C5A (res axial); pion-pole; Delta P33 strength; FSI scale factors s_*
@@ -196,24 +200,24 @@ def main(label="physfit_gate1_full_v2", mark_data=False, transpose=False):
         axh.set_yticks(ctr); axh.set_yticklabels(dslab, fontsize=7)
         axh.set_xticks(range(nknob)); axh.set_xticklabels([_plab(p) for p in pnames], rotation=90, fontsize=8)
         axh.xaxis.set_ticks_position("top"); axh.xaxis.set_label_position("top")
-        axh.set_ylabel("bin  (grouped by observable)")
-        axh.set_title(shape_title + "\n", fontsize=8, pad=30)
-        fig.colorbar(im, ax=axh, fraction=0.025, pad=0.01, label="relative pull  (column-normalized, signed)")
+        # no y-axis label, no title; colorbar horizontal underneath with only -1/0/1 ticks
+        fig.colorbar(im, ax=axh, orientation="horizontal", fraction=0.03, pad=0.03, ticks=[-1, 0, 1])
         if mark_data:
             _mark_data(axh, marked, nknob, transpose=True)
             axh.text(0.0, 1.006, "green = bins with published data", transform=axh.transAxes,
                      color="#2ca02c", fontsize=8)
         style.save(fig, nm["shape"])
     else:
-        fig, axh = plt.subplots(figsize=(12.5, 7.4))
+        W = max(13.0, 0.03 * nbin + 3.0); H = max(6.0, 0.26 * nknob + 1.5)
+        fig, axh = plt.subplots(figsize=(W, H))
         im = axh.imshow(Sshape, aspect="auto", cmap="RdBu_r", vmin=-1, vmax=1, interpolation="nearest")
         for r in row0[1:-1]:
             axh.axvline(r - 0.5, color="k", lw=0.8)
         axh.set_xticks(ctr); axh.set_xticklabels(dslab, fontsize=7)
         axh.set_yticks(range(nknob)); axh.set_yticklabels([f"{_plab(p)}  " for p in pnames], fontsize=8)
-        axh.set_xlabel("bin  (grouped by observable)")
-        axh.set_title(shape_title, fontsize=9)
-        fig.colorbar(im, ax=axh, fraction=0.02, pad=0.01, label="relative pull  (row-normalized, signed)")
+        axh.xaxis.set_ticks_position("top"); axh.xaxis.set_label_position("top")   # sample labels on top
+        # no x/y label, no title; thin horizontal colorbar underneath with only -1/0/1 ticks
+        fig.colorbar(im, ax=axh, orientation="horizontal", fraction=0.012, pad=0.05, shrink=0.4, ticks=[-1, 0, 1])
         if mark_data:
             _mark_data(axh, marked, nknob)
             axh.text(0.995, 1.006, "green = bins with published data", transform=axh.transAxes,

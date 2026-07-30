@@ -24,27 +24,45 @@ from analysis.paper import style                      # noqa: E402
 from analysis.paper.beams import beam_fisher as BF     # noqa: E402
 
 # one dskeys entry per 15-bin block beam_jacobian returns (reaction bins, then the second observable)
-BEAM_OBS = {"pip": ["pip_react", "pip_abs"], "prot": ["prot_react", "prot_pipro"]}
+BEAM_OBS = {"pip": ["pip_react", "pip_abs"], "prot": ["prot_react", "prot_pipro"],
+            "neut": ["neut_react", "neut_pipro"]}
 
 # persisted physfit-format npz samples (each already a bank -> jvp Jacobian), stacked in this order.
-# Only the ones present on disk are used, so electron (physfit_electron) joins automatically once made.
-NPZ_SAMPLES = ("physfit_gate1", "physfit_minerva", "physfit_electron")
+# Each entry is (label, keep) where keep is None (all observables) or a tuple of dskeys to keep -- so a
+# sample can be restricted to the variables the experiment ACTUALLY measured.  Only labels present on
+# disk are used.  Every column is one real measurement with its own NUISANCE signal definition:
+#   physfit_gate1        T2K CC0pi-Np + CC1pi+Np STV  -> keep the measured STV vars only (drop the
+#                        pmu/cosmu/ppi/cospi marginals; the muon 2D is its own sample below)
+#   physfit_t2k_pcos     T2K CC0pi 2D d2sigma/dpmu dcosmu (hadron-inclusive, isT2K_CC0pi Analysis I)
+#   physfit_minerva      MINERvA CC0pi-Np STV (isCC0piNp_MINERvA_STV)
+#   physfit_minerva_ptpz MINERvA qelike muon pT/p|| (isCC0pi_MINERvAPTPZ, hadron-inclusive)
+#   physfit_electron     (e,e') EM QE/RES omega
+NPZ_SAMPLES = (
+    ("physfit_gate1",        ("dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT")),  # T2K STV + CC0pi muon 1D (pmu,cosmu)
+    # ("physfit_t2k_pcos",   None),                                  # T2K CC0pi 2D muon -- DISABLED (2D binning); driver + npz kept
+    ("physfit_minerva",      None),                                   # MINERvA CC0pi-Np STV
+    ("physfit_minerva_ptpz", ("mnv_ptmu", "mnv_pzmu")),              # MINERvA qelike: keep 1D pT/p|| (2D ptpl DISABLED)
+    ("physfit_electron",     None),                                   # (e,e')
+)
 
 
-def build(beams=("pip", "prot"), npz_samples=NPZ_SAMPLES, nbins=15, syst=0.05, out_label="multisample_carbon"):
+def build(beams=("pip", "prot", "neut"), npz_samples=NPZ_SAMPLES, nbins=15, syst=0.05, out_label="multisample_carbon"):
     J, sigma, dskeys, row0 = [], [], [], [0]
     edges = {}                                           # {dskey}_edges -> per-obs bin edges (for --data marks)
 
-    for lab in npz_samples:                              # bank-Jacobian samples (T2K, MINERvA, electron)
+    for lab, keep in npz_samples:                        # bank-Jacobian samples (T2K, MINERvA, electron)
         f = style.ALTGEN / f"{lab}.npz"
         if not f.exists():
             print(f"  [skip] {lab}: no npz at {f}"); continue
         d = np.load(f, allow_pickle=True)
         assert [str(x) for x in d["pnames"]] == PF.PNAMES, f"{lab} knob order != physical_fit SPEC"
-        J.append(np.asarray(d["J"])); sigma.append(np.asarray(d["sigma"]))
-        r = np.asarray(d["row0"])
+        Jd = np.asarray(d["J"]); sd = np.asarray(d["sigma"]); r = np.asarray(d["row0"])
         for j, key in enumerate([str(x) for x in d["dskeys"]]):
-            row0.append(row0[-1] + int(r[j + 1] - r[j])); dskeys.append(key)
+            if keep is not None and key not in keep:
+                continue                                 # drop observables the experiment did not report
+            a, b = int(r[j]), int(r[j + 1])
+            J.append(Jd[a:b]); sigma.append(sd[a:b])      # slice per observable so a subset is exact
+            row0.append(row0[-1] + (b - a)); dskeys.append(key)
             if f"{key}_edges" in d.files:
                 edges[f"{key}_edges"] = np.asarray(d[f"{key}_edges"])
 
