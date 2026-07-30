@@ -28,9 +28,34 @@ from adonis.core.params import PhysicsParams, nominal_knobs, knob_specs, _NPW, _
 _DELTA_WAVE = 5     # DCC partial-wave index of the P33 Delta(1232) (tests: test_res_strength_reweight)
 
 
-def build_hv_sf(qe, res, sf, with_pw=True):
+def _ident_rec(n):
+    """Identity (a,b,c,Q2) = (1,0,0,1) record: ma_reweight/strength_reweight == 1, gradient 0."""
+    return (np.ones(n, np.float32), np.zeros(n, np.float32), np.zeros(n, np.float32), np.ones(n, np.float32))
+
+
+def build_hv_sf(qe, res, sf, with_pw=True, probe="CC"):
     """Build the per-channel hard-vertex amps2 records + SF grids/points ONCE (theta-independent).
-    with_pw=False skips the 14 DCC partial-wave records (the dominant build cost) -> pw_norm has no effect."""
+    with_pw=False skips the 14 DCC partial-wave records (the dominant build cost) -> pw_norm has no effect.
+
+    probe="EM" builds the (e,e') photon records instead: the QE VECTOR + Sachs-FF records carry real
+    gradients (with per-event is_proton), the QE axial record auto-collapses to identity (no photon axial),
+    and the RES hard-vertex records are identity for now (the EM-Delta / delta_strength handle is a v2 item;
+    the SF reweight still applies to both channels).  keys: qe uses k_e/k_e_out/p_out/is_p, res uses p_struck."""
+    if probe == "EM":
+        qa = (qe["k_e"], qe["k_e_out"], qe["p_struck"], qe["p_out"]); isp = np.asarray(qe["is_p"])
+        nres = len(np.asarray(res["p_N"]))
+        HV = dict(
+            qe_ma=build_qe_ma_records(*qa, probe="EM", is_proton=isp),
+            qe_vec=build_qe_vector_records(*qa, probe="EM", is_proton=isp),
+            qe_gmp=build_qe_ff_records(*qa, "gmp", probe="EM", is_proton=isp),
+            qe_gmn=build_qe_ff_records(*qa, "gmn", probe="EM", is_proton=isp),
+            qe_gep=build_qe_ff_records(*qa, "gep", probe="EM", is_proton=isp),
+            qe_gen=build_qe_ff_records(*qa, "gen", probe="EM", is_proton=isp),
+            res_ma=_ident_rec(nres), res_pp=_ident_rec(nres), res_delta=_ident_rec(nres), res_pw=None)
+        SF = dict(grids=sf_grids(sf),
+                  qe_pmag=removal_from_struck(qe["p_struck"])[0], qe_erem=removal_from_struck(qe["p_struck"])[1],
+                  res_pmag=removal_from_struck(res["p_struck"])[0], res_erem=removal_from_struck(res["p_struck"])[1])
+        return HV, SF
     qa = (qe["k_nu"], qe["k_mu"], qe["p_struck"], qe["p_out"])
     ra = (res["k_nu"], res["k_mu"], res["p_struck"], res["p_N"], res["p_pi"])
     ip, pp = np.asarray(res["ipid"]), np.asarray(res["ppid"])

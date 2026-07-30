@@ -85,6 +85,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     _ALL = (0.0, 180.0)                     # channels sample all-angle; the ONE acceptance is applied below
     if EM:
         from adonis.channels import ee as ee_x, res_ee as res_ee_x
+        sf = SpectralFunction(tgt.spectral_n)         # SF grids for the (e,e') hard-vertex reweight records
         EB = float(cfg.e_beam)
 
         def gen_qe(n, seed):
@@ -94,7 +95,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
                         k_lep=np.asarray(r["k_e_out"]),            # outgoing e- 4-vector (for TKI/P_T)
                         p_N=np.asarray(r["p_out"]), p_pi=np.zeros((len(pid), 4)),
-                        ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid)
+                        ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid, _raw=r)   # _raw: hv records
 
         def gen_res(n, seed):
             r = res_ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=_ALL)
@@ -103,7 +104,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                         k_lep=np.asarray(r["k_le"]),               # outgoing e- 4-vector (for TKI/P_T)
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
-                        Npid=np.asarray(r["Npid"], np.int32))
+                        Npid=np.asarray(r["Npid"], np.int32), _raw=r)   # _raw: p_struck for the SF reweight
         m_extra = dict(probe="ee", E_beam=EB, theta_acc=list(LACC))
     else:
         from adonis.reweight.reweight_model import build_hv_sf
@@ -169,6 +170,20 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             save.update(c=cat("c").astype(np.float64), omega=cat("omega").astype(np.float32),
                         theta=cat("theta").astype(np.float32),
                         k_e=cat("k_lep").astype(np.float32))     # outgoing e- 4-vector (TKI/P_T: Fig 6)
+            if do_qe and do_res:                                 # differentiable (e,e') hard-vertex records
+                from adonis.reweight.reweight_model import build_hv_sf
+                nq = ns[0]; nr = ns[-1]; qraw = evs[0][1]["_raw"]; rraw = evs[-1][1]["_raw"]
+                HV, _SF = build_hv_sf(qraw, rraw, sf, with_pw=False, probe="EM")   # vector+FF+SF; axial->identity
+                hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
+                hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
+                hv = dict(qe_ma=hv_q(HV["qe_ma"]), res_ma=hv_r(HV["res_ma"]), qe_vec=hv_q(HV["qe_vec"]),
+                          qe_gmp=hv_q(HV["qe_gmp"]), qe_gmn=hv_q(HV["qe_gmn"]), qe_gep=hv_q(HV["qe_gep"]),
+                          qe_gen=hv_q(HV["qe_gen"]), res_pp=hv_r(HV["res_pp"]), res_delta=hv_r(HV["res_delta"]))
+                save.update({f"hv_{nm}_{abc}": comp[i].astype(np.float32) for nm, comp in hv.items()
+                             for i, abc in enumerate(["a", "b", "c", "Q2"][:len(comp)])})
+                save.update(w0=cat("c").astype(np.float64),      # bank_weight base weight (= EM per-event c)
+                            p_struck=np.concatenate([np.asarray(qraw["p_struck"]),
+                                                     np.asarray(rraw["p_struck"])]).astype(np.float32))
         else:
             nq = ns[0] if do_qe else 0; nr = ns[-1] if do_res else 0
             qref = evs[0][1] if do_qe else None; rref = evs[-1][1] if do_res else None
