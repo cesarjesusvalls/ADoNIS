@@ -213,9 +213,13 @@ def main(label="physfit_gate1_full_v2", mark_data=False, transpose=False):
         im = axh.imshow(Sshape, aspect="auto", cmap="RdBu_r", vmin=-1, vmax=1, interpolation="nearest")
         for r in row0[1:-1]:
             axh.axvline(r - 0.5, color="k", lw=0.8)
+        for i in range(1, nknob):                     # thin separators between knob rows -> read across
+            axh.axhline(i - 0.5, color="k", lw=0.3)
         axh.set_xticks(ctr); axh.set_xticklabels(dslab, fontsize=7)
         axh.set_yticks(range(nknob)); axh.set_yticklabels([f"{_plab(p)}  " for p in pnames], fontsize=8)
         axh.xaxis.set_ticks_position("top"); axh.xaxis.set_label_position("top")   # sample labels on top
+        axh.tick_params(axis="x", which="both", top=True, bottom=False, direction="out")   # top ticks outward
+        axh.tick_params(axis="y", which="both", left=True, right=False, direction="out")   # left only, outward
         # no x/y label, no title; thin horizontal colorbar underneath with only -1/0/1 ticks
         fig.colorbar(im, ax=axh, orientation="horizontal", fraction=0.012, pad=0.05, shrink=0.4, ticks=[-1, 0, 1])
         if mark_data:
