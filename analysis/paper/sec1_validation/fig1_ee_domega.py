@@ -18,8 +18,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from matplotlib.text import Text
-from matplotlib.legend_handler import HandlerBase
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
@@ -57,34 +55,17 @@ def achilles(nuc, ch):
     return (EB - Ee)[k] / 1000.0, w[k]
 
 
-_GEN_GREY = "0.35"
-
-
-class _DashSlashSolid(HandlerBase):
-    """Legend handle drawn as  -- / --  : dashed segment, a literal '/', solid segment.
-    HandlerTuple cannot do this (it only tiles artists, no text), hence the custom handler."""
-    def create_artists(self, legend, orig_handle, xdescent, ydescent, width, height, fontsize, trans):
-        y = height / 2.0 - ydescent
-        x0 = -xdescent
-        seg = 0.40 * width                       # each line segment (long: little dead space)
-        arts = [Line2D([x0, x0 + seg], [y, y], color=_GEN_GREY, lw=1.3, dashes=(2.2, 1.4)),
-                Line2D([x0 + width - seg, x0 + width], [y, y], color=_GEN_GREY, lw=1.4, ls="-"),
-                Text(x0 + 0.5 * width, y, "/", color=_GEN_GREY, fontsize=fontsize * 1.25,
-                     ha="center", va="center")]
-        for a in arts:
-            a.set_transform(trans)
-        return arts
-
-
 def _legend(a):
     """Factorised legend: one entry per component (colour), then ONE grey 'dashed / solid' swatch for
     the generator (linestyle).  6 entries with repeated 'ACHILLES ...'/'ADoNIS ...' strings collapse to
     4, and the two encodings are named separately instead of multiplied out."""
-    gen = Line2D([], [])                                   # sentinel: drawn by _DashSlashSolid
-    cols = [Line2D([], [], color=c, lw=1.6) for c in (style.C_TOTAL, style.C_QE, style.C_RES)]
-    a.legend(cols + [gen], ["Total", "QE", "RES", "ACHILLES / ADoNIS"],
-             handler_map={gen: _DashSlashSolid()},
-             loc="upper right", fontsize=7, ncol=1,
+    # No generator key entry: dashed=ACHILLES / solid=ADoNIS is stated in the caption.
+    handles, labels, hmap = style.swatches(
+        [("Total", style.C_TOTAL), ("QE", style.C_QE), ("RES", style.C_RES)])
+    # anchored left of the corner: without the long generator row the box is narrow, so a plain
+    # "upper right" puts "Total" under the nucleus tag.
+    a.legend(handles, labels, handler_map=hmap,
+             loc="upper right", bbox_to_anchor=(0.84, 1.0), fontsize=7, ncol=1,
              handlelength=3.4, labelspacing=0.35, borderpad=0.2)
 
 
@@ -105,6 +86,7 @@ def main():
             label="", xlabel=r"$\omega$ [GeV]", ratio_ylim=(0.6, 1.4),   # nucleus goes IN the axes
             ado_label="ADoNIS", ref_label="ACHILLES",
             total_color=style.C_TOTAL, part_colors=style.PARTS, ratio_color=style.C_RATIO,
+            ado_lighten=style.ADO_LIGHTEN, ref_darken=style.REF_DARKEN, headroom=0.30,
             ref_parts={"QE": {"values": hqo, "w": hqw}, "RES": {"values": hro, "w": hrw}},
             ado_parts={"QE": {"values": ao[aqe], "w": aw[aqe]},
                        "RES": {"values": ao[ares], "w": aw[ares]}})

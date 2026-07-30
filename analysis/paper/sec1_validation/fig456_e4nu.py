@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 from adonis.workflow.plotting import chi2_ratio_panel      # noqa: E402
 from analysis.paper import style                           # noqa: E402
+from analysis.paper import plotcache                       # noqa: E402
 
 EB = 1159.0; MNUC = 938.9; MP = 938.272; ME = 0.511; EPS = 21.0
 PP_MIN = 300.0; TP_LO, TP_HI = 10.0, 140.0                 # proton acceptance
@@ -104,24 +105,53 @@ def achilles_obs():
             np.concatenate(PT))
 
 
+def _reduce():
+    """Per-event selected observables for both sides, memoised: the ADoNIS side re-reads a 903 MB bank
+    and the ACHILLES side two fs_rich oracles just to fill 3 histograms."""
+    def _build():
+        (aEQ, awq), (aEC, awc, aPT) = adonis_obs()
+        (hEQ, hwq), (hEC, hwc, hPT) = achilles_obs()
+        return dict(aEQ=aEQ, awq=awq, aEC=aEC, awc=awc, aPT=aPT,
+                    hEQ=hEQ, hwq=hwq, hEC=hEC, hwc=hwc, hPT=hPT)
+    return plotcache.cached("fig456_e4nu", _build, deps=[BANK, *ORA],
+                            params={"eb": EB, "pp_min": PP_MIN, "tp": (TP_LO, TP_HI),
+                                    "ee_min": EE_MIN, "the": (THE_LO, THE_HI), "eps": EPS})
+
+
 def main():
     style.use()
-    (aEQ, awq), (aEC, awc, aPT) = adonis_obs()
-    (hEQ, hwq), (hEC, hwc, hPT) = achilles_obs()
-    print(f"0pi: nADO={len(awq)} nACH={len(hwq)} | 1p0pi: nADO={len(awc)} nACH={len(hwc)}", flush=True)
-    panels = [("E_QE [MeV]  (0$\\pi$)", np.linspace(600, 1300, 25), aEQ, awq, hEQ, hwq),
-              ("E_cal [MeV]  (1p0$\\pi$)", np.linspace(700, 1300, 25), aEC, awc, hEC, hwc),
-              ("$P_T$ [MeV/c]  (1p0$\\pi$)", np.linspace(0, 600, 25), aPT, awc, hPT, hwc)]
-    fig, ax = plt.subplots(2, 3, figsize=(12, 5.2), sharex="col",
-                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0, "wspace": 0.26})
-    for c, (lab, edges, av, aw, hv, hw) in enumerate(panels):
+    d = _reduce()
+    print(f"0pi: nADO={len(d['awq'])} nACH={len(d['hwq'])} | "
+          f"1p0pi: nADO={len(d['awc'])} nACH={len(d['hwc'])}", flush=True)
+    # (x label, selection tag, edges, ADoNIS values/weights, ACHILLES values/weights, ratio cutoff)
+    # E_cal: the top panel shows the full fall off the kinematic cliff (E_cal <= E_beam + eps = 1180),
+    # but the ratio stops at 1175 -- the 1150-1175 bin holds 44% of the sample and 1175-1200 holds
+    # 0.024%, so the ratio there (2.1) is a handful of events straddling the endpoint, not physics.
+    panels = [(r"$E_{QE}$ [MeV]", r"0$\pi$", np.linspace(600, 1300, 25),
+               d["aEQ"], d["awq"], d["hEQ"], d["hwq"], None),
+              (r"$E_{cal}$ [MeV]", r"1p0$\pi$", np.linspace(700, 1300, 25),
+               d["aEC"], d["awc"], d["hEC"], d["hwc"], 1175.0),
+              (r"$P_T$ [MeV/c]", r"1p0$\pi$", np.linspace(0, 600, 25),
+               d["aPT"], d["awc"], d["hPT"], d["hwc"], None)]
+    fig, ax = plt.subplots(2, 3, figsize=(8.6, 2.6), sharex="col",
+                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0, "wspace": 0.30})
+    for c, (xlab, tag, edges, av, aw, hv, hw, rxmax) in enumerate(panels):
         res = chi2_ratio_panel(ax[0, c], ax[1, c], edges, {"values": hv, "w": hw}, {"values": av, "w": aw},
-                               label=lab, ratio_ylim=(0.6, 1.4), ado_label="ADoNIS", ref_label="ACHILLES")
-        print(f"  {lab[:12]:14s} chi2/ndf {res['chi2']/max(res['ndf'],1):6.2f} (ndf={res['ndf']})", flush=True)
+                               label="", xlabel=xlab, ratio_ylim=(0.6, 1.4),
+                               ado_label="ADoNIS", ref_label="ACHILLES",
+                               total_color=style.C_QE,      # single series -> fig01's QE blue
+                               ratio_color=style.C_RATIO,
+                               ado_lighten=style.ADO_LIGHTEN, ref_darken=style.REF_DARKEN,
+                               headroom=0.30, ratio_xmax=rxmax)
+        # only the SELECTION varies panel to panel; the observable is already the x label
+        ax[0, c].text(0.97, 0.95, tag, transform=ax[0, c].transAxes, fontsize=8, va="top", ha="right")
+        print(f"  {xlab:16s} {tag:8s} chi2/ndf {res['chi2']/max(res['ndf'],1):6.2f} (ndf={res['ndf']})",
+              flush=True)
         if c == 0:
-            ax[0, c].legend(fontsize=7); ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]"); ax[1, c].set_ylabel("ratio")
-    fig.suptitle(r"ADoNIS vs ACHILLES --- e4$\nu$ (e,e') on $^{12}$C at 1.159 GeV", fontsize=11)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+            ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]"); ax[1, c].set_ylabel("ratio")
+    # no legend: one series per panel, dashed=ACHILLES / solid=ADoNIS is stated in the caption
+    fig.suptitle(r"e4$\nu$ (e,e') on $^{12}$C at 1.159 GeV", fontsize=9, y=0.995)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     style.save(fig, "fig456_e4nu")
 
 
