@@ -112,3 +112,94 @@ def sigma_free_nucleon_nc_total(Enu_MeV, is_proton, n=80_000, seed=0):
         tot += s
         var += e ** 2
     return tot, float(np.sqrt(var))
+
+
+# =========================================================================== nucleus-level generator
+MATERIALS = {
+    "C":  (6, 6,   "data/Spectral_Functions/pke12p_tot.data", "data/Spectral_Functions/pke12n_tot.data"),
+    "Ar": (18, 22, "data/Spectral_Functions/pke40p_tot.data", "data/Spectral_Functions/pke40n_tot.data"),
+}
+
+
+def _sample_channel_nc(n, rng, flux, minE, maxE, m_pi, m_Nf, had_mass, imp):
+    """One NC RES channel on a BOUND nucleon: spectrum beam + |p|^2 S importance-sampled struck
+    nucleon + the shared 3-body core.  Mirrors res_ee._sample_channel_ee with the monochromatic
+    electron beam replaced by a flux draw, and m_lep = 0."""
+    u = rng.random((n, 10))
+    E_GeV = u[:, 4] * (maxE - minE) + minE
+    Enu = E_GeV * 1000.0
+    J_beam = ((maxE - minE) * flux.f(E_GeV)) / flux.flux_integral
+    k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
+    pvec, energy = imp.sample(n, rng)                     # |p|^2 S importance (initwgt -> N constant)
+    mom = np.linalg.norm(pvec, axis=1)
+    p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
+    tb = _sample_3body_ee(k_nu, p_struck, m_pi, m_Nf, M_LEP_NC, u[:, 5:10])
+    Smin = (M_LEP_NC + m_Nf + m_pi) ** 2                  # no lepton-mass term: NC has no threshold
+    det = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
+    emax = _MN + Enu - np.sqrt(np.clip(det, 0, None))
+    emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
+    valid = (tb["s"] > Smin) & tb["valid3"] & (energy < emax)
+    return dict(k_nu=k_nu, p_struck=p_struck, k_lep=tb["k_lep"], p_N=tb["p_N"], p_pi=tb["p_pi"],
+                J=tb["J_3body"] * J_beam, valid=valid)
+
+
+def generate(n=20000, material="C", seed=0, return_events=False, chunk=250_000,
+             n_neutron=None, n_proton=None, theta_acc=None):
+    """Flux-averaged NC single-pion RES on a NUCLEUS.  n is the TOTAL draw count, split across the
+    four channels (the same stratified convention as res.generate_importance and res_ee.generate).
+
+    Per-species spectral functions with EXPLICIT Z / N target counting -- the isoscalar term makes NC
+    genuinely p/n-asymmetric, so a shared count would bias the pi0 fraction, which IS the signal.
+
+    theta_acc is accepted and must be full acceptance: a polar cut on an invisible outgoing neutrino
+    is meaningless, and silently applying one would bias the sample with nothing to notice it.
+    """
+    from adonis.flux.spectrum import SpectrumFlux
+    from adonis.nuclear.spectral import SpectralFunction, SpectralImportanceSampler
+    if theta_acc is not None and not (theta_acc[0] <= 0.0 and theta_acc[1] >= 180.0):
+        raise ValueError(f"probe=NC cannot honour theta_acc={theta_acc}: the outgoing lepton is a "
+                         "neutrino, so a polar acceptance on it is meaningless")
+    Z, N, sf_p_path, sf_n_path = MATERIALS[material]
+    n_proton = Z if n_proton is None else n_proton
+    n_neutron = N if n_neutron is None else n_neutron
+    imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))
+    imp_n = SpectralImportanceSampler(SpectralFunction(sf_n_path))
+    flux = SpectrumFlux()
+    minE = flux.seed_min_GeV(m_lep=M_LEP_NC); maxE = flux.max_energy   # NC has no lepton threshold
+    ev = {k: [] for k in ("k_nu", "k_lep", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
+    sig = 0.0
+    nch = len(NC_RES_CHANNELS)
+    for ci, (spid, itiz, ppid, m_Nf, is_p) in enumerate(NC_RES_CHANNELS):
+        imp = imp_p if is_p else imp_n
+        n_tgt = n_proton if is_p else n_neutron
+        had_mass = MASS_PDG_PROTON if is_p else MASS_PDG_NEUTRON
+        Npid = 2212 if m_Nf == MASS_PDG_PROTON else 2112
+        m_pi = _pi_kin_mass(_M_PI[ppid])
+        n_ch = n // nch + (1 if ci < n % nch else 0)
+        done = 0; sd = seed * 1000 + ci * 100
+        while done < n_ch:
+            m = min(chunk, n_ch - done)
+            rng = np.random.default_rng(sd); sd += 1
+            s = _sample_channel_nc(m, rng, flux, minE, maxE, m_pi, m_Nf, had_mass, imp)
+            a2 = np.zeros(m); v = s["valid"]
+            if v.any():
+                a2[v] = np.asarray(exclusive_amps2_batch(
+                    s["k_nu"][v], s["k_lep"][v], s["p_struck"][v], s["p_N"][v], s["p_pi"][v],
+                    itiz, ppid, probe="NC", tcrz=0.0))
+            fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=had_mass))
+            w = np.where(v, a2 * fl * n_tgt * SPIN_AVG_NC * s["J"], 0.0)
+            w = np.where(np.isfinite(w), w, 0.0) / n_ch
+            sig += w.sum()
+            if return_events:
+                keep = w > 0
+                nk = int(keep.sum())
+                for k in ("k_nu", "k_lep", "p_struck", "p_N", "p_pi"):
+                    ev[k].append(s[k][keep])
+                ev["w"].append(w[keep])
+                ev["ppid"].append(np.full(nk, ppid, np.int32))
+                ev["Npid"].append(np.full(nk, Npid, np.int32))
+                ev["ipid"].append(np.full(nk, spid, np.int32))
+            done += m
+    if not return_events:
+        return dict(sigma=sig)
+    return dict(sigma=sig, events={k: np.concatenate(v) if v else np.zeros((0, 4)) for k, v in ev.items()})

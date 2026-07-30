@@ -1,0 +1,23 @@
+# NEUTRAL-CURRENT nu_mu on 40Ar, BNB (MicroBooNE) flux -- the bank behind paper figures 11 and 12
+# (fig:NCpi0Xpdoublediff and fig:NCpi0Xpcospi).  See docs/nc_implementation_plan.md.
+#
+# channels: [res] ONLY, deliberately.  NC1pi0 comes from RES; NC QE (nu N -> nu N) produces no pion
+# and so cannot enter the signal, and its NUCLEAR sampler is not written yet (qe_nc currently covers
+# the free nucleon, which is what gate G6(2) needs).  Listing qe here would raise rather than
+# silently generate nothing -- but the right statement is that this bank does not need it.
+#
+# theta_acc is absent, i.e. the (0,180) default.  GenConfig REJECTS anything else for probe=NC: a
+# polar acceptance on an invisible outgoing neutrino is meaningless and would silently bias the
+# sample with nothing downstream able to notice.
+#
+# achilles_coupl1_quirk: this bank exists to be compared against ACHILLES, so it would be set TRUE to
+# make that comparison like-for-like.  It is currently OMITTED (i.e. false = correct physics) because
+# the quirk is an NC QE coupling and this bank has no QE channel -- setting it would be a no-op that
+# looked meaningful in the manifest.  Add it with the QE channel, not before.
+name: nc_uBooNE_Ar
+probe: NC
+beam: spectrum
+flux: microboone
+material: Ar
+channels: [res]
+fsi: true

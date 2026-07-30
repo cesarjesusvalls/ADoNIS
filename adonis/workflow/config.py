@@ -100,16 +100,16 @@ FLUX_FILES = {
 # means NC".  Renamed to "CC" outright; there is deliberately NO alias and no back-compat mapping,
 # because a mapping is how the lie survives.  load_gen_config rejects unknown keys and probe_spec()
 # raises on unknown values, so a missed rename fails loudly rather than silently meaning CC.
-PROBES = ("CC", "EM", "hadron")     # CC = charged-current neutrino ; EM = electron (photon) current ;
+PROBES = ("CC", "NC", "EM", "hadron")   # CC/NC = charged-/neutral-current neutrino ; EM = electron ;
 #                                     hadron = a tagged hadron projectile (no hard vertex, pure FSI transport)
-#                                     "NC" joins this tuple in P7, not before.
 HADRON_BEAMS = ("pip", "prot", "neut")               # tagged-hadron projectiles (adonis.flux.hadron.BEAMS)
 GEN_BEAMS = ("spectrum", "electron") + HADRON_BEAMS  # nu spectrum | mono e- | pi+/p/n projectile
 E_BEAM_JLAB = 2222.0            # default monochromatic e- energy [MeV] (JLab 2.222 GeV); adonis.flux.electron
 
 
 # probe -> the beam sources it is allowed to pair with (a bank can't be mislabelled across probes).
-_PROBE_BEAMS = {"CC": ("spectrum",), "EM": ("electron",), "hadron": HADRON_BEAMS}
+_PROBE_BEAMS = {"CC": ("spectrum",), "NC": ("spectrum",), "EM": ("electron",),
+                "hadron": HADRON_BEAMS}
 
 
 @dataclass
@@ -118,14 +118,17 @@ class GenConfig:
     fields (there is exactly one generator, adonis.workflow.generate_bank; the diversity is here, not in
     the code path).  `probe` selects the primary interaction:
       * CC     : charged-current neutrino hard vertex (channels qe/res), beam=spectrum (a flux table)
+      * NC     : neutral-current neutrino hard vertex, beam=spectrum.  theta_acc MUST be full
+                 acceptance -- a polar cut on an invisible outgoing neutrino is meaningless and would
+                 silently bias the sample, so it is rejected rather than ignored.
       * EM     : electron hard vertex (channels qe/res), beam=electron (monochromatic e-), theta_acc cut
       * hadron : a tagged pi+/p/n projectile (no hard vertex, pure FSI transport), beam in {pip,prot,neut},
                  |p| uniform in [pmin,pmax]
     `fsi` (default True) runs the cascade -> the rich reweight records; fsi=False -> a pre-FSI bank."""
-    probe: str = "CC"           # CC | EM | hadron
+    probe: str = "CC"           # CC | NC | EM | hadron
     beam: str = "spectrum"      # spectrum | electron | pip | prot | neut  (must be consistent with probe)
     material: str = "C"
-    channels: tuple = ("res",)              # CC/EM: subset of {"res","qe"}; ignored for hadron
+    channels: tuple = ("res",)              # CC/NC/EM: subset of {"res","qe"}; ignored for hadron
     # --- CC (neutrino) ---
     flux: str = "t2k"           # neutrino flux key (beam=spectrum only); see FLUX_FILES
     # --- EM (electron) ---
@@ -167,11 +170,18 @@ class GenConfig:
             raise ValueError(f"beam {self.beam!r} not in {sorted(GEN_BEAMS)}")
         if self.beam not in _PROBE_BEAMS[self.probe]:
             raise ValueError(f"probe={self.probe!r} requires beam in {_PROBE_BEAMS[self.probe]}, got {self.beam!r}")
-        if self.probe in ("CC", "EM"):
+        if self.probe in ("CC", "NC", "EM"):
             bad = set(self.channels) - {"res", "qe"}
             if bad:
                 raise ValueError(f"channels: {sorted(bad)} not in {{'res','qe'}} (probe {self.probe})")
         self.theta_acc = tuple(_resolve_seq(self.theta_acc))
+        if self.probe == "NC" and not (self.theta_acc[0] <= 0.0 and self.theta_acc[1] >= 180.0):
+            raise ValueError(f"probe='NC' requires full theta_acc (0,180), got {self.theta_acc}: the "
+                             "outgoing lepton is a neutrino, so an angular acceptance on it is "
+                             "meaningless and would silently bias the sample")
+        if self.probe != "NC" and self.achilles_coupl1_quirk:
+            raise ValueError("achilles_coupl1_quirk is an NC QE coupling switch; it has no meaning "
+                             f"for probe={self.probe!r} and setting it there would be a silent no-op")
         if self.probe == "hadron" and self.pmax <= self.pmin:
             raise ValueError(f"pmax {self.pmax} must exceed pmin {self.pmin}")
         if self.beam == "spectrum":

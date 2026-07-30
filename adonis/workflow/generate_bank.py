@@ -66,7 +66,10 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     from adonis.nuclear.spectral import SpectralFunction
     import adonis.fsi.cascade as CF
 
+    # Probe dispatch.  `EM` stays a local boolean because the EM branch's SHAPE differs (monochromatic
+    # beam, c/omega/theta records); NC joins CC's shape, so it is a third branch rather than a fourth.
     EM = (cfg.probe == "EM")
+    NC = (cfg.probe == "NC")
     CHUNK = cfg.chunk or cfg.n_per_seed
     n_chunks = cfg.n_seeds
     SEED0 = cfg.seed0
@@ -105,6 +108,26 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32))
         m_extra = dict(E_beam=EB, theta_acc=list(LACC))   # probe added below, from cfg.probe
+    elif NC:
+        from adonis.channels import qe_nc as qe_nc_x, res_nc as res_nc_x
+
+        def gen_qe(n, seed):
+            raise NotImplementedError(
+                "NC QE bank generation needs a nuclear (spectral-function) sampler; qe_nc currently "
+                "provides the FREE-nucleon sigma(E_nu) that gate G6(2) uses.  Generate NC RES banks "
+                "with channels: [res] until it lands.  See docs/nc_implementation_plan.md P7.")
+
+        def gen_res(n, seed):
+            r = res_nc_x.generate(n, material=cfg.material, seed=seed, return_events=True,
+                                  theta_acc=LACC)["events"]
+            # NO _accept_lepton: res_nc.generate already REFUSES a non-trivial theta_acc, because a
+            # polar cut on an invisible outgoing neutrino is meaningless and would bias the sample.
+            return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]),
+                        p_struck=np.asarray(r["p_struck"]), k_lep=np.asarray(r["k_lep"]),
+                        p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
+                        ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
+                        Npid=np.asarray(r["Npid"], np.int32), _raw=r)
+        m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))   # probe added below, from cfg.probe
     else:
         from adonis.reweight.reweight_model import build_hv_sf
         from adonis.channels import qe as qe_x, res as res_x

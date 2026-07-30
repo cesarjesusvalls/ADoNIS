@@ -85,9 +85,15 @@ class SpectrumFlux:
             out[k] = _polint(kx[idx - 1:idx + 1], ky[idx - 1:idx + 1], xv)
         return out if out.size > 1 else float(out[0])
 
-    def seed_min_GeV(self):
-        """beam min_energy seed = (Smin - mp^2)/(2 mp) [MeV] -> GeV, clamped to edges[0]."""
-        Smin = (M_MU + M_P) ** 2
+    def seed_min_GeV(self, m_lep=M_MU):
+        """beam min_energy seed = (Smin - mp^2)/(2 mp) [MeV] -> GeV, clamped to edges[0].
+
+        m_lep is the OUTGOING lepton mass, i.e. the threshold this beam has to clear.  It defaults to
+        M_MU, so every existing CC caller is bit-identical.  It is a parameter because NC has NO
+        threshold -- the outgoing lepton is a massless neutrino -- and the CC value silently truncates
+        the flux below ~112 MeV.  Harmless for a CC bank; a real low-energy bias on an NC one, and on
+        exactly the absolute sigma(E_nu) gates that are supposed to catch bias."""
+        Smin = (m_lep + M_P) ** 2
         seed = (Smin - M_P ** 2) / (2 * M_P)       # MeV
         return max(seed / 1000.0, self.min_energy)  # GeV
 
