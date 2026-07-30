@@ -78,19 +78,30 @@ def main(label="physfit_gate1_full_v2"):
     # across the observable?" -- pure shape, magnitude removed.  Linear [-1,1] (rows are already comparable).
     rowmax = np.max(np.abs(S), axis=1, keepdims=True)
     Sshape = np.where(rowmax > 0, S / rowmax, 0.0)
-    fig, ax = plt.subplots(figsize=(12.5, 7.4))
-    im = ax.imshow(Sshape, aspect="auto", cmap="RdBu_r", vmin=-1, vmax=1, interpolation="nearest")
+    reach = np.sqrt((S ** 2).sum(axis=1))                  # per-knob overall magnitude = sqrt(F_kk) [sigma]
+    fig = plt.figure(figsize=(15.0, 7.4))
+    gs = fig.add_gridspec(1, 3, width_ratios=[6, 1.05, 0.16], wspace=0.04)
+    axh = fig.add_subplot(gs[0]); axb = fig.add_subplot(gs[1], sharey=axh); cax = fig.add_subplot(gs[2])
+    im = axh.imshow(Sshape, aspect="auto", cmap="RdBu_r", vmin=-1, vmax=1, interpolation="nearest")
     for r in row0[1:-1]:
-        ax.axvline(r - 0.5, color="k", lw=0.8)
-    ax.set_xticks(ctr); ax.set_xticklabels([DSLABEL.get(k, k) for k in dskeys], fontsize=7)
-    ax.set_yticks(range(len(pnames))); ax.set_yticklabels([f"{p}   " for p in pnames], fontsize=7)
+        axh.axvline(r - 0.5, color="k", lw=0.8)
+    axh.set_xticks(ctr); axh.set_xticklabels([DSLABEL.get(k, k) for k in dskeys], fontsize=7)
+    axh.set_yticks(range(len(pnames))); axh.set_yticklabels([f"{p}   " for p in pnames], fontsize=7)
     for k, p in enumerate(pnames):
         if shrink[k] < 0.5:
-            ax.get_yticklabels()[k].set_color("#d62728"); ax.get_yticklabels()[k].set_weight("bold")
-    ax.set_xlabel("bin  (grouped by observable)")
-    ax.set_title("Per-knob gradient SHAPE:  each row normalized to its own peak pull  "
-                 "(where each knob pulls across the bins; magnitude removed)", fontsize=9)
-    fig.colorbar(im, ax=ax, fraction=0.02, pad=0.01, label="relative pull  (row-normalized, signed)")
+            axh.get_yticklabels()[k].set_color("#d62728"); axh.get_yticklabels()[k].set_weight("bold")
+    axh.set_xlabel("bin  (grouped by observable)")
+    axh.set_title("Per-knob gradient SHAPE:  each row normalized to its own peak pull  "
+                  "(where each knob pulls across the bins; magnitude removed)", fontsize=9)
+    # right panel: the overall magnitude that the row-normalization removed = sqrt(F_kk)
+    axb.barh(range(len(pnames)), reach,
+             color=["#d62728" if shrink[k] < 0.5 else "#9e9e9e" for k in range(len(pnames))])
+    axb.set_xscale("log"); axb.axvline(2.0, color="k", ls=":", lw=0.8)
+    axb.grid(axis="x", ls=":", alpha=0.4); axb.tick_params(labelsize=7)
+    plt.setp(axb.get_yticklabels(), visible=False)
+    axb.set_xlabel(r"magnitude  $\sqrt{F_{kk}}$  [$\sigma$]", fontsize=8)
+    axb.set_title("overall magnitude\n(2$\\sigma$ = dotted)", fontsize=8)
+    fig.colorbar(im, cax=cax, label="relative pull  (row-normalized, signed)")
     style.save(fig, "sec2_gradients_shape")
 
     # per-knob reach: the total pull a 1-sigma prior move produces, = sqrt(F_kk) (degeneracy-blind)
