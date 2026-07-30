@@ -1,7 +1,31 @@
 # Neutral-current (NC) support in ADoNIS — implementation plan
 
-**Status:** plan only, no NC code written yet. **Date:** 2026-07-30. **Branch:** `sec1`.
-**Rev 2** — revised after adversarial source review (see §8).
+**Status:** P1 landed; the rest is plan. **Date:** 2026-07-30. **Branch:** `sec1`.
+**Rev 3** — revised after adversarial source review (§8) and the owner's scope rule (§0.1).
+
+## 0.1 The governing rule
+
+> **NC work must not regress CC. CC is fully validated. If NC-related code changes break it, the NC
+> change is wrong.** — project owner
+
+This is a **constraint on NC, not an invitation to audit CC**, and it settles what §D2 below leaves
+hanging. The D2 finding — that ADoNIS's I=½ vector form does not match the ACHILLES Fortran — is
+recorded as a **note about the amplitude layer**, not as a CC repair task. NC is written from the
+literal Fortran transcription; CC keeps the form it was validated with, bit-for-bit.
+
+Practical consequences, and they are load-bearing:
+
+- **No phase may change a CC number.** Every phase that touches shared code carries a CC
+  byte-identity gate (G1.1, G2.3, G3.1, G4.1, G6.7, G7.1, G8.1). Those gates are now the primary
+  deliverable of each phase, not a formality.
+- **P−1 is descoped.** It is no longer "measure the CC exposure to decide whether to repair CC". It
+  is "derive the NC I=½ vector form from the Fortran, and confirm the derivation numerically" — the
+  same test, without the CC-repair branch hanging off it.
+- **The effort branch in §4 collapses** to the lower estimate: the 8–15 pd CC-repair line is out of
+  scope by instruction.
+- If NC and CC end up with structurally different I=½ handling, that asymmetry is **documented at
+  the code, cited to both the Fortran and this rule** — not silently smoothed over, and not used as
+  grounds to touch CC.
 
 **Deliverable:** the two NC figures of arXiv:2508.19213 that Section 1 is missing —
 `fig:NCpi0Xpdoublediff` (MicroBooNE NC1π⁰Xp double-differential in cos θ_π⁰ and p_π⁰) and
@@ -158,13 +182,17 @@ nuclear comparison is least sensitive.
 citing *"interpolate_amp, lines 585-604"*. `amp_dcc_sl_module.f:585-604` is the `nLsdt` L-S table
 setup loop — no amplitude, no isospin rotation. The form was invented, not transcribed.
 
-**Conclusion: (b) — the form was written by analogy, and it is wrong for I=½ waves in BOTH CC and
-NC.** The NC exposure is the factor ~14 above. The **CC** exposure is the 13 % shape distortion, and
-that is the serious one: under **D5 a CC physics change is a declared stop-the-line event**, and it
-would invalidate figs 07/08/09/A1/A2 and require full CC bank regeneration.
+**Conclusion: (b) — the form was written by analogy.** It does not match the Fortran for I=½ waves.
 
-**What remains open is not the reading — it is the size of the CC exposure on physical events.**
-See "the D2 measurement" in P0 item 1 and G4(3).
+**What this does and does not license (per §0.1).** NC is derived from the literal Fortran
+transcription, `VFAC*vec + (I==½)·VVFAC(itiz)·isv`. **CC is not touched.** The 13 % I=½ figure above
+is recorded here as a measured property of the amplitude layer so that nobody re-derives it from
+scratch later; it is **not** a work item in this plan, and no NC phase may act on it. If it is ever
+pursued, that is a separate, owner-initiated piece of work with its own validation campaign.
+
+The residual risk this leaves is stated plainly: **ADoNIS's CC and NC I=½ vector currents will not
+share a form.** That is a real asymmetry, and P4 documents it at the code with citations to both the
+Fortran and §0.1 rather than hiding it.
 
 ### D3 — NC QE channels and Pauli
 NC elastic is `ν p → ν p` and `ν n → ν n`. Mirror the CC QE structure (per-species
@@ -182,10 +210,10 @@ number (it must not; the gates enforce it), CC banks need full regeneration at 2
 documented preemption. **Treat any CC physics change as a stop-the-line event** requiring an
 explicit owner decision, not an automatic regeneration.
 
-> **D2 has already triggered this clause.** The plan as originally written assumed no CC number
-> moves and, on that premise, scheduled P2/P3 to migrate ~15 GB of banks by I/O only. If the D2
-> measurement confirms the CC I=½ exposure, those banks are regenerated from scratch anyway and the
-> migration is wasted work. **Hence the reordering below: P2 and P3 now depend on G0, not on P1.**
+> **Superseded by §0.1.** A CC physics change is not a "stop-the-line event to be escalated" — it is
+> simply **out of scope**. The premise P2/P3 rest on (no CC number moves) is now an instruction, and
+> the byte-identity gates enforce it. P2/P3 still gate on G0, because G0 is where the NC I=½ form is
+> settled and P2/P3 are pointless work if the NC design is still moving.
 
 ---
 
@@ -252,23 +280,20 @@ costs ~2 idle days; not gating them costs the migration **plus** a full CC regen
 lands as (b). P1 stays parallel — it is cheap and correct either way — but it no longer licenses
 starting P2.
 
-### P−1 — the D2 measurement (1–2 days, before anything else)
+### P−1 — pin the NC I=½ vector form numerically (1–2 days)
 
-The **reading** is settled (§D2). What is not settled is **how much physical CC output moves**. The
-deliverable is one number, and it decides whether this is a ~30-day NC project or a ~50-day
-CC-repair-plus-NC project.
+**Descoped by §0.1.** This is no longer a decision about CC. The reading is settled (§D2) and CC is
+out of scope; what remains is to confirm that the NC transcription is right **before** three phases
+are built on it.
 
-**Test:** compare per-event `amps2` against an instrumented ACHILLES RESDUMP on an
-**I=½-accessible** channel — `n → pπ⁻` or `n → nπ⁰` (`tpinz = ½`), **not** the free proton the
-existing 1.0011 audit uses — over a W range spanning the s11/p11 region, for CC. Then repeat with
-`src_block` switched to the literal Fortran transcription. One of the two is flat at 1.000; the plan
-predicts it is the literal form.
+**Test:** an instrumented ACHILLES RESDUMP on an **I=½-accessible NC** channel (`tpinz = ½` — the
+free proton the existing 1.0011 audit uses admits I=3/2 only, which is why that audit never covered
+this), across the s11/p11 region, per-event `amps2` vs the literal transcription
+`VFAC*vec + (I==½)·VVFAC(itiz)·isv`. Flat at 1.000, or the form is wrong.
 
-**Why a test at all, when the source reading already answers it:** the reading tells us what ACHILLES
-computes; it does not tell us how far ADoNIS's validated CC figures currently are from it. Changing
-a validated CC current on a reading alone — against a repo whose doctrine is bit-exactness — is
-exactly the move this plan exists to prevent. The measurement is the arbiter and the regression gate,
-not the decision.
+**Why a test rather than trusting the reading:** the reading says what ACHILLES computes; only the
+comparison says whether ADoNIS's implementation of it agrees event by event. It is also the
+regression gate P4 re-runs (G4.3), so it is written once and used twice.
 
 ---
 
@@ -314,7 +339,13 @@ hepmc on disk with `proc` IDs; (f) the G5(1) isospin factor written in closed fo
 **Owner sign-off before any code.**
 *Effort 2–3 d. Depends: P−1. Parallel: P1. **Blocks: P2, P3.***
 
-### P1 — Fail-loud probe registry
+### P1 — Fail-loud probe registry — **DONE**
+
+*Landed as `adonis/channels/probes.py` (`ProbeSpec` / `probe_spec` / `dcc_mode` / `probe_for_mode`)
+with `tests/test_probe_registry.py`. `"NC"` is registered with `implemented=False`, so it raises
+`NotImplementedError` — a different error from a typo's `ValueError`, and the phase that implements
+it flips one flag rather than hunting for `else`-branches. The `mode <= -1` legacy branch in
+`differential.py` is now unreachable and labelled unvalidated legacy pending P4.*
 
 `exclusive_amps2_batch` currently does `_mode = 10 if probe == "EM" else 1` (`dcc/current.py:208-210`
 — `_mode`, `_lep_kind` and `_norm` all `else`-branch to CC), so `probe="NC"` would **silently produce
@@ -686,39 +717,32 @@ enumerated**. It did not cover what review found:
 
 | Item | Added |
 |---|---|
-| D2 fallout — CC I=½ re-derivation, re-validation of figs 07/08/09/A1/A2, CC bank regeneration | 8–15 pd + weeks of `turing` time |
+| ~~D2 fallout — CC I=½ repair and regeneration~~ | **out of scope by §0.1** (would have been 8–15 pd + weeks of `turing`) |
 | `amps2_records.py` probe plumbing + the G7(9) knob-response gate | 2–3 pd |
 | NC free-nucleon generator (RES + QE) for G5/G6 | 2–3 pd |
 | Flux threshold, `proc`-ID mapping, `NC_CHANNELS` `mult` | 1 pd |
 
-- **If D2 confirms the CC exposure (expected): 40–55 person-days, 10–14 calendar weeks.**
-- **If it somehow does not: 30–36 person-days, 7–9 calendar weeks.**
-
-Dominated by P7 generation + preemption, P6 (largest new physics), the two rename/migration phases,
-and — in the expected branch — the CC repair and regeneration.
+**~31–41 person-days, 7–9 calendar weeks.** The branch on D2 collapses because §0.1 removes the
+CC-repair arm. Dominated by P7 generation + preemption, P6 (largest new physics), and the two
+rename/migration phases.
 
 ---
 
 ## 5. First week
 
-1. **Days 1–2 — P−1, the D2 measurement.** Now the first task, not the third. Instrument an ACHILLES
-   RESDUMP on an **I=½-accessible** CC channel (`n→pπ⁻` / `n→nπ⁰`, `tpinz=½`) across the s11/p11
-   region and compare per-event `amps2` against both the legacy `0.5*(vec−isv)` form and the literal
-   Fortran transcription. **Its outcome decides whether this is a ~30-day or a ~50-day project**, so
-   nothing else starts until it lands.
-2. **Day 1, parallel — build and run the two ACHILLES free-nucleon NC cards** (RES and QE). The
+1. ~~**P1**~~ — **DONE** (`adonis/channels/probes.py` + `tests/test_probe_registry.py`). All four
+   fallthrough sites raise; CC/EM byte-identical.
+2. **Days 1–2 — P−1.** Instrument an ACHILLES RESDUMP on an I=½-accessible **NC** channel and pin
+   the literal Fortran transcription per-event. Three phases are built on this form.
+3. **Day 1, parallel — build and run the two ACHILLES free-nucleon NC cards** (RES and QE). The
    long-pole **external** dependency (container, possibly a fork build); produces the artifacts G5
    and G6 cannot close without. Check both into `configs/achilles/`.
-3. **Day 1, parallel — P1, complete.** Kill the silent CC fallback **at all four sites**, including
-   `assembly.py:126-133`. ~0.5 d, bit-exactness-gated, independent of every physics decision. Until
-   it lands, every experiment is one typo from silently measuring CC — and
-   `HadronStructure(channels=NC_CHANNELS)` runs today returning CC numbers.
 4. **Day 3 — write up D1 (both branches, the switch) and the strange-omission constraint**, cited.
 5. **Day 3 — write the G5 analytic propagator test** *before* the current it tests, so it cannot be
    weakened to fit the implementation. It cannot **run** until P4; that is fine and intended.
-6. **Day 4 — owner review of G0**, now including the D2 result and the closed-form isospin factor.
-7. **Day 5 — P2 only if G0 clears D2 as "no CC change".** Otherwise Day 5 opens the CC repair, and
-   P2/P3 wait — migrating 15 GB of banks that are about to be regenerated is pure waste.
+6. **Day 4 — owner review of G0**, including the P−1 result and the closed-form isospin factor.
+7. **Day 5 — P2** (the `weak`→`CC` + `EM`/`ee` rename). Mechanical, fully gated, must land before
+   P3, which must land before any NC driver code.
 
 **Do NOT this week:** touch `selection.py`, or submit any large generation job. A bank generated
 against an unvalidated current is hours of `turing` time plus a merge tree to clean up.
