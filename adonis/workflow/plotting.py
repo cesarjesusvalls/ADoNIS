@@ -46,9 +46,12 @@ def _curve_panel(a0, a1, ref, ado, *, label, ratio_band, ratio_ylim, ado_label, 
 
 def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
                      ratio_ylim=(0.5, 1.6), ado_label="ENGINE", ref_label="ACHILLES", data=None,
-                     logy=False, shadow_frac=None, ref_parts=None, ado_parts=None, xlabel=None):
+                     logy=False, shadow_frac=None, ref_parts=None, ado_parts=None, xlabel=None,
+                     total_color="0.1", part_colors=None, ratio_color="navy"):
     """Render one observable into top axis a0 (dsigma/dx) + bottom a1 (ACH/ADO ratio).
     ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado).
+    total_color / part_colors / ratio_color are the palette hooks (defaults = the historical look, so
+    callers that do not pass them are unchanged); part_colors maps a component label -> colour.
     shadow_frac (opt-in, e.g. 0.01): bins contributing < this fraction of the panel's TOTAL cross section
     (max of the ACH and ADO integrals, so a real discrepancy is never hidden) are SHADOWED (greyed) and
     EXCLUDED from chi2/ndf -- removes stat-inflated low-sigma tail bins.  None -> off (all bins count).
@@ -61,10 +64,10 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     da, ea = hist_with_errors(ref["values"], ref["w"], edges)
     dd, ed = hist_with_errors(ado["values"], ado["w"], edges)
     a0.fill_between(edges, np.append(da - ea, (da - ea)[-1]), np.append(da + ea, (da + ea)[-1]),
-                    step="post", color="0.1", alpha=0.22, lw=0)
-    a0.step(edges, np.append(da, da[-1]), where="post", color="0.1", lw=1.3, ls="--", label=ref_label)
+                    step="post", color=total_color, alpha=0.22, lw=0)
+    a0.step(edges, np.append(da, da[-1]), where="post", color=total_color, lw=1.3, ls="--", label=ref_label)
     def _components(parts, ls, prefix):         # QE/RES component steps + light error bands
-        _pc = {"QE": "tab:blue", "RES": "tab:green"}
+        _pc = {"QE": "tab:blue", "RES": "tab:green"} if part_colors is None else part_colors
         for lbl, part in parts.items():
             dp, dpe = hist_with_errors(part["values"], part["w"], edges); col = _pc.get(lbl, "0.6")
             a0.fill_between(edges, np.append(dp - dpe, (dp - dpe)[-1]), np.append(dp + dpe, (dp + dpe)[-1]),
@@ -84,8 +87,8 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     # nan-mask non-kept bins so the line/band break cleanly at empties/shadowed bins.
     ddm = np.where(keep, dd, np.nan); edm = np.where(keep, ed, np.nan)
     a0.fill_between(edges, np.append(ddm - edm, (ddm - edm)[-1]), np.append(ddm + edm, (ddm + edm)[-1]),
-                    step="post", color="0.1", alpha=0.22, lw=0)
-    a0.step(edges, np.append(ddm, ddm[-1]), where="post", color="0.1", lw=1.4, ls="-", label=ado_label)
+                    step="post", color=total_color, alpha=0.22, lw=0)
+    a0.step(edges, np.append(ddm, ddm[-1]), where="post", color=total_color, lw=1.4, ls="-", label=ado_label)
     if ado_parts:                               # ADoNIS QE/RES (solid; ACH parts are dashed)
         _components(ado_parts, "-", ado_label)
     if shadow.any():                            # shadowed bins: grey vertical spans in both panels (no markers)
@@ -112,9 +115,9 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
         a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
     rm = np.where(keep, r, np.nan); rem = np.where(keep, re, np.nan)     # ratio: navy step + shaded band
     a1.fill_between(edges, np.append(rm - rem, (rm - rem)[-1]), np.append(rm + rem, (rm + rem)[-1]),
-                    step="post", color="navy", alpha=0.25, lw=0)
-    a1.step(edges, np.append(rm, rm[-1]), where="post", color="navy", lw=1.2)
-    a1.set_ylim(*ratio_ylim); a1.set_xlabel(label, fontsize=8)
+                    step="post", color=ratio_color, alpha=0.25, lw=0)
+    a1.step(edges, np.append(rm, rm[-1]), where="post", color=ratio_color, lw=1.2)
+    a1.set_ylim(*ratio_ylim); a1.set_xlabel(xlabel or label, fontsize=8)   # xlabel was ignored here
     a0.set_xlim(edges[0], edges[-1])           # clamp to bin edges (sharex -> a1 too): no "floating" margin
     ach_ado = float(np.sum(da * bw) / max(np.sum(dd * bw), 1e-30))
     return dict(chi2=chi2, ndf=ndf, ach_ado=ach_ado, n_shadow=int(shadow.sum()))

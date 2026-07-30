@@ -13,6 +13,20 @@ C_ADONIS = "#1f77b4"
 C_ACHILLES = "#d62728"
 C_DATA = "k"
 
+# Channel decomposition (total / QE / RES): IBM colourblind-safe palette, indices 2/3/5.
+# IBM index 1 (#ffb000 amber) is deliberately NOT used -- lightness 0.81 and only 1.78:1 contrast
+# on white, i.e. invisible as a hairline in print.  This triple passes every check of the dataviz
+# validator on a light surface over ALL pairs (lightness band, chroma floor, CVD separation,
+# normal-vision separation).  #fe6100/#648fff sit just under 3:1 contrast, which the
+# always-present legend covers.  Total gets #dc267f -- the only one clearing 3:1 -- because it
+# is the headline curve.  Known weak pair: total<->RES is dE 5.2 under tritanopia (~1e-4 of
+# readers); position (total always above its components) and linestyle disambiguate.
+C_TOTAL = "#dc267f"
+C_QE = "#648fff"
+C_RES = "#fe6100"
+PARTS = {"QE": C_QE, "RES": C_RES}
+C_RATIO = "k"
+
 RC = {
     "figure.dpi": 130, "savefig.dpi": 300, "savefig.bbox": "tight",
     "font.family": "serif",

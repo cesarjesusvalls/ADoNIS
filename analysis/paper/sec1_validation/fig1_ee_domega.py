@@ -17,6 +17,9 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.text import Text
+from matplotlib.legend_handler import HandlerBase
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
@@ -54,10 +57,43 @@ def achilles(nuc, ch):
     return (EB - Ee)[k] / 1000.0, w[k]
 
 
+_GEN_GREY = "0.35"
+
+
+class _DashSlashSolid(HandlerBase):
+    """Legend handle drawn as  -- / --  : dashed segment, a literal '/', solid segment.
+    HandlerTuple cannot do this (it only tiles artists, no text), hence the custom handler."""
+    def create_artists(self, legend, orig_handle, xdescent, ydescent, width, height, fontsize, trans):
+        y = height / 2.0 - ydescent
+        x0 = -xdescent
+        seg = 0.40 * width                       # each line segment (long: little dead space)
+        arts = [Line2D([x0, x0 + seg], [y, y], color=_GEN_GREY, lw=1.3, dashes=(2.2, 1.4)),
+                Line2D([x0 + width - seg, x0 + width], [y, y], color=_GEN_GREY, lw=1.4, ls="-"),
+                Text(x0 + 0.5 * width, y, "/", color=_GEN_GREY, fontsize=fontsize * 1.25,
+                     ha="center", va="center")]
+        for a in arts:
+            a.set_transform(trans)
+        return arts
+
+
+def _legend(a):
+    """Factorised legend: one entry per component (colour), then ONE grey 'dashed / solid' swatch for
+    the generator (linestyle).  6 entries with repeated 'ACHILLES ...'/'ADoNIS ...' strings collapse to
+    4, and the two encodings are named separately instead of multiplied out."""
+    gen = Line2D([], [])                                   # sentinel: drawn by _DashSlashSolid
+    cols = [Line2D([], [], color=c, lw=1.6) for c in (style.C_TOTAL, style.C_QE, style.C_RES)]
+    a.legend(cols + [gen], ["Total", "QE", "RES", "ACHILLES / ADoNIS"],
+             handler_map={gen: _DashSlashSolid()},
+             loc="upper right", fontsize=7, ncol=1,
+             handlelength=3.4, labelspacing=0.35, borderpad=0.2)
+
+
 def main():
     style.use()
-    fig, ax = plt.subplots(2, 2, figsize=(9.6, 5.2), sharex="col",
-                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0, "wspace": 0.24})
+    # Smaller canvas at unchanged absolute font sizes -> text reads larger relative to the axes.
+    # Height: both panels halved (3:1 kept), so only the ~0.85in of title/label/tick overhead survives.
+    fig, ax = plt.subplots(2, 2, figsize=(7.1, 2.6), sharex="col",
+                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0, "wspace": 0.26})
     for ni, nuc in enumerate(("Ar", "C")):                # paper order: Ar left, C right
         ao, aw, ach_lab = adonis(nuc)
         aqe = ach_lab == 0; ares = ach_lab == 1
@@ -66,18 +102,22 @@ def main():
         res = chi2_ratio_panel(
             ax[0, ni], ax[1, ni], EDGES,
             {"values": ho, "w": hw}, {"values": ao, "w": aw},
-            label=rf"(e,e') {NUC_TEX[nuc]}", xlabel=r"$\omega$ [GeV]", ratio_ylim=(0.6, 1.4),
+            label="", xlabel=r"$\omega$ [GeV]", ratio_ylim=(0.6, 1.4),   # nucleus goes IN the axes
             ado_label="ADoNIS", ref_label="ACHILLES",
+            total_color=style.C_TOTAL, part_colors=style.PARTS, ratio_color=style.C_RATIO,
             ref_parts={"QE": {"values": hqo, "w": hqw}, "RES": {"values": hro, "w": hrw}},
             ado_parts={"QE": {"values": ao[aqe], "w": aw[aqe]},
                        "RES": {"values": ao[ares], "w": aw[ares]}})
         print(f"  {nuc} chi2/ndf {res['chi2']/max(res['ndf'],1):6.2f} (ndf={res['ndf']}) "
               f"nADO={len(aw)} nACH={len(hw)}", flush=True)
+        # nucleus label inside the panel (an axes title collides with the suptitle on a short canvas):
+        # top-RIGHT corner, with the legend anchored just below it -- the falling tail leaves that side free.
+        ax[0, ni].text(0.975, 0.95, NUC_TEX[nuc], transform=ax[0, ni].transAxes,
+                       fontsize=9, va="top", ha="right")
         if ni == 0:
-            ax[0, ni].legend(fontsize=6, ncol=2); ax[0, ni].set_ylabel(r"$d\sigma/d\omega$ [nb/GeV]")
+            _legend(ax[0, ni]); ax[0, ni].set_ylabel(r"$d\sigma/d\omega$ [nb/GeV]")
             ax[1, ni].set_ylabel("ratio")
-    fig.suptitle(r"ADoNIS vs ACHILLES --- inclusive (e,e') at 2.222 GeV, "
-                 r"$\theta_{e'}\approx15.5^\circ$  (QE / RES / total)", fontsize=11)
+    fig.suptitle(r"Inclusive (e,e') at 2.222 GeV, $\theta_{e'}\approx15.5^\circ$", fontsize=9, y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     style.save(fig, "fig01_ee_domega")
 
