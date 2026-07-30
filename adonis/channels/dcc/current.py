@@ -54,10 +54,21 @@ _NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron 
 #      (mode=10) -> the CC fac^2 baked into _NORM carries an extra 2 that EM must NOT have -> *2 on _NORM_EM.
 # Net: _NORM_EM = 2 * _NORM * (FResV^2/ee^2).  Validated against oracle_ee_C_res.
 _NORM_EM = 2.0 * (2.0 * np.pi) / (C.ee ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
+# NC RES: same two-step reasoning as EM, with the PHOTON coupling replaced by the Z hadronic coupling.
+#   1. FResV -> coupl3 = ee/(2*cw*sw)   (LeptonicCurrent.cc:96; FResV = FResA = coupl3 for NC, applied
+#      at :102-103 and :112-113 to both nucleons.  res_spectral_model.f90:127,145-149 confirms FResV
+#      multiplies the WHOLE DCC current, while FResA is only a boolean.)
+#   2. the CC isospin factor fac*=sqrt(2) is `mode 1..4 ONLY` (amp_dcc_sl_module.f:275, read directly),
+#      so like EM it is ABSENT for NC (mode=-1) -> the extra *2 on the CC-derived normalisation.
+# PRE-REGISTERED, before any measurement:  _NORM_NC/_NORM_EM = ee^2/_FRESV_NC^2 = (2*sw*cw)^2 = 0.7113.
+# tests/test_nc_norm.py asserts it.  If the measured ratio disagrees the DERIVATION is wrong, even
+# should some downstream ratio happen to look fine -- that is the whole point of registering it first.
+_FRESV_NC = C.ee / (2.0 * C.sw * C.cw)                       # |hadronic NC coupling| = |coupl3|
+_NORM_NC = 2.0 * (2.0 * np.pi) / (_FRESV_NC ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
 # Probe -> RES amplitude normalisation.  Kept here, next to the derivations above, rather than in the
 # probes registry (which stays import-light); the KeyError on a missing entry is deliberate -- a probe
 # that reaches this dict without a derived _NORM must not silently borrow CC's.
-_NORMS = {"CC": _NORM, "EM": _NORM_EM}
+_NORMS = {"CC": _NORM, "EM": _NORM_EM, "NC": _NORM_NC}
 
 # Amplitude(W,Q2) interpolation.  DEFAULT = "spline" (bit-faithful to ACHILLES interpolate_amp) -- the
 # SAFE default; every reported result must use it.  "bilinear" is NOT W-FAITHFUL (the dsigma/dW shape,

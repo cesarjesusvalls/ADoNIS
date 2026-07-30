@@ -37,6 +37,9 @@ import numpy as np
 
 OLD_KEYS = ("k_mu", "k_e")          # CC banks, EM banks
 NEW_KEY = "k_lep"
+# --revert needs to know which old name a bank HAD.  The probe decides: CC banks carried k_mu, EM
+# banks carried k_e, and the manifest records the probe -- so the revert is exact, not a guess.
+_REVERT_BY_PROBE = {"CC": "k_mu", "EM": "k_e"}
 
 
 def _chunk_files(root: Path):
@@ -74,6 +77,46 @@ def migrate_chunk(path: Path, apply: bool) -> str | None:
     _assert_identical(tmp, data, path)               # G3, before anything is overwritten
     os.replace(tmp, path)
     return f"{old}->{NEW_KEY}"
+
+
+def _probe_of(path: Path) -> str | None:
+    """The probe recorded in the nearest enclosing manifest.json (bank dir, then its parent)."""
+    import json
+    for d in (path.parent, path.parent.parent):
+        m = d / "manifest.json"
+        if m.exists():
+            try:
+                return json.loads(m.read_text()).get("probe")
+            except Exception:
+                return None
+    return None
+
+
+def revert_chunk(path: Path, apply: bool) -> str | None:
+    """Undo migrate_chunk: `k_lep` -> the name this bank's probe originally used.
+
+    This exists so the migration is genuinely reversible rather than reversible-in-principle.  The
+    old name is read from the manifest's probe (CC -> k_mu, EM -> k_e), so it is recovered exactly;
+    a bank whose probe is unknown is REFUSED rather than guessed.
+    """
+    with np.load(path, allow_pickle=True) as z:
+        names = list(z.files)
+        if NEW_KEY not in names:
+            return None                                  # nothing to undo
+        probe = _probe_of(path)
+        old = _REVERT_BY_PROBE.get(probe)
+        if old is None:
+            return f"REFUSED: probe {probe!r} does not determine the old key"
+        if old in names:
+            return f"CONFLICT: has both {NEW_KEY} and {old}"
+        if not apply:
+            return f"{NEW_KEY}->{old}"
+        data = {(old if k == NEW_KEY else k): z[k] for k in names}
+    tmp = path.with_name(path.name + ".tmp.npz")
+    np.savez(tmp, **data)
+    _assert_identical(tmp, data, path)
+    os.replace(tmp, path)
+    return f"{NEW_KEY}->{old}"
 
 
 def _assert_identical(tmp: Path, expect: dict, orig: Path):
@@ -130,6 +173,8 @@ def main(argv=None):
     ap.add_argument("--verify", action="store_true", help="report the key census and exit non-zero if stale")
     ap.add_argument("--verify-against", metavar="BACKUP_ROOT",
                     help="run the full G3 byte-comparison against an unmigrated copy of the tree")
+    ap.add_argument("--revert", action="store_true",
+                    help="undo: k_lep -> k_mu/k_e per the manifest probe (makes the migration reversible)")
     a = ap.parse_args(argv)
     if not a.root:
         raise SystemExit("no root given and ADONIS_OUT is unset")
@@ -160,15 +205,20 @@ def main(argv=None):
         print(f"\n{stale} chunk(s) still carry a retired lepton key")
         return 1 if stale else 0
 
+    fn = revert_chunk if a.revert else migrate_chunk
     changed = Counter()
-    for f in _chunk_files(root):
+    files = _chunk_files(root)
+    for i, f in enumerate(files, 1):
         try:
-            r = migrate_chunk(f, a.apply)
+            r = fn(f, a.apply)
         except Exception as e:
             r = f"ERROR: {e}"
         if r:
             changed[r] += 1
-    verb = "migrated" if a.apply else "WOULD migrate (dry run; pass --apply)"
+        if a.apply and i % 100 == 0:
+            print(f"  ... {i}/{len(files)} chunks scanned, {sum(changed.values())} rewritten", flush=True)
+    verb = ("reverted" if a.revert else "migrated") if a.apply else \
+           ("WOULD revert" if a.revert else "WOULD migrate") + " (dry run; pass --apply)"
     print(f"{verb} {sum(changed.values())} chunk(s) under {root}")
     for k, v in changed.most_common():
         print(f"  {v:6d}  {k}")

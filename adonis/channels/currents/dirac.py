@@ -115,8 +115,16 @@ def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scal
         f2 = jnp.where(isp, ff["F2p"], ff["F2n"])
         F1 = _COUPL_EM * f1 * vsc; F2 = _COUPL_EM * f2 * vsc
         FA = jnp.zeros_like(F1); FAP = jnp.zeros_like(F1)  # photon: no axial current
+    elif probe == "NC":
+        # NC QE is P6 of docs/nc_implementation_plan.md and is NOT implemented.  Raising here is
+        # deliberate: the NC probe IS registered (RES works), so without this branch the QE path
+        # would silently reuse the CC recombination above and return charged-current numbers.
+        raise NotImplementedError(
+            "NC QE is not implemented (P6): the form-factor recombination and the coupl1/coupl2 "
+            "couplings, including the achilles_coupl1_quirk switch, are still to be written. "
+            "NC RES works. See docs/nc_implementation_plan.md.")
     else:
-        raise ValueError(f"probe must be 'CC' or 'EM', got {probe!r}")
+        raise ValueError(f"probe must be 'CC', 'EM' or 'NC', got {probe!r}")
 
     # current_init_had: q(1)=omega+E_in; p1 on-shell at xmn; q(1)-=p1(1)
     p3_in = p_in_nuc[..., 1:]

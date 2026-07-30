@@ -483,7 +483,26 @@ every lepton consumer is live); (4) grep gate, CI-enforced; (5) restartable, ato
 (temp + rename); (6) `pool_fsi_reweight(record,1,1)==1` bit-exact on a migrated bank.
 *Effort 2–3 d + ~1 h migration. Depends: P2 (and transitively **G0**). Blocks: all NC driver phases.*
 
-### P4 — NC amplitude layer, and elimination of the duplicate `build_zmtx`
+### P4 — NC amplitude layer — **vector current DONE; `assembly.py` unification still open**
+
+*The `mode <= -1` branch in `differential.py` was rewritten from the Fortran, read directly this
+session rather than taken on report (`amp_dcc_sl_module.f`: vector block `:867-995`, isoscalar block
+`:1004-1050`, couplings `:288-294`). The literal transcription is*
+
+```
+src_block = VFAC*vec + (I==½) · VVFAC(itiz) · isv        VFAC = 1-2·sw2, VVFAC(±1) = ∓2·sw2, sw2 = 0.2312
+```
+
+*The legacy Phase-A2 recombination was deleted, not adjusted — it earned no cross-check. **CC is
+untouched**, per §0.1, so ADoNIS's CC and NC I=½ forms differ; that is recorded at the code with
+citations to both the Fortran and §0.1. `tests/test_nc_amplitude.py` covers G4(2) analytically: the
+isoscalar block touches I=½ waves only, p and n straddle the isovector-only current symmetrically
+(the `VVFAC` sign), NC keeps an axial where EM does not, the pion-pole knob moves NC by **exactly**
+zero (bit equality) while demonstrably moving CC, and the CC recombination is still bit-identical.*
+
+*Still open in P4: making `assembly.build_zmtx` a thin wrapper over `differential.build_zmtx_batched`
+so there is one implementation rather than two. Both currently carry a `probe_for_mode` guard, so
+neither can silently do CC for NC, but the duplication is still there.*
 
 - `dcc/differential.py` — the `mode<=-1` branch (`:218-227`) is **rewritten from the P0 spec**, not
   adjusted. If the re-derivation reproduces the legacy lines exactly, say so in the commit message
@@ -527,7 +546,29 @@ unification.
 
 *Effort 2–3 d. Depends: P0, P3. Parallel: P5's leptonic half.*
 
-### P5 — NC leptonic current + `_NORM_NC` (RES absolute normalisation)
+### P5 — NC leptonic current + `_NORM_NC` — **leptonic + normalisation DONE; oracle gate open**
+
+*`leptonic.py` gained `kind == "NC_nu"` in ACHILLES's exact floating-point spelling
+(`(cw·ee·i)/(2·sw) + (ee·i·sw)/(2·cw)`, `coupl_right = 0`, `M = MZ`, `Γ = GAMZ`), with a test pinning
+that it agrees with the algebraic `ee·i/(2·sw·cw)` to 1e-14 — so the equivalence is asserted, not
+assumed. `_NORM_NC` is derived in `current.py` beside the CC and EM derivations, and the `×2` is
+justified from the Fortran read directly: `fac *= sqrt(2)` is `mode 1..4` only (`:275`), so NC drops
+it exactly as EM does.*
+
+***G5(1) passes.*** *`tests/test_nc_leptonic.py` was written before the current it tests. It pins the
+NC/CC ratio to the closed form `|c_NC/c_CC|⁴ · |(q²−M_W²−iM_WΓ_W)/(q²−M_Z²−iM_ZΓ_Z)|⁴` at four Q²
+spanning 100 MeV → M_Z/2, to 1e-6 — the propagator's Q² **dependence**, not merely its presence.*
+
+> *A first version of that test asserted "NC amps2 falls as Q² → M_Z" and failed. The cause was the
+> test, not the physics: reaching a larger Q² needs a larger beam energy and the spinor norms grow
+> with E fast enough to swamp the propagator. Taking the NC/CC ratio cancels the spinor content
+> identically and leaves only couplings and propagators. Recorded because the naive form looks
+> obviously right and is not.*
+
+***G5(3) passes:*** *measured `_NORM_NC/_NORM_EM` equals the 0.7113 registered in advance.*
+
+*Still open: G5(2), the absolute free-nucleon oracle gate. The ACHILLES side now exists (the four
+cards, run). The ADoNIS side needs the NC free-nucleon generator — see below.*
 
 - `currents/leptonic.py:33-39` — add `kind == "NC_nu"` returning ACHILLES's exact form
   `((cw*ee*i)/(2*sw) + (ee*i*sw)/(2*cw), 0, C.MZ, C.GAMZ, True)`. The existing
@@ -813,6 +854,8 @@ against an unvalidated current is hours of `turing` time plus a merge tree to cl
 | **Strange FFs in NC QE** | **ACHILLES structurally cannot use them** — verified (§2). Including them would fail every χ² gate by construction. Recorded as a cited, test-pinned faithfulness constraint. |
 | **Reviving the Phase-A2 tests / `data/oracle/`** | They predate the entire refactor arc, `data/oracle/` is empty, and their gate was a single-constant bridge — the exact blindness this plan exists to prevent. Cross-check to be earned in P4, never an input. |
 | **Pre-FSI (`--no-fsi`) banks; the high-\|p\| cascade π-absorption residual; `fig02` χ²/ndf 45.70; the Oset NaN below `m_π`** | Orthogonal pre-existing items affecting CC equally. NC inherits whatever CC gets; they will appear in NC π⁰ figures too (π⁰ shares the meson cascade) and must be **cited as known**, not re-litigated inside an NC deliverable. |
+| **`test_generate_bank_unify` fails: `FSI record overflow in chunk 0` (`generate_bank.py:259`, hadron π⁺ beam bank)** | **Found during this work, pre-existing, unrelated to NC.** Confirmed by diff: the only change this branch makes to the hadron path is `probe="hadron"` → `probe=cfg.probe` (identical value), and `adonis/fsi/` and `workflow/records.py` are untouched. It went unnoticed because `conftest._HEAVY` skips this file unless `--runslow`, so it rotted unobserved — the same reason the `pytest_ignore_collect` veto bug survived. Worth its own fix; not an NC deliverable. |
+| **`test_ma_closure.py` fails to import (`from adonis import observables`)** | Pre-existing; `adonis/__init__.py` has no `observables`. Blocks whole-suite collection. Not touched here. |
 
 Moved **into** scope by the no-corner-cutting instruction: NC QE (P6), the `k_lep` rename (P3), the
 `assembly.py` duplicate (P4), the `hv_*` single-channel bug (P7), antineutrino NC (P9), and the

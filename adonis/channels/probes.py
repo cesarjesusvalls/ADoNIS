@@ -45,11 +45,12 @@ _SPECS = (
     # e N -> e' N inclusive (e,e').  spin_avg 1/4 = 2 electron helicities x 2 nucleon spins.
     ProbeSpec(name="EM", dcc_mode=10, lep_kind="EM", spin_avg=0.25,
               em_propagator=True, implemented=True),
-    # nu N -> nu N.  Fields are the ACHILLES values (mode=-1 at currents_pi_dcc.f90:71-101, for BOTH
-    # nu and nubar; spin_avg as CC) so they are recorded, not guessed later -- but implemented=False
-    # keeps every dispatch raising until the NC current actually exists.
+    # nu N -> nu N.  mode=-1 for BOTH nu and nubar (currents_pi_dcc.f90:71-101), so the hadronic side
+    # is identical between them and only leptonic.py's `anti` differs.  spin_avg 1/2 as CC.
+    # RES is implemented (leptonic NC_nu + the literal Fortran vector current + _NORM_NC).
+    # NC QE is NOT: dirac.py has no NC branch yet, so the QE path still raises -- see P6.
     ProbeSpec(name="NC", dcc_mode=-1, lep_kind="NC_nu", spin_avg=0.5,
-              em_propagator=False, implemented=False),
+              em_propagator=False, implemented=True),
 )
 
 PROBES = {s.name: s for s in _SPECS}
