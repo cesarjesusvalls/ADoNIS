@@ -27,11 +27,41 @@ DSLABEL = {"dpt": "CC0$\\pi$\n$\\delta p_T$", "dat": "CC0$\\pi$\n$\\delta\\alpha
            "pmu": "CC0$\\pi$\n$p_\\mu$", "cosmu": "CC0$\\pi$\n$\\cos\\theta_\\mu$",
            "pn": "CC1$\\pi$\n$p_N$", "dptt": "CC1$\\pi$\n$\\delta p_{TT}$",
            "daT": "CC1$\\pi$\n$\\delta\\alpha_T$", "ppi": "CC1$\\pi$\n$p_\\pi$",
-           "cospi": "CC1$\\pi$\n$\\cos\\theta_\\pi$", "n_p": "incl\n$N_p$", "n_chpi": "incl\n$N_{\\pi^\\pm}$"}
+           "cospi": "CC1$\\pi$\n$\\cos\\theta_\\pi$", "n_p": "incl\n$N_p$", "n_chpi": "incl\n$N_{\\pi^\\pm}$",
+           "pip_react": "$\\pi^+$C\n$\\sigma_{\\rm reac}$", "pip_abs": "$\\pi^+$C\n$\\sigma_{\\rm abs}$",
+           "prot_react": "pC\n$\\sigma_{\\rm reac}$", "prot_pipro": "pC\n$\\sigma_{\\pi\\rm prod}$",
+           "e_qe": "$(e,e')$C\n$\\omega_{\\rm QE}$", "e_res": "$(e,e')$C\n$\\omega_{\\rm RES}$"}
+
+# Observables with published differential cross-section DATA (the TKI/STV set: T2K CC0pi & CC1pi STV,
+# MINERvA -- their bin edges come from those releases).  The lepton/pion single-kinematics and the
+# multiplicities are model-only observables added for the gradient study (no measurement in these exact
+# signal definitions).  `--data` outlines the data-backed observable blocks in green.
+DATA_OBS = {"dpt", "dat", "pn", "dptt", "daT"}
 
 
-def main(label="physfit_gate1_full_v2"):
+def _mark_data(ax, row0, dskeys, npar):
+    """Outline (green) the column blocks whose observable currently has published data."""
+    import matplotlib.patches as mpatches
+    for j, dk in enumerate(dskeys):
+        if dk in DATA_OBS:
+            ax.add_patch(mpatches.Rectangle((row0[j] - 0.5, -0.5), row0[j + 1] - row0[j], npar,
+                                            fill=False, edgecolor="#2ca02c", lw=2.4, zorder=6))
+
+
+# figure basenames: the canonical T2K npz keeps the historical names; any other label (e.g. a
+# multi-sample stack) renders to its OWN <label>_* files so it never clobbers the T2K figures.
+_CANON = {"physfit_gate1", "physfit_gate1_full_v2"}
+
+
+def _fig_names(label):
+    if label in _CANON:
+        return {"all": "sec2_gradients_all27", "shape": "sec2_gradients_shape", "reach": "sec2_gradient_reach"}
+    return {"all": f"{label}_all27", "shape": f"{label}_shape", "reach": f"{label}_reach"}
+
+
+def main(label="physfit_gate1_full_v2", mark_data=False):
     style.use()
+    nm = _fig_names(label)
     d = np.load(style.ALTGEN / f"{label}.npz", allow_pickle=True)
     J, sigma, prior = d["J"], d["sigma"], d["prior"]
     pnames = [str(x) for x in d["pnames"]]
@@ -65,12 +95,16 @@ def main(label="physfit_gate1_full_v2"):
             ax.get_yticklabels()[k].set_color("#d62728")
             ax.get_yticklabels()[k].set_weight("bold")
     ax.set_xlabel("bin  (grouped by observable)")
-    ax.set_title("Exact per-bin gradients, all 27 knobs:  "
+    ax.set_title(f"Exact per-bin gradients, all {len(pnames)} knobs:  "
                  "$\\sigma^{prior}_k\\,\\partial(d\\sigma/dx)_i/\\partial\\theta_k\\;/\\;\\sigma_i$   "
                  "(autodiff through the cascade; red label = passes Gate I)", fontsize=9)
     fig.colorbar(im, ax=ax, fraction=0.02, pad=0.01,
                  label="per-bin pull  [$\\sigma$]  for a 1-$\\sigma$ prior move")
-    style.save(fig, "sec2_gradients_all27")
+    if mark_data:
+        _mark_data(ax, row0, dskeys, len(pnames))
+        ax.text(0.995, 1.006, "green box = observable has published data", transform=ax.transAxes,
+                ha="right", color="#2ca02c", fontsize=8)
+    style.save(fig, nm["all"])
 
     # ---- per-knob SHAPE: each ROW normalized to its own peak |pull|, so the gradient's DISTRIBUTION
     # across the bins is visible for every knob regardless of its overall magnitude (kF_sf and the tiny
@@ -102,7 +136,11 @@ def main(label="physfit_gate1_full_v2"):
     axb.set_xlabel(r"magnitude  $\sqrt{F_{kk}}$  [$\sigma$]", fontsize=8)
     axb.set_title("overall magnitude\n(2$\\sigma$ = dotted)", fontsize=8)
     fig.colorbar(im, cax=cax, label="relative pull  (row-normalized, signed)")
-    style.save(fig, "sec2_gradients_shape")
+    if mark_data:
+        _mark_data(axh, row0, dskeys, len(pnames))
+        axh.text(0.995, 1.006, "green box = observable has published data", transform=axh.transAxes,
+                 ha="right", color="#2ca02c", fontsize=8)
+    style.save(fig, nm["shape"])
 
     # per-knob reach: the total pull a 1-sigma prior move produces, = sqrt(F_kk) (degeneracy-blind)
     reach = np.sqrt((S**2).sum(axis=1))
@@ -116,8 +154,9 @@ def main(label="physfit_gate1_full_v2"):
     ax.set_xlabel("gradient reach  $\\sqrt{F_{kk}}$  [$\\sigma$ of pull per 1-$\\sigma$ prior move]")
     ax.set_title("Every knob has a gradient; not every gradient is information\n"
                  "(red = passes Gate I on the full set)", fontsize=9)
-    style.save(fig, "sec2_gradient_reach")
+    style.save(fig, nm["reach"])
 
 
 if __name__ == "__main__":
-    main(*(sys.argv[1:2] or []))
+    pos = [a for a in sys.argv[1:] if not a.startswith("--")]      # positional label
+    main(*(pos[:1] or []), mark_data="--data" in sys.argv[1:])     # --data: outline the data-backed obs

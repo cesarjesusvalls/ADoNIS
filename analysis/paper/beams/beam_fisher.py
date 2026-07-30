@@ -32,7 +32,10 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "altgen"))
 
-BEAM_DIRS = {"pip": "output/beam_pip_C", "prot": "output/beam_prot_C", "neut": "output/beam_neut_C"}
+# paper_banks_p4 banks keep their manifest + chunk_*.npz under {dir}/merged/ (load_bank reads that dir).
+_BANKS = "output/paper_banks_p4"
+BEAM_DIRS = {"pip": f"{_BANKS}/beam_pip_C/merged", "prot": f"{_BANKS}/beam_prot_C/merged",
+             "neut": f"{_BANKS}/beam_neut_C/merged"}
 BEAM_LABEL = {"pip": "$\\pi^+$–C", "prot": "p–C", "neut": "n–C"}
 
 
@@ -113,7 +116,7 @@ def main(syst=0.05, nbins=15):
     PRIOR = PF.PRIOR
     NPAR = PF.NPAR
 
-    d = np.load(style.ALTGEN / "physfit_gate1_full_v2.npz", allow_pickle=True)
+    d = np.load(style.ALTGEN / "physfit_gate1.npz", allow_pickle=True)
     J_t2k = d["J"] / d["sigma"][:, None]                              # already error-weighted rows
     F = {"T2K": J_t2k.T @ J_t2k}
     print(f"== knob x sample Fisher (syst {syst:.0%}, {nbins} p-bins per observable) ==")
