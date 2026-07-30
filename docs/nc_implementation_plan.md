@@ -51,6 +51,27 @@ every other Section 1 figure.
 
 ---
 
+## 0.2 Where this stands — the absolute gates are CLOSED
+
+Both halves of §0's "non-negotiable mitigation" now pass, against ACHILLES, in **absolute nb**, with
+**no bridge constant**, at E_ν = 1.5 GeV on a free nucleon:
+
+| gate | mean(ACH/ADO) | spread | band | verdict |
+|---|---|---|---|---|
+| **G5(2)** NC RES, 4 channels | **1.0043** | **0.49 %** | mean ≤2 %, spread ≤1 % | **PASS** |
+| **G6(2)** NC QE, p and n | **1.0034** | **0.01 %** | mean ≤2 %, spread ≤1 % | **PASS** |
+| **G5(1)** analytic Z propagator | exact to 1e-6 at four Q² | — | ≤1e-3 | **PASS** |
+| **G5(3)** `_NORM_NC/_NORM_EM` vs pre-registered 0.7113 | exact | — | — | **PASS** |
+
+The NC QE **n/p ratio** is 1.4325 (ADoNIS) vs 1.4322 (ACHILLES) — agreement to 0.02 % on a quantity
+that needs no normalisation convention at all, so it checks the isospin structure independently of
+every constant in the chain.
+
+This is the risk §0 was written about, and it is retired for the currents. What remains is nuclear:
+spectral functions, target counting, Pauli, FSI — i.e. G7's absolute σ on argon.
+
+---
+
 ## 0. The biggest risk
 
 **A wrong absolute NC normalisation that every shape gate is blind to.**
@@ -104,6 +125,15 @@ ratio = [1/(2·sin2w)] / [1/sw] = 1/(2·sw) ≈ 1.0396          →  ~4 % too la
 `F1n` and `F2n` inside the **neutron** dictionary, exactly as it uses it for `F1p`/`F2p` in the
 proton one. `FA`/`FAP` (carried by `coupl2`) and `coupl3` (RES, coherent) are untouched, so this is
 **NC QE only** — but on both the proton and the neutron F1/F2 terms.
+
+> **Measured, and it corrects the framing above.** The 1.0396 is on the **coupling**, and the
+> free-nucleon NC QE cross section moves by only **0.1–0.2 %**, because `coupl1` is a small part of
+> both nucleons' currents: the proton's carries `(½ − 2sin²θ_W) ≈ 0.037` so its NC elastic is
+> axial-dominated, and the neutron's `coupl1·F1n` is dwarfed by its `−coupl2·F1p` partner because
+> `F1n ≈ 0` while `F1p ≈ 1`. **So the free-nucleon σ gate does NOT discriminate the two branches** —
+> both sit at 1.002–1.004 vs ACHILLES. The discriminating power is at the amplitude level, which is
+> where `tests/test_nc_qe.py` puts it (isolating the `coupl1` term and asserting the exact ratio).
+> A gate that cannot tell the branches apart must not be cited as if it could.
 
 **Decision (project owner): make it a switch, defaulting to correct physics.**
 
