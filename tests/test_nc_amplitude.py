@@ -6,13 +6,24 @@ written from the source and cannot be tuned to whatever the implementation happe
   * two `sw2` limits that collapse the NC vector coupling onto forms we already trust;
   * the axial is present for NC and absent for EM;
   * the pion pole is CC-only, so its knob must move NC by EXACTLY zero;
-  * proton and neutron differ ONLY by the VVFAC sign on the I=1/2 isoscalar block;
+  * proton and neutron differ ONLY by the VVFAC sign on the I=1/2 isoscalar term;
   * `_NORM_NC/_NORM_EM` equals the 0.7113 registered BEFORE any measurement.
 
-The transcription under test (amp_dcc_sl_module.f, read directly):
-    vector block   :867-995   zzz = vfac*zampv      -- EVERY wave, BOTH targets, weak and EM
-    isoscalar block :1004-1050 zzz = vvfac(itiz)*zampv_is -- `if(mode.le.-1)`, NC only, I=1/2 only
-  =>  src = VFAC*vec + (I==1/2) * VVFAC(itiz) * isv
+The form under test (amp_dcc_sl_module.f, read directly).  The step that matters is NOT in the
+assembly loops at all -- it is at :675-691, once at table read, in place:
+
+    if(mode.lt.10)         ! weak only, EM excluded
+    if(itpind(ipw)==3)goto 510    ! I=3/2 skipped
+    zampv <- 0.5*(zampv - zampv_is)   ! isovector
+    zampv_is <- 0.5*(zampv + zampv_is) ! isoscalar
+
+so by the time the vector block (:867-995) and the NC isoscalar block (:1004-1050) run, the arrays
+ALREADY mean isovector/isoscalar.  ADoNIS holds the raw loader blocks and rotates at use time:
+
+    I=3/2 : VFAC*vec
+    I=1/2 : VFAC*0.5*(vec-isv) + VVFAC(itiz)*0.5*(vec+isv)
+
+This is also why the CC branch's 0.5*(vec-isv) is correct rather than invented.
 """
 import numpy as np
 import pytest
@@ -74,14 +85,29 @@ def test_isoscalar_block_touches_I_half_waves_only():
 
 
 def test_proton_and_neutron_differ_only_by_the_vvfac_sign():
-    """vvfac(+1) = -2sw2, vvfac(-1) = +2sw2 (:293-294).  Everything else in the vector current is
-    target-independent for the weak probe, so p and n must bracket the isv=0 current symmetrically."""
+    """vvfac(+1) = -2sw2, vvfac(-1) = +2sw2 (:293-294), and NOTHING ELSE in the weak vector current
+    depends on the target.  So p and n must straddle the VVFAC=0 current symmetrically:
+
+        z_p + z_n = 2 * z(VVFAC=0)
+
+    Note the reference is the isoscalar-term-free current, NOT the isv=0 current: after the
+    :675-691 rotation `isv` feeds BOTH the isovector 0.5*(vec-isv) and the isoscalar 0.5*(vec+isv),
+    so zeroing isv changes the isovector too and would make this test assert the wrong thing.
+    NC_ISV_SIGN is the documented diagnostic knob for exactly this.
+    """
+    import adonis.channels.dcc.differential as D
     vec, isv, axial = _amps()
     zp = _zmtx(-1, +1, vec, isv, axial)
     zn = _zmtx(-1, -1, vec, isv, axial)
-    z0 = _zmtx(-1, +1, vec, np.zeros_like(isv), axial)     # the VFAC*vec part alone
+    old = D.NC_ISV_SIGN
+    try:
+        D.NC_ISV_SIGN = 0.0                                # drop the isoscalar term, keep isovector
+        z0 = _zmtx(-1, +1, vec, isv, axial)
+    finally:
+        D.NC_ISV_SIGN = old
     assert np.allclose(zp + zn, 2.0 * z0, atol=1e-9), \
-        "p and n do not straddle the isovector-only current -> the VVFAC sign flip is wrong"
+        "p and n do not straddle the VVFAC=0 current -> the VVFAC sign flip is wrong"
+    assert not np.allclose(zp, zn), "p and n are identical -- VVFAC is not being applied at all"
 
 
 # ---------------------------------------------------------------------------- axial / pion pole
@@ -133,10 +159,16 @@ def test_norm_nc_over_norm_em_matches_the_value_registered_before_measurement():
     assert _NORM_NC / _NORM_EM == pytest.approx(predicted, rel=1e-12)
 
 
-def test_nc_qe_still_raises_because_p6_is_not_written():
-    """NC RES works; NC QE does not.  Without an explicit raise the QE path would silently reuse the
-    CC form-factor recombination and return charged-current numbers."""
+def test_nc_qe_demands_the_struck_nucleon_species():
+    """UPDATED when P6 landed: NC QE used to raise NotImplementedError, and now it works.  What the
+    test guards is unchanged -- the NC QE path must never silently produce a number it cannot
+    justify.  The NC couplings are PER NUCLEON (LeptonicCurrent.cc:97-115), unlike CC's single
+    isovector combination, so a caller who does not say which nucleon was struck gets an error
+    rather than the proton's answer."""
     from adonis.channels.currents.dirac import hadron_current_qe_dirac
     z = np.zeros((1, 4))
-    with pytest.raises(NotImplementedError, match="NC QE"):
+    with pytest.raises(ValueError, match="is_proton"):
         hadron_current_qe_dirac(z, z, z, z, probe="NC")
+    # with it supplied, the current is finite and non-trivial
+    h = np.asarray(hadron_current_qe_dirac(z, z, z, z, probe="NC", is_proton=np.array([True])))
+    assert np.all(np.isfinite(h))

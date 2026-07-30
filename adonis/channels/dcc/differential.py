@@ -38,6 +38,14 @@ from adonis.channels.dcc.assembly import (IGM1_LIST, LAM_LIST, ISF_LIST, _IXI1_O
 
 _SQHF = 1.0 / np.sqrt(2.0)
 
+# DIAGNOSTIC ONLY -- the relative sign of the NC isoscalar (zampv_is) block against the isovector one.
+# +1 is the literal Fortran transcription (amp_dcc_sl_module.f:1036, `zzz = vvfac(itiz)*zampv_is`) and
+# is the only value any production path may use.  It exists because the loader stores `isv` WITHOUT
+# the Fortran `isign` (differential.py applies isign, and only for EM mode 10/11), so "is the stored
+# isv already sign-flipped relative to zampv_is?" is a real question that a free-nucleon sigma
+# comparison can answer decisively.  Flip it in a scratch probe, never in committed code.
+NC_ISV_SIGN = 1.0
+
 
 # --------------------------------------------------------------------------- #
 #  Angle-INDEPENDENT coefficients (mirror of angular_kernel's selection rules) #
@@ -218,33 +226,46 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
     i32 = is_I32[None, None, :]
     if 0 < mode < 10:                                        # CC: I=1/2 -> (V-IS)/2; I=3/2 raw
         src_block = i32 * vec + (1.0 - i32) * 0.5 * (vec - isv)
-    elif mode <= -1:                                         # NC -- LITERAL Fortran transcription
-        # Re-derived from amp_dcc_sl_module.f directly (P4).  Two ADDITIVE contributions:
+    elif mode <= -1:                                         # NC
+        # THE KEY FACT, at amp_dcc_sl_module.f:675-691, and easy to miss because it is nowhere near
+        # the assembly loops -- it runs ONCE at table read:
         #
-        #   1. the vector block, :867-995 -- `zzz = vfac*zampv*ivec` for EVERY wave, on BOTH targets.
-        #      The neutron branch's guard is `(mode < 10 .or. itpind==3)`, so weak (CC and NC) takes
-        #      the RAW zampv path exactly as the proton does.
-        #   2. the isoscalar block, :1004-1050 -- `if(mode.le.-1)`, NC ONLY, over I=1/2 waves only
-        #      (`itpind(ipw)==1`): `zzz = vvfac(itiz)*zampv_is*ivec`, ADDED to what (1) already put in.
+        #     !conversion 1/2p 1/2n -> 1/2v 1/2s basis
+        #     if(mode.lt.10)then          ! neutrino case      <- WEAK ONLY (CC and NC), not EM
+        #       do 510 ipw=1,njLs
+        #       if(itpind(ipw)==3)goto 510                     <- I=3/2 waves SKIPPED
+        #       zp = (zampv + zampv_is)*0.5d0
+        #       zm = (zampv - zampv_is)*0.5d0
+        #       zampv    = zm    ! isovector
+        #       zampv_is = zp    ! isoscalar
         #
-        # so  src = VFAC*vec + (I==1/2) * VVFAC(itiz)*isv.
+        # So for the weak probe, by the time the vector block (:867-995) and the NC isoscalar block
+        # (:1004-1050) run, `zampv` ALREADY MEANS the isovector 0.5*(raw_v - raw_is) and `zampv_is`
+        # ALREADY MEANS the isoscalar 0.5*(raw_v + raw_is), on I=1/2 waves only.
         #
-        # This DELIBERATELY does not match the CC branch above, which recombines 0.5*(vec-isv) on
-        # I=1/2.  That form appears nowhere in the Fortran and its justifying comment
-        # (assembly.py:122-125) cites :585-604, which is the nLsdt L-S table setup loop -- but CC is
-        # fully validated and the governing rule is that NC work must not regress it (see
-        # docs/nc_implementation_plan.md section 0.1).  So NC is transcribed correctly and CC is left
-        # exactly as validated.  The asymmetry is real, deliberate, and recorded here rather than
-        # smoothed over; resolving it is separate, owner-initiated work.
+        # ADoNIS's loader stores the RAW blocks (loader.py:107-109) and does the rotation HERE, at use
+        # time, instead of in place at load time.  Same physics, different moment.  Hence:
+        #
+        #     I=3/2 : VFAC * vec                                    (raw; the rotation skipped it)
+        #     I=1/2 : VFAC * 0.5*(vec-isv)  +  VVFAC(itiz) * 0.5*(vec+isv)
+        #
+        # This ALSO settles the CC branch above.  `0.5*(vec-isv)` on I=1/2 is not an invention -- it is
+        # exactly `zm`, the isovector.  The old comment cited :585-604 (the nLsdt L-S table setup),
+        # which is why a search of the interpolation loops "proved" the form appears nowhere in the
+        # Fortran.  It appears at :686-691.  CC and NC share the rotation, as they must.
+        #
+        # Measured against the ACHILLES free-nucleon NC cards, this form is the one that reproduces
+        # ACHILLES's near-exact p/n mirror symmetry; the raw-vec transcription breaks it by 4-17%.
         #
         # sw2 is ACHILLES's HARDCODED 0.2312 (:291), NOT C.sin2w = 0.23129.  Do not "fix" it: the
-        # contract is bit-faithfulness to ACHILLES, and the difference is measurable.
-        # The Fortran's vector block also requires `tmax > tpin` while the isoscalar block does not;
-        # for I=1/2 (tpin=0.5) `tmax = tm_f + 0.5 + eps` always exceeds it, so the two coincide here.
+        # contract is bit-faithfulness to ACHILLES and the difference is measurable.
         sw2 = 0.2312                                         # amp_dcc_sl_module.f:291
         VFAC = 1.0 - 2.0 * sw2                               # :292
         VVFAC = -2.0 * sw2 if itiz == 1 else 2.0 * sw2       # :293-294  vvfac(+1)=-2sw2, vvfac(-1)=+2sw2
-        src_block = VFAC * vec + (1.0 - i32) * VVFAC * isv
+        iso_v = 0.5 * (vec - isv)                            # :690  zampv    = zm  (isovector)
+        iso_s = 0.5 * (vec + isv)                            # :691  zampv_is = zp  (isoscalar)
+        src_block = i32 * (VFAC * vec) + (1.0 - i32) * (VFAC * iso_v
+                                                        + (NC_ISV_SIGN * VVFAC) * iso_s)
     elif itiz == -1:                                         # EM neutron: I=1/2 -> isoscalar
         # isign=-1: the neutron-amplitude phase (amp_dcc_sl_module.f:644, applied to the
         # zampv_is block for EM only; our loader stores isv without it).

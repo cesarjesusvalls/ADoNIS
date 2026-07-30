@@ -79,11 +79,11 @@ def test_exclusive_amps2_batch_refuses_an_unknown_probe():
         exclusive_amps2_batch(*args, probe="garbage")
 
 
-def test_me_cross_section_refuses_unknown_probes_and_unbuilt_nc_qe():
+def test_me_cross_section_refuses_unknown_probes_and_underspecified_nc():
     from adonis.channels.currents.matrix_element import me_cross_section
     z = np.zeros((1, 4))
-    with pytest.raises(NotImplementedError, match="NC QE"):
-        me_cross_section(z, z, z, z, probe="NC")     # NC RES works; NC QE is P6 and raises in dirac.py
+    with pytest.raises(ValueError, match="is_proton"):
+        me_cross_section(z, z, z, z, probe="NC")     # NC QE couplings are per nucleon -- say which
     with pytest.raises(ValueError, match="unknown probe"):
         me_cross_section(z, z, z, z, probe="garbage")
 

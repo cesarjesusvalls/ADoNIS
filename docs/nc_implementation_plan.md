@@ -8,24 +8,22 @@
 > **NC work must not regress CC. CC is fully validated. If NC-related code changes break it, the NC
 > change is wrong.** — project owner
 
-This is a **constraint on NC, not an invitation to audit CC**, and it settles what §D2 below leaves
-hanging. The D2 finding — that ADoNIS's I=½ vector form does not match the ACHILLES Fortran — is
-recorded as a **note about the amplitude layer**, not as a CC repair task. NC is written from the
-literal Fortran transcription; CC keeps the form it was validated with, bit-for-bit.
+This is a **constraint on NC, not an invitation to audit CC**. It also turned out to be the right
+call for a reason nobody anticipated: **§D2 has since been resolved in CC's favour** — the ADoNIS CC
+I=½ form is exactly correct, and the "CC exposure" that rev 2 built a whole work-stream around does
+not exist. Declining to touch validated code on the strength of a source reading, twice asserted and
+twice wrong, was the decision that avoided a large and pointless regression.
 
 Practical consequences, and they are load-bearing:
 
 - **No phase may change a CC number.** Every phase that touches shared code carries a CC
   byte-identity gate (G1.1, G2.3, G3.1, G4.1, G6.7, G7.1, G8.1). Those gates are now the primary
   deliverable of each phase, not a formality.
-- **P−1 is descoped.** It is no longer "measure the CC exposure to decide whether to repair CC". It
-  is "derive the NC I=½ vector form from the Fortran, and confirm the derivation numerically" — the
-  same test, without the CC-repair branch hanging off it.
-- **The effort branch in §4 collapses** to the lower estimate: the 8–15 pd CC-repair line is out of
-  scope by instruction.
-- If NC and CC end up with structurally different I=½ handling, that asymmetry is **documented at
-  the code, cited to both the Fortran and this rule** — not silently smoothed over, and not used as
-  grounds to touch CC.
+- **P−1 is done** (§D2): the NC I=½ form is derived and confirmed numerically against ACHILLES.
+- **The effort branch in §4 collapses** to the lower estimate — now not by instruction but because
+  the CC-repair arm was never real.
+- CC and NC share the isospin rotation, as they must. There is **no** structural asymmetry to
+  document, which was rev 2's worry.
 
 **Deliverable:** the two NC figures of arXiv:2508.19213 that Section 1 is missing —
 `fig:NCpi0Xpdoublediff` (MicroBooNE NC1π⁰Xp double-differential in cos θ_π⁰ and p_π⁰) and
@@ -126,11 +124,64 @@ Implementation notes: the switch lives at the coupling definition in `channels/c
 not smeared through call sites; a test pins **both** branches; the ACHILLES line is cited at the
 switch; report upstream.
 
-### D2 — the `vec`/`isv` convention: **RESOLVED BY SOURCE READING — the legacy form is wrong, and the exposure is CC**
+### D2 — the `vec`/`isv` convention: **RESOLVED. Option (a) was right. CC was correct all along.**
 
-> **This section was rewritten after review.** The plan originally left D2 open with an escape hatch.
-> That hatch is now closed by source reading, and the conclusion is worse than the plan assumed: the
-> defect is not confined to NC.
+> **Rewritten twice. Read this version.** Rev 2 declared the escape hatch "closed" and concluded the
+> ADoNIS I=½ form was invented and that CC carried a 13 % error. **That was wrong, and so was the
+> adversarial review that supported it.** The isospin decomposition does exist — it is just nowhere
+> near the code everyone was grepping.
+
+**`amp_dcc_sl_module.f:675-691`, which runs ONCE at table read, in place:**
+
+```fortran
+!conversion 1/2p 1/2n -> 1/2v 1/2s basis
+      if(mode.lt.10)then          ! neutrino case      <- WEAK ONLY (CC and NC); EM excluded
+      do 510 ipw=1,njLs
+      if(itpind(ipw)==3)goto 510                       <- I=3/2 waves SKIPPED
+      ...
+      zp=(zampv+zampv_is)*0.5d0
+      zm=(zampv-zampv_is)*0.5d0
+      zampv    = zm    ! isovector
+      zampv_is = zp    ! isoscalar
+```
+
+So for the weak probe, by the time the vector block (`:867-995`) and the NC isoscalar block
+(`:1004-1050`) execute, **`zampv` already MEANS the isovector and `zampv_is` already MEANS the
+isoscalar**, on I=½ waves only. ADoNIS's loader keeps the raw blocks (`loader.py:107-109`) and
+performs the same rotation at *use* time. Same physics, different moment.
+
+**Consequences, all of which reverse rev 2:**
+
+- **ADoNIS's CC `0.5*(vec−isv)` is exactly `zm`, the isovector.** Not an invention. **CC has no
+  defect, no 13 % I=½ error, and nothing to repair.** The "CC exposure" that dominated rev 2 and
+  drove the effort estimate to 40–55 pd **does not exist**.
+- The old code comment cited `:585-604` — the `nLsdt` L-S table setup. That single wrong line number
+  is the entire reason a source search "proved" the form appears nowhere in the Fortran. **Both I and
+  the review agent were misled by it, independently.** Fixed at `assembly.py:128-134` and cited.
+- The correct NC form is therefore **not** the raw-`vec` transcription rev 2 called literal:
+
+  ```
+  I=3/2 : VFAC · vec                                             (raw; the rotation skips it)
+  I=1/2 : VFAC · 0.5(vec−isv)  +  VVFAC(itiz) · 0.5(vec+isv)
+  ```
+
+  which is what the Phase-A2 legacy lines computed. They were right; they simply had no test and a
+  wrong citation, so they could not be *trusted* — the re-derivation was still the correct process,
+  and it is now an **earned** cross-check rather than an assumed one.
+
+**How it was caught: the absolute free-nucleon gate, exactly as designed.** The raw-`vec` form
+reproduced the ACHILLES totals to 3.5 % on average — easy to accept — but broke ACHILLES's near-exact
+proton/neutron mirror symmetry by 4–17 %. A three-point diagnostic scan over the isoscalar
+coefficient showed no value of a *global sign* could fix it, which pointed at the meaning of the
+arrays rather than their sign. Measured at E_ν = 1.5 GeV, ACH/ADO per channel:
+
+| isoscalar treatment | mean | spread |
+|---|---|---|
+| raw `vec` + VVFAC·`isv` (rev 2's "literal") | 0.9654 | 6.81 % |
+| isoscalar term dropped | 0.9912 | 0.72 % |
+| **rotated: VFAC·isovector + VVFAC·isoscalar** | **1.0043** | **0.49 %** |
+
+**A ratio-only gate would have accepted the wrong form.** This is the §0 argument paying for itself.
 
 The Fortran vector assembly (`amp_dcc_sl_module.f:867-1050`) is:
 
@@ -359,6 +410,24 @@ regression gate P4 re-runs (G4.3), so it is written once and used twice.
    > channel list makes π⁰ production look absent when it is in fact 62 % of NC RES.
    > **Consequence for P8: `proc` splits QE (250/251) from RES (451/452) and NOTHING ELSE. The π⁰
    > signal must select on the pion PID. A `proc`-keyed π⁰ selection is silently ~40 % π±.**
+
+   **The absolute ACHILLES reference, E_ν = 1.5 GeV, 20 k events, free nucleon, no cascade.**
+   These are the G5(2)/G6(2) targets. They are in **absolute nb** and must be compared to ADoNIS
+   with **no bridge constant**, reporting mean(ACH/ADO) and spread(ACH/ADO) **separately** — a flat
+   offset is a coupling or `_NORM` error, a slope in E is a propagator error, and one averaged
+   number cannot tell them apart.
+
+   | card | σ_tot [nb] | breakdown |
+   |---|---|---|
+   | NC RES `1H` | **1.9391e-06** ± 3.3e-09 | `p→pπ⁰` 1.2133e-06, `p→nπ⁺` 7.2578e-07 |
+   | NC RES `1N` | **1.9617e-06** ± 3.4e-09 | `n→nπ⁰` 1.2202e-06, `n→pπ⁻` 7.4148e-07 |
+   | NC QE `1H` | **1.4362e-06** ± 5.7e-11 | `ν p → ν p` |
+   | NC QE `1N` | **2.0569e-06** ± 8.3e-11 | `ν n → ν n` |
+
+   The QE neutron/proton ratio of **1.43** is a useful independent sanity check rather than a
+   coincidence: the proton's NC vector coupling carries `(½ − 2sin²θ_W) ≈ 0.037` while the neutron's
+   carries `−½`, so the proton's NC elastic is axial-dominated and the neutron's is not. Any
+   implementation that gets p and n the same way round has the isospin structure wrong.
 
    Consequence for the `chan` column: `selection.py`'s `chan = (proc != 200)` and
    `SignalDef.ref_proc`'s documented `200=QE, 401/402=RES` are **CC values**. NC needs
