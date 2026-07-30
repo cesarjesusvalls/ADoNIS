@@ -7,7 +7,7 @@ downstream is shared: one cascade engine, one centralized cascade-outcome record
 
 Per chunk (seed = cfg.seed0 + c) -> chunk_NNN.npz + manifest.json.  Uniform record set (all probes):
 fs_* final state, f_* FSI kind-1, n_* multiplicities, ks_* escaped list, reacted/absorbed.  Plus the
-primary's own kinematics/weight (weak: k_nu/k_mu/hv_*; EM: c/omega/theta; hadron: beam_p/w0).
+primary's own kinematics/weight (weak: k_nu/k_lep/hv_*; EM: c/omega/theta; hadron: beam_p/w0).
 """
 from __future__ import annotations
 import os, time, json, math, glob, gc as _gc
@@ -31,7 +31,7 @@ def _accept_lepton(d, theta_acc, kkey=None, theta=None):
     """THE uniform outgoing-lepton angular acceptance -- ONE mechanism for every hard-vertex channel
     (weak muon + EM electron).  Keeps events whose lepton polar angle is within [lo,hi] deg, masking
     every length-n field of the per-event dict `d`.  The angle is the precomputed `theta` (the EM
-    channels already expose it) else computed from d[kkey] (the weak outgoing muon, k_mu).  Full
+    channels already expose it) else computed from d[kkey] (the weak outgoing muon, k_lep).  Full
     acceptance (lo<=0 and hi>=180) short-circuits to the identity -> byte-for-byte (the weak default)."""
     lo, hi = theta_acc
     if lo <= 0.0 and hi >= 180.0:
@@ -92,7 +92,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             r = _accept_lepton(r, LACC, theta=r["theta"])
             pid = np.where(r["is_p"], 2212, 2112).astype(np.int32)
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
-                        k_lep=np.asarray(r["k_e_out"]),            # outgoing e- 4-vector (for TKI/P_T)
+                        k_lep=np.asarray(r["k_lep"]),            # outgoing e- 4-vector (for TKI/P_T)
                         p_N=np.asarray(r["p_out"]), p_pi=np.zeros((len(pid), 4)),
                         ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid)
 
@@ -100,7 +100,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             r = res_ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=_ALL)
             r = _accept_lepton(r, LACC, theta=r["theta"])
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
-                        k_lep=np.asarray(r["k_le"]),               # outgoing e- 4-vector (for TKI/P_T)
+                        k_lep=np.asarray(r["k_lep"]),               # outgoing e- 4-vector (for TKI/P_T)
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32))
@@ -112,18 +112,18 @@ def _generate_hardvertex(cfg, outdir, log, t0):
 
         def gen_qe(n, seed):
             q = qe_x.sample_importance(n, seed=seed, sf=sf, n_neutron=n_neutron)
-            q = _accept_lepton(q, LACC, kkey="k_mu"); nq = len(q["w"])   # outgoing-muon acceptance
+            q = _accept_lepton(q, LACC, kkey="k_lep"); nq = len(q["w"])   # outgoing-muon acceptance
             return dict(w=np.asarray(q["w"]) / CHUNK, k_nu=np.asarray(q["k_nu"]), p_struck=np.asarray(q["p_struck"]),
-                        k_mu=np.asarray(q["k_mu"]), p_N=np.asarray(q["p_out"]), p_pi=np.zeros((nq, 4)),
+                        k_lep=np.asarray(q["k_lep"]), p_N=np.asarray(q["p_out"]), p_pi=np.zeros((nq, 4)),
                         ppid=np.zeros(nq, np.int32), ipid=np.full(nq, 2112, np.int32),
                         Npid=np.full(nq, 2212, np.int32), _raw=q)
 
         def gen_res(n, seed):
             r = res_x.generate(n, seed=seed, return_events=True, sf_n=sf, sf_p=sf_p,
                                n_neutron=n_neutron, n_proton=n_proton)["events"]
-            r = _accept_lepton(r, LACC, kkey="k_mu")                    # outgoing-muon acceptance
+            r = _accept_lepton(r, LACC, kkey="k_lep")                    # outgoing-muon acceptance
             return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]), p_struck=np.asarray(r["p_struck"]),
-                        k_mu=np.asarray(r["k_mu"]), p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
+                        k_lep=np.asarray(r["k_lep"]), p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32), _raw=r)
         m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))   # probe added below, from cfg.probe
@@ -173,7 +173,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             cat = lambda k: np.concatenate([e[1][k] for e in evs])
             save.update(c=cat("c").astype(np.float64), omega=cat("omega").astype(np.float32),
                         theta=cat("theta").astype(np.float32),
-                        k_e=cat("k_lep").astype(np.float32))     # outgoing e- 4-vector (TKI/P_T: Fig 6)
+                        k_lep=cat("k_lep").astype(np.float32))     # outgoing e- 4-vector (TKI/P_T: Fig 6)
         else:
             nq = ns[0] if do_qe else 0; nr = ns[-1] if do_res else 0
             qref = evs[0][1] if do_qe else None; rref = evs[-1][1] if do_res else None
@@ -181,7 +181,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             save.update(w0=np.concatenate([e[1]["w"] for e in evs]),
                         k_nu=np.concatenate([e[1]["k_nu"] for e in evs]).astype(np.float32),
                         p_struck=np.concatenate([e[1]["p_struck"] for e in evs]).astype(np.float32),
-                        k_mu=np.concatenate([e[1]["k_mu"] for e in evs]).astype(np.float32))
+                        k_lep=np.concatenate([e[1]["k_lep"] for e in evs]).astype(np.float32))
             if do_qe and do_res:
                 HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False)
                 hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]

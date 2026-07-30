@@ -68,20 +68,20 @@ def sample(n, seed=0):
     beta = p01[:, 1:] / p01[:, 0:1]
     k_mu_cm = np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1)
     p_out_cm = np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1)
-    k_mu = np.asarray(_boost(k_mu_cm, beta)); p_out = np.asarray(_boost(p_out_cm, beta))
+    k_lep = np.asarray(_boost(k_mu_cm, beta)); p_out = np.asarray(_boost(p_out_cm, beta))
     J_2body = (cts * 0 + 2.0) * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
     # validity mask
     valid = (dp > 0) & (emax > 0) & (s > _SMIN) & (lam > 0) & (radical >= 0)
     J = J_beam * J_had * J_2body
     J = np.where(valid, J, 0.0)
-    return dict(k_nu=k_nu, p_struck=p_struck, k_mu=k_mu, p_out=p_out, J=J, energy=energy, mom=mom)
+    return dict(k_nu=k_nu, p_struck=p_struck, k_lep=k_lep, p_out=p_out, J=J, energy=energy, mom=mom)
 
 
 def generate(n, seed=0, sf=None):
     s = sample(n, seed)
     sf = sf or SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
     # matrix-element factors (amps2 * flux * spinavg)
-    d = me_cross_section(jnp.asarray(s["k_nu"]), jnp.asarray(s["k_mu"]),
+    d = me_cross_section(jnp.asarray(s["k_nu"]), jnp.asarray(s["k_lep"]),
                          jnp.asarray(s["p_struck"]), jnp.asarray(s["p_out"]),
                          spin_avg=0.5, had_mass=MASS_PDG_NEUTRON)
     me = np.asarray(d["me_xsec"])
@@ -90,7 +90,7 @@ def generate(n, seed=0, sf=None):
     w = me * iw * s["J"]
     w = np.where(np.isfinite(w), w, 0.0)
     sigma = w.mean()
-    return dict(sigma=sigma, w=w, k_nu=s["k_nu"], k_mu=s["k_mu"], p_struck=s["p_struck"],
+    return dict(sigma=sigma, w=w, k_nu=s["k_nu"], k_lep=s["k_lep"], p_struck=s["p_struck"],
                 p_out=s["p_out"])
 
 
@@ -124,7 +124,7 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     beta = P[:, 1:] / P[:, 0:1]
     # np.array (writeable copy, not asarray) -- the degenerate-row fixup below assigns in-place, and a
     # JAX->numpy view is read-only.
-    k_mu = np.array(_boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta))
+    k_lep = np.array(_boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta))
     p_out = np.array(_boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta))
     # Kinematically-degenerate events (s->0 => CM boost beta->1) blow the boost up to ~1e17 MeV.
     # They are rejected below (valid=False => w=0), but the garbage momenta are toxic to any downstream
@@ -132,12 +132,12 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     # AND me_cross_section (degenerate kinematics -> NaN amps2).  Replace the bad rows' FULL kinematics
     # with a valid event's, so every consumer sees finite, self-consistent QE kinematics.  w=0 (set
     # below via `valid`, which is computed from the ORIGINAL per-row s/lam/E_rm) keeps physics identical.
-    _bad = (~np.isfinite(p_out).all(1) | ~np.isfinite(k_mu).all(1)
+    _bad = (~np.isfinite(p_out).all(1) | ~np.isfinite(k_lep).all(1)
             | (np.linalg.norm(p_out[:, 1:], axis=1) > 1.0e6)
-            | (np.linalg.norm(k_mu[:, 1:], axis=1) > 1.0e6))
+            | (np.linalg.norm(k_lep[:, 1:], axis=1) > 1.0e6))
     if _bad.any() and not _bad.all():
         _ref = int(np.argmin(_bad))                     # first finite row
-        for _a in (k_nu, k_mu, p_struck, p_out):
+        for _a in (k_nu, k_lep, p_struck, p_out):
             _a[_bad] = _a[_ref]
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
     # ACHILLES QESpectralMapper restricts the removal energy to [0, emax]; the importance sampler
@@ -153,12 +153,12 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     # spectral strength in [0, 2.5] MeV that ACHILLES keeps -- ACHILLES samples E_rm from 0 with no floor
     # (HadronicMapper.cc), the SF's own 0-outside-grid does the flooring).  Fixes the ~1% Ar QE deficit.
     valid = (s > (M_MU + M_P) ** 2) & (lam > 0) & (E_rm > sf.energy[0]) & (E_rm < emax)
-    d = me_cross_section(jnp.asarray(k_nu), jnp.asarray(k_mu), jnp.asarray(p_struck),
+    d = me_cross_section(jnp.asarray(k_nu), jnp.asarray(k_lep), jnp.asarray(p_struck),
                          jnp.asarray(p_out), spin_avg=0.5, had_mass=MASS_PDG_NEUTRON)
     me = np.asarray(d["me_xsec"])
     w = np.where(valid, me * n_neutron * J_2body * J_beam, 0.0)
     w = np.where(np.isfinite(w), w, 0.0)
-    return dict(w=w, k_nu=k_nu, k_mu=k_mu, p_struck=p_struck, p_out=p_out, sigma=w.mean())
+    return dict(w=w, k_nu=k_nu, k_lep=k_lep, p_struck=p_struck, p_out=p_out, sigma=w.mean())
 
 
 from adonis.core.sample import Sampler       # noqa: E402

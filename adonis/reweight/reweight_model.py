@@ -31,8 +31,8 @@ _DELTA_WAVE = 5     # DCC partial-wave index of the P33 Delta(1232) (tests: test
 def build_hv_sf(qe, res, sf, with_pw=True):
     """Build the per-channel hard-vertex amps2 records + SF grids/points ONCE (theta-independent).
     with_pw=False skips the 14 DCC partial-wave records (the dominant build cost) -> pw_norm has no effect."""
-    qa = (qe["k_nu"], qe["k_mu"], qe["p_struck"], qe["p_out"])
-    ra = (res["k_nu"], res["k_mu"], res["p_struck"], res["p_N"], res["p_pi"])
+    qa = (qe["k_nu"], qe["k_lep"], qe["p_struck"], qe["p_out"])
+    ra = (res["k_nu"], res["k_lep"], res["p_struck"], res["p_N"], res["p_pi"])
     ip, pp = np.asarray(res["ipid"]), np.asarray(res["ppid"])
     HV = dict(
         qe_ma=build_qe_ma_records(*qa), qe_vec=build_qe_vector_records(*qa),

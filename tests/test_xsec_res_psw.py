@@ -97,19 +97,19 @@ def tchannel_weight(p1in, p2in, p1out, p2out, t_mass=0.0):
     return wt
 
 
-def three_body_genweight(p_struck, k_nu, p_N, p_pi, k_mu):
+def three_body_genweight(p_struck, k_nu, p_N, p_pi, k_lep):
     """ACHILLES ThreeBodyMapper::GenerateWeight.  Masses() is lepton-first -> s2=mmu^2, s3=mN^2,
     s4=mpi^2: the PION is split off via TChannel and (mu,N) are grouped as s23 = M(muN)^2."""
-    p23 = k_mu + p_N                                    # the (mu N) system, s23 = M(muN)^2
+    p23 = k_lep + p_N                                    # the (mu N) system, s23 = M(muN)^2
     pin = p_struck + k_nu
     s = m2(pin); sqrts = np.sqrt(s)
-    s2, s3, s4 = m2(k_mu), m2(p_N), m2(p_pi)
+    s2, s3, s4 = m2(k_lep), m2(p_N), m2(p_pi)
     s23_max = (sqrts - np.sqrt(s4)) ** 2
     s23_min = max((np.sqrt(s2) + np.sqrt(s3)) ** 2, 1e-8)
     # PSMapper orders momenta lepton-first: mom[0]=nu, mom[1]=struck N.  TChannelWeight(mom[0],
     # mom[1], mom[2]+mom[3], mom[4]) -> p1in=nu, p2in=struck, p1out=(muN), p2out=pi.
     tcw = tchannel_weight(k_nu, p_struck, p23, p_pi)   # total -> (muN) + pi, t-channel on the lepton
-    i2w = isotropic2_weight(k_mu, p_N)                  # (muN) -> mu + N
+    i2w = isotropic2_weight(k_lep, p_N)                  # (muN) -> mu + N
     if tcw == 0.0 or i2w == 0.0:
         return 0.0
     return (2 * np.pi) ** 5 * tcw * i2w / (s23_max - s23_min)
@@ -139,16 +139,16 @@ def main():
     flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     rel = []
     for r in rows:
-        k_nu, k_mu, p_struck = r["li"], r["lo"], r["hi"]
+        k_nu, k_lep, p_struck = r["li"], r["lo"], r["hi"]
         p_N, p_pi = r["hN"], r["hP"]
-        mN_f = np.sqrt(max(m2(p_N), 0.0)); mpi = np.sqrt(max(m2(p_pi), 0.0)); mmu = np.sqrt(max(m2(k_mu), 0.0))
+        mN_f = np.sqrt(max(m2(p_N), 0.0)); mpi = np.sqrt(max(m2(p_pi), 0.0)); mmu = np.sqrt(max(m2(k_lep), 0.0))
         Smin = (mmu + mN_f + mpi) ** 2
         # BeamMapper seed: (Smin - Masses()[1])/(2 sqrt(Masses()[1])), Masses()[1] = final nucleon^2.
         seed_GeV = ((Smin - mN_f ** 2) / (2 * mN_f)) / 1000.0
         minE_ev = max(seed_GeV, flux.min_energy)
         Jb = (maxE - minE_ev) * flux.f(k_nu[0] / 1000.0) / flux.flux_integral
         Jh = j_had(k_nu, p_struck, Smin)
-        gw = three_body_genweight(p_struck, k_nu, p_N, p_pi, k_mu)
+        gw = three_body_genweight(p_struck, k_nu, p_N, p_pi, k_lep)
         if gw == 0.0:
             continue
         recon = Jb * Jh * (1.0 / gw)
@@ -169,13 +169,13 @@ def test_res_psw_bit_exact():
     flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     rel = []
     for r in rows:
-        k_nu, k_mu, p_struck, p_N, p_pi = r["li"], r["lo"], r["hi"], r["hN"], r["hP"]
-        mN_f = np.sqrt(max(m2(p_N), 0.0)); mpi = np.sqrt(max(m2(p_pi), 0.0)); mmu = np.sqrt(max(m2(k_mu), 0.0))
+        k_nu, k_lep, p_struck, p_N, p_pi = r["li"], r["lo"], r["hi"], r["hN"], r["hP"]
+        mN_f = np.sqrt(max(m2(p_N), 0.0)); mpi = np.sqrt(max(m2(p_pi), 0.0)); mmu = np.sqrt(max(m2(k_lep), 0.0))
         Smin = (mmu + mN_f + mpi) ** 2
         seed_GeV = ((Smin - mN_f ** 2) / (2 * mN_f)) / 1000.0
         Jb = (maxE - max(seed_GeV, flux.min_energy)) * flux.f(k_nu[0] / 1000.0) / flux.flux_integral
         Jh = j_had(k_nu, p_struck, Smin)
-        gw = three_body_genweight(p_struck, k_nu, p_N, p_pi, k_mu)
+        gw = three_body_genweight(p_struck, k_nu, p_N, p_pi, k_lep)
         if gw == 0.0:
             continue
         rel.append(abs(Jb * Jh / gw - r["psw"]) / abs(r["psw"]))

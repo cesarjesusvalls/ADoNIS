@@ -2,7 +2,7 @@
 
     python -m adonis.workflow.analyze <fig.yaml>     ->  output/.../<name>.pdf + .png
 
-ADoNIS  = selection.bank_signal over inputs.adonis_bank (paper_banks dirs, k_mu + fs_*, w0).
+ADoNIS  = selection.bank_signal over inputs.adonis_bank (paper_banks dirs, k_lep + fs_*, w0).
 ACHILLES = selection.oracle_signal over inputs.reference (fs_rich oracle npzs, lep/prot_p4/pi_pid).
 Both under the config's SignalDef, absolute nb; observables/edges/chi2/ratio (+ optional data overlay)
 through the ONE validated plotting.make_figure -> chi2_ratio_panel.

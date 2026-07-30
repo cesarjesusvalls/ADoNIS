@@ -81,7 +81,8 @@ def test_manifest_probe_equals_config_probe():
     """THE structural fix.  Reads the literal source of the manifest dicts rather than generating a
     bank (minutes of GPU): every `probe=` in a manifest construction must be `cfg.probe`."""
     src = (ROOT / "adonis" / "workflow" / "generate_bank.py").read_text()
-    literals = re.findall(r'probe\s*=\s*(["\'][^"\']*["\'])', src)
+    code = "\n".join(ln.split("#", 1)[0] for ln in src.splitlines())   # comments discuss the old names
+    literals = re.findall(r'probe\s*=\s*(["\'][^"\']*["\'])', code)
     assert not literals, f"manifest probe must come from cfg.probe, found literals: {literals}"
     assert src.count("probe=cfg.probe") >= 2, "both the hard-vertex and hadron manifests must use cfg.probe"
 

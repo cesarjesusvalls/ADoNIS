@@ -1,7 +1,7 @@
 """Signal selection + TKI/STV observables on the CURRENT bank schemas, driven by a SignalDef.
 
 Two inputs, ONE selection vocabulary:
-  * ADoNIS   -> `bank_signal(bank_dir, sd)`   : a paper_banks bank dir (k_mu + ragged fs_*, weight w0;
+  * ADoNIS   -> `bank_signal(bank_dir, sd)`   : a paper_banks bank dir (k_lep + ragged fs_*, weight w0;
                 loaded by bank_plot.load_bank, which already divides w0 by n_chunks -> absolute nb).
   * ACHILLES -> `oracle_signal(oracle_npz, sd)`: a probe-agnostic fs_rich oracle npz
                 (lep / prot_p4 / pi_p4 / pi_pid / n_other_meson, weight w * weight_to_nb -> absolute nb).
@@ -56,7 +56,7 @@ def _finish(obs, sel, w, chan):
 # --------------------------------------------------------------------------- ADoNIS paper_banks side
 def bank_signal(bank_dir, sd):
     B = BP.load_bank(bank_dir)                                 # w0 already /n_chunks -> absolute nb
-    mu = B["k_mu"].astype(np.float64)
+    mu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(mu[:, 1:], axis=1); cmu = _cos(mu, pmu)
     if sd.pion_id == "none":                                   # ---- CC0pi ----
         n_meson = BP._event_sum(B, np.isin(B["fs_pid"], _MESONS).astype(float))

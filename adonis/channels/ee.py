@@ -75,7 +75,7 @@ def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target
     cts = 2 * u[:, 0] - 1; sts = np.sqrt(np.clip(1 - cts ** 2, 0, None)); php = _TWO_PI * u[:, 1]
     dirn = np.stack([sts * np.cos(php), sts * np.sin(php), cts], axis=1)
     beta = P[:, 1:] / P[:, 0:1]
-    k_e_out = np.asarray(_boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta))
+    k_lep = np.asarray(_boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta))
     p_out = np.asarray(_boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta))
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
     # ---- removal-energy ceiling (HadronicMapper.cc:50-53), Smin = (m_e + m_species)^2, mono beam ----
@@ -86,25 +86,25 @@ def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target
     emax = np.minimum(np.minimum(emax, _MN - mom_s), 400.0)
     valid = (s > Smin) & (lam > 0) & (E_rm > sf.energy[0]) & (E_rm < emax)
     # ---- matrix element (amps2 * FluxFactor * SpinAvg), EM probe, spin_avg = 1/4 ----
-    d = me_cross_section(jnp.asarray(k_e), jnp.asarray(k_e_out), jnp.asarray(p_struck),
+    d = me_cross_section(jnp.asarray(k_e), jnp.asarray(k_lep), jnp.asarray(p_struck),
                          jnp.asarray(p_out), spin_avg=0.25, had_mass=had_mass,
                          probe="EM", is_proton=bool(is_proton))
     me = np.asarray(d["me_xsec"])
     w = np.where(valid, me * n_target * J_2body, 0.0)                     # J_beam = 1 (monochromatic)
     w = np.where(np.isfinite(w), w, 0.0)
     c = w / n                                                            # SUM_i c_i = sigma_species [nb]
-    omega = E_beam - k_e_out[:, 0]
-    ke_mag = np.linalg.norm(k_e_out[:, 1:], axis=1)
-    cos_th = np.clip(k_e_out[:, 3] / np.clip(ke_mag, 1e-9, None), -1, 1)
+    omega = E_beam - k_lep[:, 0]
+    ke_mag = np.linalg.norm(k_lep[:, 1:], axis=1)
+    cos_th = np.clip(k_lep[:, 3] / np.clip(ke_mag, 1e-9, None), -1, 1)
     theta_deg = np.degrees(np.arccos(cos_th))
     return dict(c=c, omega=omega, theta=theta_deg, valid=valid,
-                k_e=k_e, k_e_out=k_e_out, p_struck=p_struck, p_out=p_out,
+                k_e=k_e, k_lep=k_lep, p_struck=p_struck, p_out=p_out,
                 me=me, is_p=np.full(n, bool(is_proton)),
                 had_mass=np.full(n, had_mass), n_target=np.full(n, n_target))
 
 
 _SCALAR = ("c", "omega", "theta", "is_p")
-_VEC = ("k_e", "k_e_out", "p_struck", "p_out")
+_VEC = ("k_e", "k_lep", "p_struck", "p_out")
 _REC_EXTRA = ("me", "had_mass", "n_target")
 
 
@@ -112,7 +112,7 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000, records
              theta_acc=THETA_ACC):
     """Inclusive (e,e') MC: n TOTAL samples, split across the struck species (p, n).  Returns per-event contribution c [nb]
     (SUM = sigma), omega [MeV], theta_e' [deg], and the struck-species tag.  Chunked to bound JAX mem.
-    records=True also keeps the per-event kinematics (k_e, k_e_out, p_struck, p_out, me, had_mass,
+    records=True also keeps the per-event kinematics (k_e, k_lep, p_struck, p_out, me, had_mass,
     n_target) for the theta-ACCEPTED events only -- the inputs a knob reweight needs to recompute the
     EM matrix element (adonis/channels/ee_xsec + analysis/beams/ee_fisher)."""
     Z, N, sf_p_path, sf_n_path = MATERIALS[material]

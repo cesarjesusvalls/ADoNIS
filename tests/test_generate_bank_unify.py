@@ -70,7 +70,7 @@ def test_cc_schema():
     assert _FSI <= set(_CC), sorted(_FSI - set(_CC))
     assert _FS <= set(_CC), sorted(_FS - set(_CC))
     assert _HV <= set(_CC), sorted(_HV - set(_CC))
-    assert {"w0", "k_nu", "p_struck", "k_mu", "prim_pi_pid", "res_p_N"} <= set(_CC)
+    assert {"w0", "k_nu", "p_struck", "k_lep", "prim_pi_pid", "res_p_N"} <= set(_CC)
     assert set(np.unique(_CC["channel"])) == {0, 1}, "both qe(0) and res(1) blocks expected"
     _check_ground_truth(_CC, wmax=2)                # RES has 2 primaries (pion + recoil nucleon)
 

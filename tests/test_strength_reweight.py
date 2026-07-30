@@ -19,7 +19,7 @@ from adonis.reweight.amps2_records import (build_qe_ma_records, build_qe_vector_
 
 N = 2000
 _QE = qe_xsec.sample_importance(N, seed=5)
-_KN, _KM, _PS, _PO = (jnp.asarray(_QE[k]) for k in ("k_nu", "k_mu", "p_struck", "p_out"))
+_KN, _KM, _PS, _PO = (jnp.asarray(_QE[k]) for k in ("k_nu", "k_lep", "p_struck", "p_out"))
 _REC = build_qe_ma_records(_KN, _KM, _PS, _PO)
 _VREC = build_qe_vector_records(_KN, _KM, _PS, _PO)
 _FFREC = {k: build_qe_ff_records(_KN, _KM, _PS, _PO, k) for k in ("gmp", "gmn", "gep", "gen")}

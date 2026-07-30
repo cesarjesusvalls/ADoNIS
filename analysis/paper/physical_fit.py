@@ -129,7 +129,7 @@ def build_physfit_datasets(B, w0, log, obs=None):
     a subset is exactly the corresponding subset of the full-suite datasets (bin edges are identical)."""
     ds = []
     lead0, _ = BP.leading_proton(B); sig0 = BP.signal_cc0pi(B)[0]
-    kmu = B["k_mu"].astype(np.float64)
+    kmu = B["k_lep"].astype(np.float64)
     mask1, lead1, pip1 = BP.signal_cc1pi_stv(B)
     # muon kinematics (junk zero-weight padding rows -> harmless clipped values)
     kmu_ok = np.where(np.isfinite(kmu) & (np.abs(kmu) < 1e6), kmu, 0.0)

@@ -103,10 +103,10 @@ def _ang(vec3):
     return cz, zphi
 
 
-def exclusive_H(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, mode=1, tcrz=1.0, tpiz=0.0, tm_f=1.0):
+def exclusive_H(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, mode=1, tcrz=1.0, tpiz=0.0, tm_f=1.0):
     """Hadron current H[combo(isf,lam), mu] (4,4) complex up to the overall constant, lab frame."""
     mN = C.mN
-    q = np.asarray(k_nu) - np.asarray(k_mu)
+    q = np.asarray(k_nu) - np.asarray(k_lep)
     p3 = np.asarray(p_struck)[1:]
     E_on = np.sqrt(p3 @ p3 + mN ** 2)
     qE = q[0] + p_struck[0] - E_on
@@ -169,16 +169,16 @@ def exclusive_H(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, mode=1, tcrz=1.0, tpiz
     return zj.reshape(4, 4)                                  # combo=(isf,lam) flattened
 
 
-def exclusive_amps2(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID):
+def exclusive_amps2(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID):
     """amps2 up to the overall constant: sum_{isf,lam} |L.H|^2."""
     tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
-    H = exclusive_H(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, tpiz=tpiz)
+    H = exclusive_H(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, tpiz=tpiz)
     # DCC table validity gate
-    q = np.asarray(k_nu) - np.asarray(k_mu); Q2 = q[1:] @ q[1:] - q[0] ** 2
+    q = np.asarray(k_nu) - np.asarray(k_lep); Q2 = q[1:] @ q[1:] - q[0] ** 2
     pcm = np.asarray(p_outN) + np.asarray(p_pi); W = np.sqrt(max(pcm[0] ** 2 - pcm[1:] @ pcm[1:], 0.0))
     if W < _W_LO or W > _W_HI or Q2 < 0 or Q2 > _Q2_HI:
         return 0.0
-    L = np.asarray(lepton_current(jnp.asarray(k_nu)[None], jnp.asarray(k_mu)[None]))[0]  # (4,4)
+    L = np.asarray(lepton_current(jnp.asarray(k_nu)[None], jnp.asarray(k_lep)[None]))[0]  # (4,4)
     LH = np.einsum('am,bm,m->ab', L, H, _METRIC)
     return float(np.sum(np.abs(LH) ** 2)) / _NORM
 
@@ -201,7 +201,7 @@ def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None, pion_po
                 mode=mode, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial, pion_pole=pion_pole)
 
 
-def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
+def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
                           return_zj=False, q_direct=None, r_axial=None, return_q2=False, knobs=None,
                           pion_pole=1.0, probe="CC"):
     """Vectorised exclusive amps2 over a batch of events (all SAME channel: itiz, hPID).
@@ -214,21 +214,21 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     _mode = _spec.dcc_mode
     _lep_kind = _spec.lep_kind
     _norm = _NORMS[probe]
-    k_nu = np.asarray(k_nu, float); k_mu = np.asarray(k_mu, float)
+    k_nu = np.asarray(k_nu, float); k_lep = np.asarray(k_lep, float)
     p_struck = np.asarray(p_struck, float); p_outN = np.asarray(p_outN, float); p_pi = np.asarray(p_pi, float)
     N = k_nu.shape[0]; mN = C.mN
     tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
     mpi = _conv.amp_m_pi()    # amplitude-internal pion mass = isospin-avg fpio 138.04 (Risk-1 study)
-    q = k_nu - k_mu
+    q = k_nu - k_lep
     if ROTATE_QZ:
-        mlist = [k_nu, k_mu, p_struck, p_outN, p_pi]
+        mlist = [k_nu, k_lep, p_struck, p_outN, p_pi]
         if q_direct is not None:
             mlist.append(np.asarray(q_direct, float))
         rot = _rotate_q_to_z(mlist, q)
-        k_nu, k_mu, p_struck, p_outN, p_pi = rot[0], rot[1], rot[2], rot[3], rot[4]
+        k_nu, k_lep, p_struck, p_outN, p_pi = rot[0], rot[1], rot[2], rot[3], rot[4]
         if q_direct is not None:
             q_direct = rot[5]
-        q = k_nu - k_mu
+        q = k_nu - k_lep
     E_on = np.sqrt(np.sum(p_struck[:, 1:] ** 2, axis=1) + mN ** 2)
     if q_direct is not None:
         qsh = np.asarray(q_direct, float)
@@ -294,12 +294,12 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     import os as _os
     if _os.environ.get("ADONIS_CONTRACT_FRAME", "lab") == "cm":
         xlrs = boost_matrix_batch(pcm, to_cm=True)
-        knu_c = np.einsum('nmk,nk->nm', xlrs, k_nu); kmu_c = np.einsum('nmk,nk->nm', xlrs, k_mu)
+        knu_c = np.einsum('nmk,nk->nm', xlrs, k_nu); kmu_c = np.einsum('nmk,nk->nm', xlrs, k_lep)
         zj = zjx.reshape(N, 4, 4)                                            # current in 2CM
         L = np.asarray(lepton_current(jnp.asarray(knu_c), jnp.asarray(kmu_c), kind=_lep_kind))
     else:
         zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)          # (N, combo, mu)
-        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_mu), kind=_lep_kind))  # (N,4,4)
+        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_lep), kind=_lep_kind))  # (N,4,4)
     if return_zj:
         return zj                                                            # (N, combo, mu) lab current
     LH = np.einsum('ncm,nbm,m->ncb', L, zj, _METRIC)

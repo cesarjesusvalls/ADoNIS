@@ -113,9 +113,9 @@ def _tune():
     return _tune._T
 
 
-def dpt(B, lead):  return np.asarray(_tune()._dpt(B["k_mu"].astype(float), lead))
-def dat(B, lead):  return np.asarray(_tune()._dat(B["k_mu"].astype(float), lead))
-def acceptance(B, lead):  return np.asarray(_tune()._sel(B["k_mu"].astype(float), lead))
+def dpt(B, lead):  return np.asarray(_tune()._dpt(B["k_lep"].astype(float), lead))
+def dat(B, lead):  return np.asarray(_tune()._dat(B["k_lep"].astype(float), lead))
+def acceptance(B, lead):  return np.asarray(_tune()._sel(B["k_lep"].astype(float), lead))
 
 
 def signal_cc0pi(B, topological=False):
@@ -172,7 +172,7 @@ def signal_cc1pi_stv(B):
     (momentum windows + cos(theta)>cos70 on all three).  Returns (mask, lead, pip4)."""
     npip, npi0, npim = pion_counts(B); pip = single_pip(B)
     lead, hasp = leading_proton_window(B, _P_LO, _P_HI, cth=_CTH)
-    kmu = B["k_mu"].astype(np.float64)
+    kmu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(kmu[:, 1:], axis=1); cmu = kmu[:, 3] / np.clip(pmu, 1e-9, None)
     ppi = np.linalg.norm(pip[:, 1:], axis=1); cpi = pip[:, 3] / np.clip(ppi, 1e-9, None)
     mask = ((npip == 1) & (npi0 == 0) & (npim == 0) & hasp

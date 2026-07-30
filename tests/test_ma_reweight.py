@@ -18,7 +18,7 @@ from adonis.channels.dcc.form_factors import axial_reweight_dipole
 
 N = 2000
 _QE = qe_xsec.sample_importance(N, seed=3)
-_KN, _KM, _PS, _PO = (jnp.asarray(_QE[k]) for k in ("k_nu", "k_mu", "p_struck", "p_out"))
+_KN, _KM, _PS, _PO = (jnp.asarray(_QE[k]) for k in ("k_nu", "k_lep", "p_struck", "p_out"))
 
 
 def _amps2(scale):

@@ -82,8 +82,8 @@ from adonis.reweight.amps2_records import build_qe_ma_records, build_res_ma_reco
 
 def build_ma_records(qe, res):
     """ONE-TIME (per proposal) exact M_A-reweight records (see adonis.reweight.amps2_records)."""
-    qa, qb, qc, qq2 = build_qe_ma_records(qe["k_nu"], qe["k_mu"], qe["p_struck"], qe["p_out"])
-    ra, rb, rc, rq2 = build_res_ma_records(res["k_nu"], res["k_mu"], res["p_struck"],
+    qa, qb, qc, qq2 = build_qe_ma_records(qe["k_nu"], qe["k_lep"], qe["p_struck"], qe["p_out"])
+    ra, rb, rc, rq2 = build_res_ma_records(res["k_nu"], res["k_lep"], res["p_struck"],
                                            res["p_N"], res["p_pi"], res["ipid"], res["ppid"])
     j = jnp.asarray
     return dict(qe=(j(qa), j(qb), j(qc), j(qq2)), res=(j(ra), j(rb), j(rc), j(rq2)))
@@ -120,7 +120,7 @@ def _lead_proton_pool(nt):
 def build_walk(kcasc, qe, qw, res, rw):
     """Run one OBSERVABLE-INDEPENDENT cascade replica: one cascade_nucleus pool run per channel ->
     leading proton + the joint kind-1 FSI record (theta enters via pool_fsi_reweight).  Returns the raw
-    walk (leading protons, k_mu, w0, records); bin it into an R with bin_walk (the only obs-dependent step).
+    walk (leading protons, k_lep, w0, records); bin it into an R with bin_walk (the only obs-dependent step).
     CC0pi-RES = primary pion absorbed (pterm pid==0)."""
     kq, kr = jax.random.split(kcasc, 2); j = jnp.asarray
     nq = len(qe["w"]); nr = len(res["w"])                       # actual event counts (RES generate != NRES)
@@ -135,8 +135,8 @@ def build_walk(kcasc, qe, qw, res, rw):
         j(res["Npid"]).astype(jnp.int32), POOLCFG(seed=1), kr, channel="res", rec_caps=REC_CAPS)
     r_lead = _lead_proton_pool(ntr[0])
     absb = (ptr["pid"] == 0).astype(float)                      # primary pion absorbed -> CC0pi
-    W = dict(q_kmu=j(qe["k_mu"]), q_lead=q_lead, q_w0=j(qw), q_rec=recq,
-             r_kmu=j(res["k_mu"]), r_lead=r_lead, r_w0=j(rw) * absb, r_rec=recr)
+    W = dict(q_kmu=j(qe["k_lep"]), q_lead=q_lead, q_w0=j(qw), q_rec=recq,
+             r_kmu=j(res["k_lep"]), r_lead=r_lead, r_w0=j(rw) * absb, r_rec=recr)
     nhmax = max(int(jnp.max(recq["nh"])), int(jnp.max(recr["nh"])))
     nsmax = max(int(jnp.max(recq["ns"])), int(jnp.max(recr["ns"])))
     assert nhmax <= REC_CAPS[0] and nsmax <= REC_CAPS[1], ("rec overflow", nhmax, nsmax)

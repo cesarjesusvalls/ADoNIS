@@ -71,7 +71,7 @@ def adonis_obs():
         k1 = elec & (npi == 0) & (nprot == 1)
         Tp = lead[:, 0] - MP                                  # proton KE
         EC.append((Ee + Tp + EPS)[k1]); wc.append(c[k1])
-        ke = np.asarray(d["k_e"], float)                     # outgoing e- 4-vector (full azimuth)
+        ke = np.asarray(d["k_lep"], float)                     # outgoing e- 4-vector (full azimuth)
         pt = np.sqrt((ke[:, 1] + lead[:, 1]) ** 2 + (ke[:, 2] + lead[:, 2]) ** 2)
         PT.append(pt[k1])
     return (np.concatenate(EQ), np.concatenate(wq)), (np.concatenate(EC), np.concatenate(wc),
