@@ -26,20 +26,34 @@ from analysis.paper.beams import beam_fisher as BF     # noqa: E402
 # one dskeys entry per 15-bin block beam_jacobian returns (reaction bins, then the second observable)
 BEAM_OBS = {"pip": ["pip_react", "pip_abs"], "prot": ["prot_react", "prot_pipro"]}
 
+# persisted physfit-format npz samples (each already a bank -> jvp Jacobian), stacked in this order.
+# Only the ones present on disk are used, so electron (physfit_electron) joins automatically once made.
+NPZ_SAMPLES = ("physfit_gate1", "physfit_minerva", "physfit_electron")
 
-def build(beams=("pip", "prot"), nbins=15, syst=0.05, out_label="multisample_carbon"):
-    t = np.load(style.ALTGEN / "physfit_gate1.npz", allow_pickle=True)
-    assert [str(x) for x in t["pnames"]] == PF.PNAMES, "T2K npz knob order != physical_fit SPEC"
-    J = [np.asarray(t["J"])]                            # (nbin_T2K, 28)
-    sigma = [np.asarray(t["sigma"])]
-    dskeys = [str(x) for x in t["dskeys"]]
-    row0 = list(np.asarray(t["row0"]))                 # cumulative bin boundaries, ends at nbin_T2K
 
-    for beam in beams:
-        Jb, sb, _c, _e, _n = BF.beam_jacobian(beam, nbins=nbins, syst=syst)   # (2*nbins, 28)
+def build(beams=("pip", "prot"), npz_samples=NPZ_SAMPLES, nbins=15, syst=0.05, out_label="multisample_carbon"):
+    J, sigma, dskeys, row0 = [], [], [], [0]
+    edges = {}                                           # {dskey}_edges -> per-obs bin edges (for --data marks)
+
+    for lab in npz_samples:                              # bank-Jacobian samples (T2K, MINERvA, electron)
+        f = style.ALTGEN / f"{lab}.npz"
+        if not f.exists():
+            print(f"  [skip] {lab}: no npz at {f}"); continue
+        d = np.load(f, allow_pickle=True)
+        assert [str(x) for x in d["pnames"]] == PF.PNAMES, f"{lab} knob order != physical_fit SPEC"
+        J.append(np.asarray(d["J"])); sigma.append(np.asarray(d["sigma"]))
+        r = np.asarray(d["row0"])
+        for j, key in enumerate([str(x) for x in d["dskeys"]]):
+            row0.append(row0[-1] + int(r[j + 1] - r[j])); dskeys.append(key)
+            if f"{key}_edges" in d.files:
+                edges[f"{key}_edges"] = np.asarray(d[f"{key}_edges"])
+
+    for beam in beams:                                   # FSI-only beam Jacobians (pi+, proton)
+        Jb, sb, _c, e_beam, _n = BF.beam_jacobian(beam, nbins=nbins, syst=syst)   # (2*nbins, 28)
         J.append(np.asarray(Jb)); sigma.append(np.asarray(sb))
-        for key in BEAM_OBS[beam]:                       # two observables, nbins each
+        for key in BEAM_OBS[beam]:                       # two observables share the beam-momentum edges
             row0.append(row0[-1] + nbins); dskeys.append(key)
+            edges[f"{key}_edges"] = np.asarray(e_beam)
 
     J = np.vstack(J); sigma = np.concatenate(sigma); prior = PF.PRIOR
     Jw = J / sigma[:, None]                             # error-weighted rows -> Fisher integrand
@@ -49,7 +63,7 @@ def build(beams=("pip", "prot"), nbins=15, syst=0.05, out_label="multisample_car
 
     out = style.ALTGEN / f"{out_label}.npz"
     np.savez(out, J=J, sigma=sigma, prior=prior, pnames=PF.PNAMES,
-             dskeys=dskeys, row0=np.asarray(row0), shrink=shrink, F=F, V=V)
+             dskeys=dskeys, row0=np.asarray(row0), shrink=shrink, F=F, V=V, **edges)
     print(f"[out] {out}")
     print(f"  bins={J.shape[0]}  knobs={J.shape[1]}  observables={len(dskeys)}  ({'+'.join(('T2K',)+beams)})")
     print(f"  {int((shrink < 0.5).sum())}/{len(prior)} knobs pass Gate I on the combined set")
