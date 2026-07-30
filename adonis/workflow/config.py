@@ -94,15 +94,22 @@ FLUX_FILES = {
 }
 
 
-PROBES = ("weak", "EM", "hadron")   # weak = CC neutrino current ; EM = electron (photon) current ;
+# PROBE NAMES ARE THE PHYSICS, and they must stay that way: adonis.channels.probes is the registry
+# that decides what each one MEANS, and "weak" was a name that could not survive NC -- a neutral
+# current is every bit as weak as a charged one, so "weak" would have had to mean "CC except when it
+# means NC".  Renamed to "CC" outright; there is deliberately NO alias and no back-compat mapping,
+# because a mapping is how the lie survives.  load_gen_config rejects unknown keys and probe_spec()
+# raises on unknown values, so a missed rename fails loudly rather than silently meaning CC.
+PROBES = ("CC", "EM", "hadron")     # CC = charged-current neutrino ; EM = electron (photon) current ;
 #                                     hadron = a tagged hadron projectile (no hard vertex, pure FSI transport)
+#                                     "NC" joins this tuple in P7, not before.
 HADRON_BEAMS = ("pip", "prot", "neut")               # tagged-hadron projectiles (adonis.flux.hadron.BEAMS)
 GEN_BEAMS = ("spectrum", "electron") + HADRON_BEAMS  # nu spectrum | mono e- | pi+/p/n projectile
 E_BEAM_JLAB = 2222.0            # default monochromatic e- energy [MeV] (JLab 2.222 GeV); adonis.flux.electron
 
 
 # probe -> the beam sources it is allowed to pair with (a bank can't be mislabelled across probes).
-_PROBE_BEAMS = {"weak": ("spectrum",), "EM": ("electron",), "hadron": HADRON_BEAMS}
+_PROBE_BEAMS = {"CC": ("spectrum",), "EM": ("electron",), "hadron": HADRON_BEAMS}
 
 
 @dataclass
@@ -110,21 +117,21 @@ class GenConfig:
     """THE single generation config -- one schema for every bank the pipeline makes, driven entirely by
     fields (there is exactly one generator, adonis.workflow.generate_bank; the diversity is here, not in
     the code path).  `probe` selects the primary interaction:
-      * weak   : CC neutrino hard vertex (channels qe/res), beam=spectrum (a flux table)
+      * CC     : charged-current neutrino hard vertex (channels qe/res), beam=spectrum (a flux table)
       * EM     : electron hard vertex (channels qe/res), beam=electron (monochromatic e-), theta_acc cut
       * hadron : a tagged pi+/p/n projectile (no hard vertex, pure FSI transport), beam in {pip,prot,neut},
                  |p| uniform in [pmin,pmax]
     `fsi` (default True) runs the cascade -> the rich reweight records; fsi=False -> a pre-FSI bank."""
-    probe: str = "weak"         # weak | EM | hadron
+    probe: str = "CC"           # CC | EM | hadron
     beam: str = "spectrum"      # spectrum | electron | pip | prot | neut  (must be consistent with probe)
     material: str = "C"
-    channels: tuple = ("res",)              # weak/EM: subset of {"res","qe"}; ignored for hadron
-    # --- weak (neutrino) ---
+    channels: tuple = ("res",)              # CC/EM: subset of {"res","qe"}; ignored for hadron
+    # --- CC (neutrino) ---
     flux: str = "t2k"           # neutrino flux key (beam=spectrum only); see FLUX_FILES
     # --- EM (electron) ---
     e_beam: float = E_BEAM_JLAB             # monochromatic e- energy [MeV]
     theta_acc: tuple = (0.0, 180.0)         # outgoing-lepton polar acceptance [deg], applied UNIFORMLY to
-    #                                         every hard-vertex channel (weak muon + EM electron) at
+    #                                         every hard-vertex channel (CC muon + EM electron) at
     #                                         generation.  Default (0,180) = full acceptance (no-op);
     #                                         EM configs set (5,180) to cut the forward 1/q^4 divergence.
     # --- hadron (tagged beam) ---
@@ -152,7 +159,7 @@ class GenConfig:
             raise ValueError(f"beam {self.beam!r} not in {sorted(GEN_BEAMS)}")
         if self.beam not in _PROBE_BEAMS[self.probe]:
             raise ValueError(f"probe={self.probe!r} requires beam in {_PROBE_BEAMS[self.probe]}, got {self.beam!r}")
-        if self.probe in ("weak", "EM"):
+        if self.probe in ("CC", "EM"):
             bad = set(self.channels) - {"res", "qe"}
             if bad:
                 raise ValueError(f"channels: {sorted(bad)} not in {{'res','qe'}} (probe {self.probe})")
@@ -169,7 +176,7 @@ class GenConfig:
 
     @property
     def bank_prefix(self) -> str:
-        """Bank-name beam tag: flux key (weak), ee<E> (EM), or the projectile name (hadron)."""
+        """Bank-name beam tag: flux key (CC), ee<E> (EM), or the projectile name (hadron)."""
         if self.probe == "hadron":
             return self.beam
         return self.flux if self.beam == "spectrum" else f"ee{int(round(self.e_beam))}"

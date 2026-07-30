@@ -339,10 +339,30 @@ regression gate P4 re-runs (G4.3), so it is written once and used twice.
    > channel list makes π⁰ production look absent when it is in fact the majority final state.
    > **Consequence for P8: the π⁰ signal must select on the pion PID, never on `proc`.**
 
-   Still to run (submitted): `nc_res_N`, `nc_qe_H`, `nc_qe_N` — the QE cards give the NC QE `proc`
-   IDs, which are still unknown.
+   **All four cards now run at 20 k events. The complete NC `proc` map, measured:**
 
-   Record the NC `proc` IDs — **and where they are consumed**:
+   | proc | ACHILLES name | final state | on `1H` | on `1N` |
+   |---|---|---|---|---|
+   | **250** | `QE_Spectral_FuncNC0p0pi` | 0 p, 0 π | — | `ν n → ν n`, 100 % |
+   | **251** | `QE_Spectral_FuncNC1p0pi` | 1 p, 0 π | `ν p → ν p`, 100 % | — |
+   | **451** | `RES_Spectral_FuncNC0p1pi` | 0 p, 1 π | `p → n π⁺`, 37.3 % | `n → n π⁰`, 62.4 % |
+   | **452** | `RES_Spectral_FuncNC1p1pi` | 1 p, 1 π | `p → p π⁰`, 62.7 % | `n → p π⁻`, 37.6 % |
+
+   The proton and neutron branching fractions mirror each other to 0.3 % (62.7/37.3 vs 62.4/37.6),
+   which is the `VVFAC` sign flip showing up exactly where D3 predicts it. **NC elastic on a neutron
+   (proc 250) exists and fires** — the path D3 flags as having no CC analogue in the repo.
+
+   > **Trap, found the hard way, and worse than it first looked.** The IDs are named by final-state
+   > *multiplicity*, not by channel. `proc 451` is `p→nπ⁺` on a proton and `n→nπ⁰` on a neutron —
+   > **the same ID covers a π⁺ event and a π⁰ event.** The header's `ProcessInfo[...].Description`
+   > prints one representative channel each (`[14,2112]→[14,2212,-211]`), so reading it as the
+   > channel list makes π⁰ production look absent when it is in fact 62 % of NC RES.
+   > **Consequence for P8: `proc` splits QE (250/251) from RES (451/452) and NOTHING ELSE. The π⁰
+   > signal must select on the pion PID. A `proc`-keyed π⁰ selection is silently ~40 % π±.**
+
+   Consequence for the `chan` column: `selection.py`'s `chan = (proc != 200)` and
+   `SignalDef.ref_proc`'s documented `200=QE, 401/402=RES` are **CC values**. NC needs
+   `{250,251}→QE, {451,452}→RES`. Where they are consumed:
    `SignalDef.ref_proc` (`config.py:214`) documents the CC values `200=QE, 401/402=RES`, and the
    QE/RES breakdown in `plotting.py:207-210` keys on the `chan` column derived from them.
 7. Record that ACHILLES source lives at `/sdf/data/neutrino/cjesus/ADoNIS/software/Achilles-src/`,
@@ -397,7 +417,19 @@ Sites, corrected after review:
 **written now, updated (never deleted) when NC lands in P4**; (3) fast suite stays fast.
 *Effort 0.5–1 d. Depends: nothing. Fully parallel with P−1 and P0. Does **not** license starting P2.*
 
-### P2 — Rename probe `weak`→`CC`; unify the `EM`/`ee` manifest split
+### P2 — Rename probe `weak`→`CC`; unify the `EM`/`ee` manifest split — **DONE**
+
+*Landed. `PROBES = ("CC","EM","hadron")`, no alias; the 3 `nu_*` bank configs say `probe: CC`; the
+manifest field now comes from `cfg.probe` rather than the literals `"weak"`/`"ee"`/`"hadron"`, so a
+bank can no longer disagree with the config that wrote it. `adonis/workflow/migrate_probe_names.py`
+migrated **118 manifests** (67 `ee`→`EM`, 51 `weak`→`CC`) under `$ADONIS_OUT`; a before/after
+fingerprint of all **6642** non-manifest files showed size and mtime unchanged, and a second `--apply`
+run reported 0 changes (idempotent). `tests/test_probe_naming.py` is the standing gate.*
+
+> **Note for the parallel worktrees.** `$ADONIS_OUT` is shared between the ADoNIS checkouts. Nothing
+> reads `manifest["probe"]` — it is write-only metadata — so migrating is safe for a checkout that
+> has not renamed yet, but that checkout's generator will keep *writing* the old names until it picks
+> up this change. Re-run `--apply` after those branches land.
 
 No alias, no back-compat mapping, no documented wart.
 

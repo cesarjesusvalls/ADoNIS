@@ -1,5 +1,5 @@
 name: nu_T2K_C
-probe: weak
+probe: CC
 beam: spectrum
 flux: t2k
 material: C

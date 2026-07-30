@@ -104,7 +104,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32))
-        m_extra = dict(probe="ee", E_beam=EB, theta_acc=list(LACC))
+        m_extra = dict(E_beam=EB, theta_acc=list(LACC))   # probe added below, from cfg.probe
     else:
         from adonis.reweight.reweight_model import build_hv_sf
         from adonis.channels import qe as qe_x, res as res_x
@@ -126,7 +126,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                         k_mu=np.asarray(r["k_mu"]), p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32), _raw=r)
-        m_extra = dict(probe="weak", flux=cfg.flux, theta_acc=list(LACC))
+        m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))   # probe added below, from cfg.probe
 
     def cascade(ev, key, caps, chan):     # returns (pterm,nterms,ofl,created,fsi_rec,prim_fate)
         return CF.cascade_nucleus(jnp.asarray(ev["p_pi"]), jnp.asarray(ev["p_N"]),
@@ -145,8 +145,13 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     CAPS_qe = CAPS_res = (64, 64)
     if do_qe: CAPS_qe = cal_caps(gen_qe, "qe"); log(f"flat FSI caps qe -> {CAPS_qe}")
     if do_res: CAPS_res = cal_caps(gen_res, "res"); log(f"flat FSI caps res -> {CAPS_res}")
+    # probe=cfg.probe, NOT a literal.  The EM branch used to hardcode probe="ee" while cfg.probe was
+    # "EM", so the bank's own manifest disagreed with the config that produced it -- a divergence that
+    # could only ever grow.  Sourcing it from cfg makes that class of bug unrepeatable; the permanent
+    # test is tests/test_probe_naming.py::test_manifest_probe_equals_config_probe.
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, material=cfg.material,
-                    channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res), **m_extra)
+                    channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res),
+                    probe=cfg.probe, **m_extra)
 
     for c in range(n_chunks):
         kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)
@@ -266,7 +271,7 @@ def _generate_hadron(cfg, outdir, log, t0):
         del O, save, out
     json.dump(dict(beam=cfg.beam, pid=pid, species=species, charge=charge, pmin=cfg.pmin, pmax=cfg.pmax,
                    n_total=n_total, n_chunks=n_chunks, R_disk=R_DISK, pir2_mb=PIR2_MB, material=cfg.material,
-                   seed0=cfg.seed0, probe="hadron"), open(f"{outdir}/manifest.json", "w"), indent=1)
+                   seed0=cfg.seed0, probe=cfg.probe), open(f"{outdir}/manifest.json", "w"), indent=1)
     log(f"DONE: hadron bank in {outdir}/ ({n_chunks} chunks)")
     return outdir
 

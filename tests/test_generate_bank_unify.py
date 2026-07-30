@@ -22,8 +22,8 @@ _TMP = _os.path.join(_os.environ.get("ADONIS_SCRATCH", "/tmp"), "test_generate_b
 
 
 def _build(probe):
-    if probe == "weak":
-        gc = GenConfig(probe="weak", beam="spectrum", flux="t2k", material="C",
+    if probe == "CC":
+        gc = GenConfig(probe="CC", beam="spectrum", flux="t2k", material="C",
                        channels=("qe", "res"), n_per_seed=120, n_seeds=1, seed0=0, fsi=True)
     elif probe == "EM":
         gc = GenConfig(probe="EM", beam="electron", material="C", channels=("qe", "res"),
@@ -36,7 +36,7 @@ def _build(probe):
     return dict(np.load(f"{out}/chunk_000.npz", allow_pickle=True))
 
 
-_WEAK = _build("weak")
+_CC = _build("CC")
 _EM = _build("EM")
 _HAD = _build("hadron")
 
@@ -65,14 +65,14 @@ def _check_ground_truth(b, wmax):
     assert not (fl["absorbed"] & ~fl["reacted"]).any(), "absorbed must imply reacted"
 
 
-def test_weak_schema():
+def test_cc_schema():
     """Weak bank carries hv_* amps2 + f_* kind-1 + fs_* final state + nu kinematics; both channels; ground truth."""
-    assert _FSI <= set(_WEAK), sorted(_FSI - set(_WEAK))
-    assert _FS <= set(_WEAK), sorted(_FS - set(_WEAK))
-    assert _HV <= set(_WEAK), sorted(_HV - set(_WEAK))
-    assert {"w0", "k_nu", "p_struck", "k_mu", "prim_pi_pid", "res_p_N"} <= set(_WEAK)
-    assert set(np.unique(_WEAK["channel"])) == {0, 1}, "both qe(0) and res(1) blocks expected"
-    _check_ground_truth(_WEAK, wmax=2)                # RES has 2 primaries (pion + recoil nucleon)
+    assert _FSI <= set(_CC), sorted(_FSI - set(_CC))
+    assert _FS <= set(_CC), sorted(_FS - set(_CC))
+    assert _HV <= set(_CC), sorted(_HV - set(_CC))
+    assert {"w0", "k_nu", "p_struck", "k_mu", "prim_pi_pid", "res_p_N"} <= set(_CC)
+    assert set(np.unique(_CC["channel"])) == {0, 1}, "both qe(0) and res(1) blocks expected"
+    _check_ground_truth(_CC, wmax=2)                # RES has 2 primaries (pion + recoil nucleon)
 
 
 def test_em_schema():
@@ -96,10 +96,10 @@ def test_hadron_schema():
 
 def test_finite_records():
     """The stored weights + amps2 + FSI slot arrays are finite (a usable reweight bank)."""
-    assert np.isfinite(_WEAK["w0"]).all()
-    assert np.isfinite(_WEAK["hv_qe_ma_a"]).all() and np.isfinite(_WEAK["hv_res_pp_a"]).all()
+    assert np.isfinite(_CC["w0"]).all()
+    assert np.isfinite(_CC["hv_qe_ma_a"]).all() and np.isfinite(_CC["hv_res_pp_a"]).all()
     assert np.isfinite(_EM["c"]).all()
-    for b in (_WEAK, _EM, _HAD):
+    for b in (_CC, _EM, _HAD):
         assert np.isfinite(np.asarray(b["f_sa"], np.float64)).all()
         n = len(b["prim_fate"])
         assert (b["f_p_eidx"] >= 0).all() and (b["f_p_eidx"] < n).all()
