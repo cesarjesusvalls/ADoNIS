@@ -28,6 +28,7 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
+from adonis.channels.probes import probe_for_mode
 from adonis.channels.dcc.angular import cbg, legendre_ylm, ISMI, ISMIX, ISBI
 
 # Fortran data statements (interpolate_amp): symmetry pairs id1<->id2 (1-based) and the
@@ -81,6 +82,11 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
     r_axial : optional (n_pw,) or scalar real reweight of the axial block (M_A knob,
               applied as amplitude factor so it squares into the rate downstream).
     """
+    # `mode` is a static Python int, so this guard is a plain call, not a traced branch.  Without it
+    # `mode = -1` (NC) satisfies every `mode < 10` test below and silently takes the CC path -- no
+    # VFAC, no VVFAC, no sw2.  That is how HadronStructure(channels=NC_CHANNELS) runs today and
+    # returns charged-current numbers.  probe_for_mode raises instead.
+    probe_for_mode(mode)
     npw = vec.shape[1]
     phv = jnp.asarray([pw_phase(int(two_J[i]), int(two_L[i])) for i in range(npw)])
     pha = -phv

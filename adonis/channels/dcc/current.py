@@ -13,6 +13,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.channels import constants as C
+from adonis.channels.probes import probe_spec
 from adonis.channels.dcc import conventions as _conv
 from adonis.channels.currents.leptonic import lepton_current
 from adonis.channels.dcc.wigner import boost_matrix, setdfun
@@ -53,6 +54,10 @@ _NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron 
 #      (mode=10) -> the CC fac^2 baked into _NORM carries an extra 2 that EM must NOT have -> *2 on _NORM_EM.
 # Net: _NORM_EM = 2 * _NORM * (FResV^2/ee^2).  Validated against oracle_ee_C_res.
 _NORM_EM = 2.0 * (2.0 * np.pi) / (C.ee ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
+# Probe -> RES amplitude normalisation.  Kept here, next to the derivations above, rather than in the
+# probes registry (which stays import-light); the KeyError on a missing entry is deliberate -- a probe
+# that reaches this dict without a derived _NORM must not silently borrow CC's.
+_NORMS = {"CC": _NORM, "EM": _NORM_EM}
 
 # Amplitude(W,Q2) interpolation.  DEFAULT = "spline" (bit-faithful to ACHILLES interpolate_amp) -- the
 # SAFE default; every reported result must use it.  "bilinear" is NOT W-FAITHFUL (the dsigma/dW shape,
@@ -205,9 +210,10 @@ def exclusive_amps2_batch(k_nu, k_mu, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1
     q_direct (N,4): use this q verbatim as the (already de-Forest-shifted) transfer.
     probe: "CC" (default; nu N, weak, mode=1, _NORM) is BIT-IDENTICAL to the pre-EM path.  "EM"
     (inclusive (e,e'): photon leptonic current + i/q^2, DCC mode=10 EM isospin, _NORM_EM)."""
-    _mode = 10 if probe == "EM" else 1
-    _lep_kind = "EM" if probe == "EM" else "CC_nu"
-    _norm = _NORM_EM if probe == "EM" else _NORM
+    _spec = probe_spec(probe)      # raises on unknown/unimplemented -- NEVER falls through to CC
+    _mode = _spec.dcc_mode
+    _lep_kind = _spec.lep_kind
+    _norm = _NORMS[probe]
     k_nu = np.asarray(k_nu, float); k_mu = np.asarray(k_mu, float)
     p_struck = np.asarray(p_struck, float); p_outN = np.asarray(p_outN, float); p_pi = np.asarray(p_pi, float)
     N = k_nu.shape[0]; mN = C.mN

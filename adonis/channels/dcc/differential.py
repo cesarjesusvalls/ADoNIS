@@ -33,6 +33,7 @@ import jax
 import jax.numpy as jnp
 
 from adonis.channels.dcc.angular import cbg
+from adonis.channels.probes import probe_for_mode
 from adonis.channels.dcc.assembly import (IGM1_LIST, LAM_LIST, ISF_LIST, _IXI1_OF, pw_phase)
 
 _SQHF = 1.0 / np.sqrt(2.0)
@@ -174,6 +175,8 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
     Differentiable in the amplitude / r_axial (the knobs); equals the scalar build_zmtx
     event-by-event (asserted in validate_final_state.py).
     """
+    # Static Python int -> a plain guard, not a traced branch.  See assembly.build_zmtx for why.
+    probe_for_mode(mode)
     npw = vec.shape[-1]
     phv = jnp.asarray([pw_phase(int(two_J[i]), int(two_L[i])) for i in range(npw)])  # (npw,)
     pha = -phv
@@ -215,7 +218,12 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
     i32 = is_I32[None, None, :]
     if 0 < mode < 10:                                        # CC: I=1/2 -> (V-IS)/2; I=3/2 raw
         src_block = i32 * vec + (1.0 - i32) * 0.5 * (vec - isv)
-    elif mode <= -1:                                         # NC: sin^2(theta_W) couplings
+    elif mode <= -1:                                         # NC: UNREACHABLE -- see probe_for_mode above
+        # UNVALIDATED LEGACY (Phase A2, commit 5a0cdb8), kept only as a reading reference until P4
+        # re-derives the NC vector current from amp_dcc_sl_module.f.  The guard at the top of this
+        # function makes it unreachable on purpose: it has zero test coverage, and its I=1/2 form
+        # disagrees with the Fortran (which adds VVFAC*zampv_is to the RAW zampv rather than
+        # recombining isovector/isoscalar).  Do not resurrect it without the P4 derivation.
         # vector coupling (amp_dcc_sl_module.f:288-294, 1004-1050): isovector x (1-2 sw2)
         # for all waves; isoscalar x vvfac(itiz) added for I=1/2 (vvfac(+1)=-2sw2 proton,
         # vvfac(-1)=+2sw2 neutron). isovector=0.5(vec-isv) [zm], isoscalar=0.5(vec+isv) [zp].

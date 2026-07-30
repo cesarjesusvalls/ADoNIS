@@ -317,8 +317,32 @@ regression gate P4 re-runs (G4.3), so it is written once and used twice.
    (`LeptonicCurrent.cc:31-36`). Algebraically `ee·i/(2·sw·cw)`, but write ACHILLES's form.
 5. NC QE coupling table from `LeptonicCurrent.cc:93-115`, including **D1 both branches** (quirk and
    correct) with the 1.0396 factor computed, and the strange-omission constraint with its enum citation.
-6. Build and run **two** ACHILLES NC cards, free-nucleon, no cascade (`Leptons: [14,[14]]`,
-   `1H`/`1N`): one RES, one QE. Record the NC `proc` IDs — **and where they are consumed**:
+6. **Cards written and the RES-on-proton card RUN — the plan's central premise is confirmed.**
+   `configs/achilles/run_freenucleon_nc_{res,qe}_{H,N}.yml` (four, not two: NC elastic on a neutron
+   has no CC analogue in the repo, so it gets its own card). Each differs from the CC free-nucleon
+   card it derives from in exactly two lines — `Leptons: [14,[14]]` and the output name — verified
+   by `diff`.
+
+   **Measured, `run_freenucleon_nc_res_H`, 200 events at E_ν = 1.5 GeV:**
+   - ACHILLES accepts the NC process and runs to completion. σ_tot = **1.9391e-06 ± 3.3e-09 nb**.
+   - Exactly **2 of 4** process slots are non-zero (1.213e-06 and 7.258e-07), the two proton-target
+     channels — the neutron-target ones correctly vanish on `1H`.
+   - Final states: **123/200 `ν p → ν p π⁰`**, **77/200 `ν p → ν n π⁺`**. Every event carries an
+     outgoing PID 14. **The NC1π⁰ deliverable is reachable from ACHILLES** — this was an assumption
+     until now.
+   - **NC RES `proc` IDs are 451 and 452**, *not* the CC `401`/`402`.
+
+   > **Trap, found the hard way.** The IDs are named by final-state *multiplicity*, not by channel:
+   > `452 = RES_Spectral_FuncNC1p1pi` (1 proton, 1 pion) covers **both** `p→pπ⁰` and `n→pπ⁻`;
+   > `451 = ...NC0p1pi` covers `p→nπ⁺` and `n→nπ⁰`. The header's `ProcessInfo[...].Description`
+   > prints **one representative channel each** (`[14,2212]→[14,2112,211]`), so reading it as the
+   > channel list makes π⁰ production look absent when it is in fact the majority final state.
+   > **Consequence for P8: the π⁰ signal must select on the pion PID, never on `proc`.**
+
+   Still to run (submitted): `nc_res_N`, `nc_qe_H`, `nc_qe_N` — the QE cards give the NC QE `proc`
+   IDs, which are still unknown.
+
+   Record the NC `proc` IDs — **and where they are consumed**:
    `SignalDef.ref_proc` (`config.py:214`) documents the CC values `200=QE, 401/402=RES`, and the
    QE/RES breakdown in `plotting.py:207-210` keys on the `chan` column derived from them.
 7. Record that ACHILLES source lives at `/sdf/data/neutrino/cjesus/ADoNIS/software/Achilles-src/`,
