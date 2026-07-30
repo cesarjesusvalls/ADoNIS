@@ -1,0 +1,23 @@
+# Paper appendix fig:T2K_extra (right panel) — T2K CC0pi transverse DEFLECTING angle delta_phiT
+# (T2K:2018rnz), ADoNIS vs ACHILLES on 12C.  Same signal as fig07, one further observable.
+# The LEFT panel of the paper's fig:T2K_extra (CC1pi+ delta_alphaT) is already covered by our fig08,
+# which plots dalphat among its five observables -- it is not duplicated here.
+# No new generation: this is the SAME nu_T2K_C bank fig07 already uses.
+name: figA2_t2k_cc0pi_dphit
+inputs:
+  adonis_bank: [output/paper_banks_p4/nu_T2K_C/merged]
+  reference:   [output/achilles/fsrich/nu_T2K_C.npz]
+signal:      # identical to fig07 (T2K CC0pi acceptance)
+  mu_win: [250.0, inf]
+  cos_mu: -0.6
+  p_win: [450.0, 1000.0]
+  cth: 0.4
+  pi_win: null
+  pion_id: none
+  proton_lead: global
+observables:
+  - {key: dphit, label: '$\delta\phi_T$ [rad]', linspace: [0.0, pi, 21]}
+out_path: output/paper/figA2_t2k_cc0pi_dphit.png
+title: 'T2K CC0$\pi$ $\delta\phi_T$ on $^{12}$C'
+ratio_band: [0.9, 1.1]
+ratio_ylim: [0.75, 1.25]

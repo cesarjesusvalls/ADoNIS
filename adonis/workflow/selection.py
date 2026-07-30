@@ -30,13 +30,15 @@ def _obs(mu, lead, pip):
     pmu = np.linalg.norm(mu[:, 1:], axis=1)
     pl = np.linalg.norm(lead[:, 1:], axis=1)
     ppi = np.linalg.norm(pip[:, 1:], axis=1)
+    cmu, clp, cpi = _cos(mu, pmu), _cos(lead, pl), _cos(pip, ppi)
     return {"dpt": np.asarray(BP.dpt_1pi(mu, lead, pip)),          # |pT^mu + pT^p (+ pT^pi)| [MeV]
             "dalphat": np.asarray(BP.dat_1pi(mu, lead, pip)),      # delta_alphaT [rad]
+            "dphit": np.asarray(BP.dphit_1pi(mu, lead, pip)),      # delta_phiT [rad] (deflecting angle)
             "pn": np.asarray(BP.pN_1pi(mu, lead, pip)),            # inferred nucleon |p| (carbon reco) [MeV]
             "dptt": np.asarray(BP.dptt_1pi(mu, lead, pip)),        # double-transverse imbalance [MeV] (CC1pi)
-            "pmu": pmu, "cos_mu": _cos(mu, pmu),
-            "lp_p": pl, "cos_lp": _cos(lead, pl),
-            "ppi": ppi, "cos_pi": _cos(pip, ppi)}
+            "pmu": pmu, "cos_mu": cmu, "th_mu": np.degrees(np.arccos(np.clip(cmu, -1.0, 1.0))),
+            "lp_p": pl, "cos_lp": clp, "th_lp": np.degrees(np.arccos(np.clip(clp, -1.0, 1.0))),
+            "ppi": ppi, "cos_pi": cpi}
 
 
 def _mu_pass(pmu, cmu, sd):

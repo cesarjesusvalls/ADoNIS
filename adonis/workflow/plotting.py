@@ -185,7 +185,7 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
 def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.6),
                 ado_label="ENGINE", ref_label="ACHILLES", data=None, panel_w=3.4,
                 panel_kw=None, legend_fn=None, fig_h=6.4, title_kw=None, label_as_xlabel=False,
-                rect_top=0.96):
+                rect_top=0.96, min_w=7.5):
     """specs: list of (key, edges, label).  ref_sel/ado_sel: full selection dicts (key->array + 'w').
     Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'}).
     Style hooks (all optional, defaults = the historical look, so existing callers are unchanged):
@@ -194,7 +194,7 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     the x axis instead of on top of the panel (where it duplicates the title)."""
     nv = len(specs)
     panel_kw = dict(panel_kw or {})
-    total_w = max(panel_w * nv, 7.5)          # floor so single-panel figs are not narrow/clipped
+    total_w = max(panel_w * nv, min_w)        # floor so single-panel figs are not narrow/clipped
     fig, ax = plt.subplots(2, nv, figsize=(total_w, fig_h),
                            gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0},
                            squeeze=False, sharex="col")

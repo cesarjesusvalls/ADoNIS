@@ -212,6 +212,20 @@ def dat_1pi(kmu, lead, pip):
     return np.arccos(np.clip(num / den, -1.0, 1.0))
 
 
+def dphit_1pi(kmu, lead, pip):
+    """Transverse DEFLECTING angle delta_phiT [rad] = angle between the transverse muon and the
+    transverse HADRON system: arccos(-p_T^mu . p_T^had / (|p_T^mu||p_T^had|)).
+
+    NB this is NOT delta_alphaT: dat measures the muon against the transverse IMBALANCE
+    (p_T^mu + p_T^had), dphit measures it against the hadron system itself (pip is zero for CC0pi,
+    so the hadron system is just the leading proton).  Same convention as kinematics.delta_phiT,
+    which is the EventRecord-level twin of this bank-level primitive."""
+    lt = kmu[:, 1:3]; ht = lead[:, 1:3] + pip[:, 1:3]
+    num = -np.sum(lt * ht, axis=1)
+    den = np.linalg.norm(lt, axis=1) * np.clip(np.linalg.norm(ht, axis=1), 1e-9, None)
+    return np.arccos(np.clip(num / den, -1.0, 1.0))
+
+
 # ---- histograms (accumulate in f64) ----------------------------------------------------------------- #
 def hist_forward(values, B, mask, edges, conv=1.0):
     h, _ = np.histogram(values[mask], bins=edges, weights=B["w0"][mask].astype(np.float64))

@@ -38,7 +38,7 @@ def main(argv=None):
         print(f"\n=== config: {c} ===", flush=True)
         try:
             # ticks spread across the config ratio_ylim (0.75-1.25); 0.9/1.0/1.1 crowd the short strip
-            run_analysis(load_analysis_config(c), panel_w=2.4, fig_h=3.0,
+            run_analysis(load_analysis_config(c), panel_w=2.4, fig_h=3.0, min_w=3.2,
                          panel_kw=style.panel_kw(ratio_yticks=[0.8, 1.0, 1.2]),
                          legend_fn=style.panel_legend,
                          label_as_xlabel=True,
