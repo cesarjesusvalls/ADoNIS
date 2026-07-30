@@ -79,6 +79,26 @@ def lighter(c, f=ADO_LIGHTEN):
     return (r + (1.0 - r) * f, g + (1.0 - g) * f, b + (1.0 - b) * f)
 
 
+def panel_kw(**over):
+    """The paper palette as chi2_ratio_panel kwargs (for make_figure's panel_kw hook)."""
+    kw = dict(total_color=C_TOTAL, part_colors=PARTS, ratio_color=C_RATIO,
+              ado_lighten=ADO_LIGHTEN, ref_darken=REF_DARKEN, headroom=0.30,
+              ratio_yticks=[0.9, 1.0, 1.1])
+    kw.update(over)
+    return kw
+
+
+def panel_legend(ax, has_parts, loc="upper right", bbox_to_anchor=(0.84, 1.0)):
+    """Legend for a make_figure panel: Total/QE/RES when the selection carries a QE/RES breakdown,
+    nothing at all when it is a single series (the caption states dashed=ACHILLES / solid=ADoNIS)."""
+    if not has_parts:
+        return
+    handles, labels, hmap = swatches(
+        [("Total", C_TOTAL), ("QE", C_QE), ("RES", C_RES)])
+    ax.legend(handles, labels, handler_map=hmap, loc=loc, bbox_to_anchor=bbox_to_anchor,
+              fontsize=7, ncol=1, handlelength=3.4, labelspacing=0.35, borderpad=0.2)
+
+
 def swatches(entries, lighten=ADO_LIGHTEN, darken=REF_DARKEN):
     """(handles, labels, handler_map) where EVERY entry is a '-- / -' pair in its own colour, so each
     series advertises both of its shades instead of a single stroke the plot never actually draws.

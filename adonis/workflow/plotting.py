@@ -89,7 +89,8 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
                      ratio_ylim=(0.5, 1.6), ado_label="ENGINE", ref_label="ACHILLES", data=None,
                      logy=False, shadow_frac=None, ref_parts=None, ado_parts=None, xlabel=None,
                      total_color="0.1", part_colors=None, ratio_color="navy",
-                     ref_darken=0.0, headroom=0.0, ado_lighten=0.0, ratio_xmax=None):
+                     ref_darken=0.0, headroom=0.0, ado_lighten=0.0, ratio_xmax=None,
+                     ratio_yticks=None):
     """Render one observable into top axis a0 (dsigma/dx) + bottom a1 (ACH/ADO ratio).
     ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado).
     total_color / part_colors / ratio_color are the palette hooks (defaults = the historical look, so
@@ -173,18 +174,28 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
                     step="post", color=ratio_color, alpha=0.25, lw=0)
     a1.step(edges, np.append(rm, rm[-1]), where="post", color=ratio_color, lw=1.2)
     a1.set_ylim(*ratio_ylim); a1.set_xlabel(xlabel or label, fontsize=8)   # xlabel was ignored here
+    if ratio_yticks is not None:      # keep the ratio ticks off the shared spine, where the
+        a1.set_yticks(ratio_yticks)   # top panel's y=0 label would overprint them
+
     a0.set_xlim(edges[0], edges[-1])           # clamp to bin edges (sharex -> a1 too): no "floating" margin
     ach_ado = float(np.sum(da * bw) / max(np.sum(dd * bw), 1e-30))
     return dict(chi2=chi2, ndf=ndf, ach_ado=ach_ado, n_shadow=int(shadow.sum()))
 
 
 def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.6),
-                ado_label="ENGINE", ref_label="ACHILLES", data=None, panel_w=3.4):
+                ado_label="ENGINE", ref_label="ACHILLES", data=None, panel_w=3.4,
+                panel_kw=None, legend_fn=None, fig_h=6.4, title_kw=None, label_as_xlabel=False,
+                rect_top=0.96):
     """specs: list of (key, edges, label).  ref_sel/ado_sel: full selection dicts (key->array + 'w').
-    Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'})."""
+    Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'}).
+    Style hooks (all optional, defaults = the historical look, so existing callers are unchanged):
+    panel_kw forwards palette/headroom args to chi2_ratio_panel; legend_fn(ax, has_parts) replaces the
+    default legend; fig_h/title_kw size the canvas and title; label_as_xlabel puts the spec label on
+    the x axis instead of on top of the panel (where it duplicates the title)."""
     nv = len(specs)
+    panel_kw = dict(panel_kw or {})
     total_w = max(panel_w * nv, 7.5)          # floor so single-panel figs are not narrow/clipped
-    fig, ax = plt.subplots(2, nv, figsize=(total_w, 6.4),
+    fig, ax = plt.subplots(2, nv, figsize=(total_w, fig_h),
                            gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0},
                            squeeze=False, sharex="col")
     results = {}
@@ -203,18 +214,25 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                 if mk.any():
                     out[lbl] = {"values": np.asarray(sel[key])[mk], "w": np.asarray(sel["w"])[mk]}
             return out
-        res = chi2_ratio_panel(ax[0, c], ax[1, c], np.asarray(edges), ref, ado, label=label,
+        rp, ap = _parts(ref_sel), _parts(ado_sel)
+        res = chi2_ratio_panel(ax[0, c], ax[1, c], np.asarray(edges), ref, ado,
+                               label="" if label_as_xlabel else label,
+                               xlabel=label if label_as_xlabel else None,
                                ratio_band=ratio_band, ratio_ylim=ratio_ylim,
                                ado_label=ado_label, ref_label=ref_label, data=d,
-                               ref_parts=_parts(ref_sel), ado_parts=_parts(ado_sel))
+                               ref_parts=rp, ado_parts=ap, **panel_kw)
         if c == 0:
-            ax[0, c].legend(fontsize=7); ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]")
+            if legend_fn is None:
+                ax[0, c].legend(fontsize=7)
+            else:
+                legend_fn(ax[0, c], ap is not None)
+            ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]")
             ax[1, c].set_ylabel("ratio")
         results[key] = res
     sr, sa = float(np.sum(ref_sel["w"])), float(np.sum(ado_sel["w"]))
     sig = {"ref": sr, "ado": sa, "ach_ado": sr / max(sa, 1e-30)}
     if title:
-        fig.suptitle(title, fontsize=12, wrap=True)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+        fig.suptitle(title, **(title_kw or {"fontsize": 12, "wrap": True}))
+    fig.tight_layout(rect=[0, 0, 1, rect_top])
     fig.subplots_adjust(hspace=0.0)          # top + ratio panels share one x-axis (no gap)
     return fig, results, sig

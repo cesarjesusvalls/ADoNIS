@@ -13,10 +13,10 @@ signal:      # CC0pi: mu 1500-10000 & cos>cos20 ; global leading p 450-1200 & co
   pion_id: none
   proton_lead: global
 observables:
-  - {key: dalphat, label: 'CC0$\pi$  $\delta\alpha_T$ [rad]', linspace: [0.0, pi, 21]}
-  - {key: pn,      label: 'CC0$\pi$  $p_n$ [MeV/c]',          linspace: [0.0, 800.0, 21]}
-  - {key: dpt,     label: 'CC0$\pi$  $\delta p_T$ [MeV/c]',   linspace: [0.0, 800.0, 21]}
+  - {key: dalphat, label: '$\delta\alpha_T$ [rad]', linspace: [0.0, pi, 21]}
+  - {key: pn,      label: '$p_n$ [MeV/c]',          linspace: [0.0, 800.0, 21]}
+  - {key: dpt,     label: '$\delta p_T$ [MeV/c]',   linspace: [0.0, 800.0, 21]}
 out_path: output/paper/fig09_minerva_cc0pi.png
-title: 'ADoNIS vs ACHILLES --- MINERvA CC0$\pi$ TKI on $^{12}$C'
+title: 'MINERvA CC0$\pi$ TKI on $^{12}$C'
 ratio_band: [0.9, 1.1]
 ratio_ylim: [0.75, 1.25]

@@ -42,13 +42,15 @@ def build_reference(cfg):
     return _merge([SG.oracle_signal(p, cfg.signal) for p in refs])
 
 
-def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4):
+def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, **style_kw):
+    """style_kw (panel_kw / legend_fn / fig_h / title_kw / label_as_xlabel) is forwarded verbatim to
+    make_figure; omitted -> the historical look.  Keeps this core driver free of any analysis/ import."""
     ado = build_adonis(cfg); ref = build_reference(cfg)
     specs = [(o.key, o.bin_edges(), o.label) for o in cfg.observables]
     data = load_overlay(cfg, specs)
     fig, results, sig = make_figure(specs, ref, ado, title=cfg.title, ratio_band=cfg.ratio_band,
                                     ratio_ylim=cfg.ratio_ylim, ado_label=ado_label,
-                                    ref_label=ref_label, data=data, panel_w=panel_w)
+                                    ref_label=ref_label, data=data, panel_w=panel_w, **style_kw)
     out = Path(cfg.out_path); out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=300, bbox_inches="tight")
     fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
