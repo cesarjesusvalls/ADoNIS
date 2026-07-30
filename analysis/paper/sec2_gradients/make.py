@@ -72,6 +72,27 @@ def main(label="physfit_gate1_full_v2"):
                  label="per-bin pull  [$\\sigma$]  for a 1-$\\sigma$ prior move")
     style.save(fig, "sec2_gradients_all27")
 
+    # ---- per-knob SHAPE: each ROW normalized to its own peak |pull|, so the gradient's DISTRIBUTION
+    # across the bins is visible for every knob regardless of its overall magnitude (kF_sf and the tiny
+    # FF knobs become equally readable).  Answers "given this knob, WHERE and with what sign does it pull
+    # across the observable?" -- pure shape, magnitude removed.  Linear [-1,1] (rows are already comparable).
+    rowmax = np.max(np.abs(S), axis=1, keepdims=True)
+    Sshape = np.where(rowmax > 0, S / rowmax, 0.0)
+    fig, ax = plt.subplots(figsize=(12.5, 7.4))
+    im = ax.imshow(Sshape, aspect="auto", cmap="RdBu_r", vmin=-1, vmax=1, interpolation="nearest")
+    for r in row0[1:-1]:
+        ax.axvline(r - 0.5, color="k", lw=0.8)
+    ax.set_xticks(ctr); ax.set_xticklabels([DSLABEL.get(k, k) for k in dskeys], fontsize=7)
+    ax.set_yticks(range(len(pnames))); ax.set_yticklabels([f"{p}   " for p in pnames], fontsize=7)
+    for k, p in enumerate(pnames):
+        if shrink[k] < 0.5:
+            ax.get_yticklabels()[k].set_color("#d62728"); ax.get_yticklabels()[k].set_weight("bold")
+    ax.set_xlabel("bin  (grouped by observable)")
+    ax.set_title("Per-knob gradient SHAPE:  each row normalized to its own peak pull  "
+                 "(where each knob pulls across the bins; magnitude removed)", fontsize=9)
+    fig.colorbar(im, ax=ax, fraction=0.02, pad=0.01, label="relative pull  (row-normalized, signed)")
+    style.save(fig, "sec2_gradients_shape")
+
     # per-knob reach: the total pull a 1-sigma prior move produces, = sqrt(F_kk) (degeneracy-blind)
     reach = np.sqrt((S**2).sum(axis=1))
     fig, ax = plt.subplots(figsize=(7.0, 5.6))
