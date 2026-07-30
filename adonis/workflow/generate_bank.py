@@ -151,7 +151,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     # test is tests/test_probe_naming.py::test_manifest_probe_equals_config_probe.
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, material=cfg.material,
                     channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res),
-                    probe=cfg.probe, **m_extra)
+                    probe=cfg.probe, achilles_coupl1_quirk=bool(cfg.achilles_coupl1_quirk), **m_extra)
 
     for c in range(n_chunks):
         kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)

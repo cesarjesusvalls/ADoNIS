@@ -138,6 +138,14 @@ class GenConfig:
     pmin: float = 50.0                      # projectile |p| window [MeV/c] (uniform)
     pmax: float = 1000.0
     # --- cascade / FSI ---
+    # --- NC ---
+    achilles_coupl1_quirk: bool = False     # NC QE only.  False = correct physics (the SM coupling);
+    #                                         True = reproduce ACHILLES's coupl1 sin2w/sw discrepancy
+    #                                         verbatim (~1.0396 on both nucleons' F1/F2).  Set True in
+    #                                         the bank config that feeds the ACHILLES-comparison
+    #                                         figures, so the comparison is like-for-like.  RECORDED IN
+    #                                         THE MANIFEST -- a bank can never be ambiguous about which
+    #                                         convention produced it.  See channels/currents/dirac.py.
     fsi: bool = True                        # False -> PRE-FSI bank (primary products, no cascade)
     pauli: bool = True                      # cascade Pauli blocking (False -> DEBUG ablation)
     cascade: CascadeHyperparams = field(default_factory=CascadeHyperparams)
