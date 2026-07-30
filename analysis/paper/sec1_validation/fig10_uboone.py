@@ -22,6 +22,7 @@ from adonis.workflow.config import SignalDef              # noqa: E402
 from adonis.workflow import selection as SG               # noqa: E402
 from adonis.workflow.plotting import chi2_ratio_panel     # noqa: E402
 from analysis.paper import style                          # noqa: E402
+from analysis.paper import plotcache                      # noqa: E402
 
 BANK = str(ROOT / "output/paper_banks_p4/nu_uBooNE_Ar/merged")
 ORA = str(ROOT / "output/achilles/fsrich/nu_uBooNE_Ar.npz")
@@ -38,30 +39,51 @@ DPT_EDGES = [                                              # delta_pT bin edges 
 ]
 
 
+def _reduce():
+    """Selected (dpt, dalphat, w) for both sides, memoised -- the selection re-reads the whole
+    nu_uBooNE_Ar bank and the fs_rich oracle just to fill 4 sliced histograms."""
+    def _build():
+        ado = SG.bank_signal(BANK, SD); ach = SG.oracle_signal(ORA, SD)
+        return dict(a_dpt=ado["dpt"], a_dat=np.degrees(ado["dalphat"]), a_w=ado["w"],
+                    h_dpt=ach["dpt"], h_dat=np.degrees(ach["dalphat"]), h_w=ach["w"])
+    return plotcache.cached("fig10_uboone_cc1p0pi", _build, deps=[BANK, ORA],
+                            params={"signal": repr(SD)})
+
+
 def main():
     style.use()
-    ado = SG.bank_signal(BANK, SD); ach = SG.oracle_signal(ORA, SD)
-    print(f"CC1p0pi selected: nADO={len(ado['w'])} nACH={len(ach['w'])}", flush=True)
-    dat_a = np.degrees(ado["dalphat"]); dat_h = np.degrees(ach["dalphat"])
-    fig, ax = plt.subplots(2, 4, figsize=(15.0, 5.4), sharex="col",
-                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0, "wspace": 0.30})
+    d = _reduce()
+    print(f"CC1p0pi selected: nADO={len(d['a_w'])} nACH={len(d['h_w'])}", flush=True)
+    dat_a, dat_h = d["a_dat"], d["h_dat"]
+    fig, ax = plt.subplots(2, 4, figsize=(9.6, 3.0), sharex="col",
+                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0, "wspace": 0.32})
     for si, (lo, hi) in enumerate(SLICES):
         edges = np.asarray(DPT_EDGES[si]) * 1000.0            # GeV -> MeV (dpt is in MeV)
         ma = (dat_a >= lo) & (dat_a < hi); mh = (dat_h >= lo) & (dat_h < hi)
         res = chi2_ratio_panel(ax[0, si], ax[1, si], edges,
-                               {"values": ach["dpt"][mh], "w": ach["w"][mh]},
-                               {"values": ado["dpt"][ma], "w": ado["w"][ma]},
-                               label=rf"$\delta\alpha_T\in[{lo},{hi})^\circ$",
-                               xlabel=r"$\delta p_T$ [MeV/c]", ratio_ylim=(0.5, 1.5),
-                               ado_label="ADoNIS", ref_label="ACHILLES")
+                               {"values": d["h_dpt"][mh], "w": d["h_w"][mh]},
+                               {"values": d["a_dpt"][ma], "w": d["a_w"][ma]},
+                               label="",                      # slice tag goes IN the axes
+                               xlabel=r"$\delta p_T$ [MeV/c]",
+                               # kept wide (not the 0.75-1.25 of fig07-09): the outer dpt bins of this
+                               # sample genuinely wander, and clipping them would hide it
+                               ratio_ylim=(0.5, 1.5), ratio_yticks=[0.75, 1.0, 1.25],
+                               ado_label="ADoNIS", ref_label="ACHILLES",
+                               total_color=style.C_QE,        # single series -> fig01's QE blue
+                               ratio_color=style.C_RATIO,
+                               ado_lighten=style.ADO_LIGHTEN, ref_darken=style.REF_DARKEN,
+                               headroom=0.30)
+        ax[0, si].text(0.97, 0.95, rf"$\delta\alpha_T\in[{lo},{hi})^\circ$",
+                       transform=ax[0, si].transAxes, fontsize=7, va="top", ha="right")
         print(f"  slice [{lo:3d},{hi:3d}) chi2/ndf {res['chi2']/max(res['ndf'],1):6.2f} "
               f"(ndf={res['ndf']}) nADO={int(ma.sum())} nACH={int(mh.sum())}", flush=True)
-        if si == 0:
-            ax[0, si].legend(fontsize=7); ax[0, si].set_ylabel(r"$d\sigma/d\delta p_T$ [nb]")
+        if si == 0:                                           # no legend: one series per panel
+            ax[0, si].set_ylabel(r"$d\sigma/d\delta p_T$ [nb]")
             ax[1, si].set_ylabel("ratio")
-    fig.suptitle(r"ADoNIS vs ACHILLES --- MicroBooNE CC1p0$\pi$: $\delta p_T$ in $\delta\alpha_T$ "
-                 r"slices on $^{40}$Ar", fontsize=11)
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    # the per-panel 1e-7 offset text sits at the top of each axes, so the title needs its own strip
+    fig.suptitle(r"MicroBooNE CC1p0$\pi$: $\delta p_T$ in $\delta\alpha_T$ slices on $^{40}$Ar",
+                 fontsize=9, y=0.995, va="top")
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
     style.save(fig, "fig10_uboone_cc1p0pi")
 
 

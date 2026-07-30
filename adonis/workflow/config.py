@@ -267,6 +267,7 @@ class AnalysisConfig:
     ratio_band: tuple = (0.9, 1.1)
     ratio_ylim: tuple = (0.5, 1.6)
     carbon_only: bool = True
+    legend_loc: str = ""            # style hint: matplotlib loc for the panel legend ("" -> caller default)
 
 
 def load_analysis_config(path) -> AnalysisConfig:

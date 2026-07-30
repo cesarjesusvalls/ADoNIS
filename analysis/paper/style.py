@@ -88,13 +88,15 @@ def panel_kw(**over):
     return kw
 
 
-def panel_legend(ax, has_parts, loc="upper right", bbox_to_anchor=(0.84, 1.0)):
+def panel_legend(ax, has_parts, loc="upper right", bbox_to_anchor=None):
     """Legend for a make_figure panel: Total/QE/RES when the selection carries a QE/RES breakdown,
     nothing at all when it is a single series (the caption states dashed=ACHILLES / solid=ADoNIS)."""
     if not has_parts:
         return
     handles, labels, hmap = swatches(
         [("Total", C_TOTAL), ("QE", C_QE), ("RES", C_RES)])
+    if bbox_to_anchor is None:          # inset from the right edge only when hugging it, so the
+        bbox_to_anchor = (0.84, 1.0) if loc == "upper right" else None   # in-axes tag stays clear
     ax.legend(handles, labels, handler_map=hmap, loc=loc, bbox_to_anchor=bbox_to_anchor,
               fontsize=7, ncol=1, handlelength=3.4, labelspacing=0.35, borderpad=0.2)
 
