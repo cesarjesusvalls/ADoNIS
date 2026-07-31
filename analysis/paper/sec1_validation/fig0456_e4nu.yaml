@@ -16,10 +16,10 @@ signal:
   p_theta_win: [10.0, 140.0] # deg
   removal_energy: 21.0       # MeV; epsilon in E_QE / E_cal
 title: "e4$\\nu$ (e,e') on $^{12}$C at 1.159 GeV"
-ratio_ylim: [0.6, 1.4]
+ratio_ylim: [0.75, 1.25]
 params:
   ylabel: '$d\sigma/dx$ [nb]'
-  ratio_yticks: null         # 3 different observable ranges -> no shared ratio ticks
+  ratio_yticks: [0.8, 1.0, 1.2]   # shared window with the other figures
   breakdown: false           # e4nu figures show the total only, no QE/RES components
   panels:
     - {obs: E_QE,  topo: 0pi,   linspace: [600, 1300, 25], label: '$E_{QE}$ [MeV]',  annotate: '0$\pi$'}

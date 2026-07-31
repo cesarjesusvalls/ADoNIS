@@ -19,7 +19,7 @@ observables:
   - {key: dpt, label: '$\delta p_T$ [MeV/c]', linspace: [0.0, 900.0, 13]}
 title: 'MicroBooNE CC1p0$\pi$: $\delta p_T$ in $\delta\alpha_T$ slices on $^{40}$Ar'
 ratio_band: [0.9, 1.1]
-ratio_ylim: [0.5, 1.5]
+ratio_ylim: [0.75, 1.25]
 params:
   slice_by: dalphat
   slice_scale: 57.29577951308232      # rad -> deg
@@ -38,4 +38,4 @@ layout:
   fig_h: 3.0
   max_cols: 4
   wspace: 0.32
-  ratio_ylim: [0.5, 1.5]
+  ratio_ylim: [0.75, 1.25]
