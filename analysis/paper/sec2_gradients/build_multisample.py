@@ -32,8 +32,9 @@ BEAM_OBS = {"pip": ["pip_react", "pip_abs"], "prot": ["prot_react", "prot_pipro"
 # Each entry is (label, keep) where keep is None (all observables) or a tuple of dskeys to keep -- so a
 # sample can be restricted to the variables the experiment ACTUALLY measured.  Only labels present on
 # disk are used.  Every column is one real measurement with its own NUISANCE signal definition:
-#   physfit_gate1        T2K CC0pi-Np + CC1pi+Np STV  -> keep the measured STV vars only (drop the
-#                        pmu/cosmu/ppi/cospi marginals; the muon 2D is its own sample below)
+#   physfit_gate1        T2K CC0pi-Np + CC1pi+Np STV  -> keep the STV vars + the CC0pi muon 1D
+#                        (pmu,cosmu); drop the CC1pi pion marginals (ppi,cospi) and multiplicities
+#                        (n_p,n_chpi) for the sec2 FIGURE.  NPZ_SAMPLES_FULL keeps them (sec3).
 #   physfit_t2k_pcos     T2K CC0pi 2D d2sigma/dpmu dcosmu (hadron-inclusive, isT2K_CC0pi Analysis I)
 #   physfit_minerva      MINERvA CC0pi-Np STV (isCC0piNp_MINERvA_STV)
 #   physfit_minerva_ptpz MINERvA qelike muon pT/p|| (isCC0pi_MINERvAPTPZ, hadron-inclusive)

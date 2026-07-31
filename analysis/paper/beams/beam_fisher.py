@@ -9,7 +9,7 @@ T2K data:
     channel can simply be opened (pi+ > 680 MeV/c -> piN->etaN'; p/n KE > 290 MeV -> NN->NNpi).
 
 Fisher is ADDITIVE, so this needs no new machinery:  F_total = F_T2K + sum_beams F_beam,
-with F_s = J_s^T C_s^-1 J_s.  The T2K J is the persisted Gate-I Jacobian (physfit_gate1_full_v2.npz);
+with F_s = J_s^T C_s^-1 J_s.  The T2K J is the persisted Gate-I Jacobian (physfit_gate1.npz);
 each beam's J is one jax.jvp per knob through the SAME kind-1 reweight.
 
 Observables per beam (sigma in mb, binned in the TAGGED beam momentum):
@@ -21,7 +21,7 @@ reweighted.  This is exact -- and it is only non-trivial because the pion reweig
 SURVIVAL factor (with the old branch-only reweight, a common pion-sigma rescale left w == 1 identically,
 so sigma_reaction could not respond to sabs at all).
 
-Usage:  python -m analysis.beams.beam_fisher [--syst 0.05] [--nbins 15]
+Usage:  python -m analysis.paper.beams.beam_fisher [--syst 0.05] [--nbins 15]
 """
 import argparse
 import sys
@@ -29,8 +29,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "altgen"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # repo root -> `from analysis.paper import ...`
 
 # paper_banks_p4 banks keep their manifest + chunk_*.npz under {dir}/merged/ (load_bank reads that dir).
 _BANKS = "output/paper_banks_p4"
@@ -47,7 +46,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     import jax.numpy as jnp
     from adonis.workflow.generate_bank import load_bank as _load_bank
     from adonis.reweight.reweight_model import nominal_knobs
-    import physical_fit as PF                      # SPEC / knobs_of / theta_nominal: the SAME 27 knobs
+    from analysis.paper import physical_fit as PF  # SPEC / knobs_of / theta_nominal: the SAME 28 knobs
     from analysis.paper import fisher_engine as FE
 
     B = _load_bank(BEAM_DIRS[beam])
@@ -108,7 +107,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
 
 
 def main(syst=0.05, nbins=15):
-    import physical_fit as PF
+    from analysis.paper import physical_fit as PF
     from analysis.paper import style
     from analysis.paper import fisher_engine as FE
     PNAMES = PF.PNAMES

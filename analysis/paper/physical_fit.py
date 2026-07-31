@@ -11,7 +11,7 @@ CC1pi pN/dpTT/daT (nb/CH incl. frozen free-H) — each with N_BINS uniform bins 
 (overflow folded), DIAGONAL error model sigma^2 = (SYST*d)^2 + ADoNIS-MC^2 (stat of a 3M-scale
 sample is 0.5-0.9%, negligible vs SYST=5%; ADoNIS-MC folded in per 'use the ADoNIS we have').
 
-Knob set: full17 (info_content PSETS) + norm/strength/FF knobs = 27. Priors: 20% multiplicative
+Knob set: full17 (info_content PSETS) + norm/strength/FF knobs = 28 (= NPAR). Priors: 20% multiplicative
 (nominal-1 knobs); natural units for non-multiplicative: Eb_shift +/-4 MeV, f_NN_cex +/-0.1.
 
 Outputs: gate1 table (knob, prior, sigma_post, shrinkage, verdict) + npz (J, sigma, F, V, specs).
