@@ -208,7 +208,10 @@ def build_physfit_datasets(B, w0, log, obs=None):
         sw2 = np.bincount(bidx, weights=np.asarray(w0)[sel]**2, minlength=nb)
         mcerr = scale_bin * np.sqrt(sw2)
         var = (SYST * central)**2 + mcerr**2
-        d.update(data=central, sigma=np.sqrt(var), Cinv=np.diag(1.0 / np.maximum(var, 1e-300)),
+        # empty bin (no selected events -> central=mcerr=0, and J=0 there): sigma=inf so J/sigma=0
+        # rather than 0/0=NaN, which would poison the ENTIRE Fisher matrix (NaN+finite=NaN).
+        sigma = np.where(var > 0, np.sqrt(var), np.inf)
+        d.update(data=central, sigma=sigma, Cinv=np.diag(1.0 / np.maximum(var, 1e-300)),
                  mcerr=mcerr)
         ds.append(d)
         log(f"  [{name}] {nb} bins | MC err med {np.median(mcerr/np.maximum(central,1e-30)):.1%} "

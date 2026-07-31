@@ -66,7 +66,8 @@ def build_electron_datasets(B, w0, log):
         sw2 = np.bincount(bidx, weights=np.asarray(w0)[sel] ** 2, minlength=nb)
         mcerr = d["scale_bin"] * np.sqrt(sw2)
         var = (SYST * central) ** 2 + mcerr ** 2
-        d.update(data=central, sigma=np.sqrt(var), mcerr=mcerr)
+        # empty bin (J=0 there): sigma=inf so J/sigma=0, not 0/0=NaN that would poison the Fisher
+        d.update(data=central, sigma=np.where(var > 0, np.sqrt(var), np.inf), mcerr=mcerr)
         ds.append(d)
         log(f"  [{name}] {int(mask.sum())} evt | {nb} bins over [{edges[0]:.3g},{edges[-1]:.3g}] MeV "
             f"| MC err med {np.median(mcerr/np.maximum(central,1e-30)):.2%}")
