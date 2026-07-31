@@ -137,7 +137,7 @@ READINESS = [
      "fig01_ee_domega · fig02_anl_sigma · fig03_pi_nucleus_sigma · fig456_e4nu · fig07/08/09 · fig10_uboone · fig13_piN_sigma",
      "ok", "figure-complete",
      "all non-NC ACHILLES-paper figures; ratios within a few % (near-threshold outliers documented: fig2 pπ⁺, fig13 ηN cusp)"),
-    ("2", "Gradient information for all 27 knobs", "sec2_gradients_all27 · sec2_gradient_reach",
+    ("2", "Gradient information for all 27 knobs", "sec2_gradients_shape · sec2_gradient_reach",
      "ok", "figure-complete", "exact per-bin ∂(dσ/dx)/∂θ, autodiff, all 27"),
     ("3", "Fisher information per observable subset",
      "sec3_shrinkage_subsets · sec3_failure_modes · sec3_degeneracy", "ok", "figure-complete",
@@ -256,16 +256,16 @@ BODY = f"""
   <div class="sechead"><span class="num">§2</span><h2>Gradient information for all 27 knobs</h2></div>
   <p class="tag">The object is the shared J; nothing new is computed.</p>
   <div class="reading">
-  <p><b>What.</b> The full Jacobian rendered as a per-bin <em>pull</em>
+  <p><b>What.</b> The full Jacobian as the per-bin <em>pull</em>
   <code>S_ik = σ_prior_k · J_ik / σ_i</code> — the dimensionless quantity the Fisher accumulates
-  (<code>F = SᵀS</code>), so the heatmap is literally the Fisher's integrand. A row that is everywhere pale
-  is a knob the sample cannot constrain.</p>
-  <p><b>How.</b> Signed-log colour (kF_sf pulls ~10σ/bin while form-factor knobs pull ~0.01σ; a linear
-  scale would white everything else out). Row label red = passes Gate I. The reach bar is
-  <code>√F_kk</code> = the total pull a 1σ prior move produces, degeneracy-blind.</p>
+  (<code>F = SᵀS</code>) — shown per-knob normalized to each knob's own peak, so WHERE each knob pulls
+  across the bins is readable regardless of its magnitude. A row with no colour is a knob with no gradient.</p>
+  <p><b>How.</b> Each row normalized to its own peak pull (magnitude removed; the RES knobs light the CC1π
+  columns and reach CC0π via pion absorption). The companion reach bar is <code>√F_kk</code> = the total
+  pull a 1σ prior move produces, degeneracy-blind; row label red = passes Gate I.</p>
   <p class="deffile mono">analysis/paper/sec2_gradients/make.py — reads physfit_gate1_full_v2.npz (no bank pass)</p>
   </div>
-  {figure("paper/sec2_gradients_all27.png", "<b>Per-bin gradients, all 27 knobs × 188 bins</b>, autodiff through the cascade. Columns grouped by observable. Red labels pass Gate I. s_conv is blank (no information); kF_sf saturates; the RES knobs light the CC1π columns and reach CC0π via pion absorption.")}
+  {figure("paper/sec2_gradients_shape.png", "<b>Per-knob gradient shape, all 27 knobs × 188 bins</b>, autodiff through the cascade — each knob's row normalized to its own peak, so WHERE it pulls is readable regardless of magnitude. Columns grouped by observable. s_conv is blank (no gradient); the RES knobs light the CC1π columns and reach CC0π via pion absorption.")}
   {figure("paper/sec2_gradient_reach.png", "<b>Gradient reach √F_kk per knob.</b> Every knob has a gradient; not every gradient is information. Red = passes Gate I on the full set.")}
 </section>
 

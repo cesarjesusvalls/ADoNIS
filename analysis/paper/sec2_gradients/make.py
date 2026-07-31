@@ -5,10 +5,11 @@ for every knob k and every bin i, obtained by ONE jax.jvp per knob through bank_
 autodiff through the frozen walk, not finite differences, not a surrogate.  Sections 2 and 3 therefore
 cost a single bank pass between them.
 
-Plotted in the natural dimensionless form
-    S_ik = (dtheta_k^prior) * J_ik / sigma_i        [ = the knob's per-bin pull, in units of the error ]
-which is exactly what the Fisher F = S^T S accumulates -- so the figure IS the Fisher's integrand, and a
-row that is everywhere pale is precisely a knob the sample cannot constrain.
+Plotted as the per-knob gradient SHAPE: each knob's row of the dimensionless pull
+    S_ik = (dtheta_k^prior) * J_ik / sigma_i        [ the knob's per-bin pull, in units of the error ]
+is normalized to its own peak, so WHERE each knob pulls across the bins is readable regardless of its
+magnitude.  (The Fisher MAGNITUDE sqrt(F_kk) -- which knobs the data actually constrains -- is section
+3's reach figure, not shown here.)
 
 Usage:  python -m analysis.paper.sec2_gradients.make [label]
 """
@@ -16,7 +17,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "altgen"))
@@ -92,8 +92,8 @@ _CANON = {"physfit_gate1", "physfit_gate1_full_v2"}
 
 def _fig_names(label):
     if label in _CANON:
-        return {"all": "sec2_gradients_all27", "shape": "sec2_gradients_shape", "reach": "sec2_gradient_reach"}
-    return {"all": f"{label}_all27", "shape": f"{label}_shape", "reach": f"{label}_reach"}
+        return {"shape": "sec2_gradients_shape", "reach": "sec2_gradient_reach"}
+    return {"shape": f"{label}_shape", "reach": f"{label}_reach"}
 
 
 def main(label="physfit_gate1_full_v2", mark_data=False, transpose=False):
@@ -104,7 +104,6 @@ def main(label="physfit_gate1_full_v2", mark_data=False, transpose=False):
     pnames = [str(x) for x in d["pnames"]]
     dskeys = [str(x) for x in d["dskeys"]]
     row0 = np.asarray(d["row0"])
-    shrink = d["shrink"]
 
     S = (prior[None, :] * J) / sigma[:, None]        # (nbins, nknob) per-bin pull in units of sigma
     S = S.T                                          # -> (nknob, nbins)
@@ -113,52 +112,6 @@ def main(label="physfit_gate1_full_v2", mark_data=False, transpose=False):
     dslab = [DSLABEL.get(k, k) for k in dskeys]
     edges_by = {k: d[f"{k}_edges"] for k in dskeys if f"{k}_edges" in d.files}
     marked = _data_bins(dskeys, row0, edges_by) if mark_data else np.array([], int)
-
-    # kF_sf pulls ~10 sigma/bin while the FF knobs pull ~0.01 -- a linear scale saturates on kF_sf and
-    # whites out everything else, which would UNDERSTATE the claim.  Signed-log keeps the absolute scale
-    # (rows stay comparable, unlike a per-panel renormalization) and still resolves the small gradients.
-    # linthresh = 0.1 sigma: below that a per-bin pull is negligible and STAYS pale (an honest "no
-    # information here"); above it, two decades of colour separate the knobs that actually move the data.
-    vmax = float(np.max(np.abs(S)))
-    norm = mcolors.SymLogNorm(linthresh=0.1, vmin=-vmax, vmax=vmax, base=10)
-    title_all = (f"Exact per-bin gradients, all {nknob} knobs:  "
-                 "$\\sigma^{prior}_k\\,\\partial(d\\sigma/dx)_i/\\partial\\theta_k\\;/\\;\\sigma_i$   "
-                 "(autodiff through the cascade)")
-
-    if transpose:                                    # bins DOWN the Y axis, knobs across the TOP (tall)
-        W = max(7.0, 0.36 * nknob + 2.0); H = max(9.0, 0.026 * nbin + 2.0)
-        fig, ax = plt.subplots(figsize=(W, H))
-        im = ax.imshow(S.T, aspect="auto", cmap="RdBu_r", norm=norm, interpolation="nearest")
-        for r in row0[1:-1]:
-            ax.axhline(r - 0.5, color="k", lw=0.8)
-        ax.set_yticks(ctr); ax.set_yticklabels(dslab, fontsize=7)
-        ax.set_xticks(range(nknob)); ax.set_xticklabels([_plab(p) for p in pnames], rotation=90, fontsize=8)
-        ax.xaxis.set_ticks_position("top"); ax.xaxis.set_label_position("top")
-        ax.set_ylabel("bin  (grouped by observable)")
-        ax.set_title(title_all + "\n", fontsize=8, pad=30)
-        fig.colorbar(im, ax=ax, fraction=0.025, pad=0.01,
-                     label="per-bin pull  [$\\sigma$]  for a 1-$\\sigma$ prior move")
-        if mark_data:
-            _mark_data(ax, marked, nknob, transpose=True)
-            ax.text(0.0, 1.006, "green = bins with published data", transform=ax.transAxes,
-                    color="#2ca02c", fontsize=8)
-        style.save(fig, nm["all"])
-    else:
-        fig, ax = plt.subplots(figsize=(12.5, 7.4))
-        im = ax.imshow(S, aspect="auto", cmap="RdBu_r", norm=norm, interpolation="nearest")
-        for r in row0[1:-1]:                          # dataset boundaries
-            ax.axvline(r - 0.5, color="k", lw=0.8)
-        ax.set_xticks(ctr); ax.set_xticklabels(dslab, fontsize=7)
-        ax.set_yticks(range(nknob)); ax.set_yticklabels([f"{_plab(p)}  " for p in pnames], fontsize=8)
-        ax.set_xlabel("bin  (grouped by observable)")
-        ax.set_title(title_all, fontsize=9)
-        fig.colorbar(im, ax=ax, fraction=0.02, pad=0.01,
-                     label="per-bin pull  [$\\sigma$]  for a 1-$\\sigma$ prior move")
-        if mark_data:
-            _mark_data(ax, marked, nknob)
-            ax.text(0.995, 1.006, "green = bins with published data", transform=ax.transAxes,
-                    ha="right", color="#2ca02c", fontsize=8)
-        style.save(fig, nm["all"])
 
     # ---- per-knob SHAPE: each knob's ROW normalized to its own peak |pull|, so the gradient's
     # DISTRIBUTION across the bins is visible for every knob regardless of magnitude (kF_sf and the tiny
