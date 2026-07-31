@@ -33,6 +33,15 @@ def _ident_rec(n):
     return (np.ones(n, np.float32), np.zeros(n, np.float32), np.zeros(n, np.float32), np.ones(n, np.float32))
 
 
+def _qe_hv(qa, **kw):
+    """The six QE hard-vertex records (axial M_A, vector, and the four Sachs FFs) from the (k_in, k_out,
+    p_struck, p_out) tuple `qa`.  kw carries {probe,is_proton} for the EM (e,e') photon records; for the
+    CC default it is empty, so the record builders use their probe="CC" defaults."""
+    return dict(qe_ma=build_qe_ma_records(*qa, **kw), qe_vec=build_qe_vector_records(*qa, **kw),
+                qe_gmp=build_qe_ff_records(*qa, "gmp", **kw), qe_gmn=build_qe_ff_records(*qa, "gmn", **kw),
+                qe_gep=build_qe_ff_records(*qa, "gep", **kw), qe_gen=build_qe_ff_records(*qa, "gen", **kw))
+
+
 def build_hv_sf(qe, res, sf, with_pw=True, probe="CC"):
     """Build the per-channel hard-vertex amps2 records + SF grids/points ONCE (theta-independent).
     with_pw=False skips the 14 DCC partial-wave records (the dominant build cost) -> pw_norm has no effect.
@@ -41,36 +50,27 @@ def build_hv_sf(qe, res, sf, with_pw=True, probe="CC"):
     gradients (with per-event is_proton), the QE axial record auto-collapses to identity (no photon axial),
     and the RES hard-vertex records are identity for now (the EM-Delta / delta_strength handle is a v2 item;
     the SF reweight still applies to both channels).  keys: qe uses k_e/k_lep/p_out/is_p, res uses p_struck."""
+    # SF grids/points are probe-INDEPENDENT (they depend only on the struck-nucleon momenta) -> build once.
+    qe_pmag, qe_erem = removal_from_struck(qe["p_struck"])
+    res_pmag, res_erem = removal_from_struck(res["p_struck"])
+    SF = dict(grids=sf_grids(sf), qe_pmag=qe_pmag, qe_erem=qe_erem, res_pmag=res_pmag, res_erem=res_erem)
+
     if probe == "EM":
         # k_e = incoming beam e-, k_lep = scattered e- (sec1 renamed the raw outgoing key k_e_out -> k_lep)
         qa = (qe["k_e"], qe["k_lep"], qe["p_struck"], qe["p_out"]); isp = np.asarray(qe["is_p"])
         nres = len(np.asarray(res["p_N"]))
-        HV = dict(
-            qe_ma=build_qe_ma_records(*qa, probe="EM", is_proton=isp),
-            qe_vec=build_qe_vector_records(*qa, probe="EM", is_proton=isp),
-            qe_gmp=build_qe_ff_records(*qa, "gmp", probe="EM", is_proton=isp),
-            qe_gmn=build_qe_ff_records(*qa, "gmn", probe="EM", is_proton=isp),
-            qe_gep=build_qe_ff_records(*qa, "gep", probe="EM", is_proton=isp),
-            qe_gen=build_qe_ff_records(*qa, "gen", probe="EM", is_proton=isp),
-            res_ma=_ident_rec(nres), res_pp=_ident_rec(nres), res_delta=_ident_rec(nres), res_pw=None)
-        SF = dict(grids=sf_grids(sf),
-                  qe_pmag=removal_from_struck(qe["p_struck"])[0], qe_erem=removal_from_struck(qe["p_struck"])[1],
-                  res_pmag=removal_from_struck(res["p_struck"])[0], res_erem=removal_from_struck(res["p_struck"])[1])
+        # RES hard-vertex records are identity for EM (the EM-Delta / delta_strength handle is a v2 item)
+        HV = dict(**_qe_hv(qa, probe="EM", is_proton=isp),
+                  res_ma=_ident_rec(nres), res_pp=_ident_rec(nres), res_delta=_ident_rec(nres), res_pw=None)
         return HV, SF
+
     qa = (qe["k_nu"], qe["k_lep"], qe["p_struck"], qe["p_out"])
     ra = (res["k_nu"], res["k_lep"], res["p_struck"], res["p_N"], res["p_pi"])
     ip, pp = np.asarray(res["ipid"]), np.asarray(res["ppid"])
-    HV = dict(
-        qe_ma=build_qe_ma_records(*qa), qe_vec=build_qe_vector_records(*qa),
-        qe_gmp=build_qe_ff_records(*qa, "gmp"), qe_gmn=build_qe_ff_records(*qa, "gmn"),
-        qe_gep=build_qe_ff_records(*qa, "gep"), qe_gen=build_qe_ff_records(*qa, "gen"),
-        res_ma=build_res_ma_records(*ra, ip, pp), res_pp=build_res_pionpole_records(*ra, ip, pp),
-        res_delta=build_res_pw_records(*ra, ip, pp, _DELTA_WAVE),   # P33 Delta(1232) strength knob
-        res_pw=[build_res_pw_records(*ra, ip, pp, w) for w in range(_NPW)] if with_pw else None)
-    grids = sf_grids(sf)
-    SF = dict(grids=grids,
-              qe_pmag=removal_from_struck(qe["p_struck"])[0], qe_erem=removal_from_struck(qe["p_struck"])[1],
-              res_pmag=removal_from_struck(res["p_struck"])[0], res_erem=removal_from_struck(res["p_struck"])[1])
+    HV = dict(**_qe_hv(qa),
+              res_ma=build_res_ma_records(*ra, ip, pp), res_pp=build_res_pionpole_records(*ra, ip, pp),
+              res_delta=build_res_pw_records(*ra, ip, pp, _DELTA_WAVE),   # P33 Delta(1232) strength knob
+              res_pw=[build_res_pw_records(*ra, ip, pp, w) for w in range(_NPW)] if with_pw else None)
     return HV, SF
 
 
