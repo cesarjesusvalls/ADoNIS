@@ -207,20 +207,28 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     ncol = nv if not max_cols else min(max_cols, nv)
     nrow = 1 if not max_cols else int(np.ceil(nv / ncol))
     total_w = max(panel_w * ncol, min_w)      # floor so single-panel figs are not narrow/clipped
-    # Each ROW of observables is a (top, ratio) PAIR of axes rows, so a wrapped figure has 2*nrow
-    # matplotlib rows.  height_ratios repeat the 3:1 split per pair.
-    fig, axg = plt.subplots(2 * nrow, ncol, figsize=(total_w, fig_h * nrow),
-                            gridspec_kw={"height_ratios": [3, 1] * nrow, "hspace": 0.0},
-                            squeeze=False, sharex="col")
-    # `ax` keeps its historical (2, nv) shape and ax[0, c] / ax[1, c] indexing, so every line below
-    # is untouched by the wrap: c is the SPEC index, and the mapping to a grid cell happens here.
-    ax = np.empty((2, nv), dtype=object)
-    for i in range(nv):
-        ax[0, i] = axg[2 * (i // ncol)][i % ncol]
-        ax[1, i] = axg[2 * (i // ncol) + 1][i % ncol]
-    for i in range(nv, nrow * ncol):          # blank any unused cell in the last row
-        axg[2 * (i // ncol)][i % ncol].axis("off")
-        axg[2 * (i // ncol) + 1][i % ncol].axis("off")
+    # Each ROW of observables is a (top, ratio) PAIR that must sit flush (hspace=0), but SUCCESSIVE
+    # rows must NOT -- a single global hspace=0 makes the first row's ratio panel collide with the
+    # next row's exponent and tick labels.  So: an OUTER gridspec with real spacing, and one INNER
+    # 2-row gridspec per row with hspace=0.  (Single-row figures take the same path with nrow=1, and
+    # come out identical to the original plt.subplots layout.)
+    fig = plt.figure(figsize=(total_w, fig_h * nrow))
+    outer = fig.add_gridspec(nrow, 1, hspace=0.42 if nrow > 1 else 0.0)
+    ax = np.empty((2, nv), dtype=object)      # historical (2, nv) shape: ax[0,c] top, ax[1,c] ratio
+    for r in range(nrow):
+        inner = outer[r].subgridspec(2, ncol, height_ratios=[3, 1], hspace=0.0)
+        for cc in range(ncol):
+            i = r * ncol + cc
+            top = fig.add_subplot(inner[0, cc])
+            # sharex WITHIN the pair only.  Sharing down a whole column would suppress the x tick
+            # labels on every row but the last -- fatal here, because each wrapped panel is a
+            # DIFFERENT slice and its own axis is the only thing identifying it.
+            rat = fig.add_subplot(inner[1, cc], sharex=top)
+            top.tick_params(labelbottom=False)
+            if i < nv:
+                ax[0, i], ax[1, i] = top, rat
+            else:
+                top.axis("off"); rat.axis("off")   # blank any unused cell in the last row
     results = {}
     for c, (key, edges, label) in enumerate(specs):
         ref = {"values": np.asarray(ref_sel[key]), "w": np.asarray(ref_sel["w"])}
@@ -257,5 +265,8 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     if title:
         fig.suptitle(title, **(title_kw or {"fontsize": 12, "wrap": True}))
     fig.tight_layout(rect=[0, 0, 1, rect_top])
-    fig.subplots_adjust(hspace=0.0)          # top + ratio panels share one x-axis (no gap)
+    if nrow == 1:
+        # top + ratio share one x-axis (no gap).  NOT applied when wrapped: a global hspace=0 would
+        # undo the outer gridspec's row spacing and re-collide the rows.
+        fig.subplots_adjust(hspace=0.0)
     return fig, results, sig
