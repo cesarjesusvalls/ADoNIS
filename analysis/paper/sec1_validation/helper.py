@@ -60,6 +60,24 @@ def _assemble(panels):
     return specs, side("ado"), side("ref")
 
 
+def _panel_kw(p):
+    """Paper palette for a `panels` figure.  A single-line figure (params `breakdown: false`) draws the
+    one series in the IBM blue (C_QE), NOT the QE/RES-total pink (C_TOTAL) -- pink reads as 'total of the
+    components shown', which is wrong when no components are drawn.  This is the one home of that rule."""
+    over = {"ratio_yticks": p.get("ratio_yticks", [0.8, 1.0, 1.2])}
+    if not p.get("breakdown", True):
+        over["total_color"] = style.C_QE
+    return style.panel_kw(**over)
+
+
+def _suppress_breakdown(p, ado_sel, ref_sel):
+    """When params `breakdown: false`, zero the QE/RES channel so make_figure draws a single line (and its
+    legend_fn, which keys off having parts, draws no legend)."""
+    if not p.get("breakdown", True):
+        ado_sel["chan"] = np.zeros(len(ado_sel["w"]), int)
+        ref_sel["chan"] = np.zeros(len(ref_sel["w"]), int)
+
+
 # =============================================================== COMPUTE: sliced selection (figs 10, 11)
 def _compute_sliced(spec):
     """Selection histogrammed in SLICES of a second variable -> (specs, ado_sel, ref_sel, layout).
@@ -97,7 +115,9 @@ def _compute_sliced(spec):
                        "ado": (va[ka], np.asarray(ado["w"], float)[ka], np.asarray(ado["chan"])[ka]),
                        "ref": (vr[kr], np.asarray(ref["w"], float)[kr], np.asarray(ref["chan"])[kr])})
     specs, ado_sel, ref_sel = _assemble(panels)
-    layout = dict(title=cfg.title, ratio_band=tuple(cfg.ratio_band), ratio_ylim=tuple(cfg.ratio_ylim))
+    _suppress_breakdown(p, ado_sel, ref_sel)
+    layout = dict(title=cfg.title, ratio_band=tuple(cfg.ratio_band), ratio_ylim=tuple(cfg.ratio_ylim),
+                  panel_kw=_panel_kw(p))
     return specs, ado_sel, ref_sel, layout
 
 
@@ -144,7 +164,7 @@ def _compute_ele(spec):
 
     default_bank = (cfg.inputs.get("adonis_bank") or [None])[0]
     default_ref = cfg.inputs.get("reference") or []
-    panels, ann = [], {}
+    panels, ann, rxmax = [], {}, {}
     for i, ps in enumerate(p["panels"]):
         ado = ado_for(ps.get("bank") or default_bank)
         ref = ref_for(ps.get("ref") or default_ref)
@@ -156,11 +176,12 @@ def _compute_ele(spec):
                        "ref": (ref[ps["obs"]][rm] * sc, ref["w"][rm], ref["chan"][rm])})
         if ps.get("annotate"):
             ann[key] = ps["annotate"]
+        if ps.get("ratio_xmax") is not None:                 # stop the ratio at a kinematic cliff (E_cal)
+            rxmax[key] = float(ps["ratio_xmax"])
     specs, ado_sel, ref_sel = _assemble(panels)
-    if not p.get("breakdown", True):                         # suppress the QE/RES component split (fig0456)
-        ado_sel["chan"] = np.zeros(len(ado_sel["w"]), int); ref_sel["chan"] = np.zeros(len(ref_sel["w"]), int)
+    _suppress_breakdown(p, ado_sel, ref_sel)                  # breakdown: false -> single IBM-blue line (fig0456)
     layout = dict(title=cfg.title, ratio_ylim=tuple(cfg.ratio_ylim), annotations=ann, ylabel=p.get("ylabel"),
-                  panel_kw=style.panel_kw(ratio_yticks=p.get("ratio_yticks", [0.8, 1.0, 1.2])))
+                  ratio_xmax=rxmax or None, panel_kw=_panel_kw(p))
     return specs, ado_sel, ref_sel, layout
 
 

@@ -23,5 +23,7 @@ params:
   breakdown: false           # e4nu figures show the total only, no QE/RES components
   panels:
     - {obs: E_QE,  topo: 0pi,   linspace: [600, 1300, 25], label: '$E_{QE}$ [MeV]',  annotate: '0$\pi$'}
-    - {obs: E_cal, topo: 1p0pi, linspace: [700, 1300, 25], label: '$E_{cal}$ [MeV]', annotate: '1p0$\pi$'}
+    # E_cal ratio stops at the kinematic cliff (E_cal <= E_beam+eps): the 1175-1200 bin holds ~0.02% of
+    # the sample, so the ratio there is a few endpoint events, not physics.
+    - {obs: E_cal, topo: 1p0pi, linspace: [700, 1300, 25], label: '$E_{cal}$ [MeV]', annotate: '1p0$\pi$', ratio_xmax: 1175.0}
     - {obs: P_T,   topo: 1p0pi, linspace: [0, 600, 25],    label: '$P_T$ [MeV/c]',   annotate: '1p0$\pi$'}

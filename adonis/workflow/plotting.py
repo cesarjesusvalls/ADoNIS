@@ -196,7 +196,7 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                 ado_label="ENGINE", ref_label="ACHILLES", data=None, panel_w=3.4,
                 panel_kw=None, legend_fn=None, fig_h=6.4, title_kw=None, label_as_xlabel=False,
                 rect_top=0.96, min_w=7.5, max_cols=None, ylabel_var=False,
-                wspace=None, annotations=None, ylabel=None):
+                wspace=None, annotations=None, ylabel=None, ratio_xmax=None):
     """specs: list of (key, edges, label).  ref_sel/ado_sel: full selection dicts (key->array + 'w').
     Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'}).
     Style hooks (all optional, defaults = the historical look, so existing callers are unchanged):
@@ -205,6 +205,9 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     the x axis instead of on top of the panel (where it duplicates the title)."""
     nv = len(specs)
     panel_kw = dict(panel_kw or {})
+    # ratio_xmax stops the ratio+chi2 past a kinematic edge (e.g. E_cal's cliff); it must be settable
+    # PER PANEL, so accept a scalar (all panels) OR a {key: value} dict.  A global via panel_kw still works.
+    _rx_default = panel_kw.pop("ratio_xmax", None)
     ncol = nv if not max_cols else min(max_cols, nv)
     nrow = 1 if not max_cols else int(np.ceil(nv / ncol))
     total_w = max(panel_w * ncol, min_w)      # floor so single-panel figs are not narrow/clipped
@@ -252,12 +255,15 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                     out[lbl] = {"values": np.asarray(sel[key])[mk], "w": np.asarray(sel["w"])[mk]}
             return out
         rp, ap = _parts(ref_sel), _parts(ado_sel)
+        rx = (ratio_xmax.get(key) if isinstance(ratio_xmax, dict) else ratio_xmax)
+        if rx is None:
+            rx = _rx_default
         res = chi2_ratio_panel(ax[0, c], ax[1, c], np.asarray(edges), ref, ado,
                                label="" if label_as_xlabel else label,
                                xlabel=label if label_as_xlabel else None,
                                ratio_band=ratio_band, ratio_ylim=ratio_ylim,
                                ado_label=ado_label, ref_label=ref_label, data=d,
-                               ref_parts=rp, ado_parts=ap, **panel_kw)
+                               ref_parts=rp, ado_parts=ap, ratio_xmax=rx, **panel_kw)
         if c == 0:
             if legend_fn is None:
                 ax[0, c].legend(fontsize=7)
