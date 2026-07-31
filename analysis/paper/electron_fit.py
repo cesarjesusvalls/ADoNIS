@@ -27,6 +27,7 @@ import jax.numpy as jnp
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from analysis.paper import info_content as IC
+from analysis.paper import fisher_engine as FE
 # align the 28-knob basis EXACTLY with physfit_gate1 (same order, priors, SYST, N_BINS, binning helpers)
 from analysis.paper.physical_fit import (
     knobs_of, theta_nominal, PRIOR, PNAMES, NPAR, SYST, N_BINS, design_edges,
@@ -65,9 +66,7 @@ def build_electron_datasets(B, w0, log):
         central = IC.bin_w(d, w0)
         sw2 = np.bincount(bidx, weights=np.asarray(w0)[sel] ** 2, minlength=nb)
         mcerr = d["scale_bin"] * np.sqrt(sw2)
-        var = (SYST * central) ** 2 + mcerr ** 2
-        # empty bin (J=0 there): sigma=inf so J/sigma=0, not 0/0=NaN that would poison the Fisher
-        d.update(data=central, sigma=np.where(var > 0, np.sqrt(var), np.inf), mcerr=mcerr)
+        d.update(data=central, sigma=FE.bin_sigma(central, mcerr, SYST), mcerr=mcerr)
         ds.append(d)
         log(f"  [{name}] {int(mask.sum())} evt | {nb} bins over [{edges[0]:.3g},{edges[-1]:.3g}] MeV "
             f"| MC err med {np.median(mcerr/np.maximum(central,1e-30)):.2%}")
@@ -94,20 +93,9 @@ def main():
     w0b = np.asarray(wf_jit(jnp.asarray(th0), JB))
     log(f"(V1) nominal identity |w(th0)-w_nominal|_max = {np.max(np.abs(w0b-w0)):.2e}")
 
-    J = np.zeros((nbins, NPAR))
-    row0 = np.cumsum([0] + [d["nbin"] for d in ds])
-    for k in range(NPAR):
-        g = np.asarray(jvp_wf(jnp.asarray(th0), jnp.zeros(NPAR).at[k].set(1.0), JB))
-        for j, d in enumerate(ds):
-            J[row0[j]:row0[j+1], k] = IC.bin_w0(d, g)
-        log(f"  jvp {k+1:2d}/{NPAR} {PNAMES[k]}")
+    J, row0 = FE.bank_jacobian(jvp_wf, th0, JB, ds, NPAR, log=log, names=PNAMES)
     sigma = np.concatenate([d["sigma"] for d in ds])
-
-    Jw = J / sigma[:, None]
-    F = Jw.T @ Jw
-    V = np.linalg.inv(F + np.diag(1.0 / PRIOR ** 2))
-    sig_post = np.sqrt(np.diag(V)); shrink = sig_post / PRIOR
-    reach = np.sqrt(np.maximum(np.diag(F), 0.0))
+    F, V, sig_post, shrink, reach = FE.gate1(J, sigma, PRIOR)
     order = np.argsort(shrink)
     print(f"\n==== (e,e') GATE I (Asimov Fisher, {nbins} bins, syst {SYST:.0%}) ====")
     print(f"{'knob':>18} {'prior':>7} {'sqrtFkk':>10} {'shrink':>7}")

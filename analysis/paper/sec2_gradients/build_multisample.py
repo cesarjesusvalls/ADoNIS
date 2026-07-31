@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "altgen
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # analysis/paper: beam_fisher bare-imports physical_fit
 from analysis.paper import physical_fit as PF        # noqa: E402
 from analysis.paper import style                      # noqa: E402
+from analysis.paper import fisher_engine as FE         # noqa: E402
 from analysis.paper.beams import beam_fisher as BF     # noqa: E402
 
 # one dskeys entry per 15-bin block beam_jacobian returns (reaction bins, then the second observable)
@@ -83,10 +84,7 @@ def build(beams=("pip", "prot", "neut"), npz_samples=NPZ_SAMPLES, nbins=15, syst
             edges[f"{key}_edges"] = np.asarray(e_beam)
 
     J = np.vstack(J); sigma = np.concatenate(sigma); prior = PF.PRIOR
-    Jw = J / sigma[:, None]                             # error-weighted rows -> Fisher integrand
-    F = Jw.T @ Jw
-    V = np.linalg.inv(F + np.diag(1.0 / prior ** 2))   # marginalized posterior covariance
-    shrink = np.sqrt(np.diag(V)) / prior               # Gate I: FIT when < 0.5 (on the COMBINED set)
+    F, V, _sig_post, shrink, _reach = FE.gate1(J, sigma, prior)   # Fisher + Gate I on the COMBINED set
 
     out = style.ALTGEN / f"{out_label}.npz"
     np.savez(out, J=J, sigma=sigma, prior=prior, pnames=PF.PNAMES,

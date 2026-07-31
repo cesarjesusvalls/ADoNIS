@@ -48,6 +48,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     from adonis.workflow.generate_bank import load_bank as _load_bank
     from adonis.reweight.reweight_model import nominal_knobs
     import physical_fit as PF                      # SPEC / knobs_of / theta_nominal: the SAME 27 knobs
+    from analysis.paper import fisher_engine as FE
 
     B = _load_bank(BEAM_DIRS[beam])
     man = B["manifest"]
@@ -91,12 +92,9 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     nr = np.bincount(idx, weights=react, minlength=nbins)
     ns = np.bincount(idx, weights=second, minlength=nbins)
     mcerr = PIR2 * np.concatenate([np.sqrt(nr), np.sqrt(ns)]) / np.maximum(np.concatenate([n_tried] * 2), 1)
-    sig = np.sqrt((syst * central) ** 2 + mcerr ** 2)
-    # EMPTY bins (no counts -> central 0 and mcerr 0) carry no information: the pion-production observable
-    # is EXACTLY zero below the NN->NNpi threshold, so those bins have sigma 0 and would put inf/NaN into
-    # the Fisher.  Give them infinite error (zero weight) instead -- J is 0 there anyway.
-    empty = (central == 0) & (mcerr == 0)
-    sig = np.where(empty, np.inf, sig)
+    # EMPTY bins (pion production is EXACTLY zero below the NN->NNpi threshold -> central=mcerr=0) get
+    # sigma=inf, not 0, so 0/0 does not put NaN into the Fisher (bin_sigma's var==0 == this empty test).
+    sig = FE.bin_sigma(central, mcerr, syst)
 
     jvp = jax.jit(lambda th, tang: jax.jvp(w_of, (th,), (tang,))[1])
     NPAR = PF.NPAR
@@ -112,25 +110,23 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
 def main(syst=0.05, nbins=15):
     import physical_fit as PF
     from analysis.paper import style
+    from analysis.paper import fisher_engine as FE
     PNAMES = PF.PNAMES
     PRIOR = PF.PRIOR
     NPAR = PF.NPAR
 
     d = np.load(style.ALTGEN / "physfit_gate1.npz", allow_pickle=True)
-    J_t2k = d["J"] / d["sigma"][:, None]                              # already error-weighted rows
-    F = {"T2K": J_t2k.T @ J_t2k}
+    F = {"T2K": FE.fisher(d["J"], d["sigma"])}                        # (J/sigma)^T(J/sigma)
     print(f"== knob x sample Fisher (syst {syst:.0%}, {nbins} p-bins per observable) ==")
     for beam in ("pip", "prot", "neut"):
         if not Path(BEAM_DIRS[beam]).exists():
             print(f"  [skip] {beam}: no bank at {BEAM_DIRS[beam]}")
             continue
         Jb, sb, _c, _e, _n = beam_jacobian(beam, nbins=nbins, syst=syst)
-        Jw = Jb / sb[:, None]
-        F[beam] = Jw.T @ Jw
+        F[beam] = FE.fisher(Jb, sb)
 
     def shrink(Fm):
-        V = np.linalg.inv(Fm + np.diag(1.0 / PRIOR ** 2))
-        return np.sqrt(np.diag(V)) / PRIOR
+        return FE.shrink_from_fisher(Fm, PRIOR)
 
     cols = [("T2K", F["T2K"])]
     for beam in ("pip", "prot", "neut"):

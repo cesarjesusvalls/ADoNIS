@@ -28,6 +28,7 @@ import jax.numpy as jnp
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from analysis.paper import info_content as IC
+from analysis.paper import fisher_engine as FE
 
 BANKDIR = os.environ.get("ADONIS_EVENT_BANK", "output/event_bank")
 N_BINS = int(os.environ.get("ADONIS_NBINS", "20"))
@@ -207,10 +208,8 @@ def build_physfit_datasets(B, w0, log, obs=None):
         central = IC.bin_w(d, w0)                                 # Asimov central (incl. free-H)
         sw2 = np.bincount(bidx, weights=np.asarray(w0)[sel]**2, minlength=nb)
         mcerr = scale_bin * np.sqrt(sw2)
-        var = (SYST * central)**2 + mcerr**2
-        # empty bin (no selected events -> central=mcerr=0, and J=0 there): sigma=inf so J/sigma=0
-        # rather than 0/0=NaN, which would poison the ENTIRE Fisher matrix (NaN+finite=NaN).
-        sigma = np.where(var > 0, np.sqrt(var), np.inf)
+        var = (SYST * central)**2 + mcerr**2                      # kept for Cinv + the total-error log
+        sigma = FE.bin_sigma(central, mcerr, SYST)                # empty-bin guarded (sigma=inf, not 0/0)
         d.update(data=central, sigma=sigma, Cinv=np.diag(1.0 / np.maximum(var, 1e-300)),
                  mcerr=mcerr)
         ds.append(d)
@@ -236,21 +235,11 @@ def main():
     def wf(theta, JB):
         return BR.bank_weight(JB, knobs_of(theta, nom), grids)
     jvp_wf = jax.jit(lambda th, tang, JB: jax.jvp(lambda t: wf(t, JB), (th,), (tang,))[1])
-    J = np.zeros((nbins, NPAR))
-    row0 = np.cumsum([0] + [d["nbin"] for d in ds])
-    for k in range(NPAR):
-        g = np.asarray(jvp_wf(jnp.asarray(th0), jnp.zeros(NPAR).at[k].set(1.0), JB))
-        for j, d in enumerate(ds):
-            J[row0[j]:row0[j+1], k] = IC.bin_w0(d, g)
-        log(f"  jvp {k+1:2d}/{NPAR} {PNAMES[k]}")
+    J, row0 = FE.bank_jacobian(jvp_wf, th0, JB, ds, NPAR, log=log, names=PNAMES)
     sigma = np.concatenate([d["sigma"] for d in ds])
 
     # ---- Gate I: Asimov Fisher + priors ----------------------------------------------------------- #
-    Jw = J / sigma[:, None]
-    F = Jw.T @ Jw                                              # data Fisher
-    V = np.linalg.inv(F + np.diag(1.0 / PRIOR**2))             # posterior (marginalized)
-    sig_post = np.sqrt(np.diag(V))
-    shrink = sig_post / PRIOR
+    F, V, sig_post, shrink, _reach = FE.gate1(J, sigma, PRIOR)
     verdict = np.where(shrink < 0.5, "FIT", "freeze")
     order = np.argsort(shrink)
     print(f"\n==== GATE I (Asimov Fisher, {nbins} bins, syst {SYST:.0%}, priors: 20% mult / natural) ====")

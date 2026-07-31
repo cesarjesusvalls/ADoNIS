@@ -28,6 +28,7 @@ from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.constants import PDG_MESONS
 from analysis.paper import info_content as IC
+from analysis.paper import fisher_engine as FE
 from analysis.paper.physical_fit import (
     knobs_of, theta_nominal, PRIOR, PNAMES, NPAR, SYST, N_BINS, design_edges,
 )
@@ -57,9 +58,7 @@ def _fill(d, w0):
     central = IC.bin_w(d, w0)
     sw2 = np.bincount(d["binidx"], weights=np.asarray(w0)[d["sel_idx"]] ** 2, minlength=d["nbin"])
     mcerr = d["scale_bin"] * np.sqrt(sw2)
-    var = (SYST * central) ** 2 + mcerr ** 2
-    # empty bins (esp. in the 2D grid) carry no info; sigma=inf so 0/0 does not poison the Fisher
-    d.update(data=central, sigma=np.where(var > 0, np.sqrt(var), np.inf), mcerr=mcerr)
+    d.update(data=central, sigma=FE.bin_sigma(central, mcerr, SYST), mcerr=mcerr)
     return d
 
 
@@ -107,20 +106,9 @@ def main():
     w0b = np.asarray(wf_jit(jnp.asarray(th0), JB))
     log(f"(V1) nominal identity |w(th0)-w_nominal|_max = {np.max(np.abs(w0b-w0)):.2e}")
 
-    J = np.zeros((nbins, NPAR))
-    row0 = np.cumsum([0] + [d["nbin"] for d in ds])
-    for k in range(NPAR):
-        g = np.asarray(jvp_wf(jnp.asarray(th0), jnp.zeros(NPAR).at[k].set(1.0), JB))
-        for j, d in enumerate(ds):
-            J[row0[j]:row0[j+1], k] = IC.bin_w0(d, g)
-        log(f"  jvp {k+1:2d}/{NPAR} {PNAMES[k]}")
+    J, row0 = FE.bank_jacobian(jvp_wf, th0, JB, ds, NPAR, log=log, names=PNAMES)
     sigma = np.concatenate([d["sigma"] for d in ds])
-
-    Jw = J / sigma[:, None]
-    F = Jw.T @ Jw
-    V = np.linalg.inv(F + np.diag(1.0 / PRIOR ** 2))
-    sig_post = np.sqrt(np.diag(V)); shrink = sig_post / PRIOR
-    reach = np.sqrt(np.maximum(np.diag(F), 0.0))
+    F, V, sig_post, shrink, reach = FE.gate1(J, sigma, PRIOR)
     order = np.argsort(shrink)
     print(f"\n==== MINERvA qelike (p_T,p_||) GATE I (Asimov Fisher, {nbins} bins, syst {SYST:.0%}) ====")
     print(f"{'knob':>18} {'prior':>7} {'sqrtFkk':>10} {'shrink':>7}")

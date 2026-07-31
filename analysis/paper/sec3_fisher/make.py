@@ -35,6 +35,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 from analysis.paper import style
+from analysis.paper import fisher_engine as FE
 from analysis.paper.sec3_fisher import subsets as SS
 
 C_MEAS, C_DEG, C_INV = "#2ca02c", "#ff7f0e", "#7f7f7f"
@@ -63,13 +64,10 @@ def plab(p):
 
 
 def gate1(J, sigma, prior, rows):
-    """(marginalized shrinkage, raw shrinkage, Fisher) for the given bin rows."""
-    Jw = J[rows] / sigma[rows, None]
-    F = Jw.T @ Jw
-    V = np.linalg.inv(F + np.diag(1.0 / prior**2))
-    marg = np.sqrt(np.diag(V)) / prior
+    """(marginalized shrinkage, raw shrinkage, Fisher) for the given bin rows -- via the shared engine."""
+    F, _V, _sig_post, marg, reach = FE.gate1(J, sigma, prior, rows)     # reach = sqrt(diag F)
     with np.errstate(divide="ignore"):
-        raw = np.where(np.diag(F) > 0, 1.0 / np.sqrt(np.maximum(np.diag(F), 1e-300)) / prior, np.inf)
+        raw = np.where(reach > 0, 1.0 / (reach * prior), np.inf)         # raw shrinkage = 1/sqrt(F_kk)/prior
     return marg, raw, F
 
 
