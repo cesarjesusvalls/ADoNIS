@@ -225,7 +225,11 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                         k_nu=np.concatenate([e[1]["k_nu"] for e in evs]).astype(np.float32),
                         p_struck=np.concatenate([e[1]["p_struck"] for e in evs]).astype(np.float32),
                         k_lep=np.concatenate([e[1]["k_lep"] for e in evs]).astype(np.float32))
-            if do_qe and do_res:
+            # hv_* are the CC differentiable hard-vertex records (build_hv_sf + `sf` live only in the CC
+            # branch).  NC banks carry NONE: they reweight through w0 / bank_signal_nc, and bank_weight
+            # fails loud on a bank without hv_* (see adonis/reweight/bank_reweight).  Skip for NC -- this
+            # block was unreachable while NC was RES-only (do_qe False); NC QE+RES now reaches it.
+            if do_qe and do_res and not NC:
                 HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False)
                 hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
                 hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
