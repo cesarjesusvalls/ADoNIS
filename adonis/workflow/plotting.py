@@ -173,9 +173,16 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     a1.fill_between(edges, np.append(rm - rem, (rm - rem)[-1]), np.append(rm + rem, (rm + rem)[-1]),
                     step="post", color=ratio_color, alpha=0.25, lw=0)
     a1.step(edges, np.append(rm, rm[-1]), where="post", color=ratio_color, lw=1.2)
-    a1.set_ylim(*ratio_ylim); a1.set_xlabel(xlabel or label, fontsize=8)   # xlabel was ignored here
-    if ratio_yticks is not None:      # keep the ratio ticks off the shared spine, where the
-        a1.set_yticks(ratio_yticks)   # top panel's y=0 label would overprint them
+    lo, hi = ratio_ylim
+    if ratio_yticks is not None:
+        a1.set_yticks(ratio_yticks)
+        # Pad the window beyond the outermost ticks so the end labels get margin -- the TOP one sits
+        # against the top panel's y=0 label at the flush spine and would otherwise overprint it.  Take
+        # the WIDER of the config ylim and (ticks +/- pad), so a figure that needs a wider window keeps it.
+        tlo, thi = min(ratio_yticks), max(ratio_yticks)
+        step = (thi - tlo) / max(len(ratio_yticks) - 1, 1)
+        lo, hi = min(lo, tlo - 0.6 * step), max(hi, thi + 0.6 * step)
+    a1.set_ylim(lo, hi); a1.set_xlabel(xlabel or label, fontsize=8)   # xlabel was ignored here
 
     a0.set_xlim(edges[0], edges[-1])           # clamp to bin edges (sharex -> a1 too): no "floating" margin
     ach_ado = float(np.sum(da * bw) / max(np.sum(dd * bw), 1e-30))
