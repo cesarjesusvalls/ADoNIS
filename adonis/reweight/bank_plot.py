@@ -136,9 +136,22 @@ def pion_counts(B):
 
 def single_pip(B):
     """p4 of the (single) surviving pi+ per event (n,4); for >1 pi+ the last wins (CC1pi requires ==1)."""
+    return _single_pion(B, 211)
+
+
+def single_pi0(B):
+    """p4 of the (single) surviving pi0 per event (n,4) -- the NC1pi0 signal pion.
+
+    Same contract as single_pip, and for the same reason: the selection requires exactly one, so the
+    ">1 -> last wins" case is unreachable on signal.  Kept as a thin twin rather than a pid argument
+    on a shared helper so both call sites read as the physics they mean."""
+    return _single_pion(B, 111)
+
+
+def _single_pion(B, pid_want):
     pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]; n = len(B["w0"])
-    sel = pid == 211; pip = np.zeros((n, 4)); pip[eidx[sel]] = p4[sel]
-    return pip
+    sel = pid == pid_want; out = np.zeros((n, 4)); out[eidx[sel]] = p4[sel]
+    return out
 
 
 def signal_cc1pi(B):

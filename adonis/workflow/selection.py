@@ -69,11 +69,23 @@ def bank_signal(bank_dir, sd):
             pid = B["fs_pid"]; p4p = B["fs_p4"]; pmp = np.linalg.norm(p4p[:, 1:], axis=1)
             inacc = (pid == 2212) & (pmp > sd.p_win[0]) & (pmp < sd.p_win[1]) & (_cos(p4p, pmp) > sd.cth)
             sel = sel & (BP._event_sum(B, inacc.astype(float)).astype(int) == 1)
-    else:                                                      # ---- CC1pi+ ----
+    else:                                                      # ---- CC1pi ----
         npip, npi0, npim = BP.pion_counts(B); pip = BP.single_pip(B)
+        if sd.pion_id == "anypi":
+            # "anypi" USED to validate and then do nothing -- selection never branched on it, so it
+            # was byte-identical to "pip".  A config key that silently does nothing is the same class
+            # of defect as a field name that lies.  Implemented: exactly one pion of ANY charge, and
+            # the signal pion is whichever one it is.
+            pip = pip + BP.single_pi0(B) + BP._single_pion(B, -211)
+        elif sd.pion_id != "pip":
+            raise ValueError(f"pion_id={sd.pion_id!r} has no selection branch; for NC1pi0 use "
+                             "bank_signal_nc / oracle_signal_nc, which are a separate path")
         lead, hasp = BP.leading_proton_window(B, sd.p_win[0], sd.p_win[1], cth=sd.cth)
         ppi = np.linalg.norm(pip[:, 1:], axis=1); cpi = _cos(pip, ppi)
-        sel = ((npip == 1) & (npi0 == 0) & (npim == 0) & hasp & _mu_pass(pmu, cmu, sd)
+        npi_tot = npip + npi0 + npim
+        one_pion = (npi_tot == 1) if sd.pion_id == "anypi" else \
+                   ((npip == 1) & (npi0 == 0) & (npim == 0))
+        sel = (one_pion & hasp & _mu_pass(pmu, cmu, sd)
                & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
     return _finish(_obs(mu, lead, pip), sel, B["w0"], B["channel"])       # channel: 0 QE, 1 RES
 
@@ -113,3 +125,72 @@ def oracle_signal(oracle_npz, sd):
         sel = ((npip == 1) & (npi0 == 0) & (npim == 0) & haslead & _mu_pass(pmu, cmu, sd)
                & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
     return _finish(_obs(mu, lead, pip), sel, w, chan)
+
+
+# =============================================================== NC1pi0: a PARALLEL selection path
+# Deliberately NOT a flag threaded through _obs.  Every observable it computes -- dpt, dalphat,
+# dphit, pn, dptt -- takes the outgoing lepton as a REQUIRED argument and is physically undefined
+# without it.  For NC the lepton is an invisible neutrino, so threading a "lepton optional" flag
+# would produce observables that are silently meaningless rather than absent, which is worse.
+#
+# The NC observables are the ones the paper's figures 11 and 12 actually plot: p_pi0, cos theta_pi0,
+# and the proton multiplicity ("Xp").
+
+def _obs_nc(pi0, protons_lead, has_p):
+    """Observable dict for an NC1pi0 event.  No lepton anywhere."""
+    ppi = np.linalg.norm(pi0[:, 1:], axis=1)
+    cpi = _cos(pi0, ppi)
+    pl = np.linalg.norm(protons_lead[:, 1:], axis=1)
+    return {"p_pi0": ppi, "cos_pi0": cpi,
+            "th_pi0": np.degrees(np.arccos(np.clip(cpi, -1.0, 1.0))),
+            "lp_p": np.where(has_p, pl, 0.0), "cos_lp": _cos(protons_lead, pl),
+            "has_proton": has_p.astype(float)}
+
+
+def bank_signal_nc(bank_dir, sd):
+    """NC1pi0(Xp) on an ADoNIS bank: EXACTLY one pi0, no charged pions, no non-pion mesons."""
+    B = BP.load_bank(bank_dir)
+    npip, npi0, npim = BP.pion_counts(B)
+    pi0 = BP.single_pi0(B)
+    lead, hasp = BP.leading_proton(B)                       # global leading proton (Xp: 0 or more)
+    ppi = np.linalg.norm(pi0[:, 1:], axis=1); cpi = _cos(pi0, ppi)
+    # non-pion mesons (eta, K, ...) counted directly off the final state -- NOT via n_other_meson,
+    # which counts pi0 as an "other meson" and would veto 100% of this signal.
+    n_heavy = BP._event_sum(B, (np.isin(B["fs_pid"], _MESONS)
+                                & ~np.isin(B["fs_pid"], (211, 111, -211))).astype(float))
+    sel = ((npi0 == 1) & (npip == 0) & (npim == 0) & (n_heavy == 0)
+           & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
+    if sd.proton_count == "eq1":
+        sel = sel & hasp
+    return _finish(_obs_nc(pi0, lead, hasp), sel, B["w0"], B["channel"])
+
+
+def oracle_signal_nc(oracle_npz, sd):
+    """NC1pi0(Xp) on an ACHILLES fs_rich oracle -- the SAME cuts as bank_signal_nc.
+
+    Uses the n_nonpion_meson field (true non-pion mesons only), never n_other_meson: the latter
+    counts pi0 and pi- as "other mesons", which is harmless for CC0pi (both terms are zero on signal)
+    and fatal here.  A file predating that field raises rather than silently mis-vetoing."""
+    d = np.load(oracle_npz, allow_pickle=True)
+    if "n_nonpion_meson" not in d.files:
+        raise KeyError(f"{oracle_npz} has no 'n_nonpion_meson' -- re-extract it.  Falling back to "
+                       "'n_other_meson' would veto the pi0 signal, since that field counts pi0 as an "
+                       "'other meson'.")
+    w = np.asarray(d["w"], float) * float(d["weight_to_nb"])
+    pipid = np.asarray(d["pi_pid"]); pi4 = np.asarray(d["pi_p4"], float)
+    n_heavy = np.asarray(d["n_nonpion_meson"]).astype(int)
+    prot = np.asarray(d["prot_p4"], float)
+    pm = np.linalg.norm(prot[:, :, 1:], axis=2)
+    idx = np.arange(len(w))
+    is_pi0 = (pipid == 111)
+    npi0 = is_pi0.sum(1); npip = (pipid == 211).sum(1); npim = (pipid == -211).sum(1)
+    ip = np.argmax(is_pi0, axis=1); pi0 = pi4[idx, ip]
+    j = pm.argmax(1); lead = prot[idx, j]; hasp = pm.max(1) > 0
+    ppi = np.linalg.norm(pi0[:, 1:], axis=1); cpi = _cos(pi0, ppi)
+    proc = np.asarray(d["proc"]) if "proc" in d.files else np.full(len(w), 451)
+    chan = np.isin(proc, (451, 452)).astype(int)     # NC: 250/251 = QE, 451/452 = RES (measured)
+    sel = ((npi0 == 1) & (npip == 0) & (npim == 0) & (n_heavy == 0)
+           & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
+    if sd.proton_count == "eq1":
+        sel = sel & hasp
+    return _finish(_obs_nc(pi0, lead, hasp), sel, w, chan)

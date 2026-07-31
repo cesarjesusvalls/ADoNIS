@@ -230,7 +230,7 @@ class SignalDef:
     proton_lead: str = "in_window"          # "in_window" (CC1pi) | "global" (CC0pi NUISANCE def)
     proton_count: str = "ge1"               # "ge1" | "eq1"
     require_proton: bool = True
-    pion_id: str = "pip"                    # "pip" | "anypi" | "none" (CC0pi: veto all pions)
+    pion_id: str = "pip"                    # "pip" | "pi0" | "anypi" | "none" (CC0pi: veto all pions)
     count_recoil_neutron: bool = False
     target: str = "carbon"                  # "carbon" | "hydrogen" | "CH"
     W_conv: str = "vertex"
@@ -247,8 +247,8 @@ class SignalDef:
         self.cth = _resolve_scalar(self.cth)
         if self.proton_lead not in ("in_window", "global"):
             raise ValueError(f"proton_lead {self.proton_lead!r} not in in_window|global")
-        if self.pion_id not in ("pip", "anypi", "none"):
-            raise ValueError(f"pion_id {self.pion_id!r} not in pip|anypi|none")
+        if self.pion_id not in ("pip", "pi0", "anypi", "none"):
+            raise ValueError(f"pion_id {self.pion_id!r} not in pip|pi0|anypi|none")
         if self.proton_count not in ("ge1", "eq0", "eq1", "eq2"):
             raise ValueError(f"proton_count {self.proton_count!r} not in ge1|eq0|eq1|eq2")
         if self.ref_proc is not None:
