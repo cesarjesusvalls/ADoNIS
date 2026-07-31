@@ -1,0 +1,4 @@
+# Paper Figs 4/5/6 -- e4nu (e,e') @1.159: E_QE (0pi), E_cal (1p0pi), P_T (1p0pi).  One 3-panel figure.
+# A DRIVER figure: declared here, rendered by its module's render(spec).
+name: fig0456_e4nu
+render: analysis.paper.sec1_validation.fig456_e4nu

@@ -71,7 +71,7 @@ def adonis_obs():
         k1 = elec & (npi == 0) & (nprot == 1)
         Tp = lead[:, 0] - MP                                  # proton KE
         EC.append((Ee + Tp + EPS)[k1]); wc.append(c[k1])
-        ke = np.asarray(d["k_lep"], float)                     # outgoing e- 4-vector (full azimuth)
+        ke = np.asarray(d["k_lep"] if "k_lep" in d.files else d["k_e"], float)  # outgoing e- (k_e: pre-rename EM banks)
         pt = np.sqrt((ke[:, 1] + lead[:, 1]) ** 2 + (ke[:, 2] + lead[:, 2]) ** 2)
         PT.append(pt[k1])
     return (np.concatenate(EQ), np.concatenate(wq)), (np.concatenate(EC), np.concatenate(wc),
@@ -153,6 +153,12 @@ def main():
     fig.suptitle(r"e4$\nu$ (e,e') on $^{12}$C at 1.159 GeV", fontsize=9, y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     style.save(fig, "fig456_e4nu")
+
+
+def render(spec=None):
+    """Figure-hook entry (analysis/paper/figures): render this figure. Compute is main()'s,
+    unchanged; the paper style is set by style.use() inside main() and by the figures entry."""
+    main()
 
 
 if __name__ == "__main__":

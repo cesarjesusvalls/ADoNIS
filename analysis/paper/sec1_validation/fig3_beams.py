@@ -105,6 +105,12 @@ def main(nbins=30, out="fig03_pi_nucleus_sigma"):
     style.save(fig, out)
 
 
+def render(spec=None):
+    """Figure-hook entry (analysis/paper/figures). Compute is main()'s, unchanged."""
+    p = (spec or {}).get("params", {}) or {}
+    main(nbins=int(p.get("nbins", 30)))
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()

@@ -26,3 +26,10 @@ out_path: output/paper/fig11_uboone_nc1pi0_doublediff.png
 title: 'MicroBooNE NC 1$\pi^0$ X$p$ --- $d^2\sigma/d\cos\theta_{\pi^0}\,dp_{\pi^0}$ on $^{40}$Ar'
 ratio_band: [0.9, 1.1]
 ratio_ylim: [0.75, 1.25]
+
+# --- figure-orchestration (analysis/paper/figures entry): fig11 is a DRIVER (slices one observable) ---
+render: analysis.paper.sec1_validation.fig11_nc_doublediff   # module with render(spec); loads THIS file's selection
+params:                                                       # were fig11's argparse defaults
+  slices: 4
+  n_bins: 16
+  max_cols: 2

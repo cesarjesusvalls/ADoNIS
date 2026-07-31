@@ -15,7 +15,7 @@ DEST = OUT / "paper" / "validation_figs.html"
 MAXW = 1200
 
 # (file, one-line title) in reading order; grouped by section header (H = section header).
-# The ACHILLES-paper (arXiv:2508.19213) reproduction set built by sec1_validation/make.py.
+# The ACHILLES-paper (arXiv:2508.19213) reproduction set built by analysis/paper/figures/make.py.
 ITEMS = [
     ("H", "Inclusive & free-nucleon / pion-nucleus cross sections"),
     ("paper/fig01_ee_domega.png",       "Fig 1 — inclusive (e,e') dσ/dω, ⁴⁰Ar & ¹²C @2.222 GeV (QE/RES/total)"),

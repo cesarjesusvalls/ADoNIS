@@ -98,5 +98,11 @@ def main():
     style.save(fig, "fig02_anl_sigma")
 
 
+def render(spec=None):
+    """Figure-hook entry (analysis/paper/figures): render this figure. Compute is main()'s,
+    unchanged; the paper style is set by style.use() inside main() and by the figures entry."""
+    main()
+
+
 if __name__ == "__main__":
     main()

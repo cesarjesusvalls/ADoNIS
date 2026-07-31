@@ -1,0 +1,4 @@
+# Paper Fig 10 -- MicroBooNE CC1p0pi dp_T in dalpha_T slices on Ar.
+# A DRIVER figure: declared here, rendered by its module's render(spec).
+name: fig10_uboone_cc1p0pi
+render: analysis.paper.sec1_validation.fig10_uboone

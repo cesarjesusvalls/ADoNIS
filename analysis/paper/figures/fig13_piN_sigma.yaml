@@ -1,0 +1,5 @@
+# Paper Fig 13 -- piN cascade sigma(W) from ANL-Osaka tables + R angular.  Heavy (MC + analytic).
+# A DRIVER figure: declared here, rendered by its module's render(spec).
+name: fig13_piN_sigma
+render: analysis.paper.sec1_validation.fig13_piN_sigma
+heavy: true    # INC beam-test MC + angular -> minutes; skipped by --light

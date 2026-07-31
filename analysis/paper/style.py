@@ -127,6 +127,16 @@ def panel_legend(ax, has_parts, loc="upper right", bbox_to_anchor=None):
               fontsize=7, ncol=1, handlelength=3.4, labelspacing=0.35, borderpad=0.2)
 
 
+def paper_run_analysis_kw():
+    """The EXACT run_analysis(**kw) styling the paper's config-driven figures use -- SINGLE SOURCE (was
+    inlined at the make.py call site).  Pure-config figures pass this to run_analysis; the standalone
+    drivers already self-style via style.use() + the style.* palette, so they need nothing from here."""
+    return dict(panel_w=2.4, fig_h=3.0, min_w=3.2,
+                panel_kw=panel_kw(ratio_yticks=[0.8, 1.0, 1.2]),
+                legend_fn=panel_legend, label_as_xlabel=True,
+                title_kw={"fontsize": 9, "y": 0.955, "va": "top"}, rect_top=1.0)
+
+
 def swatches(entries, lighten=ADO_LIGHTEN, darken=REF_DARKEN):
     """(handles, labels, handler_map) where EVERY entry is a '-- / -' pair in its own colour, so each
     series advertises both of its shades instead of a single stroke the plot never actually draws.

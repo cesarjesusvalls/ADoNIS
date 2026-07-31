@@ -81,7 +81,7 @@ def main(argv=None):
     import argparse
     from adonis.workflow.config import load_analysis_config
     ap = argparse.ArgumentParser(description="ADoNIS-vs-ACHILLES config-driven figure (one AnalysisConfig YAML).")
-    ap.add_argument("config", help="an AnalysisConfig YAML (configs/analysis/*.yaml)")
+    ap.add_argument("config", help="an AnalysisConfig YAML (paper figures: analysis/paper/figures/*.yaml)")
     ap.add_argument("--out", default=None, help="override out_path")
     a = ap.parse_args(argv)
     cfg = load_analysis_config(a.config)

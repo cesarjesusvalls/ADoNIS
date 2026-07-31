@@ -22,7 +22,7 @@ from adonis.workflow import selection as SG                      # noqa: E402
 from adonis.workflow.plotting import make_figure                 # noqa: E402
 from analysis.paper import style                                 # noqa: E402
 
-CFG = "configs/analysis/fig11_uboone_nc1pi0_doublediff.yaml"
+CFG = "analysis/paper/figures/fig11_uboone_nc1pi0_doublediff.yaml"
 
 
 def _slice(sel, lo, hi):
@@ -103,6 +103,15 @@ def main(argv=None):
     for k, r in results.items():
         print(f"  {k}: chi2/ndf = {r['chi2']/max(r['ndf'],1):.2f}  ACH/ADO = {r['ach_ado']:.4f}")
     return 0
+
+
+def render(spec=None):
+    """Figure-hook entry (analysis/paper/figures). Compute is main()'s, unchanged; params from the spec
+    map onto main()'s CLI so the standalone and hook paths run identical code."""
+    p = (spec or {}).get("params", {}) or {}
+    return main(["--slices", str(p.get("slices", 4)),
+                 "--n-bins", str(p.get("n_bins", 16)),
+                 "--max-cols", str(p.get("max_cols", 2))])
 
 
 if __name__ == "__main__":

@@ -298,6 +298,9 @@ class AnalysisConfig:
 def load_analysis_config(path) -> AnalysisConfig:
     d = yaml.safe_load(Path(path).read_text()) or {}
     d.pop("name", None)
+    # figure-orchestration keys consumed by analysis/paper/figures (the render-hook + its params); they
+    # are NOT AnalysisConfig fields, so a figure spec that ALSO carries a selection (e.g. fig11) loads here.
+    d.pop("render", None); d.pop("params", None)
     d["signal"] = _coerce(SignalDef, d.get("signal"))
     d["data"] = _coerce(DataOverlay, d.get("data"))
     d["observables"] = [_coerce(ObservableSpec, o) for o in d.get("observables", [])]
