@@ -1,33 +1,31 @@
 # NEUTRAL-CURRENT nu_mu on 40Ar, BNB (MicroBooNE) flux -- the bank behind paper figures 11 and 12
 # (fig:NCpi0Xpdoublediff and fig:NCpi0Xpcospi).  See docs/nc_implementation_plan.md.
 #
-# channels: [res] ONLY -- a KNOWN, MEASURED INCOMPLETENESS, not a clean scope cut.
+# channels: [qe, res] -- NC quasi-elastic AND resonance.  NC QE was ADDED once its nuclear sampler
+# (adonis/channels/qe_nc.generate) landed and was validated: flux-averaged nuclear NC-QE sigma on 12C
+# agrees with the ACHILLES oracle (configs/achilles/run_inclusive_nc_C_qe.yml) to 0.3%
+# (test_nc_qe_nuclear).  Before it existed this bank was RES-only, which cost a KNOWN ~1.8% deficit:
 #
-# I first wrote here that NC QE "produces no pion and so cannot enter the signal".  That is WRONG,
-# and the ACHILLES reference proves it: of 29194 selected NC1pi0 events, 516 (1.77%) carry proc
-# 250/251, i.e. NC ELASTIC.  Those pions are made by the CASCADE -- charge exchange on the recoiling
-# nucleon turns a pion-less NC QE event into a 1pi0 one.  It is real physics, and this bank misses it.
-#
-# So expect ADoNIS to sit ~1.8% LOW against ACHILLES on the NC1pi0 rate, from this cause alone, with
-# channels: [res].  The NC QE nuclear sampler HAS NOW LANDED (adonis/channels/qe_nc.generate) and is
-# validated: its flux-averaged nuclear NC-QE sigma on 12C agrees with the ACHILLES oracle
-# (configs/achilles/run_inclusive_nc_C_qe.yml) to 0.3% (test_nc_qe_nuclear).  To CLOSE the deficit, set
-# channels: [qe, res] + achilles_coupl1_quirk: true and REGENERATE (GPU) + re-validate figs 11/12; left
-# as [res] here so the shipped figures are unchanged until that regen is done.  (The 12C sigma is
-# oracle-checked; an Ar NC-QE oracle would confirm the argon absolute scale, same as CC QE on both.)
+# NC QE produces no pion at the vertex, but the ACHILLES reference shows it STILL enters NC1pi0 -- of
+# 29194 selected NC1pi0 events, 516 (1.77%) are proc 250/251 (NC ELASTIC), where the CASCADE makes the
+# pion via charge exchange on the recoiling nucleon.  Real physics; the old [res]-only bank missed it,
+# leaving ADoNIS ~1.8% LOW vs ACHILLES on the NC1pi0 rate.  Adding QE closes that -- figs 11/12 must be
+# RE-VALIDATED against ACHILLES after this regen.  (The 12C NC-QE sigma is oracle-checked; an Ar NC-QE
+# oracle would confirm the argon absolute scale, same as CC QE is checked on both C and Ar.)
 #
 # theta_acc is absent, i.e. the (0,180) default.  GenConfig REJECTS anything else for probe=NC: a
 # polar acceptance on an invisible outgoing neutrino is meaningless and would silently bias the
 # sample with nothing downstream able to notice.
 #
-# achilles_coupl1_quirk: this bank exists to be compared against ACHILLES, so it would be set TRUE to
-# make that comparison like-for-like.  It is currently OMITTED (i.e. false = correct physics) because
-# the quirk is an NC QE coupling and this bank has no QE channel -- setting it would be a no-op that
-# looked meaningful in the manifest.  Add it with the QE channel, not before.
+# achilles_coupl1_quirk: TRUE.  This bank exists to be compared against ACHILLES, so the NC QE coupling
+# must use ACHILLES's coupl1 convention (the 1.0396 F1/F2 factor) to be like-for-like -- exactly the
+# quirk=True the free-nucleon G6(2) gate and the nuclear-sigma validation both use.  It was OMITTED
+# while the bank had no QE channel (would have been a meaningless no-op in the manifest); added now.
 name: nc_uBooNE_Ar
 probe: NC
 beam: spectrum
 flux: microboone
 material: Ar
-channels: [res]
+channels: [qe, res]
+achilles_coupl1_quirk: true      # QE channel now present -> match ACHILLES's coupl1 NC convention
 fsi: true
