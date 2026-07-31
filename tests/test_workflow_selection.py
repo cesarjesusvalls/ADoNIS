@@ -43,7 +43,7 @@ def _write_bank(tmp):
             fs_pid.append(pid); fs_chg.append(_CHG[pid]); fs_p4.append(_p4(p, m))
         off.append(off[-1] + len(ev))
     np.savez(tmp / "chunk_0.npz",
-             k_mu=np.array([_p4(500, MU)] * 4, float), w0=np.ones(4), channel=np.array([0, 1, 0, 1]),
+             k_lep=np.array([_p4(500, MU)] * 4, float), w0=np.ones(4), channel=np.array([0, 1, 0, 1]),
              fs_off=np.array(off, np.int64), fs_pid=np.array(fs_pid, int),
              fs_chg=np.array(fs_chg, int), fs_p4=np.array(fs_p4, float))
     json.dump({"n_chunks": 1}, open(tmp / "manifest.json", "w"))

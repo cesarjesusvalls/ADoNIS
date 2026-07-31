@@ -23,6 +23,41 @@ _XMN = C.mN                                  # constants%mqe = 0.5(mp+mn)
 _COUPL_CC = C.Vud * C.ee * _I / (C.sw * np.sqrt(2.0) * 2.0)
 _COUPL_EM = _I * C.ee          # photon (ACHILLES LeptonicCurrent.cc:121, pid == 22: coupl = i*ee)
 
+# --------------------------------------------------------------------------- NC QE couplings (Z, pid 23)
+# ACHILLES LeptonicCurrent.cc:93-96, read directly:
+#     coupl1 = (ee*i / (4 * sin2w * cw)) * (0.5 - 2*sin2w)
+#     coupl2 = (ee*i / (4 * sw    * cw))
+# and the per-nucleon dictionaries at :97-115 attach them as
+#     proton : F1p,F2p <- coupl1 ; F1n,F2n <- -coupl2 ; FA <- +coupl2
+#     neutron: F1n,F2n <- coupl1 ; F1p,F2p <- -coupl2 ; FA <- -coupl2
+# i.e. coupl1 always multiplies the STRUCK nucleon's own F1/F2 and -coupl2 the other's.  ACHILLES
+# expresses the isoscalar/isovector recombination as this per-nucleon dictionary, so ADoNIS does the
+# same rather than inventing an isospin decomposition.
+#
+# THE coupl1 QUIRK.  coupl1 has sin2w (= sin^2 theta_W) where coupl2, one line below, has sw
+# (= sin theta_W).  coupl2's -1/4 * (g/c_W) isovector partner fixes the overall normalisation at
+# g/(2 c_W) = ee/(2*sw*cw), so the Standard-Model coupling is
+#     correct coupl1 = ee*i/(2*sw*cw) * (0.5 - 2*sin2w)
+# and ACHILLES's is larger by  [1/(2*sin2w)] / [1/sw] = 1/(2*sw) ~ 1.0396.  That "it is a typo" is an
+# INFERENCE from the adjacent line, not a fact -- so we do not bet on it.  Both branches exist and the
+# bank records which one produced it (GenConfig.achilles_coupl1_quirk -> manifest).
+#
+#   quirk=False (default) = correct physics.  This is what ADoNIS IS.
+#   quirk=True            = ACHILLES verbatim.  Set in the bank config that feeds the comparison
+#                           figures, so that comparison is like-for-like.
+#
+# Written as two explicit branches, NOT as one expression with a substituted denominator: the
+# single-expression form `ee*i/(4*X*cw)*(0.5-2*sin2w)` needs X = sw/2 for the correct branch, and
+# writing X = sw there is an easy factor-2 error that would make the DEFAULT half the right coupling.
+_COUPL1_NC_QUIRK = (C.ee * _I / (4 * C.sin2w * C.cw)) * (0.5 - 2 * C.sin2w)   # ACHILLES verbatim
+_COUPL1_NC_TRUE = (C.ee * _I / (2 * C.sw * C.cw)) * (0.5 - 2 * C.sin2w)       # Standard Model
+_COUPL2_NC = C.ee * _I / (4 * C.sw * C.cw)                                    # both branches
+
+
+def nc_coupl1(quirk=False):
+    """The NC QE vector coupling; `quirk=True` reproduces the ACHILLES sin2w/sw discrepancy."""
+    return _COUPL1_NC_QUIRK if quirk else _COUPL1_NC_TRUE
+
 # Pauli matrices
 _SIG = np.stack([
     np.array([[0, 1], [1, 0]], complex),
@@ -79,7 +114,7 @@ def _spinors(p3, E):
 
 
 def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scale=1.0, vector_scale=1.0,
-                            ff_scale=None, probe="CC", is_proton=None):
+                            ff_scale=None, probe="CC", is_proton=None, coupl1_quirk=False):
     """All (...,4) MeV.  p_in_nuc OFF-SHELL struck nucleon (E=mN-removal); p_out_nuc outgoing
     (mp-on-shell energy).  Returns H (...,4combo,4mu) matching ACHILLES cur(i+2*(j-1)).
     axial_scale (scalar or (...,)) multiplies FA and FAP (FAP ~ FA): the M_A reweight hook;
@@ -115,8 +150,46 @@ def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scal
         f2 = jnp.where(isp, ff["F2p"], ff["F2n"])
         F1 = _COUPL_EM * f1 * vsc; F2 = _COUPL_EM * f2 * vsc
         FA = jnp.zeros_like(F1); FAP = jnp.zeros_like(F1)  # photon: no axial current
+    elif probe == "NC":
+        if is_proton is None:
+            raise ValueError("probe='NC' needs is_proton: the NC QE couplings are PER NUCLEON "
+                             "(LeptonicCurrent.cc:97-115), unlike CC's single isovector combination")
+        isp = jnp.asarray(is_proton)
+        c1 = nc_coupl1(coupl1_quirk)
+        # struck nucleon's own F1/F2 carry coupl1; the OTHER nucleon's carry -coupl2
+        f1_own = jnp.where(isp, ff["F1p"], ff["F1n"]); f1_oth = jnp.where(isp, ff["F1n"], ff["F1p"])
+        f2_own = jnp.where(isp, ff["F2p"], ff["F2n"]); f2_oth = jnp.where(isp, ff["F2n"], ff["F2p"])
+        F1 = (c1 * f1_own - _COUPL2_NC * f1_oth) * vsc
+        F2 = (c1 * f2_own - _COUPL2_NC * f2_oth) * vsc
+        # FA <- +coupl2 on a proton, -coupl2 on a neutron (:101 / :112)
+        ca = jnp.where(isp, _COUPL2_NC, -_COUPL2_NC)
+        FA = ca * ff["FA"] * asc
+        # NO strange form factors.  ACHILLES computes FormFactors::FAs (FormFactor.cc:92,123) and
+        # NEVER consumes it: FormFactorInfo::Type (FormFactor.hh:22-48) has no strange entry, so
+        # CouplingsFF cannot dispatch on one.  Adding F1s/F2s/G_A^s would make ADoNIS more physically
+        # complete and fail every gate here by construction, because every gate is an ACHILLES
+        # comparison.  tests/test_nc_qe.py pins this omission with the enum citation.
+        #
+        # FAP (induced pseudoscalar): carried with the SAME +-coupl2 as FA, mirroring the validated CC
+        # branch above, which pairs FAP with FA on one coupling.
+        #
+        # OPEN ITEM, recorded rather than guessed.  `FAP` appears NOWHERE in LeptonicCurrent.cc -- not
+        # in the NC dictionary (:97-115) and not in the CC one (:82-92).  That is NOT evidence that
+        # the term is absent from the physics: the paper runs use `FortranModel QE_Spectral_Func`
+        # (currents_opt_v1.f90), which is what this module ports and which builds its own current;
+        # LeptonicCurrent.cc's dictionary feeds the C++ backend.  So the Fortran, not this dictionary,
+        # is the authority on whether NC QE carries an induced pseudoscalar -- and CC's FAP treatment
+        # here is bit-validated, so mirroring it is the defensible default until the P6 free-nucleon
+        # oracle gate settles it.  Flagged in docs/nc_implementation_plan.md.
+        #
+        # And note it DOES contribute: the term rides on `qsh`, the DE FOREST-SHIFTED transfer
+        # (qsh[0] = q[0] + p_in_nuc[0] - E_in_on), not on the leptonic q.  The tempting argument
+        # "a massless neutrino gives q.j_lep = 0, so the q^mu term drops" is therefore FALSE here --
+        # measured, a x137 FAP moves NC amps2 by ~600x.  test_nc_qe.py pins that it matters, so the
+        # open item cannot be quietly forgotten.
+        FAP = ca * ff["FAP"] * asc
     else:
-        raise ValueError(f"probe must be 'CC' or 'EM', got {probe!r}")
+        raise ValueError(f"probe must be 'CC', 'EM' or 'NC', got {probe!r}")
 
     # current_init_had: q(1)=omega+E_in; p1 on-shell at xmn; q(1)-=p1(1)
     p3_in = p_in_nuc[..., 1:]

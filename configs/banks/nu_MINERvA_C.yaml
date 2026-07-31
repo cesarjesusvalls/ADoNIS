@@ -1,5 +1,5 @@
 name: nu_MINERvA_C
-probe: weak
+probe: CC
 beam: spectrum
 flux: minerva
 material: C

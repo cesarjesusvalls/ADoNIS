@@ -37,7 +37,13 @@ def main(argv=None):
     for c in cfgs:
         print(f"\n=== config: {c} ===", flush=True)
         try:
-            run_analysis(load_analysis_config(c)); ok += 1
+            # ticks spread across the config ratio_ylim (0.75-1.25); 0.9/1.0/1.1 crowd the short strip
+            run_analysis(load_analysis_config(c), panel_w=2.4, fig_h=3.0, min_w=3.2,
+                         panel_kw=style.panel_kw(ratio_yticks=[0.8, 1.0, 1.2]),
+                         legend_fn=style.panel_legend,
+                         label_as_xlabel=True,
+                         title_kw={"fontsize": 9, "y": 0.955, "va": "top"},
+                         rect_top=1.0); ok += 1
         except Exception as e:
             print(f"[FAIL] {c}: {e}", flush=True)
     print(f"\n{ok}/{len(cfgs)} config figures built", flush=True)

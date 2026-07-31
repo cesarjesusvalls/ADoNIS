@@ -1,0 +1,91 @@
+# ACHILLES free-nucleon NEUTRAL-CURRENT RES single-pion sigma(E_nu) -- nu_mu NC on a FREE NEUTRON (Name: 1N => Z=0,A=1 via ZToName):
+#   n -> n pi0 / n -> p pi-.
+# The ABSOLUTE free-nucleon oracle that gates G5 (RES) / G6 (QE) of docs/nc_implementation_plan.md.
+# Those gates report mean(ACH/ADO) and spread(ACH/ADO) SEPARATELY -- a constant offset is a coupling
+# or _NORM error, an energy slope is a propagator error -- so this card must never be normalised to
+# ADoNIS.  Bridge constants are forbidden as gate closers.
+#
+# NC vs the CC free-nucleon cards this was derived from: ONLY `Leptons: [14, [14]]` (outgoing
+# neutrino, not a mu-).  Everything else -- beam, nuclear model, cascade-off, cuts -- is deliberately
+# identical, so any ACH(NC)/ACH(CC) difference is the current and nothing else.
+# Monochromatic beam: the sigma(E) CURVE is a SCAN over `Energy`, overridden per point by the runner.
+# No cascade => run_achilles.py routes this to the amd64 :oracle default (no 'run_cascade'/'*_fsi'
+# prefix), which is correct: emulation only SIGSEGVs with the cascade on.
+#   docker run --rm --platform linux/amd64 -v "$PWD/output/achilles:/out" \
+#     --entrypoint /achilles/bin/achilles ghcr.io/cesarjesusvalls/achilles:oracle /out/run_freenucleon_nc_res_N.yml
+Main:
+  NEvents: 200000
+  HardCuts: false
+  EventCuts: false
+  DoRotate: false
+  RunDecays: False
+  Output:
+      Format: NuHepMC
+      Name: /out/freenucleon_nc_res_N.hepmc
+      Zipped: False
+
+SherpaOptions: !include "data/default/SherpaOptions.yml"
+
+Processes:
+  - Leptons: [14, [14]]
+
+Beams:
+  - Beam:
+      PID: 14
+      Beam Params:
+        Type: Monochromatic
+        Energy: 1500                 # SCAN POINT -- runner overrides this for the sigma(E) curve
+
+Cascade:
+  Run: False
+  Interactions:
+    - Name: NucleonNucleon
+      Options:
+        Mode: GiBUU
+        ResonanceMode: Decay
+        ExpSup: 0.0
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+
+NuclearModels:
+ - NuclearModel:
+    Model: FortranModel
+    Name: RES_Spectral_Func
+    ConfigFile: data/info_C12_pke.data
+    FormFactorFile: "FormFactors.yml"
+    Ward: None
+
+Nuclei:
+  - Nucleus:
+      Name: 1N
+      Binding: 0.0
+      Fermi Momentum: 225
+      Density:
+        ProtonFile: data/densities/c12.prova.txt
+        NeutronFile: data/densities/c12.prova.txt
+        FilePotential: data/realOP_12C_EDAI.dat
+        Function: configuration
+        Configs: data/configurations/QMC_configs.out.gz
+      FermiGas:
+        Type: Local
+        Correlated: False
+        SRCfraction: 0.2
+        LambdaSRC: 2.75
+        Params: []
+      Potential:
+        Name: Schroedinger
+        r0: 0.16
+        Mode: 3
+
+Options: !include "data/default/OptionDefaults.yml"
+
+Cache:
+  Save: False
+  Load: False
+
+Backend:
+  Name: Default
+  Options: []

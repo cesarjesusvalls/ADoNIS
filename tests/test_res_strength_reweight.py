@@ -25,7 +25,7 @@ _tg = resolve_targets("C")[0][0]
 _E = res_xsec.generate(4000, seed=1, return_events=True,
                        sf_n=SpectralFunction(_tg.spectral_n), sf_p=SpectralFunction(_tg.spectral_p),
                        n_neutron=6, n_proton=6)["events"]
-_ARG = [np.asarray(_E[k]) for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi")]
+_ARG = [np.asarray(_E[k]) for k in ("k_nu", "k_lep", "p_struck", "p_N", "p_pi")]
 _IP = np.asarray(_E["ipid"]); _PP = np.asarray(_E["ppid"])
 _REC = build_res_ma_records(*_ARG, _IP, _PP)
 

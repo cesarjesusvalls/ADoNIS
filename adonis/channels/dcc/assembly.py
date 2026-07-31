@@ -28,6 +28,7 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
+from adonis.channels.probes import probe_for_mode
 from adonis.channels.dcc.angular import cbg, legendre_ylm, ISMI, ISMIX, ISBI
 
 # Fortran data statements (interpolate_amp): symmetry pairs id1<->id2 (1-based) and the
@@ -81,6 +82,11 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
     r_axial : optional (n_pw,) or scalar real reweight of the axial block (M_A knob,
               applied as amplitude factor so it squares into the rate downstream).
     """
+    # `mode` is a static Python int, so this guard is a plain call, not a traced branch.  Without it
+    # `mode = -1` (NC) satisfies every `mode < 10` test below and silently takes the CC path -- no
+    # VFAC, no VVFAC, no sw2.  That is how HadronStructure(channels=NC_CHANNELS) runs today and
+    # returns charged-current numbers.  probe_for_mode raises instead.
+    probe_for_mode(mode)
     npw = vec.shape[1]
     phv = jnp.asarray([pw_phase(int(two_J[i]), int(two_L[i])) for i in range(npw)])
     pha = -phv
@@ -119,10 +125,13 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
             zmtx = zmtx.at[7].add(-qc * zm)
 
     # ---- vector current: idxp=1,2,3 (idx 1,2,3) + current conservation ------ #
-    # EW isospin rotation (interpolate_amp, lines 585-604): for the WEAK case (mode<10)
-    # the I=1/2 partial waves are rotated 1/2p,1/2n -> 1/2v,1/2s, and the current uses
-    # the ISOVECTOR  (V-IS)/2;  the I=3/2 waves stay as the raw (isovector) block. EM
-    # (mode>=10) keeps the raw blocks: proton -> vec, neutron I=1/2 -> isoscalar isv.
+    # EW isospin rotation.  The rotation is at amp_dcc_sl_module.f:675-691 -- ONCE at table
+    # read, IN PLACE, `if(mode.lt.10)` so weak only, and `if(itpind(ipw)==3)goto 510` so
+    # I=3/2 is skipped:  zampv <- 0.5*(zampv-zampv_is) [isovector],  zampv_is <- 0.5*(...+...)
+    # [isoscalar].  ADoNIS keeps the loader blocks RAW and rotates here, at use time.
+    # (The previous citation, "interpolate_amp lines 585-604", pointed at the nLsdt L-S
+    # table setup and found nothing -- which made this form look invented.  It is not.)
+    # EM (mode>=10) keeps the raw blocks: proton -> vec, neutron I=1/2 -> isoscalar isv.
     for ipw in range(npw):
         is_I32 = int(two_I[ipw]) == 3
         if mode < 10:                              # weak (CC/NC)

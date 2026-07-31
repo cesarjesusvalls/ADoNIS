@@ -33,6 +33,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
+from adonis.channels.probes import probe_spec
 from adonis.channels.dcc.amplitudes import DCCKnobs
 from adonis.nuclear.spectral import load_spectral, SpectralSampler
 from adonis.channels.dcc.structure import HadronStructure
@@ -114,7 +115,7 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     cut = (W > W_THR) & (W < W_MAX) & (Q2_adj > 0.0) & (Q2_adj < Q2_MAX) & (Ep >= m_lep)
 
     k_cm, kp_cm = cm_lepton_momenta(k_lab, kp_lab, p_struck)
-    is_em = (current == "EM")
+    is_em = probe_spec(current).em_propagator   # raises on unknown/unimplemented, never assumes CC
     Lmn = sg(lepton_tensor_em(k_cm, kp_cm) if is_em else lepton_tensor_cc(k_cm, kp_cm))
     e1, e2, e3, P = cm_basis(k_lab, kp_lab, p_struck)
     # EM photon propagator 1/Q^4 (true leptonic Q^2); CC W-propagator is ~constant -> 1.

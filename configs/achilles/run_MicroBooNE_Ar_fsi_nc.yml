@@ -1,0 +1,151 @@
+# ACHILLES NEUTRAL-CURRENT nu_mu on 40Ar with the FULL cascade, BNB (MicroBooNE) flux -- the
+# reference for paper figures 11 and 12 (NC 1pi0 Xp).  See docs/nc_implementation_plan.md.
+#
+# THE NAME IS LOAD-BEARING.  adonis/oracle/run_achilles.py::_RULES routes by card-name PREFIX, and
+# `run_MicroBooNE_Ar_fsi` is the rule that selects the native-arm64 :fullcascade image.  The obvious
+# name `run_MicroBooNE_Ar_nc_fsi` does NOT start with that prefix, so it would fall through to the
+# amd64 :oracle default -- the NO-CASCADE image, run under emulation.  Putting the suffix AFTER the
+# matched prefix inherits the rule with zero code change.  tests/test_nc_antineutrino.py pins it.
+#
+# Differs from run_MicroBooNE_Ar_fsi.yml in exactly two lines -- `Leptons: [14, [14]]` and the output
+# name -- so any ACH(NC)/ACH(CC) difference is the current and nothing else.
+#
+# The HardCuts block below cuts on AngleTheta of PID 13, a particle that does not exist in an NC
+# event.  It is inert (`Main: HardCuts: false`, and the range is the full [0,180]), so it is left as
+# it stands rather than edited: changing it would make this card differ from the CC one in a third
+# place for no physics gain.
+Main:
+  NEvents: 50000
+  HardCuts: false
+  EventCuts: false
+  DoRotate: false
+  RunDecays: False
+  Output:
+      Format: NuHepMC
+      Name: /out/MicroBooNE_Ar_fsi_nc.hepmc
+      Zipped: False
+
+SherpaOptions: !include "data/default/SherpaOptions.yml"
+
+Processes:
+  - Leptons: [14, [14]]
+
+Beams:
+  - Beam:
+      PID: 14
+      Beam Params:
+        Type: Spectrum
+        Histogram: flux/microboone_numu.dat
+Cascade:
+  Run: True
+  Interactions:
+    - Name: NucleonNucleon
+      Options:
+        Mode: GiBUU
+        ResonanceMode: Decay
+        ExpSup: 0.0
+    - Name: PionInteraction
+      Options:
+        HardScatter:
+          Name: MesonBaryonInteraction
+          Options:
+        Absorption:
+          Name: PionAbsorptionOneStep
+          Options:
+    - Name: ConstantInteraction
+      Options:
+        InitialStates:
+          - Incoming: [22, 2112]
+            Outgoing:
+              - Outgoing: [22, 2112]
+                CrossSection: 0
+          - Incoming: [22, 2212]
+            Outgoing:
+              - Outgoing: [22, 2212]
+                CrossSection: 0
+          - Incoming: [3112, 2112]
+            Outgoing:
+              - Outgoing: [3112, 2112]
+                CrossSection: 0
+          - Incoming: [3112, 2212]
+            Outgoing:
+              - Outgoing: [3212, 2112]
+                CrossSection: 0
+          - Incoming: [321, 2212]
+            Outgoing:
+              - Outgoing: [321, 2212]
+                CrossSection: 0
+          - Incoming: [321, 2112]
+            Outgoing:
+              - Outgoing: [321, 2112]
+                CrossSection: 0
+          - Incoming: [3122, 2212]
+            Outgoing:
+              - Outgoing: [3122, 2212]
+                CrossSection: 0
+          - Incoming: [3122, 2112]
+            Outgoing:
+              - Outgoing: [3122, 2112]
+                CrossSection: 0
+          - Incoming: [3212, 2212]
+            Outgoing:
+              - Outgoing: [3212, 2212]
+                CrossSection: 0
+          - Incoming: [3212, 2112]
+            Outgoing:
+              - Outgoing: [3212, 2112]
+                CrossSection: 0
+          - Incoming: [3222, 2112]
+            Outgoing:
+              - Outgoing: [3222, 2112]
+                CrossSection: 0
+          - Incoming: [3222, 2212]
+            Outgoing:
+              - Outgoing: [3222, 2212]
+                CrossSection: 0
+          - Incoming: [311, 2112]
+            Outgoing:
+              - Outgoing: [311, 2112]
+                CrossSection: 0
+          - Incoming: [311, 2212]
+            Outgoing:
+              - Outgoing: [311, 2212]
+                CrossSection: 0
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+
+
+NuclearModels:
+ - NuclearModel:
+    Model: FortranModel
+    Name: QE_Spectral_Func
+    ConfigFile: data/info_Ar40_pke.data
+    FormFactorFile: "FormFactors.yml"
+    Ward: None
+ - NuclearModel:
+    Model: FortranModel
+    Name: RES_Spectral_Func
+    ConfigFile: data/info_Ar40_pke.data
+    FormFactorFile: "FormFactors.yml"
+    Ward: None
+
+Nuclei:
+  - Nucleus: !include "data/default/40Ar.yml"
+
+HardCuts:
+  - Type: AngleTheta
+    PIDs: 13
+    range: [0., 180.]
+
+Options: !include "data/default/OptionDefaults.yml"
+
+Cache:
+  Save: False
+  Load: False
+
+Backend:
+  Name: Default
+  Options: []

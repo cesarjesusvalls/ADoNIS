@@ -62,7 +62,7 @@ def minerva_signal(B):
     proton_count='ge1', pion_id='none') with the MINERvA windows, but keeps arrays at bank length so
     the Jacobian engine can index per-event weights.  Observables via the validated bank_plot CC1pi
     STV formulas with the pion 4-vector set to zero (they reduce EXACTLY to the CC0pi STV)."""
-    mu = B["k_mu"].astype(np.float64)
+    mu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(mu[:, 1:], axis=1)
     cmu = mu[:, 3] / np.maximum(pmu, 1e-9)
     n_meson = BP._event_sum(B, np.isin(B["fs_pid"], _MESONS).astype(float))   # zero final-state mesons

@@ -180,6 +180,12 @@ def cc1pi_rich(path, K=4, M=10, **_):
         if mu is None or nu is None or struck is None:
             continue
         nkept += 1
+        # n_other_meson counts pi0 and pi- as "other mesons" (`n_other += (pid != PIP)`), and
+        # selection.py then ADDS it to (pi_pid != 0).sum(), double-counting every non-pi+ pion.  Both
+        # terms are zero on a CC0pi signal so no CC number was ever wrong -- but reusing it as a veto
+        # for a pi0 signal would veto the signal itself.  n_nonpion_meson is the honest field: TRUE
+        # non-pion mesons only (eta, K, ...).  The old field is left byte-identical so no CC number
+        # moves; new selections must use the new one.
         p4p = np.zeros((K, 4)); pidp = np.zeros(K, np.int64)
         for i, (pp, q) in enumerate(sorted(pions, key=lambda t: -np.linalg.norm(t[1][1:]))[:K]):
             p4p[i] = q; pidp[i] = pp
@@ -281,12 +287,13 @@ def fs_rich(path, K=6, M=10, **_):
     (status-4 beam, else the highest-E neutrino); struck nucleon(+pid); n_other_meson; weight; proc.  So one
     rich oracle expresses final-state kinematics for ANY probe -- extract.py cc1pi_rich but WITHOUT the
     nu/mu/struck skip that made it neutrino-only."""
-    lep_l, prb_l, st_l, sp_l, w_l, nom_l, proc_l = [], [], [], [], [], [], []
+    lep_l, prb_l, st_l, sp_l, w_l, nom_l, nnp_l, proc_l = [], [], [], [], [], [], [], []
     pip4_l, pipid_l, pr4_l, nr4_l = [], [], [], []
     n_evt = 0
     for evt in parse_events(Path(path)):
         n_evt += 1
-        lep = prb = struck = None; struck_pid = 0; pions = []; protons = []; neutrons = []; n_other = 0
+        lep = prb = struck = None; struck_pid = 0; pions = []; protons = []; neutrons = []
+        n_other = 0; n_nonpion = 0
         for pid, status, p4 in evt["parts"]:
             if status == 4 and (prb is None or p4[0] > prb[0]):        # incoming beam particle (neutrino/ee: status 4)
                 prb = p4
@@ -302,14 +309,24 @@ def fs_rich(path, K=6, M=10, **_):
                 continue
             if pid == MU or pid == ELEC:                               # outgoing lepton (mu | e-)
                 lep = p4
+            elif pid == NU_MU:
+                lep = p4                    # NC: the outgoing lepton IS a neutrino.  Without this,
+                #                             `lep` stays the zero vector on every NC event and every
+                #                             lepton-derived observable is silently zero.
             elif pid in PIONS:
-                pions.append((pid, p4)); n_other += (pid != PIP)
+                pions.append((pid, p4)); n_other += (pid != PIP)   # pions are NOT non-pion mesons
             elif pid in MESONS:
-                n_other += 1
+                n_other += 1; n_nonpion += 1
             elif pid == PROT:
                 protons.append(p4)
             elif pid == NEUT:
                 neutrons.append(p4)
+        # n_other_meson counts pi0 and pi- as "other mesons" (`n_other += (pid != PIP)`), and
+        # selection.py then ADDS it to (pi_pid != 0).sum(), double-counting every non-pi+ pion.  Both
+        # terms are zero on a CC0pi signal so no CC number was ever wrong -- but reusing it as a veto
+        # for a pi0 signal would veto the signal itself.  n_nonpion_meson is the honest field: TRUE
+        # non-pion mesons only (eta, K, ...).  The old field is left byte-identical so no CC number
+        # moves; new selections must use the new one.
         p4p = np.zeros((K, 4)); pidp = np.zeros(K, np.int64)
         for i, (pp, q) in enumerate(sorted(pions, key=lambda t: -np.linalg.norm(t[1][1:]))[:K]):
             p4p[i] = q; pidp[i] = pp
@@ -323,13 +340,13 @@ def fs_rich(path, K=6, M=10, **_):
         prb_l.append(prb if prb is not None else np.zeros(4))
         st_l.append(struck if struck is not None else np.zeros(4)); sp_l.append(struck_pid)
         pip4_l.append(p4p); pipid_l.append(pidp); pr4_l.append(prp); nr4_l.append(nrp)
-        nom_l.append(n_other); w_l.append(evt["w"] or 1.0)
+        nom_l.append(n_other); nnp_l.append(n_nonpion); w_l.append(evt["w"] or 1.0)
         proc_l.append(evt["proc"] if evt["proc"] is not None else -1)
         if n_evt % 200000 == 0:
             print(f"  {n_evt} parsed", flush=True)
     return dict(lep=np.array(lep_l), probe=np.array(prb_l), struck=np.array(st_l),
                 struck_pid=np.array(sp_l), pi_p4=np.array(pip4_l), pi_pid=np.array(pipid_l),
-                prot_p4=np.array(pr4_l), neut_p4=np.array(nr4_l), n_other_meson=np.array(nom_l),
+                prot_p4=np.array(pr4_l), neut_p4=np.array(nr4_l), n_other_meson=np.array(nom_l), n_nonpion_meson=np.array(nnp_l),
                 w=np.array(w_l), proc=np.array(proc_l, np.int64))
 
 

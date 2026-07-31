@@ -1,5 +1,5 @@
 name: nu_uBooNE_Ar
-probe: weak
+probe: CC
 beam: spectrum
 flux: microboone
 material: Ar

@@ -113,9 +113,9 @@ def _tune():
     return _tune._T
 
 
-def dpt(B, lead):  return np.asarray(_tune()._dpt(B["k_mu"].astype(float), lead))
-def dat(B, lead):  return np.asarray(_tune()._dat(B["k_mu"].astype(float), lead))
-def acceptance(B, lead):  return np.asarray(_tune()._sel(B["k_mu"].astype(float), lead))
+def dpt(B, lead):  return np.asarray(_tune()._dpt(B["k_lep"].astype(float), lead))
+def dat(B, lead):  return np.asarray(_tune()._dat(B["k_lep"].astype(float), lead))
+def acceptance(B, lead):  return np.asarray(_tune()._sel(B["k_lep"].astype(float), lead))
 
 
 def signal_cc0pi(B, topological=False):
@@ -136,9 +136,22 @@ def pion_counts(B):
 
 def single_pip(B):
     """p4 of the (single) surviving pi+ per event (n,4); for >1 pi+ the last wins (CC1pi requires ==1)."""
+    return _single_pion(B, 211)
+
+
+def single_pi0(B):
+    """p4 of the (single) surviving pi0 per event (n,4) -- the NC1pi0 signal pion.
+
+    Same contract as single_pip, and for the same reason: the selection requires exactly one, so the
+    ">1 -> last wins" case is unreachable on signal.  Kept as a thin twin rather than a pid argument
+    on a shared helper so both call sites read as the physics they mean."""
+    return _single_pion(B, 111)
+
+
+def _single_pion(B, pid_want):
     pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]; n = len(B["w0"])
-    sel = pid == 211; pip = np.zeros((n, 4)); pip[eidx[sel]] = p4[sel]
-    return pip
+    sel = pid == pid_want; out = np.zeros((n, 4)); out[eidx[sel]] = p4[sel]
+    return out
 
 
 def signal_cc1pi(B):
@@ -172,7 +185,7 @@ def signal_cc1pi_stv(B):
     (momentum windows + cos(theta)>cos70 on all three).  Returns (mask, lead, pip4)."""
     npip, npi0, npim = pion_counts(B); pip = single_pip(B)
     lead, hasp = leading_proton_window(B, _P_LO, _P_HI, cth=_CTH)
-    kmu = B["k_mu"].astype(np.float64)
+    kmu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(kmu[:, 1:], axis=1); cmu = kmu[:, 3] / np.clip(pmu, 1e-9, None)
     ppi = np.linalg.norm(pip[:, 1:], axis=1); cpi = pip[:, 3] / np.clip(ppi, 1e-9, None)
     mask = ((npip == 1) & (npi0 == 0) & (npim == 0) & hasp
@@ -209,6 +222,20 @@ def dat_1pi(kmu, lead, pip):
     lt = kmu[:, 1:3]; dv = lt + lead[:, 1:3] + pip[:, 1:3]
     num = -np.sum(lt * dv, axis=1)
     den = np.linalg.norm(lt, axis=1) * np.clip(np.linalg.norm(dv, axis=1), 1e-9, None)
+    return np.arccos(np.clip(num / den, -1.0, 1.0))
+
+
+def dphit_1pi(kmu, lead, pip):
+    """Transverse DEFLECTING angle delta_phiT [rad] = angle between the transverse muon and the
+    transverse HADRON system: arccos(-p_T^mu . p_T^had / (|p_T^mu||p_T^had|)).
+
+    NB this is NOT delta_alphaT: dat measures the muon against the transverse IMBALANCE
+    (p_T^mu + p_T^had), dphit measures it against the hadron system itself (pip is zero for CC0pi,
+    so the hadron system is just the leading proton).  Same convention as kinematics.delta_phiT,
+    which is the EventRecord-level twin of this bank-level primitive."""
+    lt = kmu[:, 1:3]; ht = lead[:, 1:3] + pip[:, 1:3]
+    num = -np.sum(lt * ht, axis=1)
+    den = np.linalg.norm(lt, axis=1) * np.clip(np.linalg.norm(ht, axis=1), 1e-9, None)
     return np.arccos(np.clip(num / den, -1.0, 1.0))
 
 

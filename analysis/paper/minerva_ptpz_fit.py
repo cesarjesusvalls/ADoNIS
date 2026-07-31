@@ -65,7 +65,7 @@ def _fill(d, w0):
 
 def build_ptpz_datasets(B, w0, log):
     """p_T^mu (1D), p_||^mu (1D), 2D p_T-p_|| over the qelike (0-meson, theta_mu<20, no-proton) selection."""
-    kmu = B["k_mu"].astype(np.float64)
+    kmu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(kmu[:, 1:], axis=1)
     cmu = kmu[:, 3] / np.maximum(pmu, 1e-9)
     pt = np.sqrt(kmu[:, 1] ** 2 + kmu[:, 2] ** 2)                  # transverse muon momentum

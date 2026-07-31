@@ -62,13 +62,13 @@ def _sample_3body_ee(k_e, p_struck, m_pi, m_Nf, m_lep, u):
     dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
     le_cm = np.concatenate([Ele[:, None], pB[:, None] * dB], axis=1)
     N_cm = np.concatenate([np.sqrt(m_Nf ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
-    k_le = _boost_to_lab(le_cm, p_leN); p_N = _boost_to_lab(N_cm, p_leN)
+    k_lep = _boost_to_lab(le_cm, p_leN); p_N = _boost_to_lab(N_cm, p_leN)
     I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, m_lep ** 2, m_Nf ** 2), 1e-12, None)
     density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
     J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
     valid3 = ((s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0)
               & (_sqlam(s23, m_lep ** 2, m_Nf ** 2) > 0))
-    return dict(k_le=k_le, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, valid3=valid3)
+    return dict(k_lep=k_lep, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, valid3=valid3)
 
 
 def _sample_channel_ee(n, rng, E_beam, m_pi, m_Nf, m_struck, imp):
@@ -84,7 +84,7 @@ def _sample_channel_ee(n, rng, E_beam, m_pi, m_Nf, m_struck, imp):
     emax = _MN + E_beam - np.sqrt(np.clip(det, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
     valid = (tb["s"] > Smin) & tb["valid3"] & (energy < emax)
-    return dict(k_e=k_e, p_struck=p_struck, k_le=tb["k_le"], p_N=tb["p_N"], p_pi=tb["p_pi"],
+    return dict(k_e=k_e, p_struck=p_struck, k_lep=tb["k_lep"], p_N=tb["p_N"], p_pi=tb["p_pi"],
                 J=tb["J_3body"], mom=mom, energy=energy, valid=valid)
 
 
@@ -100,7 +100,7 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
     Z, N, sf_p_path, sf_n_path = MATERIALS[material]
     imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))
     imp_n = SpectralImportanceSampler(SpectralFunction(sf_n_path))
-    keys = ["c", "omega", "theta"] + (["k_e", "k_le", "p_struck", "p_N", "p_pi",
+    keys = ["c", "omega", "theta"] + (["k_e", "k_lep", "p_struck", "p_N", "p_pi",
                                         "ppid", "Npid", "ipid"] if records else [])
     out = {k: [] for k in keys}
     # n is the TOTAL draw count, SPLIT across the 4 EM channels (was n per channel -> 4n) so generate(n)
@@ -124,23 +124,24 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
             if v.any():
                 # tcrz = current isospin_z: 0 for the PHOTON (isovector Iz=0), NOT the CC W+ value 1.
                 # With the CC default the isospin CG <1,tcrz;1/2,tiz|tpi,tpiz> kills the pi0/pi- channels.
-                a2[v] = exclusive_amps2_batch(s["k_e"][v], s["k_le"][v], s["p_struck"][v],
+                a2[v] = exclusive_amps2_batch(s["k_e"][v], s["k_lep"][v], s["p_struck"][v],
                                               s["p_N"][v], s["p_pi"][v], itiz, ppid, probe="EM", tcrz=0.0)
             fl = np.asarray(flux_factor(s["k_e"], s["p_struck"], had_mass=m_struck))
             w = np.where(v, a2 * fl * n_tgt * SPIN_AVG_EM * s["J"], 0.0)
             w = np.where(np.isfinite(w), w, 0.0)
-            k_le = s["k_le"]
-            omega = E_beam - k_le[:, 0]
-            kmag = np.linalg.norm(k_le[:, 1:], axis=1)
-            theta = np.degrees(np.arccos(np.clip(k_le[:, 3] / np.clip(kmag, 1e-9, None), -1, 1)))
+            k_lep = s["k_lep"]
+            omega = E_beam - k_lep[:, 0]
+            kmag = np.linalg.norm(k_lep[:, 1:], axis=1)
+            theta = np.degrees(np.arccos(np.clip(k_lep[:, 3] / np.clip(kmag, 1e-9, None), -1, 1)))
             if records:
                 # keep valid events INSIDE the angular acceptance (same cut QE applies) -- this is what
                 # excludes the forward 1/q^4 photon-propagator divergence.  theta_acc=None -> all angles.
                 sel = v if theta_acc is None else (v & (theta >= theta_acc[0]) & (theta <= theta_acc[1]))
                 out["c"].append((w / n_ch)[sel]); out["omega"].append(omega[sel]); out["theta"].append(theta[sel])
                 # lepton kinematics (in/out e- + struck nucleon) -- needed to fill the unified generation
-                # bank schema (adonis.workflow.generate.gen_events, probe="EM"): k_e->k_nu, k_le->k_mu.
-                out["k_e"].append(s["k_e"][sel]); out["k_le"].append(s["k_le"][sel])
+                # bank schema: the INCOMING beam electron k_e is stored as k_nu (see the k_nu note in P3);
+                # the OUTGOING electron is k_lep, the same key the CC banks use.
+                out["k_e"].append(s["k_e"][sel]); out["k_lep"].append(s["k_lep"][sel])
                 out["p_struck"].append(s["p_struck"][sel])
                 out["p_N"].append(s["p_N"][sel]); out["p_pi"].append(s["p_pi"][sel])
                 nk = int(sel.sum())

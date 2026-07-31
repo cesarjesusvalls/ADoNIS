@@ -94,7 +94,13 @@ FLUX_FILES = {
 }
 
 
-PROBES = ("weak", "EM", "hadron")   # weak = CC neutrino current ; EM = electron (photon) current ;
+# PROBE NAMES ARE THE PHYSICS, and they must stay that way: adonis.channels.probes is the registry
+# that decides what each one MEANS, and "weak" was a name that could not survive NC -- a neutral
+# current is every bit as weak as a charged one, so "weak" would have had to mean "CC except when it
+# means NC".  Renamed to "CC" outright; there is deliberately NO alias and no back-compat mapping,
+# because a mapping is how the lie survives.  load_gen_config rejects unknown keys and probe_spec()
+# raises on unknown values, so a missed rename fails loudly rather than silently meaning CC.
+PROBES = ("CC", "NC", "EM", "hadron")   # CC/NC = charged-/neutral-current neutrino ; EM = electron ;
 #                                     hadron = a tagged hadron projectile (no hard vertex, pure FSI transport)
 HADRON_BEAMS = ("pip", "prot", "neut")               # tagged-hadron projectiles (adonis.flux.hadron.BEAMS)
 GEN_BEAMS = ("spectrum", "electron") + HADRON_BEAMS  # nu spectrum | mono e- | pi+/p/n projectile
@@ -102,7 +108,8 @@ E_BEAM_JLAB = 2222.0            # default monochromatic e- energy [MeV] (JLab 2.
 
 
 # probe -> the beam sources it is allowed to pair with (a bank can't be mislabelled across probes).
-_PROBE_BEAMS = {"weak": ("spectrum",), "EM": ("electron",), "hadron": HADRON_BEAMS}
+_PROBE_BEAMS = {"CC": ("spectrum",), "NC": ("spectrum",), "EM": ("electron",),
+                "hadron": HADRON_BEAMS}
 
 
 @dataclass
@@ -110,27 +117,38 @@ class GenConfig:
     """THE single generation config -- one schema for every bank the pipeline makes, driven entirely by
     fields (there is exactly one generator, adonis.workflow.generate_bank; the diversity is here, not in
     the code path).  `probe` selects the primary interaction:
-      * weak   : CC neutrino hard vertex (channels qe/res), beam=spectrum (a flux table)
+      * CC     : charged-current neutrino hard vertex (channels qe/res), beam=spectrum (a flux table)
+      * NC     : neutral-current neutrino hard vertex, beam=spectrum.  theta_acc MUST be full
+                 acceptance -- a polar cut on an invisible outgoing neutrino is meaningless and would
+                 silently bias the sample, so it is rejected rather than ignored.
       * EM     : electron hard vertex (channels qe/res), beam=electron (monochromatic e-), theta_acc cut
       * hadron : a tagged pi+/p/n projectile (no hard vertex, pure FSI transport), beam in {pip,prot,neut},
                  |p| uniform in [pmin,pmax]
     `fsi` (default True) runs the cascade -> the rich reweight records; fsi=False -> a pre-FSI bank."""
-    probe: str = "weak"         # weak | EM | hadron
+    probe: str = "CC"           # CC | NC | EM | hadron
     beam: str = "spectrum"      # spectrum | electron | pip | prot | neut  (must be consistent with probe)
     material: str = "C"
-    channels: tuple = ("res",)              # weak/EM: subset of {"res","qe"}; ignored for hadron
-    # --- weak (neutrino) ---
+    channels: tuple = ("res",)              # CC/NC/EM: subset of {"res","qe"}; ignored for hadron
+    # --- CC (neutrino) ---
     flux: str = "t2k"           # neutrino flux key (beam=spectrum only); see FLUX_FILES
     # --- EM (electron) ---
     e_beam: float = E_BEAM_JLAB             # monochromatic e- energy [MeV]
     theta_acc: tuple = (0.0, 180.0)         # outgoing-lepton polar acceptance [deg], applied UNIFORMLY to
-    #                                         every hard-vertex channel (weak muon + EM electron) at
+    #                                         every hard-vertex channel (CC muon + EM electron) at
     #                                         generation.  Default (0,180) = full acceptance (no-op);
     #                                         EM configs set (5,180) to cut the forward 1/q^4 divergence.
     # --- hadron (tagged beam) ---
     pmin: float = 50.0                      # projectile |p| window [MeV/c] (uniform)
     pmax: float = 1000.0
     # --- cascade / FSI ---
+    # --- NC ---
+    achilles_coupl1_quirk: bool = False     # NC QE only.  False = correct physics (the SM coupling);
+    #                                         True = reproduce ACHILLES's coupl1 sin2w/sw discrepancy
+    #                                         verbatim (~1.0396 on both nucleons' F1/F2).  Set True in
+    #                                         the bank config that feeds the ACHILLES-comparison
+    #                                         figures, so the comparison is like-for-like.  RECORDED IN
+    #                                         THE MANIFEST -- a bank can never be ambiguous about which
+    #                                         convention produced it.  See channels/currents/dirac.py.
     fsi: bool = True                        # False -> PRE-FSI bank (primary products, no cascade)
     pauli: bool = True                      # cascade Pauli blocking (False -> DEBUG ablation)
     cascade: CascadeHyperparams = field(default_factory=CascadeHyperparams)
@@ -152,11 +170,18 @@ class GenConfig:
             raise ValueError(f"beam {self.beam!r} not in {sorted(GEN_BEAMS)}")
         if self.beam not in _PROBE_BEAMS[self.probe]:
             raise ValueError(f"probe={self.probe!r} requires beam in {_PROBE_BEAMS[self.probe]}, got {self.beam!r}")
-        if self.probe in ("weak", "EM"):
+        if self.probe in ("CC", "NC", "EM"):
             bad = set(self.channels) - {"res", "qe"}
             if bad:
                 raise ValueError(f"channels: {sorted(bad)} not in {{'res','qe'}} (probe {self.probe})")
         self.theta_acc = tuple(_resolve_seq(self.theta_acc))
+        if self.probe == "NC" and not (self.theta_acc[0] <= 0.0 and self.theta_acc[1] >= 180.0):
+            raise ValueError(f"probe='NC' requires full theta_acc (0,180), got {self.theta_acc}: the "
+                             "outgoing lepton is a neutrino, so an angular acceptance on it is "
+                             "meaningless and would silently bias the sample")
+        if self.probe != "NC" and self.achilles_coupl1_quirk:
+            raise ValueError("achilles_coupl1_quirk is an NC QE coupling switch; it has no meaning "
+                             f"for probe={self.probe!r} and setting it there would be a silent no-op")
         if self.probe == "hadron" and self.pmax <= self.pmin:
             raise ValueError(f"pmax {self.pmax} must exceed pmin {self.pmin}")
         if self.beam == "spectrum":
@@ -169,7 +194,7 @@ class GenConfig:
 
     @property
     def bank_prefix(self) -> str:
-        """Bank-name beam tag: flux key (weak), ee<E> (EM), or the projectile name (hadron)."""
+        """Bank-name beam tag: flux key (CC), ee<E> (EM), or the projectile name (hadron)."""
         if self.probe == "hadron":
             return self.beam
         return self.flux if self.beam == "spectrum" else f"ee{int(round(self.e_beam))}"
@@ -205,7 +230,7 @@ class SignalDef:
     proton_lead: str = "in_window"          # "in_window" (CC1pi) | "global" (CC0pi NUISANCE def)
     proton_count: str = "ge1"               # "ge1" | "eq1"
     require_proton: bool = True
-    pion_id: str = "pip"                    # "pip" | "anypi" | "none" (CC0pi: veto all pions)
+    pion_id: str = "pip"                    # "pip" | "pi0" | "anypi" | "none" (CC0pi: veto all pions)
     count_recoil_neutron: bool = False
     target: str = "carbon"                  # "carbon" | "hydrogen" | "CH"
     W_conv: str = "vertex"
@@ -222,8 +247,8 @@ class SignalDef:
         self.cth = _resolve_scalar(self.cth)
         if self.proton_lead not in ("in_window", "global"):
             raise ValueError(f"proton_lead {self.proton_lead!r} not in in_window|global")
-        if self.pion_id not in ("pip", "anypi", "none"):
-            raise ValueError(f"pion_id {self.pion_id!r} not in pip|anypi|none")
+        if self.pion_id not in ("pip", "pi0", "anypi", "none"):
+            raise ValueError(f"pion_id {self.pion_id!r} not in pip|pi0|anypi|none")
         if self.proton_count not in ("ge1", "eq0", "eq1", "eq2"):
             raise ValueError(f"proton_count {self.proton_count!r} not in ge1|eq0|eq1|eq2")
         if self.ref_proc is not None:
@@ -267,6 +292,7 @@ class AnalysisConfig:
     ratio_band: tuple = (0.9, 1.1)
     ratio_ylim: tuple = (0.5, 1.6)
     carbon_only: bool = True
+    legend_loc: str = ""            # style hint: matplotlib loc for the panel legend ("" -> caller default)
 
 
 def load_analysis_config(path) -> AnalysisConfig:

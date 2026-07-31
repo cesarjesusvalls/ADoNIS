@@ -100,13 +100,13 @@ def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
     dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
     mu_cm = np.concatenate([Emu[:, None], pB[:, None] * dB], axis=1)
     N_cm = np.concatenate([np.sqrt(m_Nf ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
-    k_mu = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
+    k_lep = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
     I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, m_Nf ** 2), 1e-12, None)
     density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
     J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
     valid3 = ((s23max > s23min) & (_sqlam(s, s23, m_pi ** 2) > 0)
               & (_sqlam(s23, M_MU ** 2, m_Nf ** 2) > 0))
-    return dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
+    return dict(k_lep=k_lep, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
 
 
 # ===== ACHILLES ThreeBodyMapper: t-channel pion split + isotropic mu/N split ================== #
@@ -191,13 +191,13 @@ def _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u):
     dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
     mu_cm = np.concatenate([Emu[:, None], pB[:, None] * dB], axis=1)
     N_cm = np.concatenate([np.sqrt(s3 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
-    k_mu = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
+    k_lep = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
     I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, s2, s3), 1e-12, None)
     gw = (2 * np.pi) ** 5 * tcw * I2W_B / (s23max - s23min)
     J_3body = np.where(np.isfinite(gw) & (gw > 0), 1.0 / np.clip(gw, 1e-300, None), 0.0)
     valid3 = ((s23max > s23min) & (_sqlam(s, s23, s4) > 0) & (_sqlam(s23, s2, s3) > 0)
               & (p1outmass > 0) & np.isfinite(gw) & (gw > 0))
-    return dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
+    return dict(k_lep=k_lep, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
 
 
 # ===== Resonance-importance proposal: lepton-first split + Breit-Wigner hadronic mass =========== #
@@ -239,7 +239,7 @@ def _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u):
     dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
     Had_cm = np.concatenate([EHad[:, None], pA[:, None] * dA], axis=1)
     mu_cm = np.concatenate([np.sqrt(M_MU ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
-    p_Had = _boost_to_lab(Had_cm, P); k_mu = _boost_to_lab(mu_cm, P)
+    p_Had = _boost_to_lab(Had_cm, P); k_lep = _boost_to_lab(mu_cm, P)
     I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, sH, M_MU ** 2), 1e-12, None)
     # split B: Had -> N + pi, isotropic (in the Had rest frame)
     EN = (sH + m_Nf ** 2 - m_pi ** 2) / (2 * m_H); pB = m_H * _sqlam(sH, m_Nf ** 2, m_pi ** 2) / 2
@@ -254,9 +254,9 @@ def _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u):
     valid3 = ((mHmax > mHmin) & (_sqlam(s, sH, M_MU ** 2) > 0) & (_sqlam(sH, m_Nf ** 2, m_pi ** 2) > 0)
               & np.isfinite(J_3body) & (J_3body > 0))
     # s23 (mu-N invariant mass^2) returned for compatibility with downstream validity (s>Smin uses s)
-    muN = k_mu + p_N
+    muN = k_lep + p_N
     s23 = muN[:, 0] ** 2 - np.sum(muN[:, 1:] ** 2, axis=1)
-    return dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
+    return dict(k_lep=k_lep, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
 
 
 def _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u):
@@ -276,23 +276,23 @@ def free_nucleon_weights(k_nu, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, u, chunk
     k_nu (n,4): neutrino 4-momentum per event.  (itiz, pi_pid) select the amps2 channel.  The struck nucleon
     is placed AT REST with mass `had_mass` (the INCOMING nucleon); the 3-body phase space is sampled toward the
     OUTGOING nucleon mass `m_Nf`.  These DIFFER for n -> p pi0 (struck neutron, outgoing proton) -- keep them
-    two distinct params.  u (n,>=5): uniforms for the 3-body sampler.  Returns (w, dict(k_mu, p_N, p_pi, valid));
+    two distinct params.  u (n,>=5): uniforms for the 3-body sampler.  Returns (w, dict(k_lep, p_N, p_pi, valid));
     w is already filtered finite & > 0 (but NOT divided by n and NOT multiplied by any flux Jacobian)."""
     n = len(k_nu)
     m_pi = _pi_kin_mass(m_pi_phys)
     p_struck = np.tile([had_mass, 0.0, 0.0, 0.0], (n, 1)).astype(float)   # nucleon at rest (incoming mass)
     tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u)            # honors SAMPLER_3BODY
-    k_mu, p_N, p_pi, J3, valid = tb["k_mu"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
+    k_lep, p_N, p_pi, J3, valid = tb["k_lep"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
     a2 = np.zeros(n)
     idx = np.where(valid & (J3 > 0))[0]
     for i in range(0, len(idx), chunk):
         sl = idx[i:i + chunk]
-        a2[sl] = np.asarray(exclusive_amps2_batch(k_nu[sl], k_mu[sl], p_struck[sl], p_N[sl], p_pi[sl],
+        a2[sl] = np.asarray(exclusive_amps2_batch(k_nu[sl], k_lep[sl], p_struck[sl], p_N[sl], p_pi[sl],
                                                   int(itiz), int(pi_pid)))
     fl = np.asarray(flux_factor(k_nu, p_struck, had_mass=had_mass))
     w = np.where(valid, a2 * fl * SPIN_AVG * J3, 0.0)
     w = np.where(np.isfinite(w) & (w > 0), w, 0.0)
-    return w, dict(k_mu=k_mu, p_N=p_N, p_pi=p_pi, valid=valid)
+    return w, dict(k_lep=k_lep, p_N=p_N, p_pi=p_pi, valid=valid)
 
 
 def sigma_free_nucleon(Enu_MeV, channel, n=80_000, seed=0):
@@ -346,7 +346,7 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None, d
     emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
     valid = ((tb["s"] > Smin) & tb["valid3"] & (energy < emax))
-    return dict(k_nu=k_nu, p_struck=p_struck, k_mu=tb["k_mu"], p_N=tb["p_N"], p_pi=tb["p_pi"],
+    return dict(k_nu=k_nu, p_struck=p_struck, k_lep=tb["k_lep"], p_N=tb["p_N"], p_pi=tb["p_pi"],
                 J=J_beam * J_had * tb["J_3body"] * jac_grid, mom=mom, energy=energy, Enu=Enu,
                 E_GeV=E_GeV, valid=valid, x_grid=x_grid)
 
@@ -405,14 +405,14 @@ def _sample_shared(n, rng, flux, maxE):
     dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
     mu_cm = np.concatenate([Emu[:, None], pB[:, None] * dB], axis=1)
     N_cm = np.concatenate([np.sqrt(mNf ** 2 + pB ** 2)[:, None], -pB[:, None] * dB], axis=1)
-    k_mu = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
+    k_lep = _boost_to_lab(mu_cm, p_muN); p_N = _boost_to_lab(N_cm, p_muN)
     I2W_B = 2.0 / np.pi / np.clip(_sqlam(s23, M_MU ** 2, mNf ** 2), 1e-12, None)
     density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
     J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
     valid = ((dp > 0) & (emax > 0) & (s > Smin) & (s23max > s23min) & (energy < emax)
              & (energy > imp.energy[0])          # SF grid start (0 for Ar, 2.5 for C); NOT hardcoded 2.5
              & (_sqlam(s, s23, mpi ** 2) > 0) & (_sqlam(s23, M_MU ** 2, mNf ** 2) > 0))
-    return dict(k_nu=k_nu, p_struck=p_struck, k_mu=k_mu, p_N=p_N, p_pi=p_pi,
+    return dict(k_nu=k_nu, p_struck=p_struck, k_lep=k_lep, p_N=p_N, p_pi=p_pi,
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, valid=valid)
 
 
@@ -434,7 +434,7 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
     for (ipid, itiz, ppid, sf, ncount, hadmass) in group:
         a2 = np.zeros(n)
         if len(idx):
-            a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
+            a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_lep"][idx], s["p_struck"][idx],
                                             s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
         initwgt = ncount * sf.batch(s["mom"], s["energy"])       # EXPLICIT N * S_channel (per channel)
         fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=hadmass))
@@ -444,7 +444,7 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
     out["sigma"] = w_tot.mean()
     if return_events:
         keep = w_tot > 0
-        out["events"] = dict(k_nu=s["k_nu"][keep], k_mu=s["k_mu"][keep], p_struck=s["p_struck"][keep],
+        out["events"] = dict(k_nu=s["k_nu"][keep], k_lep=s["k_lep"][keep], p_struck=s["p_struck"][keep],
                              p_N=s["p_N"][keep], p_pi=s["p_pi"][keep], w=w_tot[keep] / n)
     return out
 
@@ -464,7 +464,7 @@ def _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton):
     a2 = np.zeros(n)
     idx = np.where(v & (s["energy"] > sf_n.energy[0]) & (s["energy"] < 400) & (s["J"] > 0))[0]
     if len(idx):
-        a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_mu"][idx], s["p_struck"][idx],
+        a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_lep"][idx], s["p_struck"][idx],
                                         s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
     fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=mstr))
     # D3: struck nucleon is proposed from pke12n (|p|^2 S_n) for every channel, but the PROTON-initiated
@@ -546,7 +546,7 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
     rng = np.random.default_rng(seed)
     flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     out = {}; sig = 0.0
-    ev = {k: [] for k in ("k_nu", "k_mu", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
+    ev = {k: [] for k in ("k_nu", "k_lep", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
     nch = len(CHANNELS); m = max(1, n // nch)          # n = TOTAL draws across channels; m per channel
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
         Npid = 2212 if mNf == M_P else 2112
@@ -556,7 +556,7 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
         sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc   # E[w] over m draws -- unbiased, just noisier
         if return_events:
             keep = w > 0
-            ev["k_nu"].append(s["k_nu"][keep]); ev["k_mu"].append(s["k_mu"][keep])
+            ev["k_nu"].append(s["k_nu"][keep]); ev["k_lep"].append(s["k_lep"][keep])
             ev["p_struck"].append(s["p_struck"][keep]); ev["p_N"].append(s["p_N"][keep])
             ev["p_pi"].append(s["p_pi"][keep])
             # weight per event so that sum(w_event) over the sampled set = sigma_channel (divide by the

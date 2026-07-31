@@ -64,18 +64,25 @@ def _scan(path, beam_pid):
     return [o for o in out if o[0] is not None], n_tried
 
 
+_STEM = {
+    "C":  {"pip": "run_cascade_pip_C_broad",  "prot": "run_cascade_prot_C",  "neut": "run_cascade_neut_C"},
+    "Ar": {"pip": "run_cascade_pip_Ar_broad", "prot": "run_cascade_prot_Ar", "neut": "run_cascade_neut_Ar"},
+}
+
+
+def source_paths(beam, target="C"):
+    """The hepmc files sigma_of_p will scan.  Public so a caller can fingerprint them for a cache
+    without re-deriving the stem mapping (which would then be able to drift out of sync)."""
+    return sorted(ACH_DIR.glob(f"**/{_STEM[target][beam]}*.hepmc"))   # flat OR per-shard subdirs
+
+
 def sigma_of_p(beam, edges, target="C"):
     """Combine all seed batches -> (sigma_reaction, sigma_second, err_r, err_s, n_r, n_s, n_tried).
     `second` = absorption for a pion beam, pion production for a nucleon beam."""
     pid, species, _q = BEAMS[beam]
-    _STEM = {
-        "C":  {"pip": "run_cascade_pip_C_broad",  "prot": "run_cascade_prot_C",  "neut": "run_cascade_neut_C"},
-        "Ar": {"pip": "run_cascade_pip_Ar_broad", "prot": "run_cascade_prot_Ar", "neut": "run_cascade_neut_Ar"},
-    }
-    stem = _STEM[target][beam]
-    paths = sorted(ACH_DIR.glob(f"**/{stem}*.hepmc"))    # recursive: finds flat OR per-shard subdirs
+    paths = source_paths(beam, target)
     if not paths:
-        raise FileNotFoundError(f"no ACHILLES hepmc for {beam} ({stem}*)")
+        raise FileNotFoundError(f"no ACHILLES hepmc for {beam} ({_STEM[target][beam]}*)")
     nb = len(edges) - 1
     n_r = np.zeros(nb); n_s = np.zeros(nb); n_tried = 0
     for p in paths:

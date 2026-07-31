@@ -79,7 +79,7 @@ def refresh_sigma(ds):
 
 def event_Q2(B):
     """Per-event Q^2 [GeV^2] from the bank 4-vectors (MeV). Junk rows (zero-weight padding) -> 0."""
-    kmu = np.asarray(B["k_mu"], float); knu = np.asarray(B["k_nu"], float)
+    kmu = np.asarray(B["k_lep"], float); knu = np.asarray(B["k_nu"], float)
     bad = ~np.isfinite(kmu).all(axis=1) | (np.abs(kmu) > 1e6).any(axis=1)
     q = knu - np.where(bad[:, None], knu, kmu)
     Q2 = (q[:, 1]**2 + q[:, 2]**2 + q[:, 3]**2 - q[:, 0]**2) / 1e6

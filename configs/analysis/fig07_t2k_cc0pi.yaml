@@ -12,11 +12,11 @@ signal:      # CC0pi: mu 250-inf & cos>-0.6 ; global leading p 450-1000 & cos>0.
   pion_id: none
   proton_lead: global
 observables:
-  - {key: dpt,     label: 'CC0$\pi$  $\delta p_T$ [MeV/c]',    linspace: [0.0, 800.0, 21]}
-  - {key: dalphat, label: 'CC0$\pi$  $\delta\alpha_T$ [rad]',  linspace: [0.0, pi, 21]}
-  - {key: pmu,     label: 'CC0$\pi$  $p_\mu$ [MeV/c]',         linspace: [0.0, 2000.0, 21]}
-  - {key: cos_mu,  label: 'CC0$\pi$  $\cos\theta_\mu$',        linspace: [-0.6, 1.0, 21]}
+  - {key: dpt,     label: '$\delta p_T$ [MeV/c]',    linspace: [0.0, 800.0, 21]}
+  - {key: dalphat, label: '$\delta\alpha_T$ [rad]',  linspace: [0.0, pi, 21]}
+  - {key: pmu,     label: '$p_\mu$ [MeV/c]',         linspace: [0.0, 2000.0, 21]}
+  - {key: cos_mu,  label: '$\cos\theta_\mu$',        linspace: [-0.6, 1.0, 21]}
 out_path: output/paper/fig07_t2k_cc0pi.png
-title: 'ADoNIS vs ACHILLES --- T2K CC0$\pi$ TKI on $^{12}$C'
+title: 'T2K CC0$\pi$ TKI on $^{12}$C'
 ratio_band: [0.9, 1.1]
 ratio_ylim: [0.75, 1.25]

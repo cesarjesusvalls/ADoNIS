@@ -24,7 +24,7 @@ _HEAVY = {
     "test_ma_reweight.py", "test_res_strength_reweight.py",
     "test_sf_reweight.py", "test_strength_reweight.py",   # module-level sample_importance + amps2 records
     "test_amps2_bridge.py", "test_build_zmtx_equiv.py",   # DCC amplitude builds
-    "test_generate_bank_unify.py",                        # builds weak+EM+hadron banks (QE+RES cascade) at import
+    "test_generate_bank_unify.py",                        # builds CC+EM+hadron banks (QE+RES cascade) at import
 }
 
 
@@ -34,7 +34,13 @@ def pytest_addoption(parser):
 
 
 def pytest_ignore_collect(collection_path, config):
-    """Skip collecting the heavy files unless --runslow (avoids their import-time cost)."""
+    """Skip collecting the heavy files unless --runslow (avoids their import-time cost).
+
+    Returns True to ignore, or None to DEFER.  Never False: this hook is `firstresult`, so an
+    explicit False means "definitely collect this" and VETOES pytest's own --ignore / --ignore-glob /
+    --deselect.  Returning False on the common path is why `pytest tests/ --ignore=tests/foo.py`
+    silently collected foo.py anyway.
+    """
     if config.getoption("--runslow"):
-        return False
-    return collection_path.name in _HEAVY
+        return None
+    return True if collection_path.name in _HEAVY else None

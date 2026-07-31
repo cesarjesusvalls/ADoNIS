@@ -161,7 +161,7 @@ def build_datasets(B):
     edges, xlabel, xscale (plot units)."""
     ds = []
     lead0, _ = BP.leading_proton(B); sig0 = BP.signal_cc0pi(B)[0]
-    kmu = B["k_mu"].astype(np.float64)
+    kmu = B["k_lep"].astype(np.float64)
     # ---- CC0pi dpt / dat (carbon, per-nucleon 1e-38) ----
     for obs, valfn, xlab, xsc in (
             ("dpt", lambda: np.asarray(BP.dpt(B, lead0)), r"$\delta p_T$ [GeV/c]", 1000.0),

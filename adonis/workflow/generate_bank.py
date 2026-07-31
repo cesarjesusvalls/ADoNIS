@@ -7,7 +7,7 @@ downstream is shared: one cascade engine, one centralized cascade-outcome record
 
 Per chunk (seed = cfg.seed0 + c) -> chunk_NNN.npz + manifest.json.  Uniform record set (all probes):
 fs_* final state, f_* FSI kind-1, n_* multiplicities, ks_* escaped list, reacted/absorbed.  Plus the
-primary's own kinematics/weight (weak: k_nu/k_mu/hv_*; EM: c/omega/theta; hadron: beam_p/w0).
+primary's own kinematics/weight (weak: k_nu/k_lep/hv_*; EM: c/omega/theta; hadron: beam_p/w0).
 """
 from __future__ import annotations
 import os, time, json, math, glob, gc as _gc
@@ -31,7 +31,7 @@ def _accept_lepton(d, theta_acc, kkey=None, theta=None):
     """THE uniform outgoing-lepton angular acceptance -- ONE mechanism for every hard-vertex channel
     (weak muon + EM electron).  Keeps events whose lepton polar angle is within [lo,hi] deg, masking
     every length-n field of the per-event dict `d`.  The angle is the precomputed `theta` (the EM
-    channels already expose it) else computed from d[kkey] (the weak outgoing muon, k_mu).  Full
+    channels already expose it) else computed from d[kkey] (the weak outgoing muon, k_lep).  Full
     acceptance (lo<=0 and hi>=180) short-circuits to the identity -> byte-for-byte (the weak default)."""
     lo, hi = theta_acc
     if lo <= 0.0 and hi >= 180.0:
@@ -66,7 +66,10 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     from adonis.nuclear.spectral import SpectralFunction
     import adonis.fsi.cascade as CF
 
+    # Probe dispatch.  `EM` stays a local boolean because the EM branch's SHAPE differs (monochromatic
+    # beam, c/omega/theta records); NC joins CC's shape, so it is a third branch rather than a fourth.
     EM = (cfg.probe == "EM")
+    NC = (cfg.probe == "NC")
     CHUNK = cfg.chunk or cfg.n_per_seed
     n_chunks = cfg.n_seeds
     SEED0 = cfg.seed0
@@ -93,7 +96,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             r = _accept_lepton(r, LACC, theta=r["theta"])
             pid = np.where(r["is_p"], 2212, 2112).astype(np.int32)
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
-                        k_lep=np.asarray(r["k_e_out"]),            # outgoing e- 4-vector (for TKI/P_T)
+                        k_lep=np.asarray(r["k_lep"]),            # outgoing e- 4-vector (for TKI/P_T)
                         p_N=np.asarray(r["p_out"]), p_pi=np.zeros((len(pid), 4)),
                         ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid, _raw=r)   # _raw: hv records
 
@@ -101,11 +104,31 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             r = res_ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=_ALL)
             r = _accept_lepton(r, LACC, theta=r["theta"])
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
-                        k_lep=np.asarray(r["k_le"]),               # outgoing e- 4-vector (for TKI/P_T)
+                        k_lep=np.asarray(r["k_lep"]),               # outgoing e- 4-vector (for TKI/P_T)
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32), _raw=r)   # _raw: p_struck for the SF reweight
-        m_extra = dict(probe="ee", E_beam=EB, theta_acc=list(LACC))
+        m_extra = dict(E_beam=EB, theta_acc=list(LACC))   # probe added below, from cfg.probe
+    elif NC:
+        from adonis.channels import qe_nc as qe_nc_x, res_nc as res_nc_x
+
+        def gen_qe(n, seed):
+            raise NotImplementedError(
+                "NC QE bank generation needs a nuclear (spectral-function) sampler; qe_nc currently "
+                "provides the FREE-nucleon sigma(E_nu) that gate G6(2) uses.  Generate NC RES banks "
+                "with channels: [res] until it lands.  See docs/nc_implementation_plan.md P7.")
+
+        def gen_res(n, seed):
+            r = res_nc_x.generate(n, material=cfg.material, seed=seed, return_events=True,
+                                  theta_acc=LACC)["events"]
+            # NO _accept_lepton: res_nc.generate already REFUSES a non-trivial theta_acc, because a
+            # polar cut on an invisible outgoing neutrino is meaningless and would bias the sample.
+            return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]),
+                        p_struck=np.asarray(r["p_struck"]), k_lep=np.asarray(r["k_lep"]),
+                        p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
+                        ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
+                        Npid=np.asarray(r["Npid"], np.int32), _raw=r)
+        m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))   # probe added below, from cfg.probe
     else:
         from adonis.reweight.reweight_model import build_hv_sf
         from adonis.channels import qe as qe_x, res as res_x
@@ -113,21 +136,21 @@ def _generate_hardvertex(cfg, outdir, log, t0):
 
         def gen_qe(n, seed):
             q = qe_x.sample_importance(n, seed=seed, sf=sf, n_neutron=n_neutron)
-            q = _accept_lepton(q, LACC, kkey="k_mu"); nq = len(q["w"])   # outgoing-muon acceptance
+            q = _accept_lepton(q, LACC, kkey="k_lep"); nq = len(q["w"])   # outgoing-muon acceptance
             return dict(w=np.asarray(q["w"]) / CHUNK, k_nu=np.asarray(q["k_nu"]), p_struck=np.asarray(q["p_struck"]),
-                        k_mu=np.asarray(q["k_mu"]), p_N=np.asarray(q["p_out"]), p_pi=np.zeros((nq, 4)),
+                        k_lep=np.asarray(q["k_lep"]), p_N=np.asarray(q["p_out"]), p_pi=np.zeros((nq, 4)),
                         ppid=np.zeros(nq, np.int32), ipid=np.full(nq, 2112, np.int32),
                         Npid=np.full(nq, 2212, np.int32), _raw=q)
 
         def gen_res(n, seed):
             r = res_x.generate(n, seed=seed, return_events=True, sf_n=sf, sf_p=sf_p,
                                n_neutron=n_neutron, n_proton=n_proton)["events"]
-            r = _accept_lepton(r, LACC, kkey="k_mu")                    # outgoing-muon acceptance
+            r = _accept_lepton(r, LACC, kkey="k_lep")                    # outgoing-muon acceptance
             return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]), p_struck=np.asarray(r["p_struck"]),
-                        k_mu=np.asarray(r["k_mu"]), p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
+                        k_lep=np.asarray(r["k_lep"]), p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32), _raw=r)
-        m_extra = dict(probe="weak", flux=cfg.flux, theta_acc=list(LACC))
+        m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))   # probe added below, from cfg.probe
 
     def cascade(ev, key, caps, chan):     # returns (pterm,nterms,ofl,created,fsi_rec,prim_fate)
         return CF.cascade_nucleus(jnp.asarray(ev["p_pi"]), jnp.asarray(ev["p_N"]),
@@ -146,8 +169,13 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     CAPS_qe = CAPS_res = (64, 64)
     if do_qe: CAPS_qe = cal_caps(gen_qe, "qe"); log(f"flat FSI caps qe -> {CAPS_qe}")
     if do_res: CAPS_res = cal_caps(gen_res, "res"); log(f"flat FSI caps res -> {CAPS_res}")
+    # probe=cfg.probe, NOT a literal.  The EM branch used to hardcode probe="ee" while cfg.probe was
+    # "EM", so the bank's own manifest disagreed with the config that produced it -- a divergence that
+    # could only ever grow.  Sourcing it from cfg makes that class of bug unrepeatable; the permanent
+    # test is tests/test_probe_naming.py::test_manifest_probe_equals_config_probe.
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, material=cfg.material,
-                    channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res), **m_extra)
+                    channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res),
+                    probe=cfg.probe, achilles_coupl1_quirk=bool(cfg.achilles_coupl1_quirk), **m_extra)
 
     for c in range(n_chunks):
         kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)
@@ -169,7 +197,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             cat = lambda k: np.concatenate([e[1][k] for e in evs])
             save.update(c=cat("c").astype(np.float64), omega=cat("omega").astype(np.float32),
                         theta=cat("theta").astype(np.float32),
-                        k_e=cat("k_lep").astype(np.float32))     # outgoing e- 4-vector (TKI/P_T: Fig 6)
+                        k_lep=cat("k_lep").astype(np.float32))     # outgoing e- 4-vector (TKI/P_T: Fig 6)
             if do_qe and do_res:                                 # differentiable (e,e') hard-vertex records
                 from adonis.reweight.reweight_model import build_hv_sf
                 nq = ns[0]; nr = ns[-1]; qraw = evs[0][1]["_raw"]; rraw = evs[-1][1]["_raw"]
@@ -191,7 +219,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             save.update(w0=np.concatenate([e[1]["w"] for e in evs]),
                         k_nu=np.concatenate([e[1]["k_nu"] for e in evs]).astype(np.float32),
                         p_struck=np.concatenate([e[1]["p_struck"] for e in evs]).astype(np.float32),
-                        k_mu=np.concatenate([e[1]["k_mu"] for e in evs]).astype(np.float32))
+                        k_lep=np.concatenate([e[1]["k_lep"] for e in evs]).astype(np.float32))
             if do_qe and do_res:
                 HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False)
                 hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
@@ -281,7 +309,7 @@ def _generate_hadron(cfg, outdir, log, t0):
         del O, save, out
     json.dump(dict(beam=cfg.beam, pid=pid, species=species, charge=charge, pmin=cfg.pmin, pmax=cfg.pmax,
                    n_total=n_total, n_chunks=n_chunks, R_disk=R_DISK, pir2_mb=PIR2_MB, material=cfg.material,
-                   seed0=cfg.seed0, probe="hadron"), open(f"{outdir}/manifest.json", "w"), indent=1)
+                   seed0=cfg.seed0, probe=cfg.probe), open(f"{outdir}/manifest.json", "w"), indent=1)
     log(f"DONE: hadron bank in {outdir}/ ({n_chunks} chunks)")
     return outdir
 

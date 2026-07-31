@@ -56,8 +56,8 @@ def build_hv_sf(qe, res, sf, with_pw=True, probe="CC"):
                   qe_pmag=removal_from_struck(qe["p_struck"])[0], qe_erem=removal_from_struck(qe["p_struck"])[1],
                   res_pmag=removal_from_struck(res["p_struck"])[0], res_erem=removal_from_struck(res["p_struck"])[1])
         return HV, SF
-    qa = (qe["k_nu"], qe["k_mu"], qe["p_struck"], qe["p_out"])
-    ra = (res["k_nu"], res["k_mu"], res["p_struck"], res["p_N"], res["p_pi"])
+    qa = (qe["k_nu"], qe["k_lep"], qe["p_struck"], qe["p_out"])
+    ra = (res["k_nu"], res["k_lep"], res["p_struck"], res["p_N"], res["p_pi"])
     ip, pp = np.asarray(res["ipid"]), np.asarray(res["ppid"])
     HV = dict(
         qe_ma=build_qe_ma_records(*qa), qe_vec=build_qe_vector_records(*qa),

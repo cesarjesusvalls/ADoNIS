@@ -8,6 +8,7 @@ hadronic side carries none).  Returns L of shape (..., 4_spincombo, 4_mu) comple
 Couplings (LeptonicCurrent.cc:24-45) for the standard probes:
   CC nu  : coupl_left = ee*i/(sw*sqrt2), coupl_right=0, M=MW, Gamma=GAMW
   EM e   : coupl_left = coupl_right = -ee*i, M=Gamma=0 -> prop = i/q^2 (the photon propagator)
+  NC nu  : coupl_left = cw*ee*i/(2sw) + ee*i*sw/(2cw)  (= ee*i/(2*sw*cw)), coupl_right=0, M=MZ, GAMZ
 """
 from __future__ import annotations
 
@@ -36,6 +37,14 @@ def _couplings(kind):
     if kind == "EM":
         c = -C.ee * _I
         return c, c, 0.0, 0.0, True                  # photon: prop = i/q^2 (M=Gamma=0 boson-propagator limit)
+    if kind == "NC_nu":
+        # ACHILLES's EXACT floating-point form (LeptonicCurrent.cc:31-36), not the algebraically
+        # equivalent ee*i/(2*sw*cw): the two differ in the last bits, and this project's contract is
+        # bit-faithfulness to ACHILLES.  tests/test_nc_leptonic.py asserts they agree to 1e-14, so the
+        # equivalence is pinned rather than assumed -- if ACHILLES ever changes the spelling, that test
+        # fails rather than the physics silently drifting.
+        # coupl_right = 0: a neutrino has no right-handed coupling.  M=MZ, Gamma=GAMZ.
+        return (C.cw * C.ee * _I) / (2 * C.sw) + (C.ee * _I * C.sw) / (2 * C.cw), 0.0 + 0j, C.MZ, C.GAMZ, True
     raise ValueError(kind)
 
 

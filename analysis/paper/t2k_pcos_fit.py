@@ -64,7 +64,7 @@ def bin2d_dataset(name, key, mask, vx, vy, ex, ey, conv):
 
 def build_t2k_pcos_datasets(B, w0, log):
     """One 2D observable: (p_mu, cos theta_mu) over the CC0pi Analysis-I (0-meson) selection."""
-    kmu = B["k_mu"].astype(np.float64)
+    kmu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(kmu[:, 1:], axis=1)
     cmu = kmu[:, 3] / np.maximum(pmu, 1e-9)
     n_meson = BP._event_sum(B, np.isin(B["fs_pid"], _MESONS).astype(float))

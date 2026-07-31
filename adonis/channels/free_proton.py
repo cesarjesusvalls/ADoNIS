@@ -38,7 +38,7 @@ def generate_H(n, seed=0):
     w0, kin = free_nucleon_weights(k_nu, +1, M_P, 211, M_PIP, MASS_PDG_PROTON, u[:, 1:6])
     w = w0 * J_beam
     w = np.where(np.isfinite(w) & (w > 0), w, 0.0) / n           # absolute nb per event (mean)
-    return k_nu, kin["k_mu"], kin["p_N"], kin["p_pi"], w
+    return k_nu, kin["k_lep"], kin["p_N"], kin["p_pi"], w
 
 
 def _cc0pi_obs(knu, mu, lead, w):
