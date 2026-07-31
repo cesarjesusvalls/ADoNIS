@@ -1087,6 +1087,30 @@ Recorded because the mechanism matters more than the mistakes.
 The pattern worth keeping: **every one of these was caught by a gate that measures something absolute
 or differential, never by a ratio.** That is the §0 argument, and it paid for itself five times.
 
+### G7(5) — the NUCLEAR absolute gate, first look
+
+Run on 8 of 40 ADoNIS chunks against the full 1 M-event ACHILLES reference, weighted properly
+(ADoNIS is importance-sampled, so unweighted means are meaningless — an easy mistake, and the raw
+means differ by 2× while the weighted ones agree):
+
+| quantity | ADoNIS | ACHILLES | ACH/ADO |
+|---|---|---|---|
+| **σ(NC1π⁰) on ⁴⁰Ar [nb]** | 9.3063e-06 | 9.3408e-06 | **1.0037** |
+| ⟨cos θ_π⁰⟩ | 0.2164 | 0.2231 | 1.031 |
+| ⟨p_π⁰⟩ [MeV] | 247.13 | 246.36 | 0.9969 |
+| ⟨θ_π⁰⟩ [deg] | 74.95 | 74.54 | 0.9945 |
+| proton fraction | 0.7143 | 0.7271 | 1.018 |
+
+**0.37 % on the absolute nuclear cross section**, which exercises target counting, the spectral
+functions, Pauli blocking and the full cascade at once — everything the free-nucleon gates cannot
+see. Per-bin ratios are within 2–13 % (dσ/dcos) and 1–10 % (dσ/dp) at one fifth of the final
+statistics.
+
+**Read with the caveat above, not around it:** ADoNIS is expected ~1.8 % LOW from the missing
+NC QE→FSI channel, and the total nevertheless agrees to 0.37 %. Either something offsets it or the
+present statistics do not resolve it. That is an open question, not a success — it should be
+re-checked at full statistics rather than filed as agreement.
+
 ### The veto landmine, confirmed on real data
 
 The ACHILLES NC MicroBooNE reference (1 M events, cascade on) makes the `n_other_meson` defect
