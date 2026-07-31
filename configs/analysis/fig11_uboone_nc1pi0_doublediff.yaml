@@ -6,8 +6,11 @@
 # which is also why figA1 renders wider than the page).  max_cols wraps the slices onto rows.
 name: fig11_uboone_nc1pi0_doublediff
 inputs:
-  adonis_bank: [output/nc_uBooNE_Ar/merged]
-  reference:   [output/achilles/fsrich/nc_uBooNE_Ar.npz]
+  adonis_bank: [output/nc_uBooNE_Ar/merged]   # jobs/merge_bank.py --parts output/nc_uBooNE_Ar --out .../merged
+  reference:   [output/achilles/fsrich/nc_uBooNE_Ar_s0.npz,
+                output/achilles/fsrich/nc_uBooNE_Ar_s1.npz,
+                output/achilles/fsrich/nc_uBooNE_Ar_s2.npz,
+                output/achilles/fsrich/nc_uBooNE_Ar_s3.npz]
 signal:
   pion_id: pi0
   pi_win: [0.0, 2000.0]

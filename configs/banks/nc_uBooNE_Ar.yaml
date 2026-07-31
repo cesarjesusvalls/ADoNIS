@@ -1,10 +1,17 @@
 # NEUTRAL-CURRENT nu_mu on 40Ar, BNB (MicroBooNE) flux -- the bank behind paper figures 11 and 12
 # (fig:NCpi0Xpdoublediff and fig:NCpi0Xpcospi).  See docs/nc_implementation_plan.md.
 #
-# channels: [res] ONLY, deliberately.  NC1pi0 comes from RES; NC QE (nu N -> nu N) produces no pion
-# and so cannot enter the signal, and its NUCLEAR sampler is not written yet (qe_nc currently covers
-# the free nucleon, which is what gate G6(2) needs).  Listing qe here would raise rather than
-# silently generate nothing -- but the right statement is that this bank does not need it.
+# channels: [res] ONLY -- a KNOWN, MEASURED INCOMPLETENESS, not a clean scope cut.
+#
+# I first wrote here that NC QE "produces no pion and so cannot enter the signal".  That is WRONG,
+# and the ACHILLES reference proves it: of 29194 selected NC1pi0 events, 516 (1.77%) carry proc
+# 250/251, i.e. NC ELASTIC.  Those pions are made by the CASCADE -- charge exchange on the recoiling
+# nucleon turns a pion-less NC QE event into a 1pi0 one.  It is real physics, and this bank misses it.
+#
+# So expect ADoNIS to sit ~1.8% LOW against ACHILLES on the NC1pi0 rate, from this cause alone, until
+# the NC QE nuclear sampler lands (qe_nc currently covers only the free nucleon, which is what gate
+# G6(2) needs).  Recorded here so that deficit is RECOGNISED rather than absorbed into a tune or
+# misread as a current-level disagreement.
 #
 # theta_acc is absent, i.e. the (0,180) default.  GenConfig REJECTS anything else for probe=NC: a
 # polar acceptance on an invisible outgoing neutrino is meaningless and would silently bias the
