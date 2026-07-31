@@ -32,6 +32,17 @@ def load_bank(outdir):
     ev_off = 0                       # events seen so far -> shifts each chunk's ragged indices
     for f in files:
         d = np.load(f)
+        # --- TEMPORARY k_lep compat shim (REMOVE after banks are regenerated/migrated) --------------
+        # sec1 renamed the outgoing-lepton field k_mu (CC) / k_e (EM) -> k_lep.  Banks written before
+        # that rename still carry the old name on disk.  Alias it to k_lep PER CHUNK, before
+        # concatenation, so a directory caught mid-migration (some chunks already k_lep, some not --
+        # migrate_k_lep is atomic per chunk) still assembles a full-length k_lep aligned with w0.
+        # A global post-concat alias would populate k_lep from only the migrated chunks -> length
+        # mismatch against w0.  Delete this once every bank under $ADONIS_OUT carries k_lep.
+        _lep_alias = None
+        if "k_lep" not in d.files:
+            _lep_alias = next((o for o in ("k_mu", "k_e") if o in d.files), None)
+        # -------------------------------------------------------------------------------------------
         for key in d.files:
             if key in _FS:
                 continue
@@ -42,7 +53,7 @@ def load_bank(outdir):
                 # fs_off does for the ragged final state).  Without this, every chunk after the first
                 # would silently attribute its FSI slots to the wrong events.
                 v = v.astype(np.int64) + ev_off
-            perev.setdefault(key, []).append(v)
+            perev.setdefault("k_lep" if key == _lep_alias else key, []).append(v)
         fs_pid.append(d["fs_pid"]); fs_chg.append(d["fs_chg"]); fs_p4.append(d["fs_p4"])
         offs.append(offs[-1][-1] + d["fs_off"][1:])
         ev_off += len(d["w0"])

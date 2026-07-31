@@ -40,9 +40,10 @@ def build_hv_sf(qe, res, sf, with_pw=True, probe="CC"):
     probe="EM" builds the (e,e') photon records instead: the QE VECTOR + Sachs-FF records carry real
     gradients (with per-event is_proton), the QE axial record auto-collapses to identity (no photon axial),
     and the RES hard-vertex records are identity for now (the EM-Delta / delta_strength handle is a v2 item;
-    the SF reweight still applies to both channels).  keys: qe uses k_e/k_e_out/p_out/is_p, res uses p_struck."""
+    the SF reweight still applies to both channels).  keys: qe uses k_e/k_lep/p_out/is_p, res uses p_struck."""
     if probe == "EM":
-        qa = (qe["k_e"], qe["k_e_out"], qe["p_struck"], qe["p_out"]); isp = np.asarray(qe["is_p"])
+        # k_e = incoming beam e-, k_lep = scattered e- (sec1 renamed the raw outgoing key k_e_out -> k_lep)
+        qa = (qe["k_e"], qe["k_lep"], qe["p_struck"], qe["p_out"]); isp = np.asarray(qe["is_p"])
         nres = len(np.asarray(res["p_N"]))
         HV = dict(
             qe_ma=build_qe_ma_records(*qa, probe="EM", is_proton=isp),
