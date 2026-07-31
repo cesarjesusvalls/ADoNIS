@@ -1,0 +1,62 @@
+# Section 3 (Fisher information per subset) -- WHICH bins go in each column of each figure.
+#
+# Everything sec3 plots is a ROW SLICE of one persisted Jacobian, so a "subset" is just a set of
+# dataset keys (`dskeys` in the npz).  This file is the single place that names them, so changing the
+# sample composition or the binning of the input npz is a CONFIG edit, not a code edit.
+#
+# Group entries accept three kinds of item, mixed freely:
+#   * a literal dskey            ->  pmu
+#   * a glob over dskeys         ->  mnv_*        (matches whatever MINERvA observables exist)
+#   * a reference to an earlier group in the SAME axis  ->  <T2K>   (inherits its resolved keys)
+# The reference form is what makes a cumulative ladder cheap: each rung is the previous rung plus one
+# sample, with no repetition, so adding a sample means adding one line.
+#
+# Resolution is tolerant by design (see sec3_fisher/subsets.py): a pattern that matches nothing is
+# reported and dropped, a group left with no keys is dropped as a column, and any dskey in the npz that
+# NO group in an axis picks up is reported as `uncovered` -- so a newly added sample is never silently
+# ignored.
+
+npz: multisample_carbon        # default input under output/altgen/ (override: CLI arg or ADONIS_SEC3_NPZ)
+fit_cut: 0.5                   # a knob is FIT when shrinkage sigma_post/sigma_prior < this
+
+# The column of the reference axis that fig 2 (failure modes) and fig 3 (degeneracy) are computed on.
+# `group: -1` means "the last column that survived resolution", which stays correct as samples change.
+reference:
+  axis: sample_ladder
+  group: -1
+
+axes:
+
+  # ---- What does each CLASS OF OBSERVABLE buy you?  (the published T2K result) ------------------- #
+  obs_classes:
+    figure: sec3_shrinkage_subsets       # kept at the historical name
+    title: Gate I per observable class
+    groups:
+      lepton:    {label: "lepton\n$p_\\mu,\\cos\\theta_\\mu$", keys: [pmu, cosmu]}
+      leptonhad: {label: "lepton\n+hadron",                    keys: [pmu, cosmu, ppi, cospi]}
+      tki:       {label: "TKI",                                keys: [dpt, dat, pn, dptt, daT]}
+      mult:      {label: "multipl.\n$N_p,N_{\\pi^\\pm}$",      keys: [n_p, n_chpi]}
+      kin9:      {label: "all kin.\n(9 obs)",                  keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, ppi, cospi]}
+      full:      {label: "ALL T2K\n(11 obs)",                  keys: ["<kin9>", "<mult>"]}
+
+  # ---- What does each SAMPLE ALONE measure?  (knob x sample, un-stacked) ------------------------- #
+  samples_alone:
+    figure: sec3_shrinkage_samples
+    title: Gate I per sample, each on its own
+    groups:
+      T2K:       {label: "T2K\n$\\nu$ CC0/1$\\pi$",  keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, ppi, cospi, n_p, n_chpi]}
+      MINERvA:   {label: "MINERvA\n$\\nu$ CC0$\\pi$", keys: ["mnv_*"]}
+      ee:        {label: "$(e,e')$\nQE + RES",        keys: ["e_*"]}
+      pip:       {label: "$\\pi^+$–C\nbeam",          keys: ["pip_*"]}
+      prot:      {label: "p–C\nbeam",                 keys: ["prot_*"]}
+      neut:      {label: "n–C\nbeam",                 keys: ["neut_*"]}     # dropped if absent
+
+  # ---- What does each ADDED sample buy on top of the last?  (Fisher is additive) ----------------- #
+  sample_ladder:
+    figure: sec3_shrinkage_ladder
+    title: "Gate I as samples are added (F = $\\sum_s$ F$_s$)"
+    groups:
+      T2K:      {label: "T2K",            keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, ppi, cospi, n_p, n_chpi]}
+      p_mnv:    {label: "+MINERvA",       keys: ["<T2K>", "mnv_*"]}
+      p_ee:     {label: "+$(e,e')$",      keys: ["<p_mnv>", "e_*"]}
+      p_had:    {label: "+hadron\nbeams", keys: ["<p_ee>", "pip_*", "prot_*", "neut_*"]}
