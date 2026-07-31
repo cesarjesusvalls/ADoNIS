@@ -26,6 +26,13 @@ def default_grids():
 def bank_weight(B, knobs, grids):
     """Exact per-event weight w(theta) (N,).  knobs: a PhysicsParams (adonis.core.params); grids: sf_grids output."""
     k = knobs
+    if "hv_qe_ma_a" not in B:
+        # Fail loud, not with a cryptic deep KeyError.  NC RES-only banks (channels=[res]) never write
+        # hard-vertex records, and NC QE nuclear generation is not implemented, so their differentiable
+        # weight is undefined -- the sec2/sec3 gradient machinery does not yet support NC.  NC selections
+        # go through bank_signal_nc / oracle_signal_nc, which read w0 directly and never call this.
+        raise KeyError("bank_weight: bank carries no hard-vertex (hv_*) records; NC banks are not "
+                       "reweightable through this path (see adonis/workflow NC selection helpers).")
     def ma(name): return (B[f"hv_{name}_a"], B[f"hv_{name}_b"], B[f"hv_{name}_c"], B[f"hv_{name}_Q2"])
     qe_ma, res_ma = ma("qe_ma"), ma("res_ma")
     hv = (ma_reweight(qe_ma, k.M_A_qe) * ma_reweight(res_ma, k.M_A_res)
