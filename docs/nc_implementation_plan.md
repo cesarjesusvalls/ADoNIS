@@ -72,7 +72,8 @@ Both halves of §0's "non-negotiable mitigation" now pass, against ACHILLES, in 
 
 | gate | mean(ACH/ADO) | spread | band | verdict |
 |---|---|---|---|---|
-| **G5(2)** NC RES, 4 channels | **1.0043** | **0.49 %** | mean ≤2 %, spread ≤1 % | **PASS** |
+| **G5(2)** NC RES, 4 channels @1.5 GeV | **1.0043** | **0.49 %** | mean ≤2 %, spread ≤1 % | **PASS** |
+| **G5(2) extended** NC RES, p+n over **800–2500 MeV** | **0.9913** | **0.32 %** | mean ≤2 %, spread ≤1 % | **PASS** |
 | **G6(2)** NC QE, p and n | **1.0034** | **0.01 %** | mean ≤2 %, spread ≤1 % | **PASS** |
 | **G5(1)** analytic Z propagator | exact to 1e-6 at four Q² | — | ≤1e-3 | **PASS** |
 | **G5(3)** `_NORM_NC/_NORM_EM` vs pre-registered 0.7113 | exact | — | — | **PASS** |
@@ -80,6 +81,21 @@ Both halves of §0's "non-negotiable mitigation" now pass, against ACHILLES, in 
 The NC QE **n/p ratio** is 1.4325 (ADoNIS) vs 1.4322 (ACHILLES) — agreement to 0.02 % on a quantity
 that needs no normalisation convention at all, so it checks the isospin structure independently of
 every constant in the chain.
+
+**The energy scan is the half of G5(2) that actually separates the two failure modes.** §0 says a
+constant offset is a coupling/`_NORM` error while a *slope* in E is a propagator error, and that a
+single averaged number cannot tell them apart — so the gate was run at five energies against five
+ACHILLES free-nucleon cards:
+
+| E [MeV] | 800 | 1000 | 1500 | 2000 | 2500 |
+|---|---|---|---|---|---|
+| ACH/ADO, proton | 0.9965 | 0.9946 | 0.9950 | 0.9931 | 0.9905 |
+| ACH/ADO, neutron | 0.9889 | 0.9884 | 0.9904 | 0.9890 | 0.9866 |
+
+Fitted slope: **−2.0e-06 /MeV, i.e. −0.35 % across a factor of three in beam energy.** That is
+consistent with no slope at all. **The Z propagator is right**; what remains is a flat ~0.9 %
+normalisation offset, well inside the band and of the size expected from the residual convention
+choices (de Forest shift, `sw2 = 0.2312` vs `C.sin2w`, ACHILLES's `xmn`).
 
 This is the risk §0 was written about, and it is retired for the currents. What remains is nuclear:
 spectral functions, target counting, Pauli, FSI — i.e. G7's absolute σ on argon.
