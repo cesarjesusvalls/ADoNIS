@@ -182,10 +182,20 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     return dict(chi2=chi2, ndf=ndf, ach_ado=ach_ado, n_shadow=int(shadow.sum()))
 
 
+def _ylabel(label, name_var=False):
+    """y-axis label for a top panel.  name_var=True turns the spec label into the differential
+    variable: "$p_{\\pi^0}$ [MeV/c]" -> "$d\\sigma/dp_{\\pi^0}$ [nb]".  The unit suffix is dropped
+    because the y unit is nb, not the x unit."""
+    if not name_var or not label:
+        return r"$d\sigma/dx$ [nb]"
+    v = label.split("[")[0].strip().strip("$").strip()
+    return rf"$d\sigma/d{v}$ [nb]" if v else r"$d\sigma/dx$ [nb]"
+
+
 def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.6),
                 ado_label="ENGINE", ref_label="ACHILLES", data=None, panel_w=3.4,
                 panel_kw=None, legend_fn=None, fig_h=6.4, title_kw=None, label_as_xlabel=False,
-                rect_top=0.96, min_w=7.5, max_cols=None):
+                rect_top=0.96, min_w=7.5, max_cols=None, ylabel_var=False):
     """specs: list of (key, edges, label).  ref_sel/ado_sel: full selection dicts (key->array + 'w').
     Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'}).
     Style hooks (all optional, defaults = the historical look, so existing callers are unchanged):
@@ -239,7 +249,7 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                 ax[0, c].legend(fontsize=7)
             else:
                 legend_fn(ax[0, c], ap is not None)
-            ax[0, c].set_ylabel(r"$d\sigma/dx$ [nb]")
+            ax[0, c].set_ylabel(_ylabel(label, name_var=ylabel_var))
             ax[1, c].set_ylabel("ratio")
         results[key] = res
     sr, sa = float(np.sum(ref_sel["w"])), float(np.sum(ado_sel["w"]))
