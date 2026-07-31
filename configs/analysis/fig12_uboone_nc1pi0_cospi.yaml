@@ -1,0 +1,25 @@
+# Paper fig:NCpi0Xpcospi -- MicroBooNE NC 1pi0 Xp, dsigma/dcos(theta_pi0) on 40Ar, BNB flux.
+# ADoNIS vs ACHILLES.  NO DATA OVERLAY -- like every other Section 1 figure.
+#
+# The forward cos -> 1 bins need no caveat: ACHILLES has no coherent pion production (its `Coherent`
+# model is coherent ELASTIC, NuclearModel.cc:512-523, hadronic final state = the same nucleus), so
+# neither generator has the coherent peak and there is nothing for either to be missing against.
+# See docs/nc_implementation_plan.md section 2.
+name: fig12_uboone_nc1pi0_cospi
+inputs:
+  adonis_bank: [output/nc_uBooNE_Ar/merged]
+  reference:   [output/achilles/fsrich/nc_uBooNE_Ar.npz]
+signal:
+  pion_id: pi0          # EXACTLY one pi0, no charged pions, no non-pion mesons
+  pi_win: [0.0, 2000.0]
+  cth: -1.0             # full angular range: the shape IS the observable here
+  mu_win: [0.0, inf]    # unused by the NC path (there is no lepton); kept schema-valid
+  p_win: [0.0, inf]     # "Xp" = any proton multiplicity, including zero
+  proton_lead: global
+  proton_count: ge1
+observables:
+  - {key: cos_pi0, label: '$\cos\theta_{\pi^0}$', linspace: [-1.0, 1.0, 21]}
+out_path: output/paper/fig12_uboone_nc1pi0_cospi.png
+title: 'MicroBooNE NC 1$\pi^0$ X$p$ --- $d\sigma/d\cos\theta_{\pi^0}$ on $^{40}$Ar'
+ratio_band: [0.9, 1.1]
+ratio_ylim: [0.75, 1.25]

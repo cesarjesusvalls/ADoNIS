@@ -185,7 +185,7 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
 def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.6),
                 ado_label="ENGINE", ref_label="ACHILLES", data=None, panel_w=3.4,
                 panel_kw=None, legend_fn=None, fig_h=6.4, title_kw=None, label_as_xlabel=False,
-                rect_top=0.96, min_w=7.5):
+                rect_top=0.96, min_w=7.5, max_cols=None):
     """specs: list of (key, edges, label).  ref_sel/ado_sel: full selection dicts (key->array + 'w').
     Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'}).
     Style hooks (all optional, defaults = the historical look, so existing callers are unchanged):
@@ -194,10 +194,23 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     the x axis instead of on top of the panel (where it duplicates the title)."""
     nv = len(specs)
     panel_kw = dict(panel_kw or {})
-    total_w = max(panel_w * nv, min_w)        # floor so single-panel figs are not narrow/clipped
-    fig, ax = plt.subplots(2, nv, figsize=(total_w, fig_h),
-                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0},
-                           squeeze=False, sharex="col")
+    ncol = nv if not max_cols else min(max_cols, nv)
+    nrow = 1 if not max_cols else int(np.ceil(nv / ncol))
+    total_w = max(panel_w * ncol, min_w)      # floor so single-panel figs are not narrow/clipped
+    # Each ROW of observables is a (top, ratio) PAIR of axes rows, so a wrapped figure has 2*nrow
+    # matplotlib rows.  height_ratios repeat the 3:1 split per pair.
+    fig, axg = plt.subplots(2 * nrow, ncol, figsize=(total_w, fig_h * nrow),
+                            gridspec_kw={"height_ratios": [3, 1] * nrow, "hspace": 0.0},
+                            squeeze=False, sharex="col")
+    # `ax` keeps its historical (2, nv) shape and ax[0, c] / ax[1, c] indexing, so every line below
+    # is untouched by the wrap: c is the SPEC index, and the mapping to a grid cell happens here.
+    ax = np.empty((2, nv), dtype=object)
+    for i in range(nv):
+        ax[0, i] = axg[2 * (i // ncol)][i % ncol]
+        ax[1, i] = axg[2 * (i // ncol) + 1][i % ncol]
+    for i in range(nv, nrow * ncol):          # blank any unused cell in the last row
+        axg[2 * (i // ncol)][i % ncol].axis("off")
+        axg[2 * (i // ncol) + 1][i % ncol].axis("off")
     results = {}
     for c, (key, edges, label) in enumerate(specs):
         ref = {"values": np.asarray(ref_sel[key]), "w": np.asarray(ref_sel["w"])}
