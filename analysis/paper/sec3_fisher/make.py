@@ -212,9 +212,8 @@ def main(label=None):
 
     _cache = {}
     def load(lbl):
-        """Load + schema-check one npz, cached.  Each axis may point at its own npz via `npz:` — e.g.
-        obs_classes uses the T2K-only physfit_gate1 (all 11 observables, nothing else to leave
-        uncovered), while the sample axes use the full multisample."""
+        """Load + schema-check one npz, cached.  An axis may point at its own npz via `npz:` (must share
+        the default's knob basis); currently every axis uses the default multi-sample npz."""
         if lbl not in _cache:
             src = style.ALTGEN / f"{lbl}.npz"
             if not src.exists():

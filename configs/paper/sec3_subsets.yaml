@@ -16,10 +16,10 @@
 # NO group in an axis picks up is reported as `uncovered` -- so a newly added sample is never silently
 # ignored.
 
-# Default input under output/altgen/ (override: CLI arg or ADONIS_SEC3_NPZ).  Each axis may set its own
-# `npz:` (see obs_classes).  This is the SAME multi-sample npz section 2 plots, so the sample figures here
-# use the SAME samples + signal defs as sec2: T2K keep-filtered to its 7 STV + CC0pi-muon observables,
-# MINERvA (STV + 1D pT/p||), (e,e'), and the pi+/p/n beams.  (obs_classes below points at its own T2K npz.)
+# Default input under output/altgen/ (override: CLI arg or ADONIS_SEC3_NPZ).  An axis MAY set its own
+# `npz:`, but none do now.  This is the SAME multi-sample npz section 2 plots, so every sec3 figure uses
+# the SAME samples + signal defs as sec2: T2K keep-filtered to its 7 STV + CC0pi-muon observables,
+# MINERvA (STV + 1D pT/p||), (e,e'), and the pi+/p/n beams.
 npz: multisample_carbon
 fit_cut: 0.5                   # a knob is FIT when shrinkage sigma_post/sigma_prior < this
 
@@ -31,16 +31,14 @@ reference:
 
 axes:
 
-  # ---- What does each CLASS OF OBSERVABLE buy you?  (the published T2K result) ------------------- #
-  obs_classes:
-    npz: physfit_gate1                   # T2K single-sample npz (all 11 obs on disk; we use sec2's 7)
+  # ---- What does each PROBE TYPE buy you?  (neutrino / electron / hadron beams) ------------------ #
+  by_probe:
     figure: sec3_shrinkage_subsets       # kept at the historical name
-    title: Gate I per observable class
-    groups:                              # sec2's 7-obs T2K, split into leptonic vs TKI (pion/mult classes
-                                         # dropped with ppi/cospi/n_p/n_chpi -- see the sample-axis note above)
-      lepton: {label: "lepton\n$p_\\mu,\\cos\\theta_\\mu$", keys: [pmu, cosmu]}
-      tki:    {label: "TKI",                                keys: [dpt, dat, pn, dptt, daT]}
-      full:   {label: "ALL T2K\n(7 obs)",                   keys: ["<lepton>", "<tki>"]}
+    title: Gate I per probe type
+    groups:                              # all samples, grouped by beam particle (uses the default npz)
+      nu:    {label: "$\\nu$\nT2K + MINERvA",     keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, "mnv_*"]}
+      ebeam: {label: "$e$ beam\n$(e,e')$",        keys: ["e_*"]}
+      hadr:  {label: "hadron beam\n$\\pi^+,p,n$", keys: ["pip_*", "prot_*", "neut_*"]}
 
   # ---- What does each SAMPLE ALONE measure?  (knob x sample, un-stacked) ------------------------- #
   samples_alone:

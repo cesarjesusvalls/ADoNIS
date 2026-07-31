@@ -139,7 +139,7 @@ READINESS = [
      "all non-NC ACHILLES-paper figures; ratios within a few % (near-threshold outliers documented: fig2 pπ⁺, fig13 ηN cusp)"),
     ("2", "Gradient information for all 27 knobs", "sec2_gradients_shape · sec2_gradient_reach",
      "ok", "figure-complete", "exact per-bin ∂(dσ/dx)/∂θ, autodiff, all 27"),
-    ("3", "Fisher information per observable subset",
+    ("3", "Fisher information per data subset",
      "sec3_shrinkage_subsets · sec3_failure_modes · sec3_degeneracy", "ok", "figure-complete",
      "T2K 10/27 FIT; knob×sample table (no figure yet)"),
     ("4", "Closures on the Fisher-selected knobs", "physfit_fig7_closure5", "ok", "figure-complete",
@@ -287,7 +287,7 @@ BODY = f"""
   property of the knob <em>and</em> the dataset's precision.</p>
   <p class="deffile mono">analysis/paper/physical_fit.py (Gate I) · analysis/paper/sec3_fisher/make.py</p>
   </div>
-  {figure("paper/sec3_shrinkage_subsets.png", "<b>Shrinkage per observable class</b>, marginalized (left) vs raw (right). Red box = FIT (fit measures it); green box = data sees it with other knobs fixed. Green-without-red = DEGENERATE.")}
+  {figure("paper/sec3_shrinkage_subsets.png", "<b>Shrinkage per probe type</b> (ν = T2K+MINERvA, e beam, hadron beam), marginalized (left) vs raw (right). Red box = FIT (fit measures it); green box = data sees it with other knobs fixed. Green-without-red = DEGENERATE.")}
   {figure("paper/sec3_failure_modes.png", "<b>The two failure modes.</b> x = can the data see it (raw), y = can the fit deliver it (marginalized). qe_norm is the extreme: raw 0.033 (one of the most sensitive knobs) → marginalized 0.86, a 26× degeneracy penalty against axial/vector_strength + sf_norm.")}
   {figure("paper/sec3_degeneracy.png", "<b>Degeneracy structure</b> — eigen-spectrum of the prior-scaled Fisher (left) and the eigenvector composition of the best-measured modes (right).")}
   <div class="reading">
