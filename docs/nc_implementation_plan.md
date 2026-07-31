@@ -1,7 +1,21 @@
 # Neutral-current (NC) support in ADoNIS — implementation plan
 
-**Status:** P1 landed; the rest is plan. **Date:** 2026-07-30. **Branch:** `sec1`.
-**Rev 3** — revised after adversarial source review (§8) and the owner's scope rule (§0.1).
+**Status:** P1–P9 landed (code + gates); P10 blocked only on bank statistics. **Date:** 2026-07-30.
+**Branch:** `sec1`. **Rev 4** — the plan has become a record of what was built, not a forecast.
+
+| phase | state |
+|---|---|
+| P1 fail-loud probe registry | **done** — 4 fallthrough sites, incl. one the plan first missed |
+| P2 `weak`→`CC`, `ee`→`EM` | **done** — 118 manifests migrated + verified |
+| P3 `k_lep` rename | **code done**; the 2727-chunk bank migration is written, verified, reversible, **not yet run** |
+| P−1 / D2 | **done** — resolved *against* rev 2's conclusion (§D2) |
+| P4 NC amplitude | **done** (vector current); `assembly.py` unification still open |
+| P5 NC leptonic + `_NORM_NC` | **done**, G5(1)(2)(3) pass |
+| P6 NC QE + D1 switch | **done**, G6(2) passes; nuclear QE sampler still open |
+| P7 NC banks | **done** — generates end to end; big bank running |
+| P8 NC1π⁰ selection | **done**, incl. the two lying config keys |
+| P9 antineutrino NC | **gated**; flux plumbing still open |
+| P10 figures 11/12 | **blocked on bank statistics only** |
 
 ## 0.1 The governing rule
 
