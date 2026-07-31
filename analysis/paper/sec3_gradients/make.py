@@ -9,10 +9,10 @@ the combined fit): each knob's row of the dimensionless pull
     S_ik = (dtheta_k^prior) * J_ik / sigma_i        [ the knob's per-bin pull, in units of the error ]
 is normalized to its own peak, so WHERE each knob pulls across the bins is readable; the pull is SIGNED
 (a knob raises or lowers a bin), hence the diverging map.  Rows grouped by physics, styled to match the
-Fisher figure (analysis/paper/sec3_fisher) -- the two read as a pair: which knobs are constrainable, and
+Fisher figure (analysis/paper/sec2_fisher) -- the two read as a pair: which knobs are constrainable, and
 where their information comes from.
 
-Usage:  python -m analysis.paper.sec2_gradients.make [label]
+Usage:  python -m analysis.paper.sec3_gradients.make [label]
 """
 import sys
 from pathlib import Path
@@ -92,7 +92,7 @@ def main(label="multisample_carbon"):
         cb = fig.colorbar(im, ax=ax, fraction=0.020, pad=0.015, ticks=[-1, 0, 1])
         cb.set_label("per-bin gradient (normalized per knob)", fontsize=8.5)
         cb.ax.tick_params(labelsize=7.5)
-        style.save(fig, "sec2_gradients_shape")
+        style.save(fig, "sec3_gradients_shape")
 
 
 if __name__ == "__main__":

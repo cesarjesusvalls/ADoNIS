@@ -17,15 +17,15 @@ Everything is a row slice of ONE persisted Jacobian, so every subset is exact an
 Fisher is additive (F = sum_s F_s), so stacking samples is stacking rows -- which is why the same
 machinery answers both "which observable class measures this knob" and "which SAMPLE does".
 
-WHICH slices get plotted is not hardcoded here: `configs/paper/sec3_subsets.yaml` declares the column
+WHICH slices get plotted is not hardcoded here: `configs/paper/sec2_subsets.yaml` declares the column
 axes as named groups of dataset keys (literals, globs, or references to an earlier group), and
 `subsets.py` resolves them against whatever `dskeys` the input npz actually carries.  Changing the
 sample composition or the binning is a config edit; a sample that is absent drops out with a warning
 and a sample that no column claims is reported as `uncovered`.
 
 Usage:
-    python -m analysis.paper.sec3_fisher.make [npz_label]     # default: the config's `npz:`
-    ADONIS_SEC3_CONFIG=... ADONIS_SEC3_NPZ=... python -m analysis.paper.sec3_fisher.make
+    python -m analysis.paper.sec2_fisher.make [npz_label]     # default: the config's `npz:`
+    ADONIS_SEC2_CONFIG=... ADONIS_SEC2_NPZ=... python -m analysis.paper.sec2_fisher.make
 """
 import os
 import sys
@@ -36,7 +36,7 @@ from matplotlib.patches import Rectangle
 
 from analysis.paper import style
 from analysis.paper import fisher_engine as FE
-from analysis.paper.sec3_fisher import subsets as SS
+from analysis.paper.sec2_fisher import subsets as SS
 
 C_MEAS, C_DEG, C_INV = "#2ca02c", "#ff7f0e", "#7f7f7f"
 
@@ -59,7 +59,7 @@ def fig_shrinkage(M, R, pnames, labels, title, figname, fit_cut):
     n = len(labels)
     panels = ((M, "MARGINALIZED (other knobs free)\nwhat the fit delivers", "#d62728"),
               (R, "RAW (other knobs fixed)\nwhat the data can see", C_MEAS))
-    cm = plt.get_cmap(os.environ.get("ADONIS_SEC3_CMAP", "Blues"))   # override to preview a colormap
+    cm = plt.get_cmap(os.environ.get("ADONIS_SEC2_CMAP", "Blues"))   # override to preview a colormap
 
     def _txt_color(v):                                        # readable on ANY cmap: pick by cell luminance
         r, g, b, _ = cm(min(max(v, 0.0), 1.2) / 1.2)
@@ -256,7 +256,7 @@ def fig_degeneracy(F, prior, pnames, colname, figname, kmodes=8):
 def main(label=None):
     style.use()
     cfg = SS.load_config()
-    default_label = label or os.environ.get("ADONIS_SEC3_NPZ") or cfg.get("npz", "multisample_carbon")
+    default_label = label or os.environ.get("ADONIS_SEC2_NPZ") or cfg.get("npz", "multisample_carbon")
     fit_cut = float(cfg.get("fit_cut", 0.5))
 
     _cache = {}
@@ -268,7 +268,7 @@ def main(label=None):
             if not src.exists():
                 raise SystemExit(f"[sec3] no Jacobian at {src}\n"
                                  f"       available: {sorted(p.stem for p in style.ALTGEN.glob('*.npz'))}\n"
-                                 f"       pass a label:  python -m analysis.paper.sec3_fisher.make <label>")
+                                 f"       pass a label:  python -m analysis.paper.sec2_fisher.make <label>")
             _cache[lbl] = (str(src),) + SS.check_schema(np.load(src, allow_pickle=True), str(src))
         return _cache[lbl]
 
@@ -302,7 +302,7 @@ def main(label=None):
             print(f"  {s:>10}: {int((M[:, c] < fit_cut).sum()):2d}/{len(pnames)} FIT  "
                   f"[{', '.join(pnames[k] for k in np.where(M[:, c] < fit_cut)[0])}]")
 
-        figname = axis.get("figure", f"sec3_shrinkage_{aname}")
+        figname = axis.get("figure", f"sec2_shrinkage_{aname}")
         if bool(axis.get("marginalized_only", False)):       # the paper "constraining power per probe" figure
             fig_shrinkage_grouped(M, pnames, [g[1] for g in groups], names, figname, fit_cut)
         else:
@@ -312,7 +312,7 @@ def main(label=None):
         arrays[aname] = (J, sigma, dskeys, row0)
 
     if not tables:
-        raise SystemExit("[sec3] no axis resolved against this npz — check configs/paper/sec3_subsets.yaml")
+        raise SystemExit("[sec3] no axis resolved against this npz — check configs/paper/sec2_subsets.yaml")
 
     # ---- figs 2 and 3 are computed on ONE designated column (config `reference:`) ---------------- #
     ref = cfg.get("reference") or {}
@@ -325,11 +325,11 @@ def main(label=None):
     print(f"\n[sec3] failure-mode + degeneracy reference column: {colname} "
           f"({len(groups[c][2])} datasets, {int((M[:, c] < fit_cut).sum())}/{len(pnames)} FIT)")
 
-    fig_failure_modes(M[:, c], R[:, c], pnames, colname, "sec3_failure_modes", fit_cut)
+    fig_failure_modes(M[:, c], R[:, c], pnames, colname, "sec2_failure_modes", fit_cut)
     _, _, F = gate1(J, sigma, prior, SS.rows_for(groups[c][2], dskeys, row0))
-    fig_degeneracy(F, prior, pnames, colname, "sec3_degeneracy")
+    fig_degeneracy(F, prior, pnames, colname, "sec2_degeneracy")
 
-    out = style.ALTGEN / f"sec3_shrinkage_{default_label}.npz"
+    out = style.ALTGEN / f"sec2_shrinkage_{default_label}.npz"
     np.savez(out, pnames=pnames, source=str(dsrc), fit_cut=fit_cut, reference=colname,
              **{f"{a}_marg": t[0] for a, t in tables.items()},
              **{f"{a}_raw": t[1] for a, t in tables.items()},

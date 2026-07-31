@@ -1,4 +1,4 @@
-"""Build ONE multi-sample per-bin gradient npz on carbon, in the physfit schema sec2_gradients/make.py
+"""Build ONE multi-sample per-bin gradient npz on carbon, in the physfit schema sec3_gradients/make.py
 renders.  Samples (all on 12C): T2K nu CC0pi/CC1pi (the persisted Gate-I Jacobian) + pi+ -> C and
 proton -> C beam-scattering cross sections (beam_fisher.beam_jacobian).
 
@@ -8,8 +8,8 @@ pool_fsi_reweight, so only the FSI knobs are non-zero and the hard-vertex/SF col
 recomputed from the STACKED Fisher F = (J/sigma)^T (J/sigma) + prior^-2 -- NOT carried per sample, so
 make.py's red "passes Gate I" labels reflect what ALL these samples jointly constrain.
 
-    python -m analysis.paper.sec2_gradients.build_multisample        # writes output/altgen/multisample_carbon.npz
-    python -m analysis.paper.sec2_gradients.make multisample_carbon  # renders it
+    python -m analysis.paper.sec3_gradients.build_multisample        # writes output/altgen/multisample_carbon.npz
+    python -m analysis.paper.sec3_gradients.make multisample_carbon  # renders it
 """
 import sys
 from pathlib import Path

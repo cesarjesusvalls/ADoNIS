@@ -1,4 +1,4 @@
-"""Resolve the section-3 column axes (configs/paper/sec3_subsets.yaml) against a Jacobian npz.
+"""Resolve the section-3 column axes (configs/paper/sec2_subsets.yaml) against a Jacobian npz.
 
 The point of this module is that sec3 never hardcodes WHICH samples exist.  It is handed the `dskeys`
 of whatever npz it was pointed at and turns the declarative groups into concrete bin-row slices,
@@ -19,8 +19,8 @@ import numpy as np
 import yaml
 
 CONFIG = Path(os.environ.get(
-    "ADONIS_SEC3_CONFIG",
-    Path(__file__).resolve().parents[3] / "configs" / "paper" / "sec3_subsets.yaml"))
+    "ADONIS_SEC2_CONFIG",
+    Path(__file__).resolve().parents[3] / "configs" / "paper" / "sec2_subsets.yaml"))
 
 # The npz contract sec3 consumes.  Any producer that writes these is a valid input (physfit_gate1,
 # physfit_minerva, multisample_carbon, ...); sec3 owns none of them.

@@ -11,12 +11,12 @@
 # The reference form is what makes a cumulative ladder cheap: each rung is the previous rung plus one
 # sample, with no repetition, so adding a sample means adding one line.
 #
-# Resolution is tolerant by design (see sec3_fisher/subsets.py): a pattern that matches nothing is
+# Resolution is tolerant by design (see sec2_fisher/subsets.py): a pattern that matches nothing is
 # reported and dropped, a group left with no keys is dropped as a column, and any dskey in the npz that
 # NO group in an axis picks up is reported as `uncovered` -- so a newly added sample is never silently
 # ignored.
 
-# Default input under output/altgen/ (override: CLI arg or ADONIS_SEC3_NPZ).  An axis MAY set its own
+# Default input under output/altgen/ (override: CLI arg or ADONIS_SEC2_NPZ).  An axis MAY set its own
 # `npz:`, but none do now.  This is the SAME multi-sample npz section 2 plots, so every sec3 figure uses
 # the SAME samples + signal defs as sec2: T2K keep-filtered to its 7 STV + CC0pi-muon observables,
 # MINERvA (STV + 1D pT/p||), (e,e'), and the pi+/p/n beams.
@@ -33,7 +33,7 @@ axes:
 
   # ---- What does each PROBE TYPE buy you?  (neutrino / electron / hadron beams) ------------------ #
   by_probe:
-    figure: sec3_shrinkage_subsets       # kept at the historical name
+    figure: sec2_shrinkage_subsets       # kept at the historical name
     title: Gate I per probe type
     marginalized_only: true              # single panel: what the joint fit delivers (no raw/degeneracy panel)
     groups:                              # all samples, grouped by beam particle (uses the default npz)
@@ -44,7 +44,7 @@ axes:
 
   # ---- What does each SAMPLE ALONE measure?  (knob x sample, un-stacked) ------------------------- #
   samples_alone:
-    figure: sec3_shrinkage_samples
+    figure: sec2_shrinkage_samples
     title: Gate I per sample, each on its own
     groups:
       T2K:       {label: "T2K\n$\\nu$ CC0/1$\\pi$",  keys: [dpt, dat, pmu, cosmu, pn, dptt, daT]}   # sec2's 7-obs T2K
@@ -56,7 +56,7 @@ axes:
 
   # ---- What does each ADDED sample buy on top of the last?  (Fisher is additive) ----------------- #
   sample_ladder:
-    figure: sec3_shrinkage_ladder
+    figure: sec2_shrinkage_ladder
     title: "Gate I as samples are added (F = $\\sum_s$ F$_s$)"
     groups:
       T2K:      {label: "T2K",            keys: [dpt, dat, pmu, cosmu, pn, dptt, daT]}   # sec2's 7-obs T2K

@@ -1,4 +1,4 @@
-"""Fast tests for the section-3 subset resolver (analysis.paper.sec3_fisher.subsets).
+"""Fast tests for the section-3 subset resolver (analysis.paper.sec2_fisher.subsets).
 
 The point of the resolver is that sec3 survives a CHANGE of sample composition or binning without a
 code edit, so that is what is pinned here: globs that match nothing, groups that vanish, references to
@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import yaml
 
-from analysis.paper.sec3_fisher import subsets as SS
+from analysis.paper.sec2_fisher import subsets as SS
 
 DSKEYS = ["pmu", "cosmu", "dpt", "mnv_dpt", "mnv_pn", "e_qe", "pip_react"]
 NBINS = [3, 3, 4, 2, 2, 5, 6]
@@ -121,24 +121,28 @@ def test_rows_for_a_rebinned_npz_follows_the_new_edges(tmp_path):
     assert list(SS.rows_for(["e_qe"], dskeys, row0)) == [5]
 
 
-def test_config_file_resolves_against_the_shipped_datasets():
-    """The committed YAML must parse and produce columns for a T2K-only npz."""
+def test_config_file_resolves_against_the_multisample_datasets():
+    """The committed YAML parses and produces the probe / ladder / per-sample columns for a multi-sample
+    npz (T2K's 7 STV+muon obs + MINERvA + (e,e') + the pi+/p/n beams)."""
     cfg = SS.load_config()
-    t2k = ["dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT", "ppi", "cospi", "n_p", "n_chpi"]
-    axes = {a: SS.resolve_axis(dict(spec, _name=a), t2k, log=lambda *_: None)
+    dskeys = (["dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT"]                 # T2K (sec2's 7)
+              + ["mnv_dat", "mnv_pn", "mnv_dpt", "mnv_ptmu", "mnv_pzmu"]          # MINERvA
+              + ["e_qe", "e_res"]                                                 # (e,e')
+              + ["pip_react", "pip_abs", "prot_react", "prot_pipro", "neut_react", "neut_pipro"])  # beams
+    axes = {a: SS.resolve_axis(dict(spec, _name=a), dskeys, log=lambda *_: None)
             for a, spec in cfg["axes"].items()}
-    assert [n for n, _l, _k in axes["obs_classes"]] == ["lepton", "leptonhad", "tki", "mult",
-                                                        "kin9", "full"]
-    assert len(axes["obs_classes"][-1][2]) == 11                 # full == kin9 + mult
-    assert [n for n, _l, _k in axes["samples_alone"]] == ["T2K"]  # the other samples aren't there
-    assert all(len(ks) == 11 for _n, _l, ks in axes["sample_ladder"])   # ladder collapses to T2K
+    assert [n for n, _l, _k in axes["by_probe"]] == ["nu", "ebeam", "hadr", "all"]
+    assert [n for n, _l, _k in axes["sample_ladder"]] == ["T2K", "p_mnv", "p_ee", "p_had"]
+    assert [n for n, _l, _k in axes["samples_alone"]] == ["T2K", "MINERvA", "ee", "pip", "prot", "neut"]
+    keys = {n: k for n, _l, k in axes["by_probe"]}
+    assert len(keys["nu"]) == 12                                  # 7 T2K + 5 MINERvA
+    assert len(keys["all"]) == len(dskeys)                        # ALL = every sample combined
 
 
-def test_obs_classes_is_fed_the_full_t2k_observable_set():
-    """obs_classes references all 11 T2K observables (incl. ppi/cospi/n_p/n_chpi), so it MUST read the
-    single-sample T2K npz (physfit_gate1), and the sample axes MUST read a `_full` multisample -- NOT the
-    sec2-figure `multisample_carbon`, whose keep-filter drops 4 of the 11 and would silently collapse the
-    `mult`/`kin9`/`full` columns and understate the T2K rung.  Regression guard for the sec1/2/3 merge."""
+def test_all_axes_read_the_shared_multisample_npz():
+    """Every sec2 axis reads the SAME multisample_carbon npz -- the same samples + signal defs the sec1
+    validation figures use (T2K keep-filtered to 7).  No per-axis npz override remains after aligning
+    sec2/sec3 to sec2's samples.  Regression guard for the swap."""
     cfg = SS.load_config()
-    assert cfg["axes"]["obs_classes"].get("npz") == "physfit_gate1"
-    assert cfg.get("npz", "").endswith("_full")
+    assert cfg.get("npz") == "multisample_carbon"
+    assert all("npz" not in spec for spec in cfg["axes"].values())

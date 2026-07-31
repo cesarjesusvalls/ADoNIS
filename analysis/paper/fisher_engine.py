@@ -1,8 +1,8 @@
 """Shared Gate-I Fisher engine for the section-2/3 per-bin gradient drivers.
 
 Every per-bin gradient driver (physical_fit, minerva_fit, minerva_ptpz_fit, t2k_pcos_fit,
-electron_fit) and every assembler that stacks them (sec2_gradients/build_multisample, beams/beam_fisher,
-sec3_fisher) builds the SAME object: a per-bin Jacobian J (bins x knobs) via one jax.jvp per knob through
+electron_fit) and every assembler that stacks them (sec3_gradients/build_multisample, beams/beam_fisher,
+sec2_fisher) builds the SAME object: a per-bin Jacobian J (bins x knobs) via one jax.jvp per knob through
 bank_reweight.bank_weight, a diagonal error-model sigma per bin, then the Asimov Fisher
 F = (J/sigma)^T (J/sigma) and Gate-I shrinkage sqrt(diag(inv(F + prior^-2)))/prior.
 

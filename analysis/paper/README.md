@@ -9,12 +9,12 @@ Figures are written to `output/paper/` (gitignored) as `.png` + `.pdf`. Shared s
 | section | package | engine it drives |
 |---|---|---|
 | 1 — ADoNIS reproduces ACHILLES | `sec1_validation` | `analysis/t2k/make_plots.py`, `differentiability/bank_matrix.py` |
-| 2 — gradients for all 27 knobs | `sec2_gradients` | `full_knobs.knob_specs`, `bank_reweight.weight_jit` |
-| 3 — Fisher info per observable | `sec3_fisher` | `scripts/altgen/physical_fit.py` (Gate I) |
+| 2 — Fisher / Gate I: constrainable knobs | `sec2_fisher` | `analysis/paper/physical_fit.py` (Gate I) |
+| 3 — gradients of the fittable knobs | `sec3_gradients` | `full_knobs.knob_specs`, `bank_reweight.weight_jit` |
 | 4 — closures on the fitted knobs | `sec4_closure` | `scripts/altgen/physical_fit_run.py` |
 | 5 — unknown-unknown taxonomy | `sec5_unknowns` | `scripts/altgen/physical_fit_run.py` (modes) |
 
-## Section 3 — Fisher per observable subset
+## Section 2 — Fisher / Gate I per data subset
 
 The Gate-I Jacobian is computed **once** over the full observable set and persisted; every subset is a
 **row slice** of it, so the subset study costs no bank pass.
@@ -25,7 +25,7 @@ ADONIS_EVENT_BANK=output/event_bank_v2 PHYSFIT_OBS=full ADONIS_LABEL=physfit_gat
   python -u scripts/altgen/physical_fit.py
 
 # all subset figures from that one npz (seconds, no bank)
-python -m analysis.paper.sec3_fisher.make
+python -m analysis.paper.sec2_fisher.make
 ```
 
 `OBS_SUBSETS` in `scripts/altgen/physical_fit.py` is the single source of truth for the subsets — it is
@@ -58,8 +58,8 @@ A knob is **FIT** when shrinkage `σ_post/σ_prior < 0.5` — the data, not the 
 - **INVISIBLE** — raw shrinkage > 1: the sample carries no information at this precision, and no
   re-parameterization helps. *e.g.* `s_conv` (raw 13.8), `pion_pole`, `gen`.
 
-Both are reported: `sec3_shrinkage_subsets` (marginalized vs raw, per subset) and `sec3_failure_modes`
-(the two-axis plane). `sec3_degeneracy` shows the prior-scaled Fisher eigen-spectrum.
+Both are reported: `sec2_shrinkage_subsets` (marginalized vs raw, per subset) and `sec2_failure_modes`
+(the two-axis plane). `sec2_degeneracy` shows the prior-scaled Fisher eigen-spectrum.
 
 Gate I is **precision-relative** by construction: `ADONIS_SYST` (default 0.05) sets the systematic that
 defines "resolvable". At 15% only 4 knobs pass instead of 7 — measurability is a property of the knob

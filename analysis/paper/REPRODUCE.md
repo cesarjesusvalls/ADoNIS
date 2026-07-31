@@ -90,8 +90,8 @@ PHYSFIT_MODE=closure PHYSFIT_METHOD=all GATE1_NPZ=output/altgen/physfit_gate1_fu
 ## 5. Regenerate the figures
 ```bash
 python -m analysis.paper.sec1_validation.make      # ADoNIS-vs-ACHILLES validation (neutrino) + beams
-python -m analysis.paper.sec2_gradients.make       # gradients for all 27 knobs (reads the Gate-I npz)
-python -m analysis.paper.sec3_fisher.make          # Fisher per observable subset
+python -m analysis.paper.sec2_fisher.make          # §2 Fisher / Gate I: which knobs the data constrains
+python -m analysis.paper.sec3_gradients.make       # §3 per-bin gradients of the fittable knobs
 python -m analysis.paper.beams.beam_fisher --syst 0.05      # knob x sample Fisher -> output/altgen/beam_fisher.npz
 # sec4-5 figures (from the §4b npz):
 python -m analysis.paper.physfit.physfit_closure5_fig      # fig7 closure5   (sec4)

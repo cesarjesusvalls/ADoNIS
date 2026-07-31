@@ -5,8 +5,8 @@ One sub-package per paper section. Each is a THIN DRIVER over the reusable adoni
 binning, or reweighting:
 
   sec1_validation  ADoNIS reproduces ACHILLES   (adonis.reweight.bank_plot/bank_reweight + paper.beams)
-  sec2_gradients   gradients for all 27 knobs   (adonis.reweight.reweight_model/bank_reweight)
-  sec3_fisher      Fisher info per observable
+  sec3_gradients   gradients for all 27 knobs   (adonis.reweight.reweight_model/bank_reweight)
+  sec2_fisher      Fisher info per observable
   sec4_closure     closures on fitted knobs
   sec5_unknowns    unknown-unknown taxonomy
 

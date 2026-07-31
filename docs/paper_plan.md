@@ -19,8 +19,8 @@ resolvable above the errors).
 | # | Section | Status | Assets / pointers | To do |
 |---|---|---|---|---|
 | 1 | **Validation: ADoNIS reproduces ACHILLES** — the paper's non-NC figures (inclusive e,e'; free-nucleon & π-nucleus σ; e4ν; T2K/MINERvA/MicroBooNE TKI; DCC σ(W)) | ✅ figure-complete | `analysis/paper/sec1_validation/make.py` → `fig01_ee_domega`, `fig02_anl_sigma`, `fig03_pi_nucleus_sigma`, `fig456_e4nu`, `fig07/08/09`, `fig10_uboone_cc1p0pi`, `fig13_piN_sigma` | fold into the paper |
-| 2 | **Compact "we have gradient information for all knobs"** | ✅ figure-complete | `analysis/paper/sec2_gradients/make.py` → `sec2_gradients_shape` (27×188 per-knob-normalized pull heatmap), `sec2_gradient_reach` | fold into the paper |
-| 3 | **Fisher information per data subset** → what is worth fitting | ✅ figure-complete | `analysis/paper/sec3_fisher/make.py` → `sec3_shrinkage_subsets`, `sec3_failure_modes`, `sec3_degeneracy`; engine = `physical_fit.py` Gate I with `PHYSFIT_OBS` | fold into the paper |
+| 2 | **Which knobs the data can constrain** (Fisher per data subset) → what is worth fitting | ✅ figure-complete | `analysis/paper/sec2_fisher/make.py` → `sec2_shrinkage_subsets` (constraining power per probe: ν / e / hadron / ALL), `sec2_failure_modes`, `sec2_degeneracy`; engine = `physical_fit.py` Gate I | fold into the paper |
+| 3 | **Gradient information for the fittable knobs** | ✅ figure-complete | `analysis/paper/sec3_gradients/make.py` → `sec3_gradients_shape` (per-bin gradients of the Gate-I subset, grouped by physics), `sec3_gradient_reach` | fold into the paper |
 | 4 | **Closures** with Fisher-selected parameters | ✅ figure-complete | `physfit_fig7_closure5.png` (5-param, ≤0.5σ), 7-param on the 9-obs suite (`p9_closure.npz`, ≤0.4σ); `scripts/altgen/physfit_closure5_fig.py` | fold into the paper; optionally a fluctuated closure (null calibration) |
 | 5 | **Fitting data not described by the model** (unknown unknowns) | ✅ figure-complete | `physfit_fig1–10`, `output/reports/physical_fit_report.pdf`; scripts in `scripts/altgen/physical_fit_run.py` + fig scripts | assemble into the paper narrative (taxonomy: inside=Q²-nuisance, outside=coherence/excise; precision frontier) |
 
@@ -93,7 +93,7 @@ Bank: `output/event_bank_v2` (1,874,385 ev, ragged record, pion SURVIVAL factor)
 > ones rose far more — that is the flat direction dying. Nothing outside the pion block moved (all within
 > noise), so the fix is surgical. Pion absorption and π–N elastic scattering are now measurable at T2K.
 
-**"Freeze" hides two physically opposite failure modes** — reported separately (`sec3_failure_modes`),
+**"Freeze" hides two physically opposite failure modes** — reported separately (`sec2_failure_modes`),
 since they demand opposite responses:
 - **DEGENERATE** (raw shrinkage < 0.5, marginalized > 0.5): the data sees the knob clearly, another knob
   spends the sensitivity. `qe_norm` is the extreme case — raw **0.034** (one of the most sensitive knobs

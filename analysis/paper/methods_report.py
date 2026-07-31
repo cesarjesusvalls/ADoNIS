@@ -121,7 +121,7 @@ def spine():
         ("θ-indep. walk", "pool cascade at nominal → ragged kind-1 FSI records + amps² (a,b,c) hard-vertex records"),
         ("reweight w(θ)", "w₀·norm·hv·fsi·sf; =1 at nominal, exact at any θ; JAX-differentiable"),
         ("Jacobian J", "one jax.jvp per knob through weight_jit → 27 knobs × 188 bins"),
-        ("sections", "§2 plots J · §3 Fisher F=JᵀC⁻¹J → shrinkage · beams add rows F+=F_beam"),
+        ("sections", "§2 Fisher F=JᵀC⁻¹J → which knobs are constrainable · §3 the per-bin gradients J of those knobs"),
     ]
     parts = []
     for i, (t, d) in enumerate(nodes):
@@ -137,11 +137,11 @@ READINESS = [
      "fig01_ee_domega · fig02_anl_sigma · fig03_pi_nucleus_sigma · fig456_e4nu · fig07/08/09 · fig10_uboone · fig13_piN_sigma",
      "ok", "figure-complete",
      "all non-NC ACHILLES-paper figures; ratios within a few % (near-threshold outliers documented: fig2 pπ⁺, fig13 ηN cusp)"),
-    ("2", "Gradient information for all 27 knobs", "sec2_gradients_shape · sec2_gradient_reach",
-     "ok", "figure-complete", "exact per-bin ∂(dσ/dx)/∂θ, autodiff, all 27"),
-    ("3", "Fisher information per data subset",
-     "sec3_shrinkage_subsets · sec3_failure_modes · sec3_degeneracy", "ok", "figure-complete",
-     "T2K 10/27 FIT; knob×sample table (no figure yet)"),
+    ("2", "Which knobs the data can constrain (Fisher / Gate I)",
+     "sec2_shrinkage_subsets · sec2_failure_modes · sec2_degeneracy", "ok", "figure-complete",
+     "16/28 FIT combined; probe-type + sample-ladder figures"),
+    ("3", "Gradient information for the fittable knobs", "sec3_gradients_shape · sec3_gradient_reach",
+     "ok", "figure-complete", "exact per-bin ∂(dσ/dx)/∂θ, autodiff, the fittable subset"),
     ("4", "Closures on the Fisher-selected knobs", "physfit_fig7_closure5", "ok", "figure-complete",
      "5-param recovered ≤ 0.5σ"),
     ("5", "Fitting data the model can't describe", "physfit_fig3/4/8/9/10", "ok", "figure-complete",
@@ -253,43 +253,27 @@ BODY = f"""
 </section>
 
 <section class="sec">
-  <div class="sechead"><span class="num">§2</span><h2>Gradient information for all 27 knobs</h2></div>
-  <p class="tag">The object is the shared J; nothing new is computed.</p>
-  <div class="reading">
-  <p><b>What.</b> The full Jacobian as the per-bin <em>pull</em>
-  <code>S_ik = σ_prior_k · J_ik / σ_i</code> — the dimensionless quantity the Fisher accumulates
-  (<code>F = SᵀS</code>) — shown per-knob normalized to each knob's own peak, so WHERE each knob pulls
-  across the bins is readable regardless of its magnitude. A row with no colour is a knob with no gradient.</p>
-  <p><b>How.</b> Each row normalized to its own peak pull (magnitude removed; the RES knobs light the CC1π
-  columns and reach CC0π via pion absorption). The companion reach bar is <code>√F_kk</code> = the total
-  pull a 1σ prior move produces, degeneracy-blind; row label red = passes Gate I.</p>
-  <p class="deffile mono">analysis/paper/sec2_gradients/make.py — reads physfit_gate1_full_v2.npz (no bank pass)</p>
-  </div>
-  {figure("paper/sec2_gradients_shape.png", "<b>Per-knob gradient shape, all 27 knobs × 188 bins</b>, autodiff through the cascade — each knob's row normalized to its own peak, so WHERE it pulls is readable regardless of magnitude. Columns grouped by observable. s_conv is blank (no gradient); the RES knobs light the CC1π columns and reach CC0π via pion absorption.")}
-  {figure("paper/sec2_gradient_reach.png", "<b>Gradient reach √F_kk per knob.</b> Every knob has a gradient; not every gradient is information. Red = passes Gate I on the full set.")}
-</section>
-
-<section class="sec">
-  <div class="sechead"><span class="num">§3</span><h2>Fisher information per observable subset</h2></div>
+  <div class="sechead"><span class="num">§2</span><h2>Which knobs the data can constrain (Fisher / Gate I)</h2></div>
   <p class="tag">What is worth fitting, and why not — decided from the data.</p>
   <div class="reading">
-  <p><b>What.</b> Gate I asks, per observable subset: does the <em>data</em> (not the prior) determine a
+  <p><b>What.</b> Gate I asks, per data subset: does the <em>data</em> (not the prior) determine a
   knob? Asimov posterior <code>V = (JᵀC⁻¹J + Π⁻¹)⁻¹</code>; a knob is <b>FIT</b> when shrinkage
   <code>σ_post/σ_prior &lt; 0.5</code>. Diagonal error <code>σ_i² = (5%·dσ_i)² + MC²</code>.</p>
   <p><b>Two axes.</b> σ_post is <em>marginalized</em> (a diagonal of V), so failure has two opposite
   causes, reported separately: <span class="k">DEGENERATE</span> (raw <code>1/√F_kk</code> small — data
   sees it — but marginalized large: another knob mimics it; a better observable recovers it) vs
   <span class="k">INVISIBLE</span> (raw &gt; 1: no information at this precision; nothing recovers it).</p>
-  <p><b>Subsets.</b> Every subset is a <b>row slice</b> of the one persisted J (no bank pass). lepton →
-  initial state only (2 FIT); +pion-kin → +RES vertex; TKI → +nucleon FSI; +multiplicities → +FSI. Full
-  11-observable set: <b>10/27 FIT</b>.</p>
-  <p><b>Precision-relative.</b> At 15% systematic only 4 knobs pass instead of 10 — measurability is a
-  property of the knob <em>and</em> the dataset's precision.</p>
-  <p class="deffile mono">analysis/paper/physical_fit.py (Gate I) · analysis/paper/sec3_fisher/make.py</p>
+  <p><b>Subsets.</b> Every subset is a <b>row slice</b> of the one persisted J (no bank pass).  The probe
+  figure groups every sample by beam — ν (T2K+MINERvA), e beam, hadron beam — plus a combined ALL column:
+  <b>16/28 FIT</b> together.</p>
+  <p><b>Precision-relative.</b> Tighten the systematic and fewer knobs pass — measurability is a property
+  of the knob <em>and</em> the dataset's precision.</p>
+  <p class="deffile mono">analysis/paper/physical_fit.py (Gate I) · analysis/paper/sec2_fisher/make.py</p>
   </div>
-  {figure("paper/sec3_shrinkage_subsets.png", "<b>Shrinkage per probe type</b> (ν = T2K+MINERvA, e beam, hadron beam), marginalized (left) vs raw (right). Red box = FIT (fit measures it); green box = data sees it with other knobs fixed. Green-without-red = DEGENERATE.")}
-  {figure("paper/sec3_failure_modes.png", "<b>The two failure modes.</b> x = can the data see it (raw), y = can the fit deliver it (marginalized). qe_norm is the extreme: raw 0.033 (one of the most sensitive knobs) → marginalized 0.86, a 26× degeneracy penalty against axial/vector_strength + sf_norm.")}
-  {figure("paper/sec3_degeneracy.png", "<b>Degeneracy structure</b> — eigen-spectrum of the prior-scaled Fisher (left) and the eigenvector composition of the best-measured modes (right).")}
+  {figure("paper/sec2_shrinkage_subsets.png", "<b>Constraining power per probe</b> — ν (T2K+MINERvA), e beam, hadron beam, and ALL combined. Dark = tighter constraint; orange outline = FIT (σ_post/σ_prior &lt; 0.5); rows grouped by physics block.")}
+  {figure("paper/sec2_failure_modes.png", "<b>The two failure modes.</b> x = can the data see it (raw), y = can the fit deliver it (marginalized). qe_norm is the extreme: raw 0.033 (one of the most sensitive knobs) → marginalized 0.86, a degeneracy penalty against axial/vector_strength + sf_norm.")}
+  {figure("paper/sec2_degeneracy.png", "<b>Degeneracy structure</b> — eigen-spectrum of the prior-scaled Fisher (left) and the eigenvector composition of the best-measured modes (right).")}
+
   <div class="reading">
   <h3>Knob × sample (the tagged-beam payoff)</h3>
   <p>Fisher is additive: <code>F = F_T2K + Σ_beam F_beam</code>, each beam just extra rows of J
@@ -304,7 +288,22 @@ BODY = f"""
   <tr><td><b>ALL</b></td><td class="n"><b>14</b></td><td>+ all above; sabs 0.38→0.13</td><td>s_piN_elastic 0.42→0.16</td></tr>
   </tbody></table></div>
   <div class="callout warn"><b>Gap.</b> This knob×sample result is a table + npz (<code>beam_fisher.npz</code>);
-  it has <b>no figure yet</b>. A knob×sample shrinkage heatmap is the one missing §3 figure.</div>
+  it has <b>no figure yet</b>. A knob×sample shrinkage heatmap is the one missing §2 figure.</div>
+</section>
+
+<section class="sec">
+  <div class="sechead"><span class="num">§3</span><h2>Gradient information for the fittable knobs</h2></div>
+  <p class="tag">The object is the shared J; nothing new is computed.</p>
+  <div class="reading">
+  <p><b>What.</b> The per-bin <em>pull</em> <code>S_ik = σ_prior_k · J_ik / σ_i</code> — the dimensionless
+  quantity the Fisher accumulates (<code>F = SᵀS</code>) — shown for the Gate-I <b>fittable</b> subset
+  (§2), each knob's row normalized to its own peak, so WHERE each knob draws its information is readable.</p>
+  <p><b>How.</b> The pull is <em>signed</em> (a knob raises or lowers a bin), hence a diverging blue↔orange
+  map; rows grouped by physics block, columns by observable — so it reads as a pair with the §2 figure
+  (which knobs are constrainable / where their gradient comes from).</p>
+  <p class="deffile mono">analysis/paper/sec3_gradients/make.py — reads multisample_carbon.npz (no bank pass)</p>
+  </div>
+  {figure("paper/sec3_gradients_shape.png", "<b>Per-bin gradients for the fittable knobs</b>, autodiff through the cascade — each knob's row normalized to its own peak, so WHERE it pulls is readable; signed (blue↔orange). Rows grouped by physics block, columns by observable: the cross-section knobs draw from ν, the FSI knobs from the hadron beams, the nuclear knobs from ν + (e,e').")}
 </section>
 
 <section class="sec">
