@@ -132,3 +132,13 @@ def test_config_file_resolves_against_the_shipped_datasets():
     assert len(axes["obs_classes"][-1][2]) == 11                 # full == kin9 + mult
     assert [n for n, _l, _k in axes["samples_alone"]] == ["T2K"]  # the other samples aren't there
     assert all(len(ks) == 11 for _n, _l, ks in axes["sample_ladder"])   # ladder collapses to T2K
+
+
+def test_obs_classes_is_fed_the_full_t2k_observable_set():
+    """obs_classes references all 11 T2K observables (incl. ppi/cospi/n_p/n_chpi), so it MUST read the
+    single-sample T2K npz (physfit_gate1), and the sample axes MUST read a `_full` multisample -- NOT the
+    sec2-figure `multisample_carbon`, whose keep-filter drops 4 of the 11 and would silently collapse the
+    `mult`/`kin9`/`full` columns and understate the T2K rung.  Regression guard for the sec1/2/3 merge."""
+    cfg = SS.load_config()
+    assert cfg["axes"]["obs_classes"].get("npz") == "physfit_gate1"
+    assert cfg.get("npz", "").endswith("_full")

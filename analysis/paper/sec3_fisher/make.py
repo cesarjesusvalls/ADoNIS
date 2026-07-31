@@ -229,21 +229,35 @@ def fig_degeneracy(F, prior, pnames, colname, figname, kmodes=8):
 def main(label=None):
     style.use()
     cfg = SS.load_config()
-    label = label or os.environ.get("ADONIS_SEC3_NPZ") or cfg.get("npz", "multisample_carbon")
+    default_label = label or os.environ.get("ADONIS_SEC3_NPZ") or cfg.get("npz", "multisample_carbon_full")
     fit_cut = float(cfg.get("fit_cut", 0.5))
 
-    src = style.ALTGEN / f"{label}.npz"
-    if not src.exists():
-        raise SystemExit(f"[sec3] no Jacobian at {src}\n"
-                         f"       available: {sorted(p.stem for p in style.ALTGEN.glob('*.npz'))}\n"
-                         f"       pass a label:  python -m analysis.paper.sec3_fisher.make <label>")
-    J, sigma, prior, pnames, dskeys, row0 = SS.check_schema(np.load(src, allow_pickle=True), str(src))
-    print(f"[sec3] {src}: {J.shape[0]} bins x {J.shape[1]} knobs, {len(dskeys)} datasets")
-    print(f"       datasets: {dskeys}")
+    _cache = {}
+    def load(lbl):
+        """Load + schema-check one npz, cached.  Each axis may point at its own npz via `npz:` — e.g.
+        obs_classes uses the T2K-only physfit_gate1 (all 11 observables, nothing else to leave
+        uncovered), while the sample axes use the full multisample."""
+        if lbl not in _cache:
+            src = style.ALTGEN / f"{lbl}.npz"
+            if not src.exists():
+                raise SystemExit(f"[sec3] no Jacobian at {src}\n"
+                                 f"       available: {sorted(p.stem for p in style.ALTGEN.glob('*.npz'))}\n"
+                                 f"       pass a label:  python -m analysis.paper.sec3_fisher.make <label>")
+            _cache[lbl] = (str(src),) + SS.check_schema(np.load(src, allow_pickle=True), str(src))
+        return _cache[lbl]
 
-    tables, resolved = {}, {}
+    # the default npz fixes the shared knob basis (pnames/prior) every axis must agree on
+    dsrc, dJ, _ds, prior, pnames, ddk, _dr = load(default_label)
+    print(f"[sec3] default npz {default_label}: {dJ.shape[0]} bins x {dJ.shape[1]} knobs, {len(ddk)} datasets")
+    print(f"       datasets: {ddk}")
+
+    tables, resolved, arrays = {}, {}, {}
     for aname, axis in cfg["axes"].items():
         axis = dict(axis, _name=aname)
+        alabel = axis.get("npz", default_label)                     # per-axis input; else the file default
+        src, J, sigma, _pr, pn, dskeys, row0 = load(alabel)
+        if pn != pnames:
+            raise SystemExit(f"[sec3] axis '{aname}' npz {alabel}: knob basis differs from {default_label}")
         groups = SS.resolve_axis(axis, dskeys)
         if not groups:
             print(f"  [sec3] axis '{aname}': no columns survived — skipped")
@@ -253,7 +267,7 @@ def main(label=None):
         for c, (_n, _l, keys) in enumerate(groups):
             M[:, c], R[:, c], _ = gate1(J, sigma, prior, SS.rows_for(keys, dskeys, row0))
 
-        print(f"\n==== GATE I · axis '{aname}' ({label}) -- shrinkage, FIT < {fit_cut} ====")
+        print(f"\n==== GATE I · axis '{aname}' ({alabel}) -- shrinkage, FIT < {fit_cut} ====")
         names = [g[0] for g in groups]
         print(f"{'knob':>20} " + " ".join(f"{s:>10}" for s in names))
         for k in np.argsort(M[:, -1]):
@@ -266,6 +280,7 @@ def main(label=None):
                       axis.get("figure", f"sec3_shrinkage_{aname}"), fit_cut)
         tables[aname] = (M, R, names)
         resolved[aname] = groups
+        arrays[aname] = (J, sigma, dskeys, row0)
 
     if not tables:
         raise SystemExit("[sec3] no axis resolved against this npz — check configs/paper/sec3_subsets.yaml")
@@ -274,6 +289,7 @@ def main(label=None):
     ref = cfg.get("reference") or {}
     aname = ref.get("axis") if ref.get("axis") in resolved else list(resolved)[-1]
     groups, (M, R, names) = resolved[aname], tables[aname]
+    J, sigma, dskeys, row0 = arrays[aname]                          # the reference axis's own npz
     g = ref.get("group", -1)
     c = names.index(g) if isinstance(g, str) and g in names else (int(g) if isinstance(g, int) else -1)
     colname = f"{aname}/{names[c]}"
@@ -284,8 +300,8 @@ def main(label=None):
     _, _, F = gate1(J, sigma, prior, SS.rows_for(groups[c][2], dskeys, row0))
     fig_degeneracy(F, prior, pnames, colname, "sec3_degeneracy")
 
-    out = style.ALTGEN / f"sec3_shrinkage_{label}.npz"
-    np.savez(out, pnames=pnames, source=str(src), fit_cut=fit_cut, reference=colname,
+    out = style.ALTGEN / f"sec3_shrinkage_{default_label}.npz"
+    np.savez(out, pnames=pnames, source=str(dsrc), fit_cut=fit_cut, reference=colname,
              **{f"{a}_marg": t[0] for a, t in tables.items()},
              **{f"{a}_raw": t[1] for a, t in tables.items()},
              **{f"{a}_cols": np.asarray(t[2]) for a, t in tables.items()})

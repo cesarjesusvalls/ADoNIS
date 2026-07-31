@@ -16,7 +16,10 @@
 # NO group in an axis picks up is reported as `uncovered` -- so a newly added sample is never silently
 # ignored.
 
-npz: multisample_carbon        # default input under output/altgen/ (override: CLI arg or ADONIS_SEC3_NPZ)
+# Default input under output/altgen/ (override: CLI arg or ADONIS_SEC3_NPZ).  Each axis may set its own
+# `npz:` (see obs_classes).  `_full` carries the COMPLETE 11-observable T2K set the sample axes need;
+# the sec2-figure `multisample_carbon` keep-filters T2K to 7, which would silently degrade the T2K rung.
+npz: multisample_carbon_full
 fit_cut: 0.5                   # a knob is FIT when shrinkage sigma_post/sigma_prior < this
 
 # The column of the reference axis that fig 2 (failure modes) and fig 3 (degeneracy) are computed on.
@@ -29,6 +32,7 @@ axes:
 
   # ---- What does each CLASS OF OBSERVABLE buy you?  (the published T2K result) ------------------- #
   obs_classes:
+    npz: physfit_gate1                   # T2K single-sample npz: carries all 11 observables, nothing else
     figure: sec3_shrinkage_subsets       # kept at the historical name
     title: Gate I per observable class
     groups:
