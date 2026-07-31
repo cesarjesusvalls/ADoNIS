@@ -20,6 +20,7 @@ import numpy as np
 # --- include/Achilles/Constants.hh (precise) ------------------------------------------
 mp = 938.27208816         # proton mass  [MeV]
 mn = 939.56542054         # neutron mass [MeV]
+me = 0.51099895000        # electron mass [MeV] (PDG); used by the (e,e') reconstruction (E_QE, p_e)
 mN = (mp + mn) / 2.0      # = 938.91875435 ; Constant::mN / mqe (main_xsec_new.f90:90)
 mN2 = mN * mN
 mpip = 139.57018

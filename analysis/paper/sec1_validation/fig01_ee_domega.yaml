@@ -1,8 +1,35 @@
-# Paper Fig 1 -- inclusive (e,e') dsigma/domega on C+Ar @2.222 GeV, QE/RES/TOTAL. Panels via make_figure.
-name: fig01_ee_domega
+# Paper Fig 1 -- inclusive (e,e') dsigma/domega on 40Ar + 12C @2.222 GeV, QE/RES/TOTAL.
+# Electron-beam selection (probe: electron -> EleBeamSignalDef); one observable (omega) across two nuclei,
+# so each panel names its own bank + qe/res oracle.  Panels via make_figure (render: panels, compute: ele).
 render: panels
-compute: ee_domega
+compute: ele
+name: fig01_ee_domega
+probe: electron
+signal:                       # inclusive (e,e'): only the scattered-electron polar window
+  beam_energy: 2222.0         # MeV
+  e_theta_win: [14.0, 17.0]   # deg  (theta_e' ~ 15.5)
+title: "Inclusive (e,e') at 2.222 GeV, $\\theta_{e'}\\approx15.5^\\circ$"
+ratio_ylim: [0.6, 1.4]
 layout:
-  panel_w: 3.55        # -> 2 panels x 3.55 = 7.1 wide (paper canvas)
+  panel_w: 3.55               # 2 panels x 3.55 = 7.1 wide (paper canvas)
   fig_h: 2.6
   wspace: 0.26
+params:
+  ylabel: '$d\sigma/d\omega$ [nb/GeV]'
+  panels:                     # paper order: Ar left, C right.  value_scale 1e-3: omega MeV -> GeV axis.
+    - obs: omega
+      topo: incl
+      value_scale: 0.001
+      linspace: [0.05, 0.95, 46]
+      label: '$\omega$ [GeV]'
+      annotate: '$^{40}$Ar'
+      bank: output/paper_banks_p4/beam_e_Ar/merged
+      ref: [output/achilles/fsrich/inclusive_ee_Ar_qe.npz, output/achilles/fsrich/inclusive_ee_Ar_res.npz]
+    - obs: omega
+      topo: incl
+      value_scale: 0.001
+      linspace: [0.05, 0.95, 46]
+      label: '$\omega$ [GeV]'
+      annotate: '$^{12}$C'
+      bank: output/paper_banks_p4/beam_e_C/merged
+      ref: [output/achilles/fsrich/inclusive_ee_C_qe.npz, output/achilles/fsrich/inclusive_ee_C_res.npz]

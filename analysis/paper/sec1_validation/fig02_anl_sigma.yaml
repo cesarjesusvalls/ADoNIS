@@ -2,3 +2,5 @@
 name: fig02_anl_sigma
 render: sigma_channels
 heavy: true            # amps2 scan reduce -> minutes; skipped by --light
+inputs:
+  oracle_scan: output/oracle_freenucleon_scan   # ACHILLES free-nucleon energy scan (per-point npz dirs)

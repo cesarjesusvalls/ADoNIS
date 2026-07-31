@@ -7,7 +7,7 @@ import json
 
 import numpy as np
 
-from adonis.workflow.config import SignalDef
+from adonis.workflow.config import NuSignalDef
 from adonis.workflow import selection as SG
 
 MU, MP, MPI, MPI0 = 105.658, 938.272, 139.570, 134.977
@@ -27,11 +27,11 @@ _EVENTS = [
     [(2212, 700, MP), (2212, 600, MP)],
     [(2212, 700, MP), (211, 400, MPI)],
 ]
-_CC0PI = SignalDef(mu_win=(250., 7000.), cos_mu=-0.6, p_win=(450., 1000.), cth=0.4,
+_CC0PI = NuSignalDef(mu_win=(250., 7000.), cos_mu=-0.6, p_win=(450., 1000.), cth=0.4,
                    pi_win=None, pion_id="none", proton_lead="global")
-_CC0PI_EQ1 = SignalDef(mu_win=(250., 7000.), cos_mu=-0.6, p_win=(450., 1000.), cth=0.4,
+_CC0PI_EQ1 = NuSignalDef(mu_win=(250., 7000.), cos_mu=-0.6, p_win=(450., 1000.), cth=0.4,
                        pi_win=None, pion_id="none", proton_lead="global", proton_count="eq1")
-_CC1PI = SignalDef(mu_win=(250., 7000.), p_win=(450., 1200.), pi_win=(150., 1200.), cth=0.342,
+_CC1PI = NuSignalDef(mu_win=(250., 7000.), p_win=(450., 1200.), pi_win=(150., 1200.), cth=0.342,
                    cos_mu=None, pion_id="pip", proton_lead="in_window")
 _KEYS = {"dpt", "dalphat", "pn", "dptt", "w", "chan"}
 

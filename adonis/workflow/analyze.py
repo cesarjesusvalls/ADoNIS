@@ -6,7 +6,7 @@ ADoNIS  = selection.bank_signal over inputs.adonis_bank (paper_banks dirs, k_lep
 ACHILLES = selection.oracle_signal over inputs.reference (fs_rich oracle npzs, lep/prot_p4/pi_pid).
 A config with signal.pion_id == "pi0" (NC1pi0) routes to the *_nc twins instead: they compute
 pion-based observables and never read the lepton, which for NC is an invisible neutrino.
-Both under the config's SignalDef, absolute nb; observables/edges/chi2/ratio (+ optional data overlay)
+Both under the config's NuSignalDef, absolute nb; observables/edges/chi2/ratio (+ optional data overlay)
 through the ONE validated plotting.make_figure -> chi2_ratio_panel.
 
 Style-agnostic by design: it saves PDF+PNG at cfg.out_path and inherits whatever matplotlib rcParams

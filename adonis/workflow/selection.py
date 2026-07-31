@@ -1,4 +1,4 @@
-"""Signal selection + TKI/STV observables on the CURRENT bank schemas, driven by a SignalDef.
+"""Signal selection + TKI/STV observables on the CURRENT bank schemas, driven by a NuSignalDef.
 
 Two inputs, ONE selection vocabulary:
   * ADoNIS   -> `bank_signal(bank_dir, sd)`   : a paper_banks bank dir (k_lep + ragged fs_*, weight w0;
@@ -6,16 +6,19 @@ Two inputs, ONE selection vocabulary:
   * ACHILLES -> `oracle_signal(oracle_npz, sd)`: a probe-agnostic fs_rich oracle npz
                 (lep / prot_p4 / pi_p4 / pi_pid / n_other_meson, weight w * weight_to_nb -> absolute nb).
 
-The SignalDef selects the topology (pion_id "none" = CC0pi, "pip" = CC1pi) and the acceptance windows
+The NuSignalDef selects the topology (pion_id "none" = CC0pi, "pip" = CC1pi) and the acceptance windows
 (mu_win + cos_mu|cth, p_win + cth, pi_win + cth).  The SAME cuts and the SAME validated STV formulas
 (bank_plot.pN_1pi/dptt_1pi/dpt_1pi/dat_1pi -- with the pion 4-vector set to zero, the CC1pi formulas
 reduce EXACTLY to CC0pi) run on both sides.  This replaces the retired engine-bank
 select_signal/select_reference (P-A); it generalizes the T2K/MINERvA/MicroBooNE scratch drivers.
 """
+import glob
+import json
+
 import numpy as np
 
 from adonis.reweight import bank_plot as BP
-from adonis.constants import PDG_MESONS
+from adonis.constants import PDG_MESONS, mp as _MP, mN as _MN, me as _ME
 
 _MESONS = list(PDG_MESONS)   # np.isin needs a list/tuple -- a frozenset silently matches NOTHING
 
@@ -194,3 +197,114 @@ def oracle_signal_nc(oracle_npz, sd):
     if sd.proton_count == "eq1":
         sel = sel & hasp
     return _finish(_obs_nc(pi0, lead, hasp), sel, w, chan)
+
+
+# =============================================================== electron (e,e') beam: a PEER of the nu path
+# The sibling of bank_signal / oracle_signal for the electron-scattering figures, driven by an
+# EleBeamNuSignalDef instead of a NuNuSignalDef.  Same contract: one reducer per input side, each returning a
+# per-event dict of the (e,e') observables (omega, E_QE, E_cal, P_T) + weight w + QE/RES channel + the
+# topology counts (npi, nprot) the figures slice on (0pi for E_QE, 1p0pi for E_cal/P_T).  The common
+# electron acceptance (theta window + optional E_e floor) is applied here; the per-observable 0pi/1p0pi
+# masks are applied by the caller, since one figure histograms several topologies off one reduction.
+#
+# The (e,e') banks differ from the neutrino paper_banks on disk (weight field `c` not `w0`; the inclusive
+# bank carries no outgoing-lepton 4-vector, since omega+theta fully fix the scattered electron), so this
+# path uses its own small loader rather than bank_plot.load_bank.
+
+def _load_ele_bank(bank_dir):
+    """Concatenate an (e,e') bank's chunks -> per-event {omega, theta, k_lep, w0, channel, n_pi_out} +
+    ragged fs_pid/fs_p4/fs_off (+ _eidx).  w0 = c / n_chunks (absolute nb).  k_lep is zeros when absent
+    (inclusive bank: only omega/theta are needed there)."""
+    man = json.load(open(f"{bank_dir}/manifest.json")); nch = man["n_chunks"]
+    files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
+    per = {k: [] for k in ("omega", "theta", "channel", "n_pi_out", "k_lep", "w0")}
+    fs_pid, fs_p4, offs = [], [], [np.array([0], np.int64)]
+    for f in files:
+        d = np.load(f); n = len(d["c"])
+        per["omega"].append(np.asarray(d["omega"], float))
+        per["theta"].append(np.asarray(d["theta"], float))
+        per["channel"].append(np.asarray(d["channel"]))
+        per["n_pi_out"].append(np.asarray(d["n_pi_out"]) if "n_pi_out" in d.files else np.zeros(n, int))
+        lep = next((o for o in ("k_lep", "k_e", "k_mu") if o in d.files), None)
+        per["k_lep"].append(np.asarray(d[lep], float) if lep else np.zeros((n, 4)))
+        per["w0"].append(np.asarray(d["c"], float) / nch)
+        fs_pid.append(d["fs_pid"]); fs_p4.append(d["fs_p4"])
+        offs.append(offs[-1][-1] + d["fs_off"][1:])
+    B = {k: np.concatenate(v) for k, v in per.items()}
+    B["fs_pid"] = np.concatenate(fs_pid); B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
+    B["_eidx"] = np.repeat(np.arange(len(B["w0"])), np.diff(B["fs_off"]))
+    return B
+
+
+def _ele_obs(Ee, cth, klep, lead, eps):
+    """(e,e') reconstructed observables from the scattered electron (Ee, cth, klep) + the leading proton.
+    omega is added by the caller (it is E_beam - Ee, and E_beam differs by side)."""
+    pe = np.sqrt(np.maximum(Ee ** 2 - _ME ** 2, 0.0))
+    E_QE = (2 * _MN * eps + 2 * _MN * Ee - _ME ** 2) / (2 * (_MN - Ee + pe * cth))
+    E_cal = Ee + (lead[:, 0] - _MP) + eps                     # T_p = E_p - m_p
+    P_T = np.sqrt((klep[:, 1] + lead[:, 1]) ** 2 + (klep[:, 2] + lead[:, 2]) ** 2)
+    return {"E_QE": E_QE, "E_cal": E_cal, "P_T": P_T}
+
+
+def _ele_lead_bank(B, sd):
+    """Leading in-acceptance proton (|p|>p_min, theta in p_theta_win) per event + count, off the ragged
+    final state.  Zeros/0 when the def has no proton window (inclusive figure)."""
+    n = len(B["w0"]); lead = np.zeros((n, 4)); nprot = np.zeros(n)
+    if sd.p_min is None or sd.p_theta_win is None:
+        return lead, nprot.astype(int)
+    pid = B["fs_pid"]; p4 = B["fs_p4"]; eidx = B["_eidx"]
+    mom = np.linalg.norm(p4[:, 1:], axis=1)
+    cz = np.where(mom > 0, p4[:, 3] / np.maximum(mom, 1e-9), -2.0)
+    th = np.degrees(np.arccos(np.clip(cz, -1, 1)))
+    acc = (pid == 2212) & (mom > sd.p_min) & (th >= sd.p_theta_win[0]) & (th <= sd.p_theta_win[1])
+    np.add.at(nprot, eidx[acc], 1.0)
+    key = np.where(acc, mom, -1.0); mx = np.full(n, -1.0); np.maximum.at(mx, eidx, key)
+    islead = acc & (key == mx[eidx]) & (mom > 0)
+    lead[eidx[islead]] = p4[islead]
+    return lead, nprot.astype(int)
+
+
+def _ele_finish(obs, elec, w, chan, npi, nprot):
+    out = {k: v[elec] for k, v in obs.items()}
+    out["w"] = np.asarray(w)[elec]; out["chan"] = np.asarray(chan)[elec]
+    out["npi"] = np.asarray(npi)[elec]; out["nprot"] = np.asarray(nprot)[elec]
+    return out
+
+
+def ele_signal(bank_dir, sd):
+    """(e,e') on an ADoNIS bank: apply the electron acceptance, return per-event observables + topology."""
+    B = _load_ele_bank(bank_dir)
+    theta = np.asarray(B["theta"], float)                     # degrees
+    Ee = float(sd.beam_energy) - np.asarray(B["omega"], float)
+    cth = np.cos(np.radians(theta)); klep = B["k_lep"].astype(np.float64)
+    elec = (theta >= sd.e_theta_win[0]) & (theta <= sd.e_theta_win[1])
+    if sd.e_min is not None:
+        elec = elec & (Ee >= sd.e_min)
+    lead, nprot = _ele_lead_bank(B, sd)
+    obs = {"omega": np.asarray(B["omega"], float), **_ele_obs(Ee, cth, klep, lead, sd.removal_energy)}
+    return _ele_finish(obs, elec, B["w0"], B["channel"], B["n_pi_out"], nprot)
+
+
+def ele_oracle_signal(oracle_npz, sd):
+    """(e,e') on an ACHILLES fs_rich oracle -- the SAME acceptance + reconstruction as ele_signal."""
+    d = np.load(oracle_npz, allow_pickle=True)
+    w = np.asarray(d["w"], float) * float(d["weight_to_nb"])
+    lep = np.asarray(d["lep"], float); Ee = lep[:, 0]
+    pe = np.linalg.norm(lep[:, 1:], axis=1); cth = np.where(pe > 0, lep[:, 3] / np.maximum(pe, 1e-9), -2.0)
+    theta = np.degrees(np.arccos(np.clip(cth, -1, 1)))
+    elec = (theta >= sd.e_theta_win[0]) & (theta <= sd.e_theta_win[1])
+    if sd.e_min is not None:
+        elec = elec & (Ee >= sd.e_min)
+    n = len(w)
+    if "prot_p4" in d.files and sd.p_min is not None and sd.p_theta_win is not None:
+        prot = np.asarray(d["prot_p4"], float); pm = np.linalg.norm(prot[:, :, 1:], axis=2)
+        pcz = np.where(pm > 0, prot[:, :, 3] / np.maximum(pm, 1e-9), -2.0)
+        thp = np.degrees(np.arccos(np.clip(pcz, -1, 1)))
+        acc = (pm > sd.p_min) & (thp >= sd.p_theta_win[0]) & (thp <= sd.p_theta_win[1])
+        nprot = acc.sum(1)
+        key = np.where(acc, pm, -1.0); j = key.argmax(1); lead = prot[np.arange(n), j]
+    else:
+        nprot = np.zeros(n, int); lead = np.zeros((n, 4))
+    npi = (np.asarray(d["pi_pid"]) != 0).sum(1) if "pi_pid" in d.files else np.zeros(n, int)
+    obs = {"omega": float(sd.beam_energy) - Ee, **_ele_obs(Ee, cth, lep, lead, sd.removal_energy)}
+    return _ele_finish(obs, elec, w, np.zeros(n, int), npi, nprot)   # chan set by the caller per qe/res file

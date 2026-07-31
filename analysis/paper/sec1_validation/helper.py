@@ -16,7 +16,6 @@ Shared drawing (chi2_ratio_panel, make_figure) already lives in adonis.workflow.
 the paper-side COMPUTE + the thin dispatch onto it.
 """
 import glob
-import json
 import sys
 from pathlib import Path
 
@@ -26,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from adonis.workflow.analyze import run_analysis                 # noqa: E402
-from adonis.workflow.config import load_analysis_config, SignalDef   # noqa: E402
+from adonis.workflow.config import load_analysis_config   # noqa: E402
 from adonis.workflow import selection as SG                      # noqa: E402
 from adonis.workflow.plotting import make_figure, chi2_ratio_panel   # noqa: E402
 from analysis.paper import style                                 # noqa: E402
@@ -41,11 +40,29 @@ def _rel(path):
     return str(ROOT / path)
 
 
+# =============================================================== shared panel packer (all `panels` figs)
+def _assemble(panels):
+    """panels: list of {key, edges, label, ado:(values,w,chan), ref:(values,w,chan)}.
+    Pack into the (specs, ado_sel, ref_sel) make_figure wants: one shared 'w'/'chan' per side, each key
+    NaN-padded outside its own panel (make_figure keys every observable off one weight vector).  This is
+    the single home of the concatenate+NaN-pad idiom the sliced and electron computes both need."""
+    specs = [(p["key"], np.asarray(p["edges"], float), p["label"]) for p in panels]
+
+    def side(which):
+        w = np.concatenate([p[which][1] for p in panels])
+        sel = {"w": w, "chan": np.concatenate([p[which][2] for p in panels])}
+        off = np.cumsum([0] + [len(p[which][1]) for p in panels])
+        for i, p in enumerate(panels):
+            v = np.full(len(w), np.nan); v[off[i]:off[i + 1]] = p[which][0]; sel[p["key"]] = v
+        return sel
+    return specs, side("ado"), side("ref")
+
+
 # =============================================================== COMPUTE: sliced selection (figs 10, 11)
 def _compute_sliced(spec):
     """Selection histogrammed in SLICES of a second variable -> (specs, ado_sel, ref_sel, layout).
     Config: params.slice_by/slice_edges (the slice variable + its edges), params.obs/obs_edges (the
-    histogrammed observable + per-slice edges, or one edge set), params.signal_nc (NC selection)."""
+    histogrammed observable + per-slice edges, or one edge set), params.nc (NC selection)."""
     p = _p(spec)
     cfg = load_analysis_config(_rel(spec["_path"]))
     nc = bool(p.get("nc", False))
@@ -65,192 +82,87 @@ def _compute_sliced(spec):
     slice_scale = float(p.get("slice_scale", 1.0))   # e.g. rad->deg on the SLICE variable
     stex = p.get("slice_tex", slice_by)
 
-    specs, ma, mr = [], {}, {}
     sv_a = np.asarray(ado[slice_by], float) * slice_scale
     sv_r = np.asarray(ref[slice_by], float) * slice_scale
-    parts_a = {"w": [], "chan": []}; parts_r = {"w": [], "chan": []}
+    va = np.asarray(ado[obs], float); vr = np.asarray(ref[obs], float)
+    panels = []
     for i in range(nslice):
         lo, hi = s_edges[i], s_edges[i + 1]
-        key = f"{obs}_s{i}"
         labels = p.get("labels")
         label = labels[i] if labels else rf"{p.get('obs_label', obs)},  ${lo:g}<{stex}<{hi:g}$"
-        specs.append((key, np.asarray(oe[i], float) * edge_scale, label))
         ka = (sv_a >= lo) & (sv_a < hi); kr = (sv_r >= lo) & (sv_r < hi)
-        ma[key] = (np.asarray(ado[obs], float), ka)
-        mr[key] = (np.asarray(ref[obs], float), kr)
-        parts_a["w"].append(np.asarray(ado["w"], float)[ka]); parts_a["chan"].append(np.asarray(ado["chan"])[ka])
-        parts_r["w"].append(np.asarray(ref["w"], float)[kr]); parts_r["chan"].append(np.asarray(ref["chan"])[kr])
-
-    # make_figure wants one dict: concatenate the per-slice weights, and give each key NaN outside its slice
-    ado_sel = {"w": np.concatenate(parts_a["w"]), "chan": np.concatenate(parts_a["chan"])}
-    ref_sel = {"w": np.concatenate(parts_r["w"]), "chan": np.concatenate(parts_r["chan"])}
-    off_a = np.cumsum([0] + [len(w) for w in parts_a["w"]])
-    off_r = np.cumsum([0] + [len(w) for w in parts_r["w"]])
-    for i, (key, _e, _l) in enumerate(specs):
-        va = np.full(len(ado_sel["w"]), np.nan); va[off_a[i]:off_a[i + 1]] = ma[key][0][ma[key][1]]
-        vr = np.full(len(ref_sel["w"]), np.nan); vr[off_r[i]:off_r[i + 1]] = mr[key][0][mr[key][1]]
-        ado_sel[key] = va; ref_sel[key] = vr
+        panels.append({"key": f"{obs}_s{i}", "edges": np.asarray(oe[i], float) * edge_scale, "label": label,
+                       "ado": (va[ka], np.asarray(ado["w"], float)[ka], np.asarray(ado["chan"])[ka]),
+                       "ref": (vr[kr], np.asarray(ref["w"], float)[kr], np.asarray(ref["chan"])[kr])})
+    specs, ado_sel, ref_sel = _assemble(panels)
     layout = dict(title=cfg.title, ratio_band=tuple(cfg.ratio_band), ratio_ylim=tuple(cfg.ratio_ylim))
     return specs, ado_sel, ref_sel, layout
 
 
-# =============================================================== COMPUTE: (e,e') omega, QE/RES (fig 1)
-_EB1 = 2222.0
-_THE = (14.0, 17.0)
-_NUC_TEX = {"C": r"$^{12}$C", "Ar": r"$^{40}$Ar"}
+# =============================================================== COMPUTE: electron (e,e') beam (figs 1, 4-6)
+# One config-driven compute for both electron figures.  The (e,e') physics (omega, E_QE, E_cal, P_T +
+# leading proton) lives in selection.ele_signal / ele_oracle_signal; here we only pick, per params.panels
+# entry, an observable under a topology (incl / 0pi / 1p0pi), fetch the reduction (memoized per bank/ref),
+# and hand the panels to _assemble.  fig01 = omega across two nuclei (per-panel bank); fig0456 = three
+# observables + topologies on one bank.  Nothing electron-specific is hardcoded -- cuts/paths/edges are YAML.
+_NUC_TEX = {"C": r"$^{12}$C", "Ar": r"$^{40}$Ar"}   # also used by render_beam_sigma (fig 3)
+_TOPO = {"incl": lambda o: np.ones(len(o["w"]), bool),
+         "0pi": lambda o: o["npi"] == 0,
+         "1p0pi": lambda o: (o["npi"] == 0) & (o["nprot"] == 1)}
 
 
-def _ee_adonis(nuc):
-    bd = ROOT / f"output/paper_banks_p4/beam_e_{nuc}/merged"
-    nch = json.load(open(bd / "manifest.json"))["n_chunks"]
-    O, W, CH = [], [], []
-    for f in sorted(glob.glob(str(bd / "chunk_*.npz"))):
-        d = np.load(f); th = np.asarray(d["theta"], float); k = (th >= _THE[0]) & (th <= _THE[1])
-        O.append(np.asarray(d["omega"], float)[k] / 1000.0)
-        W.append(np.asarray(d["c"], float)[k] / nch)
-        CH.append(np.asarray(d["channel"])[k])
-    return np.concatenate(O), np.concatenate(W), np.concatenate(CH)
+def _edges_of(ps):
+    if "edges" in ps:
+        return np.asarray(ps["edges"], float)
+    lo, hi, n = ps["linspace"]
+    return np.linspace(float(lo), float(hi), int(n))
 
 
-def _ee_achilles(nuc, ch):
-    d = np.load(ROOT / f"output/achilles/fsrich/inclusive_ee_{nuc}_{ch}.npz", allow_pickle=True)
-    lep = np.asarray(d["lep"], float); Ee = lep[:, 0]
-    pe = np.linalg.norm(lep[:, 1:], axis=1)
-    cth = np.where(pe > 0, lep[:, 3] / np.maximum(pe, 1e-9), -2.0)
-    the = np.degrees(np.arccos(np.clip(cth, -1, 1)))
-    k = (the >= _THE[0]) & (the <= _THE[1])
-    w = np.asarray(d["w"], float) * float(d["weight_to_nb"])
-    return (_EB1 - Ee)[k] / 1000.0, w[k]
+def _compute_ele(spec):
+    p = _p(spec)
+    cfg = load_analysis_config(_rel(spec["_path"]))
+    sd = cfg.signal                                          # EleBeamSignalDef
+    ado_cache, ref_cache = {}, {}
 
+    def ado_for(bank):
+        if bank not in ado_cache:
+            ado_cache[bank] = SG.ele_signal(_rel(bank), sd)
+        return ado_cache[bank]
 
-def _compute_ee_domega(spec):
-    edges = np.linspace(0.05, 0.95, 46)
-    specs, ado_sel, ref_sel = [], {"w": [], "chan": []}, {"w": [], "chan": []}
-    off_a, off_r = [0], [0]
-    ao_all, hv_all = {}, {}
-    for nuc in ("Ar", "C"):                                       # paper order: Ar left, C right
-        ao, aw, ach = _ee_adonis(nuc)
-        hqo, hqw = _ee_achilles(nuc, "qe"); hro, hrw = _ee_achilles(nuc, "res")
-        ho = np.concatenate([hqo, hro]); hw = np.concatenate([hqw, hrw])
-        hch = np.concatenate([np.zeros(len(hqo), int), np.ones(len(hro), int)])
-        key = f"omega_{nuc}"
-        specs.append((key, edges, r"$\omega$ [GeV]"))
-        ado_sel["w"].append(aw); ado_sel["chan"].append(ach); ao_all[key] = ao
-        ref_sel["w"].append(hw); ref_sel["chan"].append(hch); hv_all[key] = ho
-        off_a.append(off_a[-1] + len(aw)); off_r.append(off_r[-1] + len(hw))
-    ado_sel["w"] = np.concatenate(ado_sel["w"]); ado_sel["chan"] = np.concatenate(ado_sel["chan"])
-    ref_sel["w"] = np.concatenate(ref_sel["w"]); ref_sel["chan"] = np.concatenate(ref_sel["chan"])
-    for i, (key, _e, _l) in enumerate(specs):
-        va = np.full(len(ado_sel["w"]), np.nan); va[off_a[i]:off_a[i + 1]] = ao_all[key]
-        vr = np.full(len(ref_sel["w"]), np.nan); vr[off_r[i]:off_r[i + 1]] = hv_all[key]
-        ado_sel[key] = va; ref_sel[key] = vr
-    ann = {f"omega_{n}": _NUC_TEX[n] for n in ("Ar", "C")}
-    layout = dict(title=r"Inclusive (e,e') at 2.222 GeV, $\theta_{e'}\approx15.5^\circ$",
-                  ratio_ylim=(0.6, 1.4), annotations=ann,
-                  ylabel=r"$d\sigma/d\omega$ [nb/GeV]")
+    def ref_for(refs):
+        keyt = tuple(refs)
+        if keyt not in ref_cache:
+            parts = []
+            for i, pth in enumerate(refs):
+                r = SG.ele_oracle_signal(_rel(pth), sd)
+                r["chan"] = np.full(len(r["w"]), i, int)     # file order: qe -> 0 (QE), res -> 1 (RES)
+                parts.append(r)
+            ref_cache[keyt] = {k: np.concatenate([r[k] for r in parts]) for k in parts[0]}
+        return ref_cache[keyt]
+
+    default_bank = (cfg.inputs.get("adonis_bank") or [None])[0]
+    default_ref = cfg.inputs.get("reference") or []
+    panels, ann = [], {}
+    for i, ps in enumerate(p["panels"]):
+        ado = ado_for(ps.get("bank") or default_bank)
+        ref = ref_for(ps.get("ref") or default_ref)
+        am = _TOPO[ps.get("topo", "incl")](ado); rm = _TOPO[ps.get("topo", "incl")](ref)
+        sc = float(ps.get("value_scale", 1.0))               # e.g. MeV -> GeV on the plotted omega
+        key = f'{ps["obs"]}_{i}'
+        panels.append({"key": key, "edges": _edges_of(ps), "label": ps["label"],
+                       "ado": (ado[ps["obs"]][am] * sc, ado["w"][am], ado["chan"][am]),
+                       "ref": (ref[ps["obs"]][rm] * sc, ref["w"][rm], ref["chan"][rm])})
+        if ps.get("annotate"):
+            ann[key] = ps["annotate"]
+    specs, ado_sel, ref_sel = _assemble(panels)
+    if not p.get("breakdown", True):                         # suppress the QE/RES component split (fig0456)
+        ado_sel["chan"] = np.zeros(len(ado_sel["w"]), int); ref_sel["chan"] = np.zeros(len(ref_sel["w"]), int)
+    layout = dict(title=cfg.title, ratio_ylim=tuple(cfg.ratio_ylim), annotations=ann, ylabel=p.get("ylabel"),
+                  panel_kw=style.panel_kw(ratio_yticks=p.get("ratio_yticks", [0.8, 1.0, 1.2])))
     return specs, ado_sel, ref_sel, layout
 
 
-# =============================================================== COMPUTE: e4nu E_QE/E_cal/P_T (figs 4-6)
-_EB4 = 1159.0; _MNUC = 938.9; _MP = 938.272; _ME = 0.511; _EPS = 21.0
-_PP_MIN = 300.0; _TP = (10.0, 140.0); _EE_MIN = 400.0; _THE4 = (15.0, 45.0)
-_BANK4 = str(ROOT / "output/paper_banks_p4/beam_e_C_1159/merged")
-_ORA4 = [str(ROOT / f"output/achilles/fsrich/ee_C_1159_{c}_fsi.npz") for c in ("qe", "res")]
-
-
-def _e4nu_eqe(Ee, cth):
-    pe = np.sqrt(np.maximum(Ee ** 2 - _ME ** 2, 0.0))
-    return (2 * _MNUC * _EPS + 2 * _MNUC * Ee - _ME ** 2) / (2 * (_MNUC - Ee + pe * cth))
-
-
-def _e4nu_lead(pid, p4, seg, n):
-    mom = np.linalg.norm(p4[:, 1:], axis=1)
-    cth = np.where(mom > 0, p4[:, 3] / np.maximum(mom, 1e-9), -2.0)
-    th = np.degrees(np.arccos(np.clip(cth, -1, 1)))
-    acc = (pid == 2212) & (mom > _PP_MIN) & (th >= _TP[0]) & (th <= _TP[1])
-    nprot = np.zeros(n); np.add.at(nprot, seg[acc], 1.0)
-    key = np.where(acc, mom, -1.0); mx = np.full(n, -1.0); np.maximum.at(mx, seg, key)
-    lead = np.zeros((n, 4)); islead = acc & (key == mx[seg]) & (mom > 0)
-    lead[seg[islead]] = p4[islead]
-    return lead, nprot.astype(int)
-
-
-def _e4nu_adonis():
-    EQ, wq, EC, PT, wc = [], [], [], [], []
-    man = json.load(open(Path(_BANK4) / "manifest.json")); nch = man["n_chunks"]
-    for f in sorted(glob.glob(_BANK4 + "/chunk_*.npz")):
-        d = np.load(f)
-        c = np.asarray(d["c"], float) / nch
-        om = np.asarray(d["omega"], float); th = np.radians(np.asarray(d["theta"], float))
-        Ee = _EB4 - om; cth = np.cos(th)
-        elec = (Ee >= _EE_MIN) & (np.degrees(th) >= _THE4[0]) & (np.degrees(th) <= _THE4[1])
-        npi = np.asarray(d["n_pi_out"])
-        k0 = elec & (npi == 0); EQ.append(_e4nu_eqe(Ee, cth)[k0]); wq.append(c[k0])
-        ne = len(c); seg = np.repeat(np.arange(ne), np.diff(np.asarray(d["fs_off"], np.int64)))
-        lead, nprot = _e4nu_lead(np.asarray(d["fs_pid"]), np.asarray(d["fs_p4"], float), seg, ne)
-        k1 = elec & (npi == 0) & (nprot == 1); Tp = lead[:, 0] - _MP
-        EC.append((Ee + Tp + _EPS)[k1]); wc.append(c[k1])
-        ke = np.asarray(d["k_lep"] if "k_lep" in d.files else d["k_e"], float)
-        pt = np.sqrt((ke[:, 1] + lead[:, 1]) ** 2 + (ke[:, 2] + lead[:, 2]) ** 2)
-        PT.append(pt[k1])
-    return (np.concatenate(EQ), np.concatenate(wq)), (np.concatenate(EC), np.concatenate(wc), np.concatenate(PT))
-
-
-def _e4nu_achilles():
-    EQ, wq, EC, PT, wc = [], [], [], [], []
-    for p in _ORA4:
-        d = np.load(p, allow_pickle=True)
-        w = np.asarray(d["w"], float) * float(d["weight_to_nb"])
-        lep = np.asarray(d["lep"], float); Ee = lep[:, 0]
-        pe = np.linalg.norm(lep[:, 1:], axis=1); cth = np.where(pe > 0, lep[:, 3] / np.maximum(pe, 1e-9), -2.0)
-        the = np.degrees(np.arccos(np.clip(cth, -1, 1)))
-        elec = (Ee >= _EE_MIN) & (the >= _THE4[0]) & (the <= _THE4[1])
-        npi = (np.asarray(d["pi_pid"]) != 0).sum(1)
-        k0 = elec & (npi == 0); EQ.append(_e4nu_eqe(Ee, cth)[k0]); wq.append(w[k0])
-        prot = np.asarray(d["prot_p4"], float); pm = np.linalg.norm(prot[:, :, 1:], axis=2)
-        pcz = np.where(pm > 0, prot[:, :, 3] / np.maximum(pm, 1e-9), -2.0)
-        tp = np.degrees(np.arccos(np.clip(pcz, -1, 1)))
-        acc = (pm > _PP_MIN) & (tp >= _TP[0]) & (tp <= _TP[1]); nprot = acc.sum(1)
-        key = np.where(acc, pm, -1.0); j = key.argmax(1); lead = prot[np.arange(len(lep)), j]
-        k1 = elec & (npi == 0) & (nprot == 1); Tp = lead[:, 0] - _MP
-        EC.append((Ee + Tp + _EPS)[k1]); wc.append(w[k1])
-        pt = np.sqrt((lep[:, 1] + lead[:, 1]) ** 2 + (lep[:, 2] + lead[:, 2]) ** 2); PT.append(pt[k1])
-    return (np.concatenate(EQ), np.concatenate(wq)), (np.concatenate(EC), np.concatenate(wc), np.concatenate(PT))
-
-
-def _compute_e4nu(spec):
-    def _b():
-        (aEQ, awq), (aEC, awc, aPT) = _e4nu_adonis()
-        (hEQ, hwq), (hEC, hwc, hPT) = _e4nu_achilles()
-        return dict(aEQ=aEQ, awq=awq, aEC=aEC, awc=awc, aPT=aPT, hEQ=hEQ, hwq=hwq, hEC=hEC, hwc=hwc, hPT=hPT)
-    d = plotcache.cached("fig456_e4nu", _b, deps=[_BANK4, *_ORA4],
-                         params={"eb": _EB4, "pp_min": _PP_MIN, "tp": _TP, "ee_min": _EE_MIN,
-                                 "the": _THE4, "eps": _EPS})
-    specs = [("E_QE", np.linspace(600, 1300, 25), r"$E_{QE}$ [MeV]"),
-             ("E_cal", np.linspace(700, 1300, 25), r"$E_{cal}$ [MeV]"),
-             ("P_T", np.linspace(0, 600, 25), r"$P_T$ [MeV/c]")]
-    ado_sel = {"E_QE": d["aEQ"], "E_cal": d["aEC"], "P_T": d["aPT"]}
-    ref_sel = {"E_QE": d["hEQ"], "E_cal": d["hEC"], "P_T": d["hPT"]}
-    # each panel has its own weights (0pi for E_QE, 1p0pi for E_cal/P_T) -> pass per-panel via NaN pad
-    # (make_figure uses one 'w'); here the 3 panels share the weight vectors by selection, so build a
-    # combined weight and NaN-pad each observable, mirroring the sliced path.
-    w_ado = {"E_QE": d["awq"], "E_cal": d["awc"], "P_T": d["awc"]}
-    w_ref = {"E_QE": d["hwq"], "E_cal": d["hwc"], "P_T": d["hwc"]}
-    off_a = np.cumsum([0] + [len(w_ado[k]) for k, _e, _l in specs])
-    off_r = np.cumsum([0] + [len(w_ref[k]) for k, _e, _l in specs])
-    AW = {"w": np.concatenate([w_ado[k] for k, _e, _l in specs])}
-    RW = {"w": np.concatenate([w_ref[k] for k, _e, _l in specs])}
-    for i, (k, _e, _l) in enumerate(specs):
-        va = np.full(len(AW["w"]), np.nan); va[off_a[i]:off_a[i + 1]] = ado_sel[k]; AW[k] = va
-        vr = np.full(len(RW["w"]), np.nan); vr[off_r[i]:off_r[i + 1]] = ref_sel[k]; RW[k] = vr
-    ann = {"E_QE": r"0$\pi$", "E_cal": r"1p0$\pi$", "P_T": r"1p0$\pi$"}
-    layout = dict(title=r"e4$\nu$ (e,e') on $^{12}$C at 1.159 GeV", ratio_ylim=(0.6, 1.4),
-                  annotations=ann, ylabel=r"$d\sigma/dx$ [nb]",
-                  panel_kw=style.panel_kw(ratio_yticks=None))
-    return specs, AW, RW, layout
-
-
-_COMPUTE = {"sliced": _compute_sliced, "ee_domega": _compute_ee_domega, "e4nu": _compute_e4nu}
+_COMPUTE = {"sliced": _compute_sliced, "ele": _compute_ele}
 
 
 # =================================================================================== RENDER: multiobs
@@ -288,7 +200,8 @@ def render_sigma_channels(spec):
     """Fig 2 -- free-nucleon RES sigma(E_nu), 3 CC channels overlaid in one panel + a 3-channel ratio."""
     import matplotlib.pyplot as plt
     from analysis.paper.freenucleon_bank import ENERGIES, CHANNEL_SPECS, load_scan
-    NB = 1.0e5; SCAN = _rel("output/oracle_freenucleon_scan")
+    NB = 1.0e5                                                     # nb -> 10^-38 cm^2 (plotted axis unit)
+    SCAN = _rel((spec.get("inputs") or {}).get("oracle_scan", "output/oracle_freenucleon_scan"))
 
     def ach_sigma(E, sp, pi_pid):
         fs = sorted(glob.glob(f"{SCAN}/{sp}_E{int(E)}/*.npz"))
@@ -329,11 +242,12 @@ def render_beam_sigma(spec):
     """Fig 3 -- pi+ nucleus absorption+reaction sigma(p), 2x2 curve blocks (nucleus rows, channel cols)."""
     import os
     import matplotlib.pyplot as plt
-    os.environ.setdefault("ADONIS_BEAM_PATTERN", "output/paper_banks_p4/beam_{beam}_{target}/merged")
+    pp = _p(spec)
+    BANK = pp.get("bank_pattern", "output/paper_banks_p4/beam_{beam}_{target}/merged")
+    os.environ.setdefault("ADONIS_BEAM_PATTERN", BANK)
     from analysis.paper.beams.make_figs import adonis_sigma
     from analysis.paper.beams import achilles_beam as AB
-    nbins = int(_p(spec).get("nbins", 30)); BEAM = "pip"
-    BANK = "output/paper_banks_p4/beam_{beam}_{target}/merged"
+    nbins = int(pp.get("nbins", 30)); BEAM = pp.get("beam", "pip")
 
     def reduce_nuc(nuc):
         def _b():
@@ -380,7 +294,8 @@ def render_dcc(spec):
         load_anl, _channel_sigma, pim_p_total, dsigma_dOmega,
         conversion_sigma_grid, eta_elastic_sigma_grid, eta_backconv_sigma_grid)
     from adonis.fsi.interactions.meson_baryon_xsec import jax_sample_cos_cm
-    _R2 = np.sqrt(2.0) / 3.0; M_PI = 139.57018; M_N = 938.918754; MB_FM2 = 0.1
+    from adonis.constants import mpip as M_PI, mN as M_N   # canonical masses (no local roundings)
+    _R2 = np.sqrt(2.0) / 3.0; MB_FM2 = 0.1                 # isospin C-G factor; mb<->fm^2 unit (not masses)
 
     def _interp(Wg, Ws, ys):
         return np.interp(Wg, Ws, ys, left=0.0, right=0.0)

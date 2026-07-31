@@ -1,4 +1,27 @@
-# Paper Figs 4/5/6 -- e4nu (e,e') @1.159: E_QE (0pi), E_cal (1p0pi), P_T (1p0pi). Panels via make_figure.
-name: fig0456_e4nu
+# Paper Figs 4/5/6 -- e4nu (e,e') on 12C @1.159 GeV: E_QE (0pi), E_cal (1p0pi), P_T (1p0pi).
+# Electron-beam selection (probe: electron -> EleBeamSignalDef): one bank, three observables under two
+# topologies.  Panels via make_figure (render: panels, compute: ele).  No QE/RES split (breakdown: false).
 render: panels
-compute: e4nu
+compute: ele
+name: fig0456_e4nu
+probe: electron
+inputs:
+  adonis_bank: [output/paper_banks_p4/beam_e_C_1159/merged]
+  reference:   [output/achilles/fsrich/ee_C_1159_qe_fsi.npz, output/achilles/fsrich/ee_C_1159_res_fsi.npz]
+signal:
+  beam_energy: 1159.0         # MeV
+  e_min: 400.0               # MeV; scattered-electron energy floor
+  e_theta_win: [15.0, 45.0]  # deg
+  p_min: 300.0               # MeV; leading-proton momentum floor (1p0pi)
+  p_theta_win: [10.0, 140.0] # deg
+  removal_energy: 21.0       # MeV; epsilon in E_QE / E_cal
+title: "e4$\\nu$ (e,e') on $^{12}$C at 1.159 GeV"
+ratio_ylim: [0.6, 1.4]
+params:
+  ylabel: '$d\sigma/dx$ [nb]'
+  ratio_yticks: null         # 3 different observable ranges -> no shared ratio ticks
+  breakdown: false           # e4nu figures show the total only, no QE/RES components
+  panels:
+    - {obs: E_QE,  topo: 0pi,   linspace: [600, 1300, 25], label: '$E_{QE}$ [MeV]',  annotate: '0$\pi$'}
+    - {obs: E_cal, topo: 1p0pi, linspace: [700, 1300, 25], label: '$E_{cal}$ [MeV]', annotate: '1p0$\pi$'}
+    - {obs: P_T,   topo: 1p0pi, linspace: [0, 600, 25],    label: '$P_T$ [MeV/c]',   annotate: '1p0$\pi$'}

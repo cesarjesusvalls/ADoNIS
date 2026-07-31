@@ -13,7 +13,7 @@ pi0 signal vetoes the signal itself, 100% of it, and the figure would come out e
 import numpy as np
 import pytest
 
-from adonis.workflow.config import SignalDef
+from adonis.workflow.config import NuSignalDef
 from adonis.reweight import bank_plot as BP
 
 
@@ -40,7 +40,7 @@ def _sd(**kw):
     d = dict(pi_win=(0.0, 1e9), p_win=(0.0, 1e9), mu_win=(0.0, 1e9),
              cth=-1.0, cos_mu=-1.0, proton_count="ge1")
     d.update(kw)
-    return SignalDef(**d)
+    return NuSignalDef(**d)
 
 
 def test_single_pi0_mirrors_single_pip():
@@ -112,7 +112,7 @@ def test_anypi_now_differs_from_pip(monkeypatch):
 
 
 def test_pion_id_pi0_is_rejected_by_the_cc_path(monkeypatch):
-    """`pi0` is a valid SignalDef value, but the CC path must not pretend to handle it -- the NC
+    """`pi0` is a valid NuSignalDef value, but the CC path must not pretend to handle it -- the NC
     selection is a separate function on purpose, and silently treating pi0 as pi+ is exactly the
     class of defect `anypi` was."""
     from adonis.workflow import selection as S

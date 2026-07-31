@@ -220,8 +220,10 @@ def load_gen_config(path) -> GenConfig:
 
 # ----------------------------------------------------------------------------- analysis
 @dataclass
-class SignalDef:
-    """Signal topology, generalized over CC0pi & CC1pi (rich engine schema)."""
+class NuSignalDef:
+    """Neutrino signal topology, generalized over CC0pi & CC1pi (and NC1pi0).  The canonical selection
+    schema; sibling EleBeamSignalDef below covers the electron-beam (e,e') figures.  Pick which one a
+    config coerces into via the top-level `probe:` key (default "nu")."""
     mu_win: tuple = (250.0, 7000.0)
     p_win: tuple = (450.0, 1200.0)
     pi_win: tuple | None = (150.0, 1200.0)
@@ -256,6 +258,25 @@ class SignalDef:
 
 
 @dataclass
+class EleBeamSignalDef:
+    """Electron-beam (e,e') acceptance + reconstruction constants -- the sibling of NuSignalDef for the
+    electron-scattering figures (inclusive (e,e') omega, and e4nu E_QE/E_cal/P_T).  Its reducers are
+    selection.ele_signal / ele_oracle_signal.  Fields default to "no cut" so the inclusive figure (fig01,
+    which needs only the electron polar window) leaves the proton/removal fields unset."""
+    beam_energy: float = 0.0            # MeV; incident electron energy E_beam
+    e_min: float | None = None          # MeV; scattered-electron energy floor E_e (None -> no cut)
+    e_theta_win: tuple = (0.0, 180.0)   # deg; scattered-electron polar acceptance [lo, hi]
+    p_min: float | None = None          # MeV; proton momentum floor for the 1p0pi topology (None -> no lead)
+    p_theta_win: tuple | None = None    # deg; proton polar acceptance [lo, hi] (None -> no lead)
+    removal_energy: float = 0.0         # MeV; nuclear removal/binding energy epsilon in E_QE / E_cal
+
+    def __post_init__(self):
+        self.e_theta_win = tuple(_resolve_seq(self.e_theta_win))
+        if self.p_theta_win is not None:
+            self.p_theta_win = tuple(_resolve_seq(self.p_theta_win))
+
+
+@dataclass
 class ObservableSpec:
     key: str
     label: str
@@ -284,7 +305,8 @@ class DataOverlay:
 @dataclass
 class AnalysisConfig:
     inputs: dict = field(default_factory=dict)      # roles: adonis_res, adonis_qe, adonis_h, reference
-    signal: SignalDef = field(default_factory=SignalDef)
+    probe: str = "nu"                               # "nu" -> signal is NuSignalDef; "electron" -> EleBeamSignalDef
+    signal: object = field(default_factory=NuSignalDef)
     observables: list = field(default_factory=list)
     data: DataOverlay = field(default_factory=DataOverlay)
     out_path: str = "paper_figures/adonis_analysis.png"
@@ -297,14 +319,26 @@ class AnalysisConfig:
 
 def load_analysis_config(path) -> AnalysisConfig:
     d = yaml.safe_load(Path(path).read_text()) or {}
-    d.pop("name", None)
-    # figure-orchestration keys consumed by analysis/paper/figures (the render-hook + its params); they
-    # are NOT AnalysisConfig fields, so a figure spec that ALSO carries a selection (e.g. fig11) loads here.
-    d.pop("render", None); d.pop("params", None)
-    d["signal"] = _coerce(SignalDef, d.get("signal"))
+    # figure-orchestration keys consumed by analysis/paper/sec1_validation (make.py + helper.py): the
+    # render hook, its compute/params, the make_figure layout, the --light flag.  They are NOT
+    # AnalysisConfig fields, so pop them here -- a figure spec that ALSO carries a selection (fig10/fig11,
+    # the electron figs) loads as an AnalysisConfig through the same door as the pure-selection multiobs specs.
+    for _k in ("name", "render", "compute", "params", "layout", "heavy"):
+        d.pop(_k, None)
+    _SEL = {"nu": NuSignalDef, "electron": EleBeamSignalDef}
+    probe = d.get("probe", "nu")
+    if probe not in _SEL:
+        raise ValueError(f"probe {probe!r} not in {sorted(_SEL)}")
+    d["signal"] = _coerce(_SEL[probe], d.get("signal"))
     d["data"] = _coerce(DataOverlay, d.get("data"))
     d["observables"] = [_coerce(ObservableSpec, o) for o in d.get("observables", [])]
     for k in ("ratio_band", "ratio_ylim"):
         if k in d:
             d[k] = tuple(d[k])
     return _coerce(AnalysisConfig, d)
+
+
+# Deprecated back-compat alias: the class was renamed SignalDef -> NuSignalDef when the electron sibling
+# (EleBeamSignalDef) was added.  External jobs/ scripts live outside this repo and may still import
+# SignalDef by name; keep this alias until they are updated, then delete it.
+SignalDef = NuSignalDef
