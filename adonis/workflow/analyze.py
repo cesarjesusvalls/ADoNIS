@@ -4,6 +4,8 @@
 
 ADoNIS  = selection.bank_signal over inputs.adonis_bank (paper_banks dirs, k_lep + fs_*, w0).
 ACHILLES = selection.oracle_signal over inputs.reference (fs_rich oracle npzs, lep/prot_p4/pi_pid).
+A config with signal.pion_id == "pi0" (NC1pi0) routes to the *_nc twins instead: they compute
+pion-based observables and never read the lepton, which for NC is an invisible neutrino.
 Both under the config's SignalDef, absolute nb; observables/edges/chi2/ratio (+ optional data overlay)
 through the ONE validated plotting.make_figure -> chi2_ratio_panel.
 
@@ -32,14 +34,19 @@ def build_adonis(cfg):
     banks = cfg.inputs.get("adonis_bank") or []
     if not banks:
         raise ValueError("no ADoNIS input banks (expected inputs.adonis_bank: [<paper_banks dir>, ...])")
-    return _merge([SG.bank_signal(p, cfg.signal) for p in banks])
+    # pion_id="pi0" is the NC1pi0 signal and takes the PARALLEL selection path -- see selection.py.
+    # Dispatching here rather than inside bank_signal keeps the CC function free of a lepton-optional
+    # flag, which is the whole reason the NC path is separate.
+    fn = SG.bank_signal_nc if cfg.signal.pion_id == "pi0" else SG.bank_signal
+    return _merge([fn(p, cfg.signal) for p in banks])
 
 
 def build_reference(cfg):
     refs = cfg.inputs.get("reference") or []
     if not refs:
         raise ValueError("no ACHILLES reference (expected inputs.reference: [<fs_rich oracle npz>, ...])")
-    return _merge([SG.oracle_signal(p, cfg.signal) for p in refs])
+    fn = SG.oracle_signal_nc if cfg.signal.pion_id == "pi0" else SG.oracle_signal
+    return _merge([fn(p, cfg.signal) for p in refs])
 
 
 def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, **style_kw):
