@@ -39,6 +39,7 @@ axes:
       nu:    {label: "$\\nu$\nT2K + MINERvA",     keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, "mnv_*"]}
       ebeam: {label: "$e$ beam\n$(e,e')$",        keys: ["e_*"]}
       hadr:  {label: "hadron beam\n$\\pi^+,p,n$", keys: ["pip_*", "prot_*", "neut_*"]}
+      all:   {label: "ALL",                       keys: ["<nu>", "<ebeam>", "<hadr>"]}   # every sample at once
 
   # ---- What does each SAMPLE ALONE measure?  (knob x sample, un-stacked) ------------------------- #
   samples_alone:
