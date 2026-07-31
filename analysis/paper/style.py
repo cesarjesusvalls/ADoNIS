@@ -175,3 +175,46 @@ def save(fig, name):
     plt.close(fig)
     print(f"[out] {png}")
     return png
+
+
+# ============================================================================================= #
+# Shared heatmap language for the §2 gradient and §3 Fisher figures: knobs grouped into physics
+# blocks (cross-section / pion FSI / NN FSI / nuclear), one perceptual blue + one diverging map
+# anchored on the §1 blue (#648fff), and a helper that draws the colour-coded block tabs.
+# ============================================================================================= #
+CMAP_CONSTRAINT = mcolors.LinearSegmentedColormap.from_list(   # shrinkage: dark = tighter constraint
+    "constraint_blue", ["#07204d", "#1f4b9c", "#4f7fe0", "#8fb2f5", "#c9dcfb", "#f6f9ff"])
+CMAP_GRAD_DIV = mcolors.LinearSegmentedColormap.from_list(     # signed per-bin gradient (blue<->orange)
+    "grad_div", ["#0a2a5c", "#648fff", "#f4f4f6", "#fe8a3c", "#7a2f00"])
+FIT_EC = "#fe6100"                                             # FIT outline: §1 RES orange (safe on blue)
+KNOB_GROUP_NAME = {0: "cross‑section", 1: "pion\nFSI", 2: "NN\nFSI", 3: "nuclear"}
+KNOB_GROUP_COLOR = {0: "#b07d56", 1: "#5f8a6f", 2: "#7b6f9e", 3: "#a86f82"}   # muted clay/sage/violet/rose
+
+
+def knob_group(p):
+    """Physics block for a knob name: 0 cross-section, 1 pion FSI, 2 NN FSI, 3 nuclear."""
+    if p.startswith("s_piN") or p in ("sabs", "s_conv"):
+        return 1
+    if p.startswith("s_NN") or p.startswith("f_NN"):
+        return 2
+    if p in ("kF_sf", "Eb_shift", "sf_norm", "src_tail", "qe_norm", "res_norm"):
+        return 3
+    return 0
+
+
+def knob_group_tabs(ax, gid, tabx=-0.15, tabw=0.022, labx=-0.185, lw=1.6, fontsize=8):
+    """Draw physics-block separators + a colour-coded tab bracketing each block to its rotated label.
+    `gid` is the per-row group id (rows already ordered by block).  x in axes-fraction, y in data."""
+    from matplotlib.patches import Rectangle
+    nk = len(gid)
+    yt = ax.get_yaxis_transform()
+    bounds = [i for i in range(1, nk) if gid[i] != gid[i - 1]]
+    for b in bounds:
+        ax.axhline(b - .5, color="0.22", lw=lw)
+    seg = [-.5] + [b - .5 for b in bounds] + [nk - .5]
+    for a, b in zip(seg[:-1], seg[1:]):
+        g = gid[int((a + b) / 2 + .5)]
+        ax.add_patch(Rectangle((tabx, a), tabw, b - a, transform=yt, clip_on=False,
+                               facecolor=KNOB_GROUP_COLOR[g], edgecolor="none", zorder=5))
+        ax.text(labx, (a + b) / 2, KNOB_GROUP_NAME[g], ha="center", va="center", rotation=90,
+                fontsize=fontsize, color="0.2", fontweight="bold", transform=yt)

@@ -33,7 +33,6 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from matplotlib.colors import LinearSegmentedColormap as LSC
 
 from analysis.paper import style
 from analysis.paper import fisher_engine as FE
@@ -87,36 +86,17 @@ def fig_shrinkage(M, R, pnames, labels, title, figname, fit_cut):
     return style.save(fig, figname)
 
 
-# ---- paper style for the single-panel "constraining power per probe" figure --------------------- #
-# dark = TIGHTER constraint (flipped, so the ink lands on what the data delivers); orange outline = FIT;
-# rows bracketed into physics blocks.  One perceptual blue anchored on sec1's #648fff, colourblind-safe.
-CMAP_CONSTRAINT = LSC.from_list("constraint_blue",
-                                ["#07204d", "#1f4b9c", "#4f7fe0", "#8fb2f5", "#c9dcfb", "#f6f9ff"])
-FIT_EC = "#fe6100"                                            # sec1 RES orange (colourblind-safe on blue)
-_GNAME = {0: "cross‑section", 1: "pion\nFSI", 2: "NN\nFSI", 3: "nuclear"}
-_GCOL = {0: "#b07d56", 1: "#5f8a6f", 2: "#7b6f9e", 3: "#a86f82"}   # muted clay / sage / violet / rose
-
-
-def _knob_group(p):
-    """Physics block for a knob name: 0 cross-section, 1 pion FSI, 2 NN FSI, 3 nuclear."""
-    if p.startswith("s_piN") or p in ("sabs", "s_conv"):
-        return 1
-    if p.startswith("s_NN") or p.startswith("f_NN"):
-        return 2
-    if p in ("kF_sf", "Eb_shift", "sf_norm", "src_tail", "qe_norm", "res_norm"):
-        return 3
-    return 0
-
-
+# The physics-block grouping (knob_group / KNOB_GROUP_*), the perceptual palettes (CMAP_CONSTRAINT,
+# CMAP_GRAD_DIV) and the tab drawer (knob_group_tabs) are shared with the §2 gradient figure -> style.py.
 def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
     """Single marginalized panel, rows grouped by physics: dark = tighter constraint, orange outline = FIT.
     The last column ('all' = every sample combined) is set apart.  The key goes in the caption, not on axes."""
-    order = sorted(range(len(pnames)), key=lambda k: (_knob_group(pnames[k]), k))
+    order = sorted(range(len(pnames)), key=lambda k: (style.knob_group(pnames[k]), k))
     M = M[order]
     plabels = [plab(pnames[k]) for k in order]
-    gid = [_knob_group(pnames[k]) for k in order]
+    gid = [style.knob_group(pnames[k]) for k in order]
     nk, ng = M.shape
-    cm = CMAP_CONSTRAINT
+    cm = style.CMAP_CONSTRAINT
 
     def _tc(v):                                              # cell text: white on dark, dark on light
         r, g, b, _ = cm(min(max(v, 0.0), 1.0))
@@ -130,24 +110,14 @@ def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
             for c in range(ng):
                 v = M[k, c]; fit = v < fit_cut
                 if fit:
-                    ax.add_patch(Rectangle((c - .5, k - .5), 1, 1, fill=False, ec=FIT_EC, lw=1.9, zorder=3))
+                    ax.add_patch(Rectangle((c - .5, k - .5), 1, 1, fill=False, ec=style.FIT_EC, lw=1.9, zorder=3))
                 ax.text(c, k, f"{v:.2f}", ha="center", va="center",
                         fontsize=7.6 if fit else 7, fontweight="bold" if fit else "normal",
                         color=_tc(v), alpha=1.0 if fit else 0.6, zorder=4)
         ax.set_xticks(np.arange(-.5, ng, 1), minor=True)
         ax.set_yticks(np.arange(-.5, nk, 1), minor=True)
         ax.grid(which="minor", color="white", lw=1.1); ax.tick_params(which="minor", length=0)
-        yt = ax.get_yaxis_transform()
-        bounds = [i for i in range(1, nk) if gid[i] != gid[i - 1]]
-        for b in bounds:
-            ax.axhline(b - .5, color="0.25", lw=1.6)
-        seg = [-.5] + [b - .5 for b in bounds] + [nk - .5]
-        for a, b in zip(seg[:-1], seg[1:]):
-            g = gid[int((a + b) / 2 + .5)]
-            ax.add_patch(Rectangle((-0.15, a), 0.022, b - a, transform=yt, clip_on=False,
-                                   facecolor=_GCOL[g], edgecolor="none", zorder=5))
-            ax.text(-0.185, (a + b) / 2, _GNAME[g], ha="center", va="center", rotation=90,
-                    fontsize=8, color="0.2", fontweight="bold", transform=yt)
+        style.knob_group_tabs(ax, gid)                       # physics-block separators + colour tabs + labels
         if names and names[-1] == "all":                     # set the combined column apart
             ax.axvline(ng - 1.5, color="0.25", lw=1.6)
         ax.set_yticks(range(nk)); ax.set_yticklabels(plabels, fontsize=8.5)

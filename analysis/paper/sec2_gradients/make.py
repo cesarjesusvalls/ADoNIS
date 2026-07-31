@@ -1,15 +1,16 @@
-"""Paper section 2 -- "we have exact gradient information for all 27 knobs".
+"""The exact per-bin gradients for the knobs the data can constrain.
 
-The object is the SAME Jacobian section 3 gates on (physfit_gate1_full_v2.npz): J_ik = d(dsigma/dx)_i/dtheta_k
-for every knob k and every bin i, obtained by ONE jax.jvp per knob through bank_reweight.weight_jit --
-autodiff through the frozen walk, not finite differences, not a surrogate.  Sections 2 and 3 therefore
-cost a single bank pass between them.
+The object is the SAME Jacobian the Fisher figure gates on (multisample_carbon.npz): J_ik =
+d(dsigma/dx)_i/dtheta_k for every knob k and every bin i, obtained by ONE jax.jvp per knob through
+bank_reweight.weight_jit -- autodiff through the frozen walk, not finite differences, not a surrogate.
 
-Plotted as the per-knob gradient SHAPE: each knob's row of the dimensionless pull
+Plotted as the per-knob gradient SHAPE for the Gate-I FITTABLE subset (marginalized shrinkage < 0.5 on
+the combined fit): each knob's row of the dimensionless pull
     S_ik = (dtheta_k^prior) * J_ik / sigma_i        [ the knob's per-bin pull, in units of the error ]
-is normalized to its own peak, so WHERE each knob pulls across the bins is readable regardless of its
-magnitude.  (The Fisher MAGNITUDE sqrt(F_kk) -- which knobs the data actually constrains -- is section
-3's reach figure, not shown here.)
+is normalized to its own peak, so WHERE each knob pulls across the bins is readable; the pull is SIGNED
+(a knob raises or lowers a bin), hence the diverging map.  Rows grouped by physics, styled to match the
+Fisher figure (analysis/paper/sec3_fisher) -- the two read as a pair: which knobs are constrainable, and
+where their information comes from.
 
 Usage:  python -m analysis.paper.sec2_gradients.make [label]
 """
@@ -20,8 +21,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "altgen"))
-from analysis.paper import physical_fit as PF
 from analysis.paper import style
+from analysis.paper import fisher_engine as FE
 
 # every observable label carries its EXPERIMENT (+ topology): line 1 = experiment/sample, line 2 = the
 # observable variable (the thin inclusive-multiplicity rows use a compact single-line superscript form).
@@ -41,127 +42,59 @@ DSLABEL = {"dpt": "T2K CC0$\\pi$\n$\\delta p_T$", "dat": "T2K CC0$\\pi$\n$\\delt
            "mnv_ptmu": "MINERvA\n$p_T^\\mu$", "mnv_pzmu": "MINERvA\n$p_\\parallel^\\mu$",
            "mnv_ptpl": "MINERvA qe\n2D $p_T$-$p_\\parallel$"}
 
-_plab = style.plab                                 # knob name -> LaTeX symbol (single-sourced in style.py)
-
-# Published-data x-RANGE per observable, in that observable's native bin units, for the PER-BIN data
-# highlight (`--data`): a bin is marked when its CENTRE falls in [lo, hi], so only the individual bins the
-# measurement actually covers light up -- not the whole observable block.  Sources: T2K CC0pi & CC1pi STV,
-# MINERvA CC0piNp STV, pi+/proton-carbon scattering.  Observables NOT listed have no measurement in this
-# exact signal definition (lepton/pion single kinematics, multiplicities) and get no marks.  FIRST-PASS
-# ranges -- easily refined per release.
-DATA_RANGE = {
-    "dpt": (0.0, 1000.0), "dat": (0.0, 180.0),                              # T2K CC0pi STV
-    "pn": (0.0, 1000.0), "dptt": (-700.0, 700.0), "daT": (0.0, 180.0),      # T2K CC1pi STV
-    "mnv_dat": (0.0, 180.0), "mnv_pn": (0.0, 800.0), "mnv_dpt": (0.0, 2000.0),  # MINERvA CC0piNp STV
-    "pip_react": (80.0, 450.0), "pip_abs": (80.0, 450.0),                  # pi+ C reaction/absorption (DUET/Ashery)
-    "prot_react": (100.0, 1000.0),                                         # p C reaction
-    # e_qe / e_res: JLab (e,e') omega data exists but the exact acceptance range is a follow-up -> unset.
-}
 
 
-def _data_bins(dskeys, row0, edges_by):
-    """Global indices of the individual bins whose CENTRE lies in the observable's measured DATA_RANGE."""
-    marked = []
-    for j, dk in enumerate(dskeys):
-        rng, e = DATA_RANGE.get(dk), edges_by.get(dk)
-        if rng is None or e is None:
-            continue
-        cen = 0.5 * (np.asarray(e, float)[:-1] + np.asarray(e, float)[1:])
-        marked += [row0[j] + b for b, c in enumerate(cen) if rng[0] <= c <= rng[1]]
-    return np.asarray(marked, int)
+FIT_CUT = 0.5     # a knob is shown when the COMBINED fit's marginalized shrinkage < this (Gate I)
 
 
-def _mark_data(ax, marked, nknob, transpose=False):
-    """Green margin bar next to each INDIVIDUAL bin that currently has published data (contiguous data
-    bins merge into a solid segment; gaps show where the measurement stops)."""
-    import matplotlib.collections as mcoll
-    if len(marked) == 0:
-        return
-    # one short bin-wide segment per data bin, drawn just outside the heatmap in the bin-axis margin
-    segs = [[(-1.2, i - 0.5), (-1.2, i + 0.5)] if transpose
-            else [(i - 0.5, nknob - 0.4), (i + 0.5, nknob - 0.4)] for i in marked]
-    lc = mcoll.LineCollection(segs, colors="#2ca02c", linewidths=4.0, zorder=7)
-    lc.set_clip_on(False)
-    ax.add_collection(lc)
+def main(label="multisample_carbon"):
+    """Per-bin gradient SHAPE for the Gate-I fittable knobs -- the paper's gradient figure.
 
-
-# figure basenames: the canonical T2K npz keeps the historical names; any other label (e.g. a
-# multi-sample stack) renders to its OWN <label>_* files so it never clobbers the T2K figures.
-_CANON = {"physfit_gate1", "physfit_gate1_full_v2"}
-
-
-def _fig_names(label):
-    if label in _CANON:
-        return {"shape": "sec2_gradients_shape", "reach": "sec2_gradient_reach"}
-    return {"shape": f"{label}_shape", "reach": f"{label}_reach"}
-
-
-def main(label="physfit_gate1_full_v2", mark_data=False, transpose=False):
+    Rows = the knobs the combined data can actually constrain (marginalized shrinkage < FIT_CUT),
+    ordered by physics block; columns = bins grouped by observable.  Each row is normalized to its own
+    peak |pull|, so WHERE each knob pulls is visible; the pull is SIGNED (a knob raises or lowers a bin),
+    hence the diverging blue<->orange map (anchored on the §1 blue).  Styled to match the §3 Fisher figure.
+    """
     style.use()
-    nm = _fig_names(label)
     d = np.load(style.ALTGEN / f"{label}.npz", allow_pickle=True)
     J, sigma, prior = d["J"], d["sigma"], d["prior"]
     pnames = [str(x) for x in d["pnames"]]
     dskeys = [str(x) for x in d["dskeys"]]
     row0 = np.asarray(d["row0"])
 
-    S = (prior[None, :] * J) / sigma[:, None]        # (nbins, nknob) per-bin pull in units of sigma
-    S = S.T                                          # -> (nknob, nbins)
-    nknob, nbin = S.shape
+    marg = FE.gate1(J, sigma, prior, np.arange(J.shape[0]))[3]     # marginalized shrinkage, combined fit
+    S = (prior[None, :] * J) / sigma[:, None]                      # (nbin, nknob) per-bin pull [sigma units]
+    Sk = S.T                                                       # (nknob, nbin)
+    rowmax = np.max(np.abs(Sk), axis=1, keepdims=True)
+    shape = np.where(rowmax > 0, Sk / rowmax, 0.0)                 # per-knob normalized, in [-1, 1]
+
+    idx = [k for k in range(len(pnames)) if marg[k] < FIT_CUT]     # the fittable subset (Gate I)
+    idx = sorted(idx, key=lambda k: (style.knob_group(pnames[k]), k))
+    Z = shape[idx]
+    plabels = [style.plab(pnames[k]) for k in idx]
+    gid = [style.knob_group(pnames[k]) for k in idx]
+    nk, nb = Z.shape
     ctr = [(row0[j] + row0[j + 1]) / 2 - 0.5 for j in range(len(dskeys))]   # observable-block centres
-    dslab = [DSLABEL.get(k, k) for k in dskeys]
-    edges_by = {k: d[f"{k}_edges"] for k in dskeys if f"{k}_edges" in d.files}
-    marked = _data_bins(dskeys, row0, edges_by) if mark_data else np.array([], int)
 
-    # ---- per-knob SHAPE: each knob's ROW normalized to its own peak |pull|, so the gradient's
-    # DISTRIBUTION across the bins is visible for every knob regardless of magnitude (kF_sf and the tiny
-    # FF knobs become equally readable) -- magnitude removed.  The OVERALL Fisher magnitude sqrt(F_kk)
-    # deliberately does NOT appear here: aggregating the per-bin pulls into a Fisher (and asking which
-    # knobs that makes fittable) is section 3's job -- section 2 shows only the raw per-bin gradients.
-    rowmax = np.max(np.abs(S), axis=1, keepdims=True)
-    Sshape = np.where(rowmax > 0, S / rowmax, 0.0)
-    shape_title = ("Per-knob gradient SHAPE:  each column normalized to its own peak pull  "
-                   "(where each knob pulls across the bins; magnitude removed)")
-
-    if transpose:                                    # bins DOWN Y, knobs across the TOP (tall)
-        W = max(7.0, 0.36 * nknob + 2.0); H = max(9.0, 0.026 * nbin + 2.0)
-        fig, axh = plt.subplots(figsize=(W, H))
-        im = axh.imshow(Sshape.T, aspect="auto", cmap="RdBu_r", vmin=-1, vmax=1, interpolation="nearest")
-        for r in row0[1:-1]:
-            axh.axhline(r - 0.5, color="k", lw=0.8)
-        axh.set_yticks(ctr); axh.set_yticklabels(dslab, fontsize=7)
-        axh.set_xticks(range(nknob)); axh.set_xticklabels([_plab(p) for p in pnames], rotation=90, fontsize=8)
-        axh.xaxis.set_ticks_position("top"); axh.xaxis.set_label_position("top")
-        # no y-axis label, no title; colorbar horizontal underneath with only -1/0/1 ticks
-        fig.colorbar(im, ax=axh, orientation="horizontal", fraction=0.03, pad=0.03, ticks=[-1, 0, 1])
-        if mark_data:
-            _mark_data(axh, marked, nknob, transpose=True)
-            axh.text(0.0, 1.006, "green = bins with published data", transform=axh.transAxes,
-                     color="#2ca02c", fontsize=8)
-        style.save(fig, nm["shape"])
-    else:
-        W = max(13.0, 0.03 * nbin + 3.0); H = max(6.0, 0.26 * nknob + 1.5)
-        fig, axh = plt.subplots(figsize=(W, H))
-        im = axh.imshow(Sshape, aspect="auto", cmap="RdBu_r", vmin=-1, vmax=1, interpolation="nearest")
-        for r in row0[1:-1]:
-            axh.axvline(r - 0.5, color="k", lw=0.8)
-        for i in range(1, nknob):                     # thin separators between knob rows -> read across
-            axh.axhline(i - 0.5, color="k", lw=0.3)
-        axh.set_xticks(ctr); axh.set_xticklabels(dslab, fontsize=7)
-        axh.set_yticks(range(nknob)); axh.set_yticklabels([f"{_plab(p)}  " for p in pnames], fontsize=8)
-        axh.xaxis.set_ticks_position("top"); axh.xaxis.set_label_position("top")   # sample labels on top
-        axh.tick_params(axis="x", which="both", top=True, bottom=False, direction="out")   # top ticks outward
-        axh.tick_params(axis="y", which="both", left=True, right=False, direction="out")   # left only, outward
-        # no x/y label, no title; thin horizontal colorbar underneath with only -1/0/1 ticks
-        fig.colorbar(im, ax=axh, orientation="horizontal", fraction=0.012, pad=0.05, shrink=0.4, ticks=[-1, 0, 1])
-        if mark_data:
-            _mark_data(axh, marked, nknob)
-            axh.text(0.995, 1.006, "green = bins with published data", transform=axh.transAxes,
-                     ha="right", color="#2ca02c", fontsize=8)
-        style.save(fig, nm["shape"])
+    with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
+                         "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
+        fig, ax = plt.subplots(figsize=(max(13.0, 0.03 * nb + 3.4), 0.36 * nk + 2.2))
+        im = ax.imshow(Z, aspect="auto", cmap=style.CMAP_GRAD_DIV, vmin=-1, vmax=1, interpolation="nearest")
+        for r in row0[1:-1]:                                       # observable column separators
+            ax.axvline(r - 0.5, color="0.35", lw=0.7)
+        ax.set_xticks(ctr); ax.set_xticklabels([DSLABEL.get(k, k) for k in dskeys], fontsize=6.5)
+        ax.xaxis.set_ticks_position("top"); ax.tick_params(axis="x", length=0)
+        style.knob_group_tabs(ax, gid, tabx=-0.055, tabw=0.008, labx=-0.072)   # narrow tabs (wide figure)
+        ax.set_yticks(range(nk)); ax.set_yticklabels(plabels, fontsize=8.5)
+        ax.tick_params(axis="y", length=0)
+        for s in ax.spines.values():
+            s.set_visible(False)
+        cb = fig.colorbar(im, ax=ax, fraction=0.020, pad=0.015, ticks=[-1, 0, 1])
+        cb.set_label("per-bin gradient (normalized per knob)", fontsize=8.5)
+        cb.ax.tick_params(labelsize=7.5)
+        style.save(fig, "sec2_gradients_shape")
 
 
 if __name__ == "__main__":
     pos = [a for a in sys.argv[1:] if not a.startswith("--")]      # positional label
-    main(*(pos[:1] or []), mark_data="--data" in sys.argv[1:],     # --data: outline the data-backed obs
-         transpose="--transpose" in sys.argv[1:])                  # --transpose: bins on Y, knobs on top
+    main(*(pos[:1] or []))
