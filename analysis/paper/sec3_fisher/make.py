@@ -33,6 +33,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from matplotlib.colors import LinearSegmentedColormap as LSC
 
 from analysis.paper import style
 from analysis.paper import fisher_engine as FE
@@ -53,43 +54,111 @@ def gate1(J, sigma, prior, rows):
 
 # ---- figures ---------------------------------------------------------------------------------- #
 
-def fig_shrinkage(M, R, pnames, labels, title, figname, fit_cut, marg_only=False):
+def fig_shrinkage(M, R, pnames, labels, title, figname, fit_cut):
     """knob x column shrinkage, marginalized next to raw: green-without-red == DEGENERATE.
-    marg_only: draw ONLY the marginalized panel (what the fit delivers) -- no raw/degeneracy panel."""
+    (The single-panel probe figure uses fig_shrinkage_grouped instead.)"""
     n = len(labels)
-    panels = [(M, "MARGINALIZED (other knobs free)\nwhat the fit delivers", "#d62728")]
-    if not marg_only:
-        panels.append((R, "RAW (other knobs fixed)\nwhat the data can see", C_MEAS))
-    ncol = len(panels)
-    # marginalized shrinkage lives in [0,1]; the raw panel can exceed 1, so it keeps a little headroom.
-    vmax = 1.0 if marg_only else 1.2
-    fig, axes = plt.subplots(1, ncol, figsize=(1.55 * n * ncol / 2 + 3.4, 8.2), sharey=True, squeeze=False)
-    axes = axes[0]
+    panels = ((M, "MARGINALIZED (other knobs free)\nwhat the fit delivers", "#d62728"),
+              (R, "RAW (other knobs fixed)\nwhat the data can see", C_MEAS))
+    cm = plt.get_cmap(os.environ.get("ADONIS_SEC3_CMAP", "Blues"))   # override to preview a colormap
+
+    def _txt_color(v):                                        # readable on ANY cmap: pick by cell luminance
+        r, g, b, _ = cm(min(max(v, 0.0), 1.2) / 1.2)
+        return "w" if 0.299 * r + 0.587 * g + 0.114 * b < 0.5 else "k"
+    fig, axes = plt.subplots(1, 2, figsize=(1.55 * n + 3.4, 8.2), sharey=True)
     for ax, (Z, ttl, box) in zip(axes, panels):
-        im = ax.imshow(np.clip(Z, 0, vmax), aspect="auto", cmap="Blues", vmin=0, vmax=vmax)
-        ax.set_xticks(range(n))
-        ax.set_xticklabels(labels, fontsize=7)
+        im = ax.imshow(np.clip(Z, 0, 1.2), aspect="auto", cmap=cm, vmin=0, vmax=1.2)
+        ax.set_xticks(range(n)); ax.set_xticklabels(labels, fontsize=7)
         ax.set_title(ttl, fontsize=8.5)
         for k in range(Z.shape[0]):
             for c in range(n):
-                v = Z[k, c]                                   # UNCLIPPED: > vmax and inf must read ">1"
-                txt = "$>$1" if (not np.isfinite(v)) or v > vmax else f"{v:.2f}"
-                ax.text(c, k, txt, ha="center", va="center", fontsize=6,
-                        color="w" if min(v, vmax) > 0.7 else "k")
+                v = Z[k, c]                                   # UNCLIPPED: >1.2 and inf must read ">1"
+                txt = "$>$1" if (not np.isfinite(v)) or v > 1.2 else f"{v:.2f}"
+                ax.text(c, k, txt, ha="center", va="center", fontsize=6, color=_txt_color(v))
                 if v < fit_cut:
                     ax.add_patch(Rectangle((c - .5, k - .5), 1, 1, fill=False, ec=box, lw=1.4))
     axes[0].set_yticks(range(len(pnames)))
     axes[0].set_yticklabels([plab(p) for p in pnames], fontsize=9)
     fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02, label="shrinkage  $\\sigma_{post}/\\sigma_{prior}$")
-    if marg_only:
-        fig.suptitle(f"{title}.   red box = FIT: the joint fit measures it "
-                     f"($\\sigma_{{post}}/\\sigma_{{prior}} < {fit_cut:g}$)", fontsize=9)
-    else:
-        fig.suptitle(f"{title}.   red box = FIT (the fit measures it) · "
-                     "green box = the data sees it with other knobs held fixed\n"
-                     "green without red  $\\Rightarrow$  DEGENERATE (sensitivity exists, another knob spends it)",
-                     fontsize=9)
+    fig.suptitle(f"{title}.   red box = FIT (the fit measures it) · "
+                 "green box = the data sees it with other knobs held fixed\n"
+                 "green without red  $\\Rightarrow$  DEGENERATE (sensitivity exists, another knob spends it)",
+                 fontsize=9)
     return style.save(fig, figname)
+
+
+# ---- paper style for the single-panel "constraining power per probe" figure --------------------- #
+# dark = TIGHTER constraint (flipped, so the ink lands on what the data delivers); orange outline = FIT;
+# rows bracketed into physics blocks.  One perceptual blue anchored on sec1's #648fff, colourblind-safe.
+CMAP_CONSTRAINT = LSC.from_list("constraint_blue",
+                                ["#07204d", "#1f4b9c", "#4f7fe0", "#8fb2f5", "#c9dcfb", "#f6f9ff"])
+FIT_EC = "#fe6100"                                            # sec1 RES orange (colourblind-safe on blue)
+_GNAME = {0: "cross‑section", 1: "pion\nFSI", 2: "NN\nFSI", 3: "nuclear"}
+_GCOL = {0: "#b07d56", 1: "#5f8a6f", 2: "#7b6f9e", 3: "#a86f82"}   # muted clay / sage / violet / rose
+
+
+def _knob_group(p):
+    """Physics block for a knob name: 0 cross-section, 1 pion FSI, 2 NN FSI, 3 nuclear."""
+    if p.startswith("s_piN") or p in ("sabs", "s_conv"):
+        return 1
+    if p.startswith("s_NN") or p.startswith("f_NN"):
+        return 2
+    if p in ("kF_sf", "Eb_shift", "sf_norm", "src_tail", "qe_norm", "res_norm"):
+        return 3
+    return 0
+
+
+def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
+    """Single marginalized panel, rows grouped by physics: dark = tighter constraint, orange outline = FIT.
+    The last column ('all' = every sample combined) is set apart.  The key goes in the caption, not on axes."""
+    order = sorted(range(len(pnames)), key=lambda k: (_knob_group(pnames[k]), k))
+    M = M[order]
+    plabels = [plab(pnames[k]) for k in order]
+    gid = [_knob_group(pnames[k]) for k in order]
+    nk, ng = M.shape
+    cm = CMAP_CONSTRAINT
+
+    def _tc(v):                                              # cell text: white on dark, dark on light
+        r, g, b, _ = cm(min(max(v, 0.0), 1.0))
+        return "w" if 0.299 * r + 0.587 * g + 0.114 * b < 0.5 else "0.15"
+
+    with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
+                         "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
+        fig, ax = plt.subplots(figsize=(0.92 * ng + 3.6, 0.34 * nk + 2.0))
+        im = ax.imshow(np.clip(M, 0, 1), aspect="auto", cmap=cm, vmin=0, vmax=1)
+        for k in range(nk):
+            for c in range(ng):
+                v = M[k, c]; fit = v < fit_cut
+                if fit:
+                    ax.add_patch(Rectangle((c - .5, k - .5), 1, 1, fill=False, ec=FIT_EC, lw=1.9, zorder=3))
+                ax.text(c, k, f"{v:.2f}", ha="center", va="center",
+                        fontsize=7.6 if fit else 7, fontweight="bold" if fit else "normal",
+                        color=_tc(v), alpha=1.0 if fit else 0.6, zorder=4)
+        ax.set_xticks(np.arange(-.5, ng, 1), minor=True)
+        ax.set_yticks(np.arange(-.5, nk, 1), minor=True)
+        ax.grid(which="minor", color="white", lw=1.1); ax.tick_params(which="minor", length=0)
+        yt = ax.get_yaxis_transform()
+        bounds = [i for i in range(1, nk) if gid[i] != gid[i - 1]]
+        for b in bounds:
+            ax.axhline(b - .5, color="0.25", lw=1.6)
+        seg = [-.5] + [b - .5 for b in bounds] + [nk - .5]
+        for a, b in zip(seg[:-1], seg[1:]):
+            g = gid[int((a + b) / 2 + .5)]
+            ax.add_patch(Rectangle((-0.15, a), 0.022, b - a, transform=yt, clip_on=False,
+                                   facecolor=_GCOL[g], edgecolor="none", zorder=5))
+            ax.text(-0.185, (a + b) / 2, _GNAME[g], ha="center", va="center", rotation=90,
+                    fontsize=8, color="0.2", fontweight="bold", transform=yt)
+        if names and names[-1] == "all":                     # set the combined column apart
+            ax.axvline(ng - 1.5, color="0.25", lw=1.6)
+        ax.set_yticks(range(nk)); ax.set_yticklabels(plabels, fontsize=8.5)
+        ax.set_xticks(range(ng)); ax.set_xticklabels(labels, fontsize=8.5)
+        ax.tick_params(length=0)
+        for s in ax.spines.values():
+            s.set_visible(False)
+        cb = fig.colorbar(im, ax=ax, fraction=0.030, pad=0.02)
+        cb.set_label("posterior / prior width   $\\sigma_{\\rm post}/\\sigma_{\\rm prior}$", fontsize=8.5)
+        cb.ax.tick_params(labelsize=7.5)
+        return style.save(fig, figname)
 
 
 def _place_labels(ax, xs, ys, texts, colors, fontsize=6.5, marker_px=7.0):
@@ -263,9 +332,11 @@ def main(label=None):
             print(f"  {s:>10}: {int((M[:, c] < fit_cut).sum()):2d}/{len(pnames)} FIT  "
                   f"[{', '.join(pnames[k] for k in np.where(M[:, c] < fit_cut)[0])}]")
 
-        fig_shrinkage(M, R, pnames, [g[1] for g in groups], axis.get("title", aname),
-                      axis.get("figure", f"sec3_shrinkage_{aname}"), fit_cut,
-                      marg_only=bool(axis.get("marginalized_only", False)))
+        figname = axis.get("figure", f"sec3_shrinkage_{aname}")
+        if bool(axis.get("marginalized_only", False)):       # the paper "constraining power per probe" figure
+            fig_shrinkage_grouped(M, pnames, [g[1] for g in groups], names, figname, fit_cut)
+        else:
+            fig_shrinkage(M, R, pnames, [g[1] for g in groups], axis.get("title", aname), figname, fit_cut)
         tables[aname] = (M, R, names)
         resolved[aname] = groups
         arrays[aname] = (J, sigma, dskeys, row0)
