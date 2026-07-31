@@ -207,7 +207,7 @@ def fig_degeneracy(F, prior, pnames, colname, figname, kmodes=8):
 def main(label=None):
     style.use()
     cfg = SS.load_config()
-    default_label = label or os.environ.get("ADONIS_SEC3_NPZ") or cfg.get("npz", "multisample_carbon_full")
+    default_label = label or os.environ.get("ADONIS_SEC3_NPZ") or cfg.get("npz", "multisample_carbon")
     fit_cut = float(cfg.get("fit_cut", 0.5))
 
     _cache = {}

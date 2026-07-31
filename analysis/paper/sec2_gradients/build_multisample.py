@@ -34,7 +34,7 @@ BEAM_OBS = {"pip": ["pip_react", "pip_abs"], "prot": ["prot_react", "prot_pipro"
 # disk are used.  Every column is one real measurement with its own NUISANCE signal definition:
 #   physfit_gate1        T2K CC0pi-Np + CC1pi+Np STV  -> keep the STV vars + the CC0pi muon 1D
 #                        (pmu,cosmu); drop the CC1pi pion marginals (ppi,cospi) and multiplicities
-#                        (n_p,n_chpi) for the sec2 FIGURE.  NPZ_SAMPLES_FULL keeps them (sec3).
+#                        (n_p,n_chpi).  Both sec2 and sec3 use this 7-observable T2K set.
 #   physfit_t2k_pcos     T2K CC0pi 2D d2sigma/dpmu dcosmu (hadron-inclusive, isT2K_CC0pi Analysis I)
 #   physfit_minerva      MINERvA CC0pi-Np STV (isCC0piNp_MINERvA_STV)
 #   physfit_minerva_ptpz MINERvA qelike muon pT/p|| (isCC0pi_MINERvAPTPZ, hadron-inclusive)
@@ -47,15 +47,9 @@ NPZ_SAMPLES = (
     ("physfit_electron",     None),                                   # (e,e')
 )
 
-# sec3's obs_classes and the T2K rung of its sample ladder reference the FULL 11-observable T2K set
-# (adds ppi/cospi/n_p/n_chpi), which the sec2-figure `keep` above drops.  This variant keeps every 1D
-# observable of every sample (only the disabled 2D samples stay out — physfit_t2k_pcos is not listed and
-# physfit_minerva_ptpz still drops its 2D mnv_ptpl).  Written as `multisample_carbon_full` so the sec2
-# figure's `multisample_carbon` is untouched.  sec3 uses physfit_gate1 for obs_classes and this for the
-# multi-sample axes (see configs/paper/sec3_subsets.yaml).
-NPZ_SAMPLES_FULL = tuple(
-    (lab, None if lab == "physfit_gate1" else keep) for lab, keep in NPZ_SAMPLES)
-
+# NOTE: this ONE npz feeds both sec2 (the gradient figure) and sec3 (the Fisher subsets) -- both now use
+# the SAME sample composition, T2K keep-filtered to its 7 STV+muon observables.  (A `multisample_carbon_full`
+# variant with the full 11-obs T2K used to exist for sec3; it was retired when sec3 was aligned to sec2.)
 
 def build(beams=("pip", "prot", "neut"), npz_samples=NPZ_SAMPLES, nbins=15, syst=0.05, out_label="multisample_carbon"):
     J, sigma, dskeys, row0 = [], [], [], [0]
@@ -97,5 +91,4 @@ def build(beams=("pip", "prot", "neut"), npz_samples=NPZ_SAMPLES, nbins=15, syst
 
 
 if __name__ == "__main__":
-    build()                                                            # sec2 figure (T2K keep-filtered)
-    build(npz_samples=NPZ_SAMPLES_FULL, out_label="multisample_carbon_full")   # sec3 (full T2K observables)
+    build()                                                            # the shared sec2 + sec3 npz

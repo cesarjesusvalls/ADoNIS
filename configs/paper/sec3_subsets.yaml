@@ -17,9 +17,10 @@
 # ignored.
 
 # Default input under output/altgen/ (override: CLI arg or ADONIS_SEC3_NPZ).  Each axis may set its own
-# `npz:` (see obs_classes).  `_full` carries the COMPLETE 11-observable T2K set the sample axes need;
-# the sec2-figure `multisample_carbon` keep-filters T2K to 7, which would silently degrade the T2K rung.
-npz: multisample_carbon_full
+# `npz:` (see obs_classes).  This is the SAME multi-sample npz section 2 plots, so the sample figures here
+# use the SAME samples + signal defs as sec2: T2K keep-filtered to its 7 STV + CC0pi-muon observables,
+# MINERvA (STV + 1D pT/p||), (e,e'), and the pi+/p/n beams.  (obs_classes below points at its own T2K npz.)
+npz: multisample_carbon
 fit_cut: 0.5                   # a knob is FIT when shrinkage sigma_post/sigma_prior < this
 
 # The column of the reference axis that fig 2 (failure modes) and fig 3 (degeneracy) are computed on.
@@ -32,23 +33,21 @@ axes:
 
   # ---- What does each CLASS OF OBSERVABLE buy you?  (the published T2K result) ------------------- #
   obs_classes:
-    npz: physfit_gate1                   # T2K single-sample npz: carries all 11 observables, nothing else
+    npz: physfit_gate1                   # T2K single-sample npz (all 11 obs on disk; we use sec2's 7)
     figure: sec3_shrinkage_subsets       # kept at the historical name
     title: Gate I per observable class
-    groups:
-      lepton:    {label: "lepton\n$p_\\mu,\\cos\\theta_\\mu$", keys: [pmu, cosmu]}
-      leptonhad: {label: "lepton\n+hadron",                    keys: [pmu, cosmu, ppi, cospi]}
-      tki:       {label: "TKI",                                keys: [dpt, dat, pn, dptt, daT]}
-      mult:      {label: "multipl.\n$N_p,N_{\\pi^\\pm}$",      keys: [n_p, n_chpi]}
-      kin9:      {label: "all kin.\n(9 obs)",                  keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, ppi, cospi]}
-      full:      {label: "ALL T2K\n(11 obs)",                  keys: ["<kin9>", "<mult>"]}
+    groups:                              # sec2's 7-obs T2K, split into leptonic vs TKI (pion/mult classes
+                                         # dropped with ppi/cospi/n_p/n_chpi -- see the sample-axis note above)
+      lepton: {label: "lepton\n$p_\\mu,\\cos\\theta_\\mu$", keys: [pmu, cosmu]}
+      tki:    {label: "TKI",                                keys: [dpt, dat, pn, dptt, daT]}
+      full:   {label: "ALL T2K\n(7 obs)",                   keys: ["<lepton>", "<tki>"]}
 
   # ---- What does each SAMPLE ALONE measure?  (knob x sample, un-stacked) ------------------------- #
   samples_alone:
     figure: sec3_shrinkage_samples
     title: Gate I per sample, each on its own
     groups:
-      T2K:       {label: "T2K\n$\\nu$ CC0/1$\\pi$",  keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, ppi, cospi, n_p, n_chpi]}
+      T2K:       {label: "T2K\n$\\nu$ CC0/1$\\pi$",  keys: [dpt, dat, pmu, cosmu, pn, dptt, daT]}   # sec2's 7-obs T2K
       MINERvA:   {label: "MINERvA\n$\\nu$ CC0$\\pi$", keys: ["mnv_*"]}
       ee:        {label: "$(e,e')$\nQE + RES",        keys: ["e_*"]}
       pip:       {label: "$\\pi^+$–C\nbeam",          keys: ["pip_*"]}
@@ -60,7 +59,7 @@ axes:
     figure: sec3_shrinkage_ladder
     title: "Gate I as samples are added (F = $\\sum_s$ F$_s$)"
     groups:
-      T2K:      {label: "T2K",            keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, ppi, cospi, n_p, n_chpi]}
+      T2K:      {label: "T2K",            keys: [dpt, dat, pmu, cosmu, pn, dptt, daT]}   # sec2's 7-obs T2K
       p_mnv:    {label: "+MINERvA",       keys: ["<T2K>", "mnv_*"]}
       p_ee:     {label: "+$(e,e')$",      keys: ["<p_mnv>", "e_*"]}
       p_had:    {label: "+hadron\nbeams", keys: ["<p_ee>", "pip_*", "prot_*", "neut_*"]}
