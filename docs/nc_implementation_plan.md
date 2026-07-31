@@ -1087,6 +1087,23 @@ Recorded because the mechanism matters more than the mistakes.
 The pattern worth keeping: **every one of these was caught by a gate that measures something absolute
 or differential, never by a ratio.** That is the §0 argument, and it paid for itself five times.
 
+### The veto landmine, confirmed on real data
+
+The ACHILLES NC MicroBooNE reference (1 M events, cascade on) makes the `n_other_meson` defect
+measurable rather than theoretical:
+
+| field | mean per event |
+|---|---|
+| `n_other_meson` (counts π⁰ and π⁻ as "other mesons") | **0.1836** |
+| `n_nonpion_meson` (true non-pion mesons only) | **0.000144** |
+
+A factor of **1275**. Reusing the old field as the NC1π⁰ veto would have thrown away ~18 % of all
+events and, specifically, every π⁰ event — the signal itself — with no error anywhere. Other checks
+on the same file: `lep` is non-zero on **100 %** of events (the NC neutrino capture works), and the
+`proc` census is exactly the four IDs measured on free nucleons — 250 (`νn→νn`) 102 948, 251
+(`νp→νp`) 60 817, 451 47 329, 452 38 906. The NC1π⁰ signal is **11.68 %**, ~117 k events across the
+four shards, which is ample for both figures.
+
 ### Two claims a reviewer should treat as unverified
 
 - **NC FAP.** ADoNIS mirrors CC's bit-validated treatment. `LeptonicCurrent.cc` lists no FAP coupling
