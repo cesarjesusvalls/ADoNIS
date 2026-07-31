@@ -235,7 +235,7 @@ BODY = f"""
   <p><b>Plotter.</b> All neutrino panels go through the one validated
   <code>adonis/workflow/plotting.chi2_ratio_panel</code>. χ² over bins where both sides &gt; 0, stat
   errors √(Σw²)/binwidth.</p>
-  <p class="deffile mono">analysis/paper/figures/make.py</p>
+  <p class="deffile mono">analysis/paper/sec1_validation/make.py</p>
   </div>
   <div class="callout warn"><b>Selection note.</b> CC0π signal is <b>topological</b> (no final-state pion)
   on both sides — the only definition the oracle can express, and what an experiment measures. The same

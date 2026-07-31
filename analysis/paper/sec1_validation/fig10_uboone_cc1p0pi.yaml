@@ -1,0 +1,41 @@
+# Paper Fig 10 -- MicroBooNE CC1p0pi dp_T in dalpha_T slices on 40Ar (NUISANCE binning).
+# A sliced selection histogram (compute: sliced) drawn through make_figure.
+render: panels
+compute: sliced
+name: fig10_uboone_cc1p0pi
+inputs:
+  adonis_bank: [output/paper_banks_p4/nu_uBooNE_Ar/merged]
+  reference:   [output/achilles/fsrich/nu_uBooNE_Ar.npz]
+signal:
+  mu_win: [100.0, 1200.0]
+  cos_mu: -1.0
+  p_win: [300.0, 1000.0]
+  cth: -1.0
+  pi_win: null
+  pion_id: none
+  proton_lead: global
+  proton_count: eq1
+observables:
+  - {key: dpt, label: '$\delta p_T$ [MeV/c]', linspace: [0.0, 900.0, 13]}
+title: 'MicroBooNE CC1p0$\pi$: $\delta p_T$ in $\delta\alpha_T$ slices on $^{40}$Ar'
+ratio_band: [0.9, 1.1]
+ratio_ylim: [0.5, 1.5]
+params:
+  slice_by: dalphat
+  slice_scale: 57.29577951308232      # rad -> deg
+  slice_edges: [0, 45, 90, 135, 180]
+  slice_tex: '\delta\alpha_T[^\circ]'
+  obs: dpt
+  edge_scale: 1000.0                  # bin edges given in GeV/c -> MeV
+  obs_edges:                          # NUISANCE per-slice dp_T edges [GeV/c]
+    - [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.47, 0.55, 0.90]
+    - [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.47, 0.55, 0.65, 0.90]
+    - [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.47, 0.55, 0.65, 0.75, 0.90]
+    - [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.47, 0.55, 0.65, 0.75, 0.90]
+layout:
+  panel_w: 2.4
+  fig_h: 3.0
+  max_cols: 4
+  wspace: 0.32
+  ratio_ylim: [0.5, 1.5]
+  panel_kw: null

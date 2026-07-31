@@ -1,6 +1,0 @@
-# Paper Fig 3 -- pi+ nucleus absorption+reaction sigma(p) on C+Ar.
-# A DRIVER figure: declared here, rendered by its module's render(spec).
-name: fig03_pi_nucleus_sigma
-render: analysis.paper.sec1_validation.fig3_beams
-params:
-  nbins: 30

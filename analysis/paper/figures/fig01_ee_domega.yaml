@@ -1,4 +1,0 @@
-# Paper Fig 1 -- inclusive (e,e') dsigma/domega on C+Ar @2.222 GeV, QE/RES/TOTAL decomposition.
-# A DRIVER figure (non-histogram observable): declared here, rendered by its module's render(spec).
-name: fig01_ee_domega
-render: analysis.paper.sec1_validation.fig1_ee_domega

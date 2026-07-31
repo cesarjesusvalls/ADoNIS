@@ -1,3 +1,4 @@
+render: multiobs     # pure selection histogram -> run_analysis
 # Paper fig:NCpi0Xpcospi -- MicroBooNE NC 1pi0 Xp, dsigma/dcos(theta_pi0) on 40Ar, BNB flux.
 # ADoNIS vs ACHILLES.  NO DATA OVERLAY -- like every other Section 1 figure.
 #

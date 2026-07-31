@@ -1,3 +1,4 @@
+render: multiobs     # pure selection histogram -> run_analysis
 # Paper Fig 9 — MINERvA CC0pi TKI (Lu et al. / MINERvA:2018hba), ADoNIS vs ACHILLES on 12C, <Enu>~3 GeV.
 # Paper highlights delta_alphaT and p_n; shown first.
 name: fig09_minerva_cc0pi

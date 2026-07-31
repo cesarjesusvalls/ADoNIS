@@ -1,0 +1,8 @@
+# Paper Fig 1 -- inclusive (e,e') dsigma/domega on C+Ar @2.222 GeV, QE/RES/TOTAL. Panels via make_figure.
+name: fig01_ee_domega
+render: panels
+compute: ee_domega
+layout:
+  panel_w: 3.55        # -> 2 panels x 3.55 = 7.1 wide (paper canvas)
+  fig_h: 2.6
+  wspace: 0.26

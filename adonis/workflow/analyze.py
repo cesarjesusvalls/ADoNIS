@@ -77,18 +77,6 @@ def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, **s
     return {"results": results, "sigma": sig, "out": str(out)}
 
 
-def main(argv=None):
-    import argparse
-    from adonis.workflow.config import load_analysis_config
-    ap = argparse.ArgumentParser(description="ADoNIS-vs-ACHILLES config-driven figure (one AnalysisConfig YAML).")
-    ap.add_argument("config", help="an AnalysisConfig YAML (paper figures: analysis/paper/figures/*.yaml)")
-    ap.add_argument("--out", default=None, help="override out_path")
-    a = ap.parse_args(argv)
-    cfg = load_analysis_config(a.config)
-    if a.out:
-        cfg.out_path = a.out
-    run_analysis(cfg)
-
-
-if __name__ == "__main__":
-    main()
+# NO module CLI: run_analysis is a LIBRARY function.  Paper figures render ONLY through the one entry
+# point, analysis/paper/sec1_validation/make.py (which applies the paper style) -- a bare unstyled
+# `python -m adonis.workflow.analyze <cfg>` was a second, WRONG way to draw a figure, so it is gone.

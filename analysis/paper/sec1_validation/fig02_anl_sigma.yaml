@@ -1,0 +1,4 @@
+# Paper Fig 2 -- free-nucleon RES sigma(E_nu), 3 CC channels overlaid (multi-series curve; bespoke).
+name: fig02_anl_sigma
+render: sigma_channels
+heavy: true            # amps2 scan reduce -> minutes; skipped by --light

@@ -1,3 +1,4 @@
+render: multiobs     # pure selection histogram -> run_analysis
 # Paper appendix fig:T2K_extra (right panel) — T2K CC0pi transverse DEFLECTING angle delta_phiT
 # (T2K:2018rnz), ADoNIS vs ACHILLES on 12C.  Same signal as fig07, one further observable.
 # The LEFT panel of the paper's fig:T2K_extra (CC1pi+ delta_alphaT) is already covered by our fig08,

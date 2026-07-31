@@ -1,0 +1,35 @@
+# Paper Fig 11 -- MicroBooNE NC 1pi0 Xp double-differential on 40Ar: p_pi0 in cos(theta_pi0) slices.
+# A sliced selection histogram (compute: sliced) drawn through make_figure.
+render: panels
+compute: sliced
+name: fig11_uboone_nc1pi0_doublediff
+inputs:
+  adonis_bank: [output/nc_uBooNE_Ar/merged]
+  reference:   [output/achilles/fsrich/nc_uBooNE_Ar.npz]
+signal:
+  pion_id: pi0
+  pi_win: [0.0, 2000.0]
+  cth: -1.0
+  mu_win: [0.0, inf]
+  p_win: [0.0, inf]
+  proton_lead: global
+  proton_count: ge1
+observables:
+  - {key: p_pi0, label: '$p_{\pi^0}$ [MeV/c]', linspace: [0.0, 1000.0, 21]}
+title: 'MicroBooNE NC 1$\pi^0$ X$p$ --- $d^2\sigma/d\cos\theta_{\pi^0}\,dp_{\pi^0}$ on $^{40}$Ar'
+ratio_band: [0.9, 1.1]
+ratio_ylim: [0.75, 1.25]
+params:
+  nc: true
+  slice_by: cos_pi0
+  slice_edges: [-1.0, -0.5, 0.0, 0.5, 1.0]
+  slice_tex: '\cos\theta_{\pi^0}'
+  obs: p_pi0
+  obs_linspace: [0.0, 1000.0, 17]
+  obs_label: '$p_{\pi^0}$ [MeV/c]'
+layout:
+  panel_w: 2.6
+  fig_h: 3.2
+  max_cols: 2
+  title_kw: {fontsize: 9, y: 0.985, va: top}
+  rect_top: 0.97

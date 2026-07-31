@@ -195,7 +195,8 @@ def _ylabel(label, name_var=False):
 def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), ratio_ylim=(0.5, 1.6),
                 ado_label="ENGINE", ref_label="ACHILLES", data=None, panel_w=3.4,
                 panel_kw=None, legend_fn=None, fig_h=6.4, title_kw=None, label_as_xlabel=False,
-                rect_top=0.96, min_w=7.5, max_cols=None, ylabel_var=False):
+                rect_top=0.96, min_w=7.5, max_cols=None, ylabel_var=False,
+                wspace=None, annotations=None, ylabel=None):
     """specs: list of (key, edges, label).  ref_sel/ado_sel: full selection dicts (key->array + 'w').
     Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'}).
     Style hooks (all optional, defaults = the historical look, so existing callers are unchanged):
@@ -216,7 +217,7 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     outer = fig.add_gridspec(nrow, 1, hspace=0.42 if nrow > 1 else 0.0)
     ax = np.empty((2, nv), dtype=object)      # historical (2, nv) shape: ax[0,c] top, ax[1,c] ratio
     for r in range(nrow):
-        inner = outer[r].subgridspec(2, ncol, height_ratios=[3, 1], hspace=0.0)
+        inner = outer[r].subgridspec(2, ncol, height_ratios=[3, 1], hspace=0.0, wspace=wspace)
         for cc in range(ncol):
             i = r * ncol + cc
             top = fig.add_subplot(inner[0, cc])
@@ -231,8 +232,13 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                 top.axis("off"); rat.axis("off")   # blank any unused cell in the last row
     results = {}
     for c, (key, edges, label) in enumerate(specs):
-        ref = {"values": np.asarray(ref_sel[key]), "w": np.asarray(ref_sel["w"])}
-        ado = {"values": np.asarray(ado_sel[key]), "w": np.asarray(ado_sel["w"])}
+        # curve/points mode: a compute may hand a pre-reduced {x,y,yerr} per key (chi2_ratio_panel
+        # draws it as a curve); otherwise the key holds raw values to histogram against 'w'.
+        if isinstance(ref_sel[key], dict) and "y" in ref_sel[key]:
+            ref, ado = ref_sel[key], ado_sel[key]
+        else:
+            ref = {"values": np.asarray(ref_sel[key]), "w": np.asarray(ref_sel["w"])}
+            ado = {"values": np.asarray(ado_sel[key]), "w": np.asarray(ado_sel["w"])}
         d = None if data is None else data.get(key)
 
         def _parts(sel):                             # QE/RES breakdown from a selection's 'chan' column
@@ -257,10 +263,16 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                 ax[0, c].legend(fontsize=7)
             else:
                 legend_fn(ax[0, c], ap is not None)
-            ax[0, c].set_ylabel(_ylabel(label, name_var=ylabel_var))
+            ax[0, c].set_ylabel(ylabel if ylabel is not None else _ylabel(label, name_var=ylabel_var))
             ax[1, c].set_ylabel("ratio")
         results[key] = res
-    sr, sa = float(np.sum(ref_sel["w"])), float(np.sum(ado_sel["w"]))
+    if annotations:                                  # optional in-axes per-panel tag (e.g. a slice range)
+        for c, (key, _e, _l) in enumerate(specs):
+            if key in annotations:
+                ax[0, c].text(0.97, 0.95, annotations[key], transform=ax[0, c].transAxes,
+                              fontsize=7, va="top", ha="right")
+    sr = float(np.sum(ref_sel["w"])) if "w" in ref_sel else 0.0    # curves carry no 'w'
+    sa = float(np.sum(ado_sel["w"])) if "w" in ado_sel else 0.0
     sig = {"ref": sr, "ado": sa, "ach_ado": sr / max(sa, 1e-30)}
     if title:
         fig.suptitle(title, **(title_kw or {"fontsize": 12, "wrap": True}))

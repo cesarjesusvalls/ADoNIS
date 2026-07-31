@@ -1,3 +1,4 @@
+render: multiobs     # pure selection histogram -> run_analysis
 # Paper Fig 8 — T2K CC1pi+Np TKI (PRD 103 112009 signal), ADoNIS vs ACHILLES on 12C.
 name: fig08_t2k_cc1pi
 inputs:

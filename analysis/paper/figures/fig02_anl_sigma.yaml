@@ -1,5 +1,0 @@
-# Paper Fig 2 -- free-nucleon RES sigma(E_nu), 3 CC channels (ppi+/npi+/ppi0).  Heavy (amps2).
-# A DRIVER figure: declared here, rendered by its module's render(spec).
-name: fig02_anl_sigma
-render: analysis.paper.sec1_validation.fig2_anl_sigma
-heavy: true    # amps2/MC -> minutes; skipped by --light

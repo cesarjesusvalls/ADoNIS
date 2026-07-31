@@ -1,0 +1,5 @@
+# Paper Fig 3 -- pi+ nucleus absorption+reaction sigma(p), C+Ar. 2x2 curve blocks (bespoke layout).
+name: fig03_pi_nucleus_sigma
+render: beam_sigma
+params:
+  nbins: 30
