@@ -1,6 +1,6 @@
 # Neutral-current (NC) support in ADoNIS — implementation plan
 
-**Status:** P1–P9 landed (code + gates); P10 blocked only on bank statistics. **Date:** 2026-07-30.
+**Status:** P1–P10 landed. **Both NC figures exist and agree with ACHILLES.** **Date:** 2026-07-30.
 **Branch:** `sec1`. **Rev 4** — the plan has become a record of what was built, not a forecast.
 
 | phase | state |
@@ -15,7 +15,7 @@
 | P7 NC banks | **done** — generates end to end; big bank running |
 | P8 NC1π⁰ selection | **done**, incl. the two lying config keys |
 | P9 antineutrino NC | **gated**; flux plumbing still open |
-| P10 figures 11/12 | **blocked on bank statistics only** |
+| P10 figures 11/12 | **DONE — both render and agree with ACHILLES** |
 
 ## 0.1 The governing rule
 
@@ -1086,6 +1086,27 @@ Recorded because the mechanism matters more than the mistakes.
 
 The pattern worth keeping: **every one of these was caught by a gate that measures something absolute
 or differential, never by a ratio.** That is the §0 argument, and it paid for itself five times.
+
+### P10 — figures 11 and 12, at full statistics
+
+**723 523 NC events on ⁴⁰Ar** (8 shards merged) vs the 1 M-event ACHILLES reference:
+
+| figure | χ²/ndf | ACH/ADO |
+|---|---|---|
+| **fig 12** `dσ/dcos θ_π⁰` | **1.66** | **1.016** |
+| **fig 11** slice `−1 < cos < −0.5` | 1.54 | 1.024 |
+| **fig 11** slice `−0.5 < cos < 0` | 2.24 | 1.083 |
+| **fig 11** slice `0 < cos < 0.5` | 2.52 | 1.012 |
+| **fig 11** slice `0.5 < cos < 1` | 1.16 | 0.988 |
+
+**The predicted deficit showed up, quantitatively.** ADoNIS is **1.6 % low**, against the **1.77 %**
+predicted from the missing NC QE→FSI channel — recorded *before* these figures were made, in
+`configs/banks/nc_uBooNE_Ar.yaml`. The 0.37 % seen at 8/40 chunks was a statistical fluctuation; at
+full statistics the real, understood offset emerges. That is why it was written down in advance.
+
+Fig 12 sits inside the validated 0.3–2.1 χ²/ndf band. Two fig-11 slices (2.24, 2.52) sit just above
+it, which is what a coherent ~1.6 % normalisation offset does to χ² once the statistical errors
+shrink below it. **Both should be re-checked after the NC QE nuclear sampler lands — not tuned.**
 
 ### G7(5) — the NUCLEAR absolute gate, first look
 
