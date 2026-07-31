@@ -204,7 +204,9 @@ def render_panels(spec):
     kw = dict(ado_label="ADoNIS", ref_label="ACHILLES", panel_w=2.4, fig_h=2.6, min_w=3.2,
               legend_fn=style.panel_legend, label_as_xlabel=True,
               panel_kw=layout.pop("panel_kw", style.panel_kw(ratio_yticks=[0.8, 1.0, 1.2])),
-              title_kw={"fontsize": 9, "y": 0.995, "va": "top"}, rect_top=0.95)
+              # rect_top=1.0 packs the panels flush; the suptitle sits just above them (y=0.95).  The
+              # old rect_top=0.95 / y=0.995 left a large title gap under make_figure's nested gridspec.
+              title_kw={"fontsize": 9, "y": 0.95, "va": "top"}, rect_top=1.0)
     kw.update(layout)
     out = ROOT / f"output/paper/{spec['name']}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
