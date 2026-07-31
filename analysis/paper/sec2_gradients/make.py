@@ -41,28 +41,7 @@ DSLABEL = {"dpt": "T2K CC0$\\pi$\n$\\delta p_T$", "dat": "T2K CC0$\\pi$\n$\\delt
            "mnv_ptmu": "MINERvA\n$p_T^\\mu$", "mnv_pzmu": "MINERvA\n$p_\\parallel^\\mu$",
            "mnv_ptpl": "MINERvA qe\n2D $p_T$-$p_\\parallel$"}
 
-# compact, physics-intuitive LaTeX for each knob (physical_fit SPEC names -> symbol).  QE/RES form-factor
-# strengths S_{A,V}; Sachs FFs; C5A (res axial); pion-pole; Delta P33 strength; FSI scale factors s_*
-# (pi absorption / piN elastic+cex / conversion / NN elastic+inelastic per pp,pn,nn; NN charge-exchange
-# fraction); spectral function k_F / removal-energy shift / SF & SRC norms; QE & RES channel norms.
-PLATEX = {
-    "M_A_qe": r"$M_A^{\rm QE}$", "M_A_res": r"$M_A^{\rm RES}$",
-    "axial_strength": r"$S_A^{\rm QE}$", "vector_strength": r"$S_V^{\rm QE}$",
-    "mu_p": r"$\mu_p$", "mu_n": r"$\mu_n$", "gep": r"$G_E^p$", "gen": r"$G_E^n$",
-    "res_axial_strength": r"$C_5^A$", "pion_pole": r"$F_{\rm pp}$", "delta_strength": r"$S_\Delta$",
-    "sabs": r"$s_{\rm abs}^{\pi}$", "s_piN_elastic": r"$s^{\rm el}_{\pi N}$",
-    "s_piN_cex": r"$s^{\rm cex}_{\pi N}$", "s_conv": r"$s_{\rm conv}$",
-    "s_NN_elastic[0]": r"$s^{\rm el}_{NN,pp}$", "s_NN_elastic[1]": r"$s^{\rm el}_{NN,pn}$",
-    "s_NN_elastic[2]": r"$s^{\rm el}_{NN,nn}$",
-    "s_NN_inelastic[0]": r"$s^{\rm inel}_{NN,pp}$", "s_NN_inelastic[1]": r"$s^{\rm inel}_{NN,pn}$",
-    "s_NN_inelastic[2]": r"$s^{\rm inel}_{NN,nn}$", "f_NN_cex": r"$f^{\rm cex}_{NN}$",
-    "kF_sf": r"$k_F$", "Eb_shift": r"$\Delta E_b$", "sf_norm": r"$N_{\rm SF}$",
-    "src_tail": r"$N_{\rm SRC}$", "qe_norm": r"$N_{\rm QE}$", "res_norm": r"$N_{\rm RES}$",
-}
-
-
-def _plab(p):
-    return PLATEX.get(p, p)
+_plab = style.plab                                 # knob name -> LaTeX symbol (single-sourced in style.py)
 
 # Published-data x-RANGE per observable, in that observable's native bin units, for the PER-BIN data
 # highlight (`--data`): a bin is marked when its CENTRE falls in [lo, hi], so only the individual bins the

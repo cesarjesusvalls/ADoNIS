@@ -40,27 +40,7 @@ from analysis.paper.sec3_fisher import subsets as SS
 
 C_MEAS, C_DEG, C_INV = "#2ca02c", "#ff7f0e", "#7f7f7f"
 
-# Knob symbols: VERBATIM from sec2_gradients/make.py (PLATEX), so a knob reads the same in the section-2
-# gradient figures and here -- the two sections plot the same Jacobian and must not name its axes
-# differently.  Duplicated only because sec2 lives on another branch; single-source it once they merge.
-PLATEX = {
-    "M_A_qe": r"$M_A^{\rm QE}$", "M_A_res": r"$M_A^{\rm RES}$",
-    "axial_strength": r"$S_A^{\rm QE}$", "vector_strength": r"$S_V^{\rm QE}$",
-    "mu_p": r"$\mu_p$", "mu_n": r"$\mu_n$", "gep": r"$G_E^p$", "gen": r"$G_E^n$",
-    "res_axial_strength": r"$C_5^A$", "pion_pole": r"$F_{\rm pp}$", "delta_strength": r"$S_\Delta$",
-    "sabs": r"$s_{\rm abs}^{\pi}$", "s_piN_elastic": r"$s^{\rm el}_{\pi N}$",
-    "s_piN_cex": r"$s^{\rm cex}_{\pi N}$", "s_conv": r"$s_{\rm conv}$",
-    "s_NN_elastic[0]": r"$s^{\rm el}_{NN,pp}$", "s_NN_elastic[1]": r"$s^{\rm el}_{NN,pn}$",
-    "s_NN_elastic[2]": r"$s^{\rm el}_{NN,nn}$",
-    "s_NN_inelastic[0]": r"$s^{\rm inel}_{NN,pp}$", "s_NN_inelastic[1]": r"$s^{\rm inel}_{NN,pn}$",
-    "s_NN_inelastic[2]": r"$s^{\rm inel}_{NN,nn}$", "f_NN_cex": r"$f^{\rm cex}_{NN}$",
-    "kF_sf": r"$k_F$", "Eb_shift": r"$\Delta E_b$", "sf_norm": r"$N_{\rm SF}$",
-    "src_tail": r"$N_{\rm SRC}$", "qe_norm": r"$N_{\rm QE}$", "res_norm": r"$N_{\rm RES}$",
-}
-
-
-def plab(p):
-    return PLATEX.get(p, p)
+plab = style.plab      # knob name -> LaTeX symbol; single-sourced in style.py (identical to sec2's labels)
 
 
 def gate1(J, sigma, prior, rows):

@@ -39,6 +39,32 @@ GEN_GREY = "0.35"          # the generator key is an annotation, not a series ->
 ADO_LIGHTEN = 0.25
 REF_DARKEN = 0.25
 
+# Compact, physics-intuitive LaTeX for each physical_fit SPEC knob (name -> symbol).  Single-sourced HERE
+# so the section-2 gradient figures and the section-3 Fisher figures name the same knob identically (they
+# plot the same Jacobian).  QE/RES form-factor strengths S_{A,V}; Sachs FFs; C5A (res axial); pion-pole;
+# Delta P33 strength; FSI scale factors s_* (pi absorption / piN elastic+cex / conversion / NN
+# elastic+inelastic per pp,pn,nn; NN charge-exchange fraction); spectral function k_F / removal-energy
+# shift / SF & SRC norms; QE & RES channel norms.
+PLATEX = {
+    "M_A_qe": r"$M_A^{\rm QE}$", "M_A_res": r"$M_A^{\rm RES}$",
+    "axial_strength": r"$S_A^{\rm QE}$", "vector_strength": r"$S_V^{\rm QE}$",
+    "mu_p": r"$\mu_p$", "mu_n": r"$\mu_n$", "gep": r"$G_E^p$", "gen": r"$G_E^n$",
+    "res_axial_strength": r"$C_5^A$", "pion_pole": r"$F_{\rm pp}$", "delta_strength": r"$S_\Delta$",
+    "sabs": r"$s_{\rm abs}^{\pi}$", "s_piN_elastic": r"$s^{\rm el}_{\pi N}$",
+    "s_piN_cex": r"$s^{\rm cex}_{\pi N}$", "s_conv": r"$s_{\rm conv}$",
+    "s_NN_elastic[0]": r"$s^{\rm el}_{NN,pp}$", "s_NN_elastic[1]": r"$s^{\rm el}_{NN,pn}$",
+    "s_NN_elastic[2]": r"$s^{\rm el}_{NN,nn}$",
+    "s_NN_inelastic[0]": r"$s^{\rm inel}_{NN,pp}$", "s_NN_inelastic[1]": r"$s^{\rm inel}_{NN,pn}$",
+    "s_NN_inelastic[2]": r"$s^{\rm inel}_{NN,nn}$", "f_NN_cex": r"$f^{\rm cex}_{NN}$",
+    "kF_sf": r"$k_F$", "Eb_shift": r"$\Delta E_b$", "sf_norm": r"$N_{\rm SF}$",
+    "src_tail": r"$N_{\rm SRC}$", "qe_norm": r"$N_{\rm QE}$", "res_norm": r"$N_{\rm RES}$",
+}
+
+
+def plab(p):
+    """LaTeX label for a knob name (falls back to the raw name for anything not in PLATEX)."""
+    return PLATEX.get(p, p)
+
 
 class DashSlashSolid(HandlerBase):
     """Legend handle drawn as  -- / --  : dashed segment, a literal '/', solid segment.
