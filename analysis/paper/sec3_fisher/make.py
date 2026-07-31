@@ -53,13 +53,17 @@ def gate1(J, sigma, prior, rows):
 
 # ---- figures ---------------------------------------------------------------------------------- #
 
-def fig_shrinkage(M, R, pnames, labels, title, figname, fit_cut):
-    """knob x column shrinkage, marginalized next to raw: green-without-red == DEGENERATE."""
+def fig_shrinkage(M, R, pnames, labels, title, figname, fit_cut, marg_only=False):
+    """knob x column shrinkage, marginalized next to raw: green-without-red == DEGENERATE.
+    marg_only: draw ONLY the marginalized panel (what the fit delivers) -- no raw/degeneracy panel."""
     n = len(labels)
-    fig, axes = plt.subplots(1, 2, figsize=(1.55 * n + 3.4, 8.2), sharey=True)
-    panels = ((axes[0], M, "MARGINALIZED (other knobs free)\nwhat the fit delivers", "#d62728"),
-              (axes[1], R, "RAW (other knobs fixed)\nwhat the data can see", C_MEAS))
-    for ax, Z, ttl, box in panels:
+    panels = [(M, "MARGINALIZED (other knobs free)\nwhat the fit delivers", "#d62728")]
+    if not marg_only:
+        panels.append((R, "RAW (other knobs fixed)\nwhat the data can see", C_MEAS))
+    ncol = len(panels)
+    fig, axes = plt.subplots(1, ncol, figsize=(1.55 * n * ncol / 2 + 3.4, 8.2), sharey=True, squeeze=False)
+    axes = axes[0]
+    for ax, (Z, ttl, box) in zip(axes, panels):
         im = ax.imshow(np.clip(Z, 0, 1.2), aspect="auto", cmap="Blues", vmin=0, vmax=1.2)
         ax.set_xticks(range(n))
         ax.set_xticklabels(labels, fontsize=7)
@@ -75,10 +79,14 @@ def fig_shrinkage(M, R, pnames, labels, title, figname, fit_cut):
     axes[0].set_yticks(range(len(pnames)))
     axes[0].set_yticklabels([plab(p) for p in pnames], fontsize=9)
     fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02, label="shrinkage  $\\sigma_{post}/\\sigma_{prior}$")
-    fig.suptitle(f"{title}.   red box = FIT (the fit measures it) · "
-                 "green box = the data sees it with other knobs held fixed\n"
-                 "green without red  $\\Rightarrow$  DEGENERATE (sensitivity exists, another knob spends it)",
-                 fontsize=9)
+    if marg_only:
+        fig.suptitle(f"{title}.   red box = FIT: the joint fit measures it "
+                     f"($\\sigma_{{post}}/\\sigma_{{prior}} < {fit_cut:g}$)", fontsize=9)
+    else:
+        fig.suptitle(f"{title}.   red box = FIT (the fit measures it) · "
+                     "green box = the data sees it with other knobs held fixed\n"
+                     "green without red  $\\Rightarrow$  DEGENERATE (sensitivity exists, another knob spends it)",
+                     fontsize=9)
     return style.save(fig, figname)
 
 
@@ -254,7 +262,8 @@ def main(label=None):
                   f"[{', '.join(pnames[k] for k in np.where(M[:, c] < fit_cut)[0])}]")
 
         fig_shrinkage(M, R, pnames, [g[1] for g in groups], axis.get("title", aname),
-                      axis.get("figure", f"sec3_shrinkage_{aname}"), fit_cut)
+                      axis.get("figure", f"sec3_shrinkage_{aname}"), fit_cut,
+                      marg_only=bool(axis.get("marginalized_only", False)))
         tables[aname] = (M, R, names)
         resolved[aname] = groups
         arrays[aname] = (J, sigma, dskeys, row0)
