@@ -21,7 +21,9 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[3]
+# Repo root = the first ancestor that contains the `adonis` package (marker-based, not a hand-counted
+# .parents[N]).  make.py resolves it the same way; the two must not drift.
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / "adonis").is_dir())
 sys.path.insert(0, str(ROOT))
 
 from adonis.workflow.analyze import run_analysis                 # noqa: E402

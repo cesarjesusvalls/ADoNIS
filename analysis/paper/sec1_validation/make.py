@@ -16,8 +16,10 @@ from pathlib import Path
 
 import yaml
 
-HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[3]
+HERE = Path(__file__).resolve().parent          # .../analysis/paper/sec1_validation
+# Repo root = the first ancestor that contains the `adonis` package.  Marker-based, not a hand-counted
+# .parents[N] (which silently breaks if this file moves or if you count from the dir vs the file).
+ROOT = next(p for p in HERE.parents if (p / "adonis").is_dir())
 sys.path.insert(0, str(ROOT))
 from analysis.paper import style                                 # noqa: E402
 from analysis.paper.sec1_validation import helper                # noqa: E402
