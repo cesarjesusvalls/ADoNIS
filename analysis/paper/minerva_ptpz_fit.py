@@ -5,8 +5,10 @@ multi-sample gradient figure.  Same engine as physical_fit.py / minerva_fit.py; 
 MINERvA "qelike" muon double-differential (Ruterbories et al., PRD 99 (2019) 012004, arXiv:1811.12569):
 
   * bank      : output/paper_banks_p4/nu_MINERvA_C (weak probe, MINERvA flux, carbon)
-  * signal    : NUISANCE SignalDef::isCC0pi_MINERvAPTPZ -- CC, theta_mu < 20 deg, exactly one muon,
-                ZERO final-state mesons (and no heavy baryons / pi0 / hard photons), p_mu >= 1.5 GeV.
+  * signal    : NUISANCE SignalDef::isCC0pi_MINERvAPTPZ -- CCINC, theta_mu < 20 deg, exactly one muon,
+                ZERO final-state mesons (and no heavy baryons / pi0 / hard photons).  isSignal imposes
+                NO muon-momentum cut; the reported phase space (Ruterbories) is p_|| in [1.5,15] GeV,
+                p_T < 2.5 GeV, applied here on those actual variables (NOT a |p_mu| floor).
                 INCLUSIVE over nucleons -- NO proton requirement (unlike the CC0pi-Np STV in
                 minerva_fit.py).  This keeps the muon-vertex information the STV variables integrate out.
   * observables: p_T^mu (transverse), p_||^mu (longitudinal), and the 2D p_T-p_|| double-differential.
@@ -36,8 +38,12 @@ from analysis.paper.t2k_pcos_fit import bin2d_dataset
 
 BANKDIR = os.environ.get("ADONIS_MINERVA_BANK", "output/paper_banks_p4/nu_MINERvA_C/merged")
 LABEL = os.environ.get("ADONIS_LABEL", "physfit_minerva_ptpz")
-COS20 = float(np.cos(np.deg2rad(20.0)))     # theta_mu < 20 deg
-MU_LO = 1500.0                              # p_mu >= 1.5 GeV (ME lower cut)
+COS20 = float(np.cos(np.deg2rad(20.0)))     # theta_mu < 20 deg (the ONLY muon cut in isCC0pi_MINERvAPTPZ)
+# isSignal imposes no momentum cut; the reported qelike double-differential (Ruterbories PRD99 2019)
+# lives in p_|| in [1.5,15] GeV and p_T < 2.5 GeV.  Applied on the ACTUAL variables (was a single
+# |p_mu|>=1.5 floor -- wrong variable, and missing the upper p_|| bound and the p_T cut entirely).
+MU_PZ = (1500.0, 15000.0)                   # p_|| (longitudinal) window [1.5, 15] GeV
+MU_PT_HI = 2500.0                           # p_T < 2.5 GeV
 N_PT = int(os.environ.get("ADONIS_PTPZ_NPT", "7"))     # 2D p_T axis bins
 N_PZ = int(os.environ.get("ADONIS_PTPZ_NPZ", "7"))     # 2D p_|| axis bins
 CONV0 = 1e-33 / 12.0 * 1e38                             # per-nucleon 1e-38 (carbon); cancels in J/sigma
@@ -70,9 +76,11 @@ def build_ptpz_datasets(B, w0, log):
     pt = np.sqrt(kmu[:, 1] ** 2 + kmu[:, 2] ** 2)                  # transverse muon momentum
     pz = kmu[:, 3]                                                 # longitudinal muon momentum
     n_meson = BP._event_sum(B, np.isin(B["fs_pid"], _MESONS).astype(float))
-    mask = (n_meson == 0) & (cmu > COS20) & (pmu >= MU_LO)         # isCC0pi_MINERvAPTPZ (hadron-inclusive)
+    mask = ((n_meson == 0) & (cmu > COS20)                         # isCC0pi_MINERvAPTPZ (hadron-inclusive)
+            & (pz >= MU_PZ[0]) & (pz <= MU_PZ[1]) & (pt <= MU_PT_HI))   # Ruterbories qelike phase space
     nsel = int(mask.sum())
-    log(f"  MINERvA qelike (0-meson, theta_mu<20, p_mu>=1.5GeV, NO proton): {nsel}/{len(w0)} ({nsel/len(w0):.2%})")
+    log(f"  MINERvA qelike (0-meson, theta_mu<20, p_||[1.5,15]GeV, p_T<2.5GeV, hadron-incl): "
+        f"{nsel}/{len(w0)} ({nsel/len(w0):.2%})")
     ex = design_edges(pt[mask], N_PT, domain=None)
     ey = design_edges(pz[mask], N_PZ, domain=None)
     ds = [
