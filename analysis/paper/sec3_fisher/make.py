@@ -61,19 +61,21 @@ def fig_shrinkage(M, R, pnames, labels, title, figname, fit_cut, marg_only=False
     if not marg_only:
         panels.append((R, "RAW (other knobs fixed)\nwhat the data can see", C_MEAS))
     ncol = len(panels)
+    # marginalized shrinkage lives in [0,1]; the raw panel can exceed 1, so it keeps a little headroom.
+    vmax = 1.0 if marg_only else 1.2
     fig, axes = plt.subplots(1, ncol, figsize=(1.55 * n * ncol / 2 + 3.4, 8.2), sharey=True, squeeze=False)
     axes = axes[0]
     for ax, (Z, ttl, box) in zip(axes, panels):
-        im = ax.imshow(np.clip(Z, 0, 1.2), aspect="auto", cmap="Blues", vmin=0, vmax=1.2)
+        im = ax.imshow(np.clip(Z, 0, vmax), aspect="auto", cmap="Blues", vmin=0, vmax=vmax)
         ax.set_xticks(range(n))
         ax.set_xticklabels(labels, fontsize=7)
         ax.set_title(ttl, fontsize=8.5)
         for k in range(Z.shape[0]):
             for c in range(n):
-                v = Z[k, c]                                   # UNCLIPPED: >1.2 and inf must read ">1"
-                txt = "$>$1" if (not np.isfinite(v)) or v > 1.2 else f"{v:.2f}"
+                v = Z[k, c]                                   # UNCLIPPED: > vmax and inf must read ">1"
+                txt = "$>$1" if (not np.isfinite(v)) or v > vmax else f"{v:.2f}"
                 ax.text(c, k, txt, ha="center", va="center", fontsize=6,
-                        color="w" if min(v, 1.2) > 0.7 else "k")
+                        color="w" if min(v, vmax) > 0.7 else "k")
                 if v < fit_cut:
                     ax.add_patch(Rectangle((c - .5, k - .5), 1, 1, fill=False, ec=box, lw=1.4))
     axes[0].set_yticks(range(len(pnames)))
