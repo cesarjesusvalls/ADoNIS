@@ -1024,3 +1024,58 @@ nucleons, and G6(3) with it; D2 promoted from open question to resolved-with-CC-
 and the Fortran/Python line numbers corrected (`:284`→`:285`, `:838`→`:837`, `:870`→`:867`,
 `extract.py:307`→`:303-304`/`:306`, `selection.py:96`→`:95`, `generate_bank.py:79`→`:69`, `res.py`
 17 sites).
+
+---
+
+## 9. State at handover
+
+### What is done and gated
+
+NC RES and NC QE currents exist, derived from the ACHILLES source read directly, and both absolute
+free-nucleon oracle gates pass in absolute nb with **no bridge constant** (§0.2). The full test suite
+is green: **145 tests**, plus **~60 new NC gates** across six new files. Banks generate end to end.
+
+### What is NOT done, and what each one blocks
+
+| item | blocks | note |
+|---|---|---|
+| **`k_lep` bank migration not applied** | every existing CC/EM figure in this worktree | The script is written, verified on real chunks, self-checking per chunk, atomic, restartable, idempotent and **reversible** (`--revert`). It is 2727 chunks in a **shared** 133 GB tree, and it breaks the other worktrees' code until they rebase — so it needs a human decision, not an automatic run. `python -m adonis.workflow.migrate_k_lep $ADONIS_OUT --apply`. |
+| **NC QE nuclear sampler** | nothing for Figs 11/12 | NC QE produces no pion, so it cannot enter an NC1π⁰ signal. The free-nucleon path exists (it is what G6(2) uses). Bank generation raises with a message saying so. |
+| **`assembly.py` / `differential.py` duplicate `build_zmtx`** | nothing | Both now carry a `probe_for_mode` guard, so neither can silently do CC for NC. The duplication remains. |
+| **P9 ν̄ flux plumbing** | nothing | `microboone_numu.dat` is νμ-only, so ν̄ cannot reach Figs 11/12. The leptonic half is gated. |
+| **Figures 11/12** | — | Configs written, plotting wired (incl. row wrapping, which also fixes `figA1`), selection routed. **Waiting only on bank statistics.** |
+
+### Things I got wrong, and how they were caught
+
+Recorded because the mechanism matters more than the mistakes.
+
+1. **The D2 conclusion, twice.** Rev 2 asserted — with an adversarial review agreeing independently —
+   that ADoNIS's CC I=½ form was invented and carried a 13 % error. Both readings were misled by one
+   wrong line number in a code comment. The rotation is at `:675-691`. **Caught by:** the absolute
+   free-nucleon gate, on the *spread*, not the mean — the wrong form agreed with the ACHILLES totals
+   to 3.5 %.
+2. **A factor 2 in the D1 coupling switch.** The single-expression form needed `X = sw/2`; I wrote
+   `X = sw`, which would have made the default half the correct NC QE vector coupling and left G6(3)
+   unable to ever close. **Caught by:** the review's fact-check, then pinned by a test that asserts
+   the SM branch is *not* the half-value.
+3. **"The quirk affects the proton only."** `coupl1` sits on the neutron's `F1n`/`F2n` too. The gate
+   as first written asserted something false. **Caught by:** the review, reading `:110-111`.
+4. **"FAP cannot matter for NC."** I argued q·j_lep = 0 for a massless neutrino. The current rides on
+   the de Forest-**shifted** transfer, so it does not vanish; a ×137 FAP moves NC amps2 ~600×.
+   **Caught by:** my own test failing. The test now pins that it *does* contribute, keeping the real
+   open question visible.
+5. **Cancelling a healthy generation job.** I read an FSI cap of 1.28 M slots as an NC blow-up. The
+   existing CC argon bank's cap is 3.5 M — *higher per event*. **Caught by:** checking the manifest
+   instead of trusting the inference. Relaunched unchanged.
+
+The pattern worth keeping: **every one of these was caught by a gate that measures something absolute
+or differential, never by a ratio.** That is the §0 argument, and it paid for itself five times.
+
+### Two claims a reviewer should treat as unverified
+
+- **NC FAP.** ADoNIS mirrors CC's bit-validated treatment. `LeptonicCurrent.cc` lists no FAP coupling
+  for either current, but the paper runs use the FortranModel QE path, which is the authority. The
+  free-nucleon gate passes at 0.3 % either way, so it does not settle this.
+- **`run_ee_*_fsi` card routing.** They run the cascade and route to the emulated amd64 image. Whether
+  that is a latent SIGSEGV or those cards are simply never driven through this runner is **not
+  established** — the (e,e′) banks exist, so something works.
