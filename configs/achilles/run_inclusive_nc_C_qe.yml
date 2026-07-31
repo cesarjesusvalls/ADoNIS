@@ -1,0 +1,60 @@
+# ACHILLES inclusive NEUTRAL-CURRENT QE oracle -- QE_Spectral_Func on 12C, nu_mu NC (nu N -> nu N'),
+# MicroBooNE numu flux, cascade OFF (PRIMARY vertex).  The nuclear NC-QE reference for validating the
+# ADoNIS NC-QE nuclear sampler (adonis/channels/qe_nc.generate): it isolates the SF-folded NC vertex the
+# sampler produces, before any FSI (which is shared/validated separately).
+#
+# Derived from run_inclusive_ee_C_qe.yml (the EM analog) and run_freenucleon_nc_qe_N.yml (the NC vertex).
+# The ONLY physics changes vs the inclusive (e,e') card are `Leptons: [14, [14]]` (incoming numu ->
+# outgoing numu, a NEUTRAL current) and a numu beam; the QE_Spectral_Func model, 12C nucleus, cascade-off
+# and SF config are deliberately identical, so any ADoNIS/ACHILLES difference is the NC vertex and nothing
+# else.  No HardCuts: a polar-angle cut on the INVISIBLE outgoing neutrino is meaningless (and would bias
+# the sample).  Cascade OFF -> run_achilles routes this to the amd64 :oracle default (emulation only
+# SIGSEGVs with the cascade on).
+Main:
+  NEvents: 200000
+  HardCuts: false
+  EventCuts: false
+  DoRotate: false
+  RunDecays: False
+  Output:
+      Format: NuHepMC
+      Name: /out/inclusive_nc_C_qe.hepmc
+      Zipped: False
+
+SherpaOptions: !include "data/default/SherpaOptions.yml"
+
+Processes:
+  - Leptons: [14, [14]]
+
+Beams:
+  - Beam:
+      PID: 14
+      Beam Params:
+        Type: Spectrum
+        Histogram: flux/microboone_numu.dat
+
+Cascade:
+  Run: False
+  Interactions: !include "data/default/VirtResInteractions.yml"
+  Step: 0.04
+  Probability: Gaussian
+  InMedium: None
+  PotentialProp: False
+  Algorithm: Base
+
+NuclearModels:
+- NuclearModel:
+   Model: FortranModel
+   Name: QE_Spectral_Func
+   ConfigFile: data/info_C12_pke.data
+   FormFactorFile: "FormFactors.yml"
+   Ward: None
+
+Nuclei:
+  - Nucleus: !include "data/default/12C.yml"
+
+Options: !include "data/default/OptionDefaults.yml"
+
+Backend:
+  Name: Default
+  Options: []
