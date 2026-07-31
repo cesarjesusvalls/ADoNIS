@@ -33,6 +33,7 @@ from __future__ import annotations
 import numpy as np
 
 from adonis.channels import constants as C
+from adonis.channels.twobody import isotropic_two_body_cm
 from adonis.channels.currents.matrix_element import (me_cross_section, MASS_PDG_PROTON,
                                                      MASS_PDG_NEUTRON)
 
@@ -40,30 +41,16 @@ SPIN_AVG_NC = 0.5               # 1 neutrino helicity x 2 nucleon spins
 
 
 def _two_body_cm(k_nu, m_N, u):
-    """nu(k) + N(at rest) -> nu(k') + N(p'), isotropic in the CM.  Returns (k_lep, p_out, Phi2)."""
+    """nu(k) + N(at rest) -> nu(k') + N(p'), isotropic in the CM.  Returns (k_lep, p_out, Phi2).
+
+    A rest-frame special case (massless outgoing nu, elastic nucleon) of the shared two-body decay: the
+    total 4-momentum is k_nu + N-at-rest, m1=0, m2=m_N.  The general boost reduces exactly to the former
+    hand-written +z boost because P is along +z here (validated against the G6(2) free-nucleon sigma)."""
     n = len(k_nu)
-    E = k_nu[:, 0]
-    s = m_N ** 2 + 2.0 * E * m_N                       # (k + p)^2 with p at rest, massless nu
-    sqs = np.sqrt(s)
-    # massless lepton, elastic nucleon: |p*| is the same before and after
-    pstar = (s - m_N ** 2) / (2.0 * sqs)
-    ct = 2.0 * u[:, 0] - 1.0                           # isotropic in cos(theta*)
-    st = np.sqrt(np.clip(1.0 - ct ** 2, 0.0, None))
-    ph = 2.0 * np.pi * u[:, 1]
-    kx = pstar * st * np.cos(ph); ky = pstar * st * np.sin(ph); kz = pstar * ct
-    k_cm = np.column_stack([pstar, kx, ky, kz])
-    p_cm = np.column_stack([np.sqrt(pstar ** 2 + m_N ** 2), -kx, -ky, -kz])
-    # boost CM -> lab along +z (the nucleon is at rest in the lab, so beta = E/(E+m_N))
-    beta = E / (E + m_N)
-    g = 1.0 / np.sqrt(1.0 - beta ** 2)
-
-    def boost(v):
-        e = g * (v[:, 0] + beta * v[:, 3])
-        z = g * (v[:, 3] + beta * v[:, 0])
-        return np.column_stack([e, v[:, 1], v[:, 2], z])
-
-    phi2 = pstar / (4.0 * np.pi * sqs)
-    return boost(k_cm), boost(p_cm), phi2
+    P = k_nu + np.column_stack([np.full(n, m_N), np.zeros((n, 3))])          # + nucleon at rest
+    k_lep, p_out, pcm, sqs, _s, _lam = isotropic_two_body_cm(P, 0.0, m_N, u[:, 0], u[:, 1])
+    phi2 = pcm / (4.0 * np.pi * sqs)                                         # pstar / (4 pi sqrt(s))
+    return k_lep, p_out, phi2
 
 
 def sigma_free_nucleon_nc_qe(Enu_MeV, is_proton, n=200_000, seed=0, quirk=False, chunk=100_000):

@@ -42,7 +42,7 @@ MATERIALS = {
 }
 
 
-from adonis.kinematics import boost as _boost      # shared JAX CM->lab boost (qe/ee); np.asarray keeps the sampler dict numpy
+from adonis.channels.twobody import isotropic_two_body_cm   # shared isotropic 2-body CM->lab (qe/ee/qe_nc)
 
 
 STRUCK_MASS_MODE = "species"    # "species" (DEFAULT: struck energy = m_species - E_rm) -- (e,e') strikes
@@ -67,16 +67,7 @@ def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target
     # ---- two-body final state e'(m_e) + N_out(m_species), isotropic CM (TwoBodyMapper) ----
     u = rng.random((n, 2))
     P = k_e + p_struck
-    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
-    sqrts = np.sqrt(np.clip(s, 1e-9, None))
-    s2, s3 = _M_E ** 2, m_species ** 2
-    E1 = sqrts / 2 * (1 + s2 / s - s3 / s); E2 = sqrts / 2 * (1 + s3 / s - s2 / s)
-    lam = np.sqrt(np.clip((s - s2 - s3) ** 2 - 4 * s2 * s3, 0, None)); pcm = lam / (2 * sqrts)
-    cts = 2 * u[:, 0] - 1; sts = np.sqrt(np.clip(1 - cts ** 2, 0, None)); php = _TWO_PI * u[:, 1]
-    dirn = np.stack([sts * np.cos(php), sts * np.sin(php), cts], axis=1)
-    beta = P[:, 1:] / P[:, 0:1]
-    k_lep = np.asarray(_boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta))
-    p_out = np.asarray(_boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta))
+    k_lep, p_out, pcm, sqrts, s, lam = isotropic_two_body_cm(P, _M_E, m_species, u[:, 0], u[:, 1])
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
     # ---- removal-energy ceiling (HadronicMapper.cc:50-53), Smin = (m_e + m_species)^2, mono beam ----
     Smin = (_M_E + m_species) ** 2

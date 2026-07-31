@@ -25,7 +25,7 @@ _TWO_PI = 2 * np.pi
 N_NEUTRON = 6
 
 
-from adonis.kinematics import boost as _boost      # shared JAX CM->lab boost (qe/ee); np.asarray keeps the sampler dict numpy
+from adonis.channels.twobody import isotropic_two_body_cm   # shared isotropic 2-body CM->lab (qe/ee/qe_nc)
 
 
 def sample(n, seed=0):
@@ -58,18 +58,8 @@ def sample(n, seed=0):
     J_had = mom ** 2 * dp * (cosTm + 1) * _TWO_PI * emax
     # ---- two-body final state (TwoBodyMapper), fixed-z CM axis (rotation-irrelevant) ----
     p01 = k_nu + p_struck
-    s = p01[:, 0] ** 2 - np.sum(p01[:, 1:] ** 2, axis=1)
-    sqrts = np.sqrt(np.clip(s, 1e-9, None))
-    s2, s3 = M_MU ** 2, M_P ** 2
-    E1 = sqrts / 2 * (1 + s2 / s - s3 / s); E2 = sqrts / 2 * (1 + s3 / s - s2 / s)
-    lam = np.sqrt(np.clip((s - s2 - s3) ** 2 - 4 * s2 * s3, 0, None)); pcm = lam / (2 * sqrts)
-    cts = 2 * u[:, 5] - 1; sts = np.sqrt(np.clip(1 - cts ** 2, 0, None)); php = _TWO_PI * u[:, 6]
-    dirn = np.stack([sts * np.cos(php), sts * np.sin(php), cts], axis=1)
-    beta = p01[:, 1:] / p01[:, 0:1]
-    k_mu_cm = np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1)
-    p_out_cm = np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1)
-    k_lep = np.asarray(_boost(k_mu_cm, beta)); p_out = np.asarray(_boost(p_out_cm, beta))
-    J_2body = (cts * 0 + 2.0) * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
+    k_lep, p_out, pcm, sqrts, s, lam = isotropic_two_body_cm(p01, M_MU, M_P, u[:, 5], u[:, 6])
+    J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
     # validity mask
     valid = (dp > 0) & (emax > 0) & (s > _SMIN) & (lam > 0) & (radical >= 0)
     J = J_beam * J_had * J_2body
@@ -114,18 +104,10 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     p_struck = np.concatenate([(_MN - E_rm)[:, None], pvec], axis=1)
     # ThreeBody->TwoBody: total -> mu + p, isotropic CM (same as sample())
     P = k_nu + p_struck
-    s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
-    sqrts = np.sqrt(np.clip(s, 1e-9, None))
-    s2, s3 = M_MU ** 2, M_P ** 2
-    E1 = sqrts / 2 * (1 + s2 / s - s3 / s); E2 = sqrts / 2 * (1 + s3 / s - s2 / s)
-    lam = np.sqrt(np.clip((s - s2 - s3) ** 2 - 4 * s2 * s3, 0, None)); pcm = lam / (2 * sqrts)
-    cts = 2 * u[:, 5] - 1; sts = np.sqrt(np.clip(1 - cts ** 2, 0, None)); php = _TWO_PI * u[:, 6]
-    dirn = np.stack([sts * np.cos(php), sts * np.sin(php), cts], axis=1)
-    beta = P[:, 1:] / P[:, 0:1]
-    # np.array (writeable copy, not asarray) -- the degenerate-row fixup below assigns in-place, and a
-    # JAX->numpy view is read-only.
-    k_lep = np.array(_boost(np.concatenate([E1[:, None], pcm[:, None] * dirn], axis=1), beta))
-    p_out = np.array(_boost(np.concatenate([E2[:, None], -pcm[:, None] * dirn], axis=1), beta))
+    k_lep, p_out, pcm, sqrts, s, lam = isotropic_two_body_cm(P, M_MU, M_P, u[:, 5], u[:, 6])
+    # writeable copies -- the degenerate-row fixup below assigns in-place, and the helper's asarray view
+    # of the JAX boost is read-only.
+    k_lep = np.array(k_lep); p_out = np.array(p_out)
     # Kinematically-degenerate events (s->0 => CM boost beta->1) blow the boost up to ~1e17 MeV.
     # They are rejected below (valid=False => w=0), but the garbage momenta are toxic to any downstream
     # consumer: the FSI cascade (absurd momenta sit on escape/Pauli thresholds -> CPU/GPU divergence)
