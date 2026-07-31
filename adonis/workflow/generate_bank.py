@@ -113,10 +113,15 @@ def _generate_hardvertex(cfg, outdir, log, t0):
         from adonis.channels import qe_nc as qe_nc_x, res_nc as res_nc_x
 
         def gen_qe(n, seed):
-            raise NotImplementedError(
-                "NC QE bank generation needs a nuclear (spectral-function) sampler; qe_nc currently "
-                "provides the FREE-nucleon sigma(E_nu) that gate G6(2) uses.  Generate NC RES banks "
-                "with channels: [res] until it lands.  See docs/nc_implementation_plan.md P7.")
+            r = qe_nc_x.generate(n, material=cfg.material, seed=seed, return_events=True,
+                                 quirk=bool(cfg.achilles_coupl1_quirk), theta_acc=LACC)["events"]
+            # NO _accept_lepton: the outgoing neutrino is invisible, so a polar cut is meaningless
+            # (generate refuses a non-trivial theta_acc, like res_nc).
+            return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]),
+                        p_struck=np.asarray(r["p_struck"]), k_lep=np.asarray(r["k_lep"]),
+                        p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
+                        ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
+                        Npid=np.asarray(r["Npid"], np.int32), _raw=r)
 
         def gen_res(n, seed):
             r = res_nc_x.generate(n, material=cfg.material, seed=seed, return_events=True,

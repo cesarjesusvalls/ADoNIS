@@ -8,10 +8,13 @@
 # 250/251, i.e. NC ELASTIC.  Those pions are made by the CASCADE -- charge exchange on the recoiling
 # nucleon turns a pion-less NC QE event into a 1pi0 one.  It is real physics, and this bank misses it.
 #
-# So expect ADoNIS to sit ~1.8% LOW against ACHILLES on the NC1pi0 rate, from this cause alone, until
-# the NC QE nuclear sampler lands (qe_nc currently covers only the free nucleon, which is what gate
-# G6(2) needs).  Recorded here so that deficit is RECOGNISED rather than absorbed into a tune or
-# misread as a current-level disagreement.
+# So expect ADoNIS to sit ~1.8% LOW against ACHILLES on the NC1pi0 rate, from this cause alone, with
+# channels: [res].  The NC QE nuclear sampler HAS NOW LANDED (adonis/channels/qe_nc.generate) and is
+# validated: its flux-averaged nuclear NC-QE sigma on 12C agrees with the ACHILLES oracle
+# (configs/achilles/run_inclusive_nc_C_qe.yml) to 0.3% (test_nc_qe_nuclear).  To CLOSE the deficit, set
+# channels: [qe, res] + achilles_coupl1_quirk: true and REGENERATE (GPU) + re-validate figs 11/12; left
+# as [res] here so the shipped figures are unchanged until that regen is done.  (The 12C sigma is
+# oracle-checked; an Ar NC-QE oracle would confirm the argon absolute scale, same as CC QE on both.)
 #
 # theta_acc is absent, i.e. the (0,180) default.  GenConfig REJECTS anything else for probe=NC: a
 # polar acceptance on an invisible outgoing neutrino is meaningless and would silently bias the
