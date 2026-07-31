@@ -8,10 +8,11 @@
 name: fig12_uboone_nc1pi0_cospi
 inputs:
   adonis_bank: [output/nc_uBooNE_Ar/merged]   # jobs/merge_bank.py --parts output/nc_uBooNE_Ar --out .../merged
-  reference:   [output/achilles/fsrich/nc_uBooNE_Ar_s0.npz,
-                output/achilles/fsrich/nc_uBooNE_Ar_s1.npz,
-                output/achilles/fsrich/nc_uBooNE_Ar_s2.npz,
-                output/achilles/fsrich/nc_uBooNE_Ar_s3.npz]
+  # ONE combined file, NOT the four shards listed separately: analyze._merge CONCATENATES its
+  # references, which is right for different samples but wrong for independent shards of the SAME
+  # beam -- it would report 4x the cross section (measured: ACH/ADO = 4.015).
+  # jobs/combine_fsrich.py sets weight_to_nb = 1/N, which is the correct average.
+  reference:   [output/achilles/fsrich/nc_uBooNE_Ar.npz]
 signal:
   pion_id: pi0          # EXACTLY one pi0, no charged pions, no non-pion mesons
   pi_win: [0.0, 2000.0]
