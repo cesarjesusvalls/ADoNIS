@@ -17,8 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
 
 C_FIT, C_NOM = "#1f4b9c", "0.55"
+# span variable TYPE (hadronic STV / leptonic kinematics / energy transfer / cross section) AND probe
 PANELS = [("dpt",        r"T2K CC0$\pi$   $\delta p_T$ [MeV/c]",       r"$d\sigma/d\delta p_T$"),
-          ("mnv_dpt",    r"MINERvA CC0$\pi$   $\delta p_T$ [MeV/c]",   r"$d\sigma/d\delta p_T$"),
+          ("mnv_ptmu",   r"MINERvA   $p_T^\mu$ [MeV/c]",               r"$d\sigma/dp_T^\mu$"),
           ("e_qe",       r"$(e,e')$ C   $\omega_{\rm QE}$ [MeV]",      r"$d\sigma/d\omega$"),
           ("pip_react",  r"$\pi^+$–C   $\sigma_{\rm reac}(p)$",        r"$\sigma$ [mb]")]
 
