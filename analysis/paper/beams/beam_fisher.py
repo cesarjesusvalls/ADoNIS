@@ -106,10 +106,14 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None):
     jvp = jax.jit(lambda th, tang: jax.jvp(w_of, (th,), (tang,))[1])
     # 2nd directional derivative d^2/dt^2 w(theta + t*tang) via nested jvp (for the higher-order corner)
     jvp2 = jax.jit(lambda th, tang: jax.jvp(lambda t: jax.jvp(w_of, (t,), (tang,))[1], (th,), (tang,))[1])
+    # 3rd MIXED directional derivative d^3 w /(du dw dx) via triple-nested jvp (for the 4th-order corner)
+    jvp3 = jax.jit(lambda th, u, w, x: jax.jvp(
+        lambda t3: jax.jvp(lambda t2: jax.jvp(lambda t1: w_of(t1), (t2,), (u,))[1], (t3,), (w,))[1],
+        (th,), (x,))[1])
     log(f"  [{beam}] {len(p):,} tried | {int(react.sum()):,} reacted | {int(ns.sum()):,} second-obs "
         f"| {2*nbins} bins | med MC err {np.median(mcerr[central > 0] / central[central > 0]):.1%}")
-    return dict(w_of=w_of, jvp=jvp, jvp2=jvp2, binned=binned, central=central, sigma=sig, mcerr=mcerr,
-                edges=edges, keys=keys, th0=th0, nbins=nbins, n_tried=n_tried)
+    return dict(w_of=w_of, jvp=jvp, jvp2=jvp2, jvp3=jvp3, binned=binned, central=central, sigma=sig,
+                mcerr=mcerr, edges=edges, keys=keys, th0=th0, nbins=nbins, n_tried=n_tried)
 
 
 def beam_jacobian(beam, nbins=15, syst=0.05, log=print):

@@ -75,9 +75,12 @@ class BankSample:
         _w = lambda th, JB: BR.bank_weight(JB, knobs_of(th, self.nom), self.grids)
         self._wf = jax.jit(_w)
         self._jvp = jax.jit(lambda th, tang, JB: jax.jvp(lambda t: _w(t, JB), (th,), (tang,))[1])
-        # 2nd directional derivative (nested jvp) for the higher-order corner
+        # 2nd (diagonal) + 3rd (mixed) directional derivatives (nested jvp) for the higher-order corner
         self._jvp2 = jax.jit(lambda th, tang, JB: jax.jvp(
             lambda t: jax.jvp(lambda s: _w(s, JB), (t,), (tang,))[1], (th,), (tang,))[1])
+        self._jvp3 = jax.jit(lambda th, u, w, x, JB: jax.jvp(
+            lambda t3: jax.jvp(lambda t2: jax.jvp(lambda t1: _w(t1, JB), (t2,), (u,))[1], (t3,), (w,))[1],
+            (th,), (x,))[1])
 
     def weights(self, theta):
         return np.asarray(self._wf(jnp.asarray(theta), self.JB))
@@ -98,6 +101,11 @@ class BankSample:
         """Binned directional derivative of the model along tangent v: order 1 = J.v, order 2 = v.d2m.v."""
         th = jnp.asarray(theta); vv = jnp.asarray(v)
         g = np.asarray((self._jvp if order == 1 else self._jvp2)(th, vv, self.JB))
+        return np.concatenate([IC.bin_w0(d, g) for d in self.ds])
+
+    def dd3_binned(self, theta, u, w, x):
+        """Binned MIXED 3rd directional derivative d3m(u,w,x)."""
+        g = np.asarray(self._jvp3(jnp.asarray(theta), jnp.asarray(u), jnp.asarray(w), jnp.asarray(x), self.JB))
         return np.concatenate([IC.bin_w0(d, g) for d in self.ds])
 
 
@@ -133,6 +141,11 @@ class BeamSample:
         g = (self.m["jvp"] if order == 1 else self.m["jvp2"])(th, vv)
         return self.m["binned"](np.asarray(g))
 
+    def dd3_binned(self, theta, u, w, x):
+        """Binned MIXED 3rd directional derivative d3m(u,w,x)."""
+        g = self.m["jvp3"](jnp.asarray(theta), jnp.asarray(u), jnp.asarray(w), jnp.asarray(x))
+        return self.m["binned"](np.asarray(g))
+
 
 class MultiEngine:
     """Duck-types physical_fit_run.Engine over a list of sub-engines (samples concatenated in order)."""
@@ -154,6 +167,10 @@ class MultiEngine:
     def dd(self, theta, v, order):
         """Binned directional derivative of the FULL stacked model along tangent v (order 1 or 2)."""
         return np.concatenate([s.dd_binned(theta, v, order) for s in self.samples])
+
+    def dd3(self, theta, u, w, x):
+        """Binned MIXED 3rd directional derivative d3m(u,w,x) of the FULL stacked model."""
+        return np.concatenate([s.dd3_binned(theta, u, w, x) for s in self.samples])
 
     def data_sigma(self):
         return (np.concatenate([d["data"] for d in self.ds]),

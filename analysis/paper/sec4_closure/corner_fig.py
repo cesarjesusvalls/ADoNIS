@@ -43,11 +43,12 @@ def main(label="sec4_closure_r16_noprior", dials=None, taylor=False):
     else:
         order = sorted(range(len(sub)), key=lambda c: (style.knob_group(pn[sub[c]]), sub[c]))
     n = len(order)
-    Jb = Bb = W = None
+    Jb = Bb = W = Cb = None
     if taylor:
         from analysis.paper.sec4_closure.corner_taylor import profile_pair
         zd = np.load(style.ALTGEN / f"{label}_derivs.npz", allow_pickle=True)
         Jb, Bb, W = np.asarray(zd["Jb"]), np.asarray(zd["Bb"]), np.asarray(zd["W"])
+        Cb = np.asarray(zd["Cb"]) if "Cb" in zd.files else None
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.5}):
@@ -73,7 +74,7 @@ def main(label="sec4_closure_r16_noprior", dials=None, taylor=False):
                     GZ = _ellipse(V[np.ix_([a, b], [a, b])], spost[a], spost[b], ax_sig, ax_sig)
                     ax.contour(X, Y, GZ, levels=LEV, colors=style.FIT_EC, linewidths=0.7, linestyles="--")
                     if taylor:                                    # analytic autodiff-Taylor contour (folds 5.2)
-                        T = profile_pair(Jb, Bb, W, a, b, ax_sig * spost[a], ax_sig * spost[b])
+                        T = profile_pair(Jb, Bb, W, a, b, ax_sig * spost[a], ax_sig * spost[b], Cb=Cb)
                         ax.contour(X, Y, T, levels=LEV, colors="#2e7d32", linewidths=0.7, linestyles=":")
                     ax.axhline(0, color="0.85", lw=0.3); ax.axvline(0, color="0.85", lw=0.3)
                 ax.set_xlim(ax_sig.min(), ax_sig.max())

@@ -71,10 +71,28 @@ def main():
             log(f"  {c+1}/{nsub*(nsub-1)//2} off-diagonal pairs")
 
     A = Jb.T @ (Jb * W[:, None])                                  # Gauss-Newton Hessian (= Gaussian curvature)
+
+    # ---- d3m : binned MIXED 3rd derivatives (order-3 model -> chi2 exact to 4th order) -------------- #
+    Cb = None
+    ORDER = int(os.environ.get("S4_ORDER", "2"))
+    if ORDER >= 3:
+        ntri = nsub * (nsub + 1) * (nsub + 2) // 6
+        log(f"d3m: {ntri} mixed 3rd derivatives (triple-nested jvp)")
+        Cb = np.zeros((nbin, nsub, nsub, nsub))
+        for c, (i, j, k) in enumerate(itertools.combinations_with_replacement(range(nsub), 3)):
+            g = eng.dd3(bfp, evec([i]), evec([j]), evec([k]))     # = C_ijk (fully symmetric)
+            for p in set(itertools.permutations((i, j, k))):      # symmetrise into all slots
+                Cb[:, p[0], p[1], p[2]] = g
+            if (c + 1) % 100 == 0:
+                log(f"  {c+1}/{ntri} triples")
+
     out = f"output/altgen/{LABEL}_derivs.npz"
-    np.savez(out, subset=sub, pnames=pn, bfp=bfp, truth=truth, sigma=sigma, W=W,
-             Jb=Jb, Bb=Bb, A=A, V=np.linalg.pinv(A, rcond=1e-12))
-    log(f"[out] {out}  (Jb {Jb.shape}, Bb {Bb.shape})")
+    kw = dict(subset=sub, pnames=pn, bfp=bfp, truth=truth, sigma=sigma, W=W,
+              Jb=Jb, Bb=Bb, A=A, V=np.linalg.pinv(A, rcond=1e-12))
+    if Cb is not None:
+        kw["Cb"] = Cb
+    np.savez(out, **kw)
+    log(f"[out] {out}  (Jb {Jb.shape}, Bb {Bb.shape}" + (f", Cb {Cb.shape}" if Cb is not None else "") + ")")
 
 
 if __name__ == "__main__":
