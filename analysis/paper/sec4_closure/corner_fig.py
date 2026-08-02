@@ -27,19 +27,32 @@ def _ellipse(Vp, sa, sb, xx, yy):
     return Pi[0, 0] * X**2 + 2 * Pi[0, 1] * X * Y + Pi[1, 1] * Y**2
 
 
-def main(label="sec4_closure_r16_noprior"):
+def main(label="sec4_closure_r16_noprior", dials=None, taylor=False):
+    """dials: comma-sep knob names for a REDUCED (main-body) corner; None = all 16 (appendix).
+    taylor: overlay the analytic 2nd-order-model Taylor contour (folds the old Sec-5.2 validation here)."""
     style.use()
     z = np.load(style.ALTGEN / f"{label}_corner.npz", allow_pickle=True)
     sub = [int(k) for k in z["subset"]]; pn = [str(x) for x in z["pnames"]]
     ax_sig = np.asarray(z["axis_sigma"]); dchi2 = np.asarray(z["dchi2"]); V = np.asarray(z["V"])
     pairs = {tuple(p): i for i, p in enumerate(z["pairs"])}
     spost = np.sqrt(np.abs(np.diag(V)))
-    n = len(sub)
-    order = sorted(range(n), key=lambda c: (style.knob_group(pn[sub[c]]), sub[c]))
+
+    if dials:
+        want = [d.strip() for d in dials.split(",")]
+        order = sorted((sub.index(pn.index(d)) for d in want), key=lambda c: (style.knob_group(pn[sub[c]]), sub[c]))
+    else:
+        order = sorted(range(len(sub)), key=lambda c: (style.knob_group(pn[sub[c]]), sub[c]))
+    n = len(order)
+    Jb = Bb = W = None
+    if taylor:
+        from analysis.paper.sec4_closure.corner_taylor import profile_pair
+        zd = np.load(style.ALTGEN / f"{label}_derivs.npz", allow_pickle=True)
+        Jb, Bb, W = np.asarray(zd["Jb"]), np.asarray(zd["Bb"]), np.asarray(zd["W"])
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.5}):
-        fig, axes = plt.subplots(n, n, figsize=(15, 15))
+        sz = max(6, 2.3 * n)
+        fig, axes = plt.subplots(n, n, figsize=(sz, sz), squeeze=False)
         for ri in range(n):
             for ci in range(n):
                 ax = axes[ri, ci]
@@ -59,6 +72,9 @@ def main(label="sec4_closure_r16_noprior"):
                     ax.contour(X, Y, D, levels=LEV, colors="#1f4b9c", linewidths=0.7)
                     GZ = _ellipse(V[np.ix_([a, b], [a, b])], spost[a], spost[b], ax_sig, ax_sig)
                     ax.contour(X, Y, GZ, levels=LEV, colors=style.FIT_EC, linewidths=0.7, linestyles="--")
+                    if taylor:                                    # analytic autodiff-Taylor contour (folds 5.2)
+                        T = profile_pair(Jb, Bb, W, a, b, ax_sig * spost[a], ax_sig * spost[b])
+                        ax.contour(X, Y, T, levels=LEV, colors="#2e7d32", linewidths=0.7, linestyles=":")
                     ax.axhline(0, color="0.85", lw=0.3); ax.axvline(0, color="0.85", lw=0.3)
                 ax.set_xlim(ax_sig.min(), ax_sig.max())
                 if ci != ri:
@@ -68,17 +84,22 @@ def main(label="sec4_closure_r16_noprior"):
                     ax.set_ylabel(style.plab(pn[sub[order[ri]]]), fontsize=7, rotation=0, ha="right", va="center")
                 if ri == n - 1:
                     ax.set_xlabel(style.plab(pn[sub[order[ci]]]), fontsize=7, rotation=90)
-        # legend
-        axes[0, n - 1].axis("on"); axes[0, n - 1].axis("off")
-        axes[0, n - 1].plot([], [], color="#1f4b9c", lw=1.2, label="exact 68/95%")
-        axes[0, n - 1].plot([], [], color=style.FIT_EC, lw=1.2, ls="--", label="Gaussian")
-        axes[0, n - 1].legend(fontsize=10, loc="center")
-        fig.suptitle("Sec 4.4  parameter corner — exact (blue) vs Gaussian (orange) 2-D contours",
-                     fontsize=13, y=0.905)
-        fig.subplots_adjust(wspace=0.06, hspace=0.06, left=0.06, right=0.98, top=0.9, bottom=0.06)
-        style.save(fig, "sec4_fig44_corner")
+        # legend (top-right off-diagonal cell)
+        lg = axes[0, n - 1]; lg.axis("off")
+        lg.plot([], [], color="#1f4b9c", lw=1.4, label="exact 68/95%")
+        lg.plot([], [], color=style.FIT_EC, lw=1.4, ls="--", label="Gaussian")
+        if taylor:
+            lg.plot([], [], color="#2e7d32", lw=1.4, ls=":", label="autodiff Taylor")
+        lg.legend(fontsize=9 if n > 8 else 11, loc="center")
+        ttl = "Sec 4.4  parameter corner — exact (blue) vs Gaussian (orange)" + \
+              (" vs autodiff-Taylor (green)" if taylor else "") + (f"   ({n} dials)" if dials else "")
+        fig.suptitle(ttl, fontsize=12, y=0.925)
+        fig.subplots_adjust(wspace=0.06, hspace=0.06, left=0.07, right=0.98, top=0.9, bottom=0.07)
+        style.save(fig, "sec4_fig44_corner_reduced" if dials else "sec4_fig44_corner")
 
 
 if __name__ == "__main__":
     pos = [a for a in sys.argv[1:] if not a.startswith("--")]
-    main(*(pos[:1] or []))
+    dials = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--dials=")), None)
+    taylor = "--taylor" in sys.argv[1:]
+    main(*(pos[:1] or ["sec4_closure_r16_noprior"]), dials=dials, taylor=taylor)
