@@ -11,8 +11,9 @@ Figures are written to `output/paper/` (gitignored) as `.png` + `.pdf`. Shared s
 | 1 — ADoNIS reproduces ACHILLES | `sec1_validation` | `analysis/t2k/make_plots.py`, `differentiability/bank_matrix.py` |
 | 2 — Fisher / Gate I: constrainable knobs | `sec2_fisher` | `analysis/paper/physical_fit.py` (Gate I) |
 | 3 — gradients of the fittable knobs | `sec3_gradients` | `full_knobs.knob_specs`, `bank_reweight.weight_jit` |
-| 4 — closures on the fitted knobs | `sec4_closure` | `scripts/altgen/physical_fit_run.py` |
-| 5 — unknown-unknown taxonomy | `sec5_unknowns` | `scripts/altgen/physical_fit_run.py` (modes) |
+| 4 — fitting & statistical interpretability | `sec4_closure` | `physfit/multisample.py` (nonlinear multisample closure) |
+| 5 — computational performance & novel methodologies | `sec5_methods` | `physfit/multisample_{derivs,corner}.py` (autodiff derivatives) |
+| 6 — fitting data the model cannot describe (unknown unknowns) | `sec6_unknowns` | `physfit/physical_fit_run.py` (modes) |
 
 ## Section 2 — Fisher / Gate I per data subset
 

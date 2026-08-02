@@ -14,17 +14,22 @@ kinematic-habitat nuisance (inside) vs coherence gating + region excision (outsi
 regime is **precision-relative** (an unknown-unknown is only "outside" when its per-bin distortion is
 resolvable above the errors).
 
-## The five-part arc (from the project owner) — status
+## The six-part arc (from the project owner) — status
+
+> **Reorg 2026-08-02.** Sec 4 broadened to *fitting & statistical interpretability* (multisample closure);
+> a NEW **Sec 5 = computational performance & novel methodologies** (what the engine's differentiability
+> buys) was inserted; the old unknown-unknowns section became **Sec 6**.
 
 | # | Section | Status | Assets / pointers | To do |
 |---|---|---|---|---|
 | 1 | **Validation: ADoNIS reproduces ACHILLES** — the paper's non-NC figures (inclusive e,e'; free-nucleon & π-nucleus σ; e4ν; T2K/MINERvA/MicroBooNE TKI; DCC σ(W)) | ✅ figure-complete | `analysis/paper/sec1_validation/make.py` → `fig01_ee_domega`, `fig02_anl_sigma`, `fig03_pi_nucleus_sigma`, `fig456_e4nu`, `fig07/08/09`, `fig10_uboone_cc1p0pi`, `fig13_piN_sigma` | fold into the paper |
-| 2 | **Which knobs the data can constrain** (Fisher per data subset) → what is worth fitting | ✅ figure-complete | `analysis/paper/sec2_fisher/make.py` → `sec2_shrinkage_subsets` (constraining power per probe: ν / e / hadron / ALL), `sec2_failure_modes`, `sec2_degeneracy`; engine = `physical_fit.py` Gate I | fold into the paper |
-| 3 | **Gradient information for the fittable knobs** | ✅ figure-complete | `analysis/paper/sec3_gradients/make.py` → `sec3_gradients_shape` (per-bin gradients of the Gate-I subset, grouped by physics), `sec3_gradient_reach` | fold into the paper |
-| 4 | **Closures** with Fisher-selected parameters | ✅ figure-complete | `physfit_fig7_closure5.png` (5-param, ≤0.5σ), 7-param on the 9-obs suite (`p9_closure.npz`, ≤0.4σ); `scripts/altgen/physfit_closure5_fig.py` | fold into the paper; optionally a fluctuated closure (null calibration) |
-| 5 | **Fitting data not described by the model** (unknown unknowns) | ✅ figure-complete | `physfit_fig1–10`, `output/reports/physical_fit_report.pdf`; scripts in `scripts/altgen/physical_fit_run.py` + fig scripts | assemble into the paper narrative (taxonomy: inside=Q²-nuisance, outside=coherence/excise; precision frontier) |
+| 2 | **Which knobs the data can constrain** (Fisher per data subset) → what is worth fitting | ✅ figure-complete | `analysis/paper/sec2_fisher/make.py` → `sec2_shrinkage_subsets`, `sec2_failure_modes`, `sec2_degeneracy`; engine = `physical_fit.py` Gate I | fold into the paper |
+| 3 | **Gradient information for the fittable knobs** | ✅ figure-complete | `analysis/paper/sec3_gradients/make.py` → `sec3_gradients_shape`, `sec3_gradient_reach` | fold into the paper |
+| 4 | **Fitting & statistical interpretability** — nonlinear multisample closure on the 16 Gate-I dials | ✅ figure-drafted | `sec4_closure/` → 4.1 recovery (`fig_recovery`, `mle_fig`) + Eb-wall (`fig_ebwall`), 4.2 pre/post dists (`fig_dists`), 4.3 coverage (`coverage_fig`, `fig_ebcov`), 4.4 corner (`corner_fig`); engine `physfit/multisample.py` | polish + write-up |
+| 5 | **Computational performance & novel methodologies** (differentiable engine) | 🔧 in progress | `sec5_methods/` (planned): 5.1 gradient-fit efficiency (convergence + finite-diff cost), 5.2 autodiff non-Gaussian corner (`corner_taylor` + validate ✅), 5.3 scaling (vs N events, vs order m), 5.4 hybrid grid-bad × Taylor-good, 5.5 diff-advantage table; derivs `physfit/multisample_derivs.py` | build the studies |
+| 6 | **Fitting data not described by the model** (unknown unknowns) | ✅ figure-complete | `physfit_fig1–10`, `output/reports/physical_fit_report.pdf`; `physfit/physical_fit_run.py` (modes) + fig scripts | assemble the narrative |
 
-**All five sections are figure-complete.** 4–5 still need paper write-up.
+**Sec 5 is the new work in progress; 4/6 figure-complete, 1–3 done.**
 
 ## Section 1 figures (2026-07-15)
 
