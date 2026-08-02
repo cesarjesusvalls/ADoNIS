@@ -22,12 +22,19 @@ PION_PIDS = (211, 111, -211)
 _FS = ("fs_off", "fs_pid", "fs_chg", "fs_p4")
 
 
-def load_bank(outdir):
+def load_bank(outdir, max_chunks=None):
     """Concatenate all chunks into one in-memory FULL-RECORD bank (kinematics + ragged final state + bare w0
     + hard-vertex amps2 records + FSI kind-1 record).  Only w0 is divided by n_chunks (-> sum = cross
-    section); the records are per-event multipliers.  Exact reweight at any theta via bank_reweight."""
+    section); the records are per-event multipliers.  Exact reweight at any theta via bank_reweight.
+
+    max_chunks: load only the first N chunk files (a subsampled bank).  w0 is then divided by the number
+    LOADED (not the manifest total), so the central stays a proper cross-section estimate and the MC-error
+    FRACTION reflects the loaded statistics -- exactly what a closure/fit needs when the full bank is far
+    larger than the MC precision required."""
     man = json.load(open(f"{outdir}/manifest.json"))
     nchunks = man["n_chunks"]; files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
+    if max_chunks is not None:
+        files = files[:max_chunks]; nchunks = len(files)   # divide by loaded count (subsampled bank)
     perev = {}; fs_pid = []; fs_chg = []; fs_p4 = []; offs = [np.array([0], np.int64)]
     ev_off = 0                       # events seen so far -> shifts each chunk's ragged indices
     for f in files:

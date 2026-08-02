@@ -239,14 +239,24 @@ class Engine:
                 np.concatenate([d["sigma"] for d in self.ds]))
 
 
-def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None):
+def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1e-6, th_init=None):
     """LM on chi2_data(+Huber) + prior penalty over `subset` knobs, restricted to `mask` bins.
-    Returns th(full), V, J(full rows), m(full), chi2s (masked)."""
+    Returns th(full), V, J(full rows), m(full), chi2s (masked).
+
+    record: if a list is passed, append (th.copy(), chi2_total, chi2_data) at the start and after every
+            accepted iteration -- the optimization trajectory, for a convergence plot (no re-fit).
+    tol:    convergence on the NEWTON DECREMENT g^T A^-1 g (predicted objective gap), default 1e-6.  This
+            is landscape-invariant: it certifies theta is at the argmin even on flat/degenerate directions,
+            where the old relative-chi2 test stalled with theta still off the minimum.  Full Gauss-Newton
+            steps (PHYSFIT_STEP_SCALE=1, the default) then converge quadratically; use <1 only to force a
+            slow smooth trajectory for a convergence demo.
+    th_init: start point (default eng.th0).  The prior is ALWAYS centred at eng.th0 -- th_init only warm-
+            starts the walk (e.g. profile scans re-minimising from the BFP), it does not move the prior."""
     data, sigma = eng.data_sigma()
     if mask is None:
         mask = np.ones(len(data), bool)
     prior_w = 1.0 / eng.prior[subset]**2
-    th = eng.th0.copy(); lam = 1e-3
+    th = (eng.th0 if th_init is None else th_init).copy(); lam = 1e-3
     def chi2_terms(thv):
         m = eng.model(thv); u = (m - data) / sigma
         hw = np.minimum(1.0, HUBER_C / np.maximum(np.abs(u), 1e-12)) if huber else np.ones_like(u)
@@ -255,12 +265,17 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None):
         return c_data + c_pri, c_data, m, hw
     c_cur, c_data, m, hw = chi2_terms(th)
     log(f"  [{tag}] start chi2 {c_cur:.1f} (data {c_data:.1f}, {int(mask.sum())} bins)")
+    if record is not None:
+        record.append((th.copy(), c_cur, c_data))
     for it in range(nit):
-        c_before = c_cur
         J = eng.jac(th, subset)
         W = np.where(mask, hw / sigma**2, 0.0)
         A = J.T @ (J * W[:, None]) + np.diag(prior_w)
         g = J.T @ (W * (m - data)) + prior_w * (th[subset] - eng.th0[subset])
+        # Newton decrement nd = g^T A^-1 g = 2 x (predicted objective gap to the quadratic minimum).
+        # A is regularised by the prior (>= 1/prior^2) so this is well-defined even on the flat/degenerate
+        # directions -- unlike a relative-chi2 test, which stalls there while theta is still off the argmin.
+        nd = float(g @ np.linalg.solve(A, g))
         for _ in range(12):
             dth = STEP_SCALE * np.linalg.solve(A + lam * np.diag(np.maximum(np.diag(A), 1e-12)), -g)
             th_try = th.copy(); th_try[subset] = th[subset] + dth
@@ -275,10 +290,12 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None):
                 th, c_cur, c_data, m, hw = th_try, c_try, cd_try, m_try, hw_try
                 lam = max(lam / 3, 1e-8); break
             lam *= 5
-        log(f"  [{tag}] it {it:2d} chi2={c_cur:9.2f} (data {c_data:9.2f}) " +
-            " ".join(f"{eng.pnames[k]}={th[k]:.3f}" for k in subset))
-        if np.linalg.norm(dth) < 1e-6 or (c_before - c_cur) / max(c_before, 1e-9) < 1e-3:
-            log(f"  [{tag}] converged/plateau at it {it}"); break
+        log(f"  [{tag}] it {it:2d} chi2={c_cur:12.5f} (data {c_data:12.5f}) nd={nd:.2e} " +
+            " ".join(f"{eng.pnames[k]}={th[k]:.4f}" for k in subset))
+        if record is not None:
+            record.append((th.copy(), c_cur, c_data))
+        if nd < tol or np.linalg.norm(dth) < 1e-12:                # converged when the predicted gap -> 0
+            log(f"  [{tag}] converged at it {it} (Newton decrement {nd:.2e} < {tol:.0e})"); break
     J = eng.jac(th, subset)
     W = np.where(mask, hw / sigma**2, 0.0)
     A = J.T @ (J * W[:, None]) + np.diag(prior_w)

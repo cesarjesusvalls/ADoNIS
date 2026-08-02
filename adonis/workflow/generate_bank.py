@@ -324,13 +324,15 @@ def _generate_hadron(cfg, outdir, log, t0):
 
 
 # =========================================================================== bank reader ============
-def load_bank(outdir):
+def load_bank(outdir, max_chunks=None):
     """Concatenate the chunk_*.npz of a bank dir into ONE in-memory dict (+ ["manifest"]).  The ragged
     per-slot event indices (FSI f_*_eidx, escaped-list ks_eidx) are OFFSET into the global event
     numbering; everything else -- including prim_fate (n, Wmax) and nsc_prim (n,) -- concatenates on
     axis 0.  Moved here from the retired beams/beam_bank.py so the ONE generator owns read + write."""
     man = json.load(open(f"{outdir}/manifest.json"))
     files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
+    if max_chunks is not None:
+        files = files[:max_chunks]                       # subsampled bank (beams self-normalize via n_tried)
     per, ev_off = {}, 0
     for f in files:
         d = np.load(f)

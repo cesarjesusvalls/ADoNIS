@@ -38,9 +38,17 @@ BEAM_DIRS = {"pip": f"{_BANKS}/beam_pip_C/merged", "prot": f"{_BANKS}/beam_prot_
 BEAM_LABEL = {"pip": "$\\pi^+$–C", "prot": "p–C", "neut": "n–C"}
 
 
-def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
-    """(J (2*nbins, NPAR), sigma (2*nbins,), central) for one beam bank.  Rows: reaction bins, then the
-    second observable's bins (absorption for pi+, pion production for p/n)."""
+def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None):
+    """Load one beam bank and return the DIFFERENTIABLE model pieces a fit needs (not just the Jacobian):
+
+        w_of(theta)   -> per-event FSI reweight (pure JAX, ==1 at nominal)
+        jvp(th, tang) -> jitted weight tangent (for the per-knob Jacobian column)
+        binned(w)     -> sigma_X(bin) = pi R^2 * sum_bin X_i w_i / n_tried, concatenated [react, second]
+        central, sigma, mcerr, edges, keys, th0, n_tried
+
+    So model(theta) = binned(w_of(theta)) for ANY theta, using the SAME 28-knob physical_fit basis every
+    other sample uses.  beam_jacobian (below) is a thin wrapper over this; the multisample closure engine
+    (analysis.paper.physfit.multisample) is the other consumer.  max_chunks caps the loaded statistics."""
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
@@ -49,7 +57,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     from analysis.paper import physical_fit as PF  # SPEC / knobs_of / theta_nominal: the SAME 28 knobs
     from analysis.paper import fisher_engine as FE
 
-    B = _load_bank(BEAM_DIRS[beam])
+    B = _load_bank(BEAM_DIRS[beam], max_chunks=max_chunks)
     man = B["manifest"]
     nom = nominal_knobs()
     p = np.asarray(B["beam_p"], float)
@@ -58,10 +66,11 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     n_tried = np.bincount(idx, minlength=nbins).astype(float)        # theta-INDEPENDENT
     from adonis.workflow import records as REC
     _fl = REC.derive_flags(B)                            # reacted/absorbed derived from prim_fate + nsc_prim
+    is_pion = man["species"] == "PION"
     react = _fl["reacted"].astype(float)
-    second = _fl["absorbed"].astype(float) if man["species"] == "PION" \
-        else (np.asarray(B["n_pi_out"]) > 0).astype(float)
+    second = _fl["absorbed"].astype(float) if is_pion else (np.asarray(B["n_pi_out"]) > 0).astype(float)
     PIR2 = man["pir2_mb"]
+    keys = [f"{beam}_react", f"{beam}_abs" if is_pion else f"{beam}_pipro"]
 
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in
            ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "p_eidx",
@@ -94,16 +103,28 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     # EMPTY bins (pion production is EXACTLY zero below the NN->NNpi threshold -> central=mcerr=0) get
     # sigma=inf, not 0, so 0/0 does not put NaN into the Fisher (bin_sigma's var==0 == this empty test).
     sig = FE.bin_sigma(central, mcerr, syst)
-
     jvp = jax.jit(lambda th, tang: jax.jvp(w_of, (th,), (tang,))[1])
+    # 2nd directional derivative d^2/dt^2 w(theta + t*tang) via nested jvp (for the higher-order corner)
+    jvp2 = jax.jit(lambda th, tang: jax.jvp(lambda t: jax.jvp(w_of, (t,), (tang,))[1], (th,), (tang,))[1])
+    log(f"  [{beam}] {len(p):,} tried | {int(react.sum()):,} reacted | {int(ns.sum()):,} second-obs "
+        f"| {2*nbins} bins | med MC err {np.median(mcerr[central > 0] / central[central > 0]):.1%}")
+    return dict(w_of=w_of, jvp=jvp, jvp2=jvp2, binned=binned, central=central, sigma=sig, mcerr=mcerr,
+                edges=edges, keys=keys, th0=th0, nbins=nbins, n_tried=n_tried)
+
+
+def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
+    """(J (2*nbins, NPAR), sigma (2*nbins,), central, edges, n_tried) for one beam bank.  Rows: reaction
+    bins, then the second observable's bins (absorption for pi+, pion production for p/n).  Thin wrapper
+    over beam_model -- one jax.jvp per knob through the SAME reweight."""
+    import jax.numpy as jnp
+    from analysis.paper import physical_fit as PF
+    m = beam_model(beam, nbins=nbins, syst=syst, log=log)
     NPAR = PF.NPAR
     J = np.zeros((2 * nbins, NPAR))
     for k in range(NPAR):
-        g = jvp(th0, jnp.zeros(NPAR).at[k].set(1.0))
-        J[:, k] = binned(g)                                         # d sigma_bin / d theta_k (exact)
-    log(f"  [{beam}] {len(p):,} tried | {int(react.sum()):,} reacted | {int(ns.sum()):,} second-obs "
-        f"| {2*nbins} bins | med MC err {np.median(mcerr[central > 0] / central[central > 0]):.1%}")
-    return J, sig, central, edges, n_tried
+        g = m["jvp"](m["th0"], jnp.zeros(NPAR).at[k].set(1.0))
+        J[:, k] = m["binned"](g)                                    # d sigma_bin / d theta_k (exact)
+    return J, m["sigma"], m["central"], m["edges"], m["n_tried"]
 
 
 def main(syst=0.05, nbins=15):
