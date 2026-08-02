@@ -61,7 +61,8 @@ def main():
         for sp in ("top", "right"):
             bx.spines[sp].set_visible(False)
 
-        fig.suptitle(r"$E_b$ at the wall: Gaussian under-covers, profile holds", fontsize=12, x=0.02, ha="left")
+        fig.suptitle(r"$E_b$ at the wall: Gaussian intervals go unphysical; the profile respects the boundary",
+                     fontsize=12, x=0.02, ha="left")
         fig.tight_layout(rect=(0, 0, 1, 0.96))
         style.save(fig, "sec4_fig43b_ebcov")
     print(f"  Gaussian coverage {gcov.mean():.0%} | profile coverage {pcov.mean():.0%}  ({n} toys)")
