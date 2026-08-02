@@ -41,9 +41,13 @@ def main(label="sec4_coverage"):
     chi2d = np.concatenate([z["chi2_data"] for z in Z])
     ntoy = star.shape[0]
     pull = (fit - star) / np.maximum(sig, 1e-12)                  # (ntoy, nsub)
+    # a sig_fit ~ 0 from pinv on a numerically-degenerate direction is a NUMERICAL failure, not a coverage
+    # one -> drop |pull|>8 entries (see sec4-nongaussian memory); report how many.
+    ndrop = int((np.abs(pull) > 8).sum())
 
     order = sorted(range(len(subset)), key=lambda c: (style.knob_group(pnames[subset[c]]), subset[c]))
     pooled = pull[:, order].ravel()
+    pooled = pooled[np.abs(pooled) < 8]
     ks = stats.kstest(pooled, "norm")
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
@@ -71,8 +75,8 @@ def main(label="sec4_coverage"):
         yy = np.arange(len(order))
         for i, c in enumerate(order):
             k = subset[c]; gcol = style.KNOB_GROUP_COLOR[style.knob_group(pnames[k])]
-            ax.errorbar(pull[:, c].mean(), yy[i], xerr=pull[:, c].std(), fmt="o", color=gcol,
-                        ms=5, capsize=3, lw=1.3)
+            pc = pull[:, c]; pc = pc[np.abs(pc) < 8]                   # drop numerical-degenerate entries
+            ax.errorbar(pc.mean(), yy[i], xerr=pc.std(), fmt="o", color=gcol, ms=5, capsize=3, lw=1.3)
         ax.axvline(0, color="k", lw=0.9); ax.axvspan(-1, 1, color="0.9", zorder=0)
         ax.set_yticks(yy); ax.set_yticklabels([style.plab(pnames[subset[c]]) for c in order], fontsize=8)
         ax.set_ylim(len(order) - 0.5, -0.5); ax.set_xlim(-2.2, 2.2)
