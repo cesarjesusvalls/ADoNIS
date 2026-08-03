@@ -6,11 +6,15 @@
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{amssymb}
+\usepackage{bm}
 \usepackage{booktabs}
 \usepackage[margin=1in]{geometry}
 \usepackage{xcolor}
 \usepackage[hidelinks]{hyperref}
 \usepackage{subcaption}
+\usepackage{xspace}
+\newcommand{\adonis}{{ADoNIS}\xspace}
+\newcommand{\lucid}{{LUCiD}\xspace}
 
 \graphicspath{{../output/paper/}}
 
@@ -24,241 +28,284 @@
 \tableofcontents
 
 %% =====================================================================
-\section{Differentiability of the ADoNIS chain}
+\section{Introduction}
 %% =====================================================================
-% Technical core. From diff_chain.md. file:line refs are against the repo.
-% Mostly text + equations, no figures.
+% [To be written by C. Jesus-Valls]: why neutrino generators matter; why
+% differentiability is paradigm-shifting; what ADoNIS is conceptually; what
+% this paper demonstrates.
 
-\noindent\textbf{Story.} ADoNIS is a differentiable neutrino event generator: a pre-generated
-event bank is reweighted by a \emph{pure JAX} per-event weight function of a 28-knob physics
-vector $\theta$, and every downstream statistical object (Jacobian, Fisher/Gauss--Newton Hessian,
-higher-order Taylor tensors) comes from exact forward-mode autodiff of that weight, not finite
-differences.
+%% =====================================================================
+\section{A Differentiable Neutrino Event Generator}
+\label{sec:adonis}
+%% =====================================================================
 
-\subsection{Chain flow}
-% diff_chain.md (a)
-Bank $\rightarrow$ knobs $\rightarrow$ per-event weights $\rightarrow$ binning $\rightarrow$
-observables $\rightarrow$ $\chi^2$ $\rightarrow$ derivatives.
+We developed a JAX-based open-source neutrino event
+generator, \textbf{\adonis}\footnote{\href{https://github.com/cesarjesusvalls/ADoNIS/}{https://github.com/cesarjesusvalls/ADoNIS/}},
+which produces exclusive final-state neutrino--nucleus interactions whose
+predicted distributions are differentiable, event by event, with respect to the
+physics parameters that govern them. \adonis follows the interaction physics of
+the ACHILLES generator~\cite{Isaacson:2020wlx, Isaacson:2022cwh}, from which it
+inherits the nuclear ground state, the electroweak hard-scattering amplitudes,
+and the intranuclear cascade; the technical details of those calculations are
+given there and are not reproduced here. This section instead describes how each
+step of the calculation is arranged so that gradient information is preserved all
+the way from the physics parameters to the final binned observables.
 
-\begin{verbatim}
- [pre-generated event bank B]                       STATIC, theta-INDEPENDENT
-   B = {hv_* (a,b,c,Q2) hard-vertex amps2 records,   built ONCE by build_hv_sf()
-        f_*  (ragged kind-1 FSI cascade record),       reweight_model.py:45-74
-        p_struck, channel, w0 (proposal weight)}
-        | to_jax(B)   bank_reweight.py:58-62           numpy -> jnp, ONE-TIME cast
-        v
-   JB (on-device jnp pytree, ~GB)
-        | theta (28-vec) --knobs_of--> PhysicsParams knobs (NamedTuple pytree)
-        |    physical_fit.py:59-70 ; core/params.py:29-65
-        v
-   +----------------------------------------------------------+
-   | bank_weight(JB, knobs, grids)   <- JAX pure fn           |  per-event REWEIGHT
-   |   bank_reweight.py:26-55                                  |
-   |   hv  = prod ma_reweight/strength_reweight on (a,b,c,Q2) |
-   |   fsi = pool_fsi_reweight(...)   cascade.py:1608          |
-   |   sfw = sf_reweight(grids, p,E; kF_sf,Eb_shift,...)      |
-   |   w(theta)=w0*norm*hv*fsi*sfw                             |
-   +----------------------------------------------------------+
-        | weight_jit = jax.jit(bank_weight)  bank_reweight.py:65
-        v
-   w(theta)  (N_events,) jnp array          <-- JAX autodiff boundary is HERE and upstream
-        | bin_w0/bin_w   info_content.py:215-223
-        | np.bincount(binidx, weights=np.asarray(w)[sel_idx])   <-- NUMPY, w cast out of JAX
-        v
-   m_b(theta)  per-bin model prediction
-        | data d_b, sigma_b  ->  chi2 = sum_b [(m_b-d_b)/sigma_b]^2 + prior
-        v
-   chi2(theta) -----------------------------------------------------------
-        | jax.jvp along one-hot e_k                                       |
-        v                                                                 |
-   J[:,k] = dw/dtheta_k -> bin_w0 -> Jacobian column  physical_fit.py:237, |
-                                                       fisher_engine.py:31 |
-        | Gauss-Newton / Fisher: F=(J/sigma)^T(J/sigma); A=J^T W J + prior |
-        | nested jax.jvp (jvp-of-jvp[-of-jvp]) for 2nd/3rd directional deriv
-        v
-   Taylor tensors Jb, Bb(d2m), Cb(d3m) -> non-Gaussian chi2 / higher-order corner
-     multisample.py, multisample_derivs.py
-\end{verbatim}
+As in the companion differentiable optical-detector simulator~\cite{LUCiD}, JAX
+was chosen for its automatic differentiation, just-in-time compilation, and
+vectorization, which together allow exact gradients to be propagated through the
+full generation chain at a cost comparable to a single forward evaluation, on
+either CPU or GPU. Throughout, we denote by $\bm\theta$ the vector of physics
+parameters. In the present work $\bm\theta$ collects $28$ knobs spanning three
+physics blocks: the electroweak vertex (the quasi-elastic and resonant axial
+masses and axial strengths), the intranuclear cascade (the pion- and
+nucleon-scattering rates, absorption, and charge-exchange fractions), and the
+nuclear ground state (the Fermi momentum, the removal-energy offset, the
+short-range-correlation tail, and an overall spectral-function normalization).
+Each knob equals unity, or its physical nominal value, at the generator's default
+tune.
 
-\subsection{Per-stage notes: functions, files, JAX transforms}
-% diff_chain.md (b)
+\subsection{Differentiability by reweighting}
+\label{sec:adonis_reweighting}
 
-\paragraph{Stage 0 --- bank construction (upstream, $\theta$-independent).}
-\begin{itemize}
-  \item Hard-vertex amps2 is captured as a \emph{quadratic-in-strength} record $(a,b,c,Q^2)$,
-        computed ONCE at three axial-scale evaluations $s=+1,0,-1$
-        (\texttt{build\_qe\_ma\_records}/\texttt{build\_res\_ma\_records},
-        \texttt{amps2\_records.py:28-40,71-86}). This is where the expensive DCC spline amplitude
-        (\texttt{amplitudes\_spline}, \texttt{channels/dcc/amplitudes.py:55-67}, JAX) --- or its
-        eager numpy twin \texttt{amplitudes\_spline\_np} ($\sim$30$\times$ faster, \emph{not}
-        differentiable) --- gets evaluated, but only at bank-build time. This amortization is what
-        makes fit-time reweight cheap and exactly jit-able.
-  \item Memory note (\texttt{dcc-spline-jit}): jitting the JAX spline vs. the numpy twin was
-        measured 17$\times$ faster and $2\times10^{-12}$ equivalent in the generator, and restores
-        differentiability; that jit lives in the \emph{generation} path (\texttt{reweight/tune.py:20},
-        \texttt{BATCH\_INTERP="spline"}), not in fit-time reweight (which never touches the spline).
-  \item FSI kind-1 cascade record: ragged flat arrays (\texttt{\_FSI\_F}, \texttt{bank\_reweight.py:18-19})
-        produced once by the pool-cascade walk; kept out of the dense $(N,K)$ layout ($\sim$40$\times$
-        fewer slots).
-\end{itemize}
+A neutrino event generator is an intrinsically stochastic program: it samples a
+neutrino energy from a flux, an interaction channel, a struck nucleon from the
+nuclear ground state, a hard-scattering kinematic configuration from a squared
+amplitude, and a sequence of final-state re-interactions from the cascade.
+Differentiating such a program directly is obstructed at every one of these
+steps, both by the discrete choices and by the expensive, tabulated amplitude
+evaluations that are not themselves written to be differentiated.
 
-\paragraph{Stage 1 --- bank $\rightarrow$ per-event weight.}
-\begin{itemize}
-  \item \texttt{bank\_weight(B, knobs, grids)} (\texttt{bank\_reweight.py:26-55}): pure fn of
-        $(B, \mathrm{knobs})$; \texttt{knobs} is a \texttt{PhysicsParams} NamedTuple (JAX pytree, so
-        \texttt{jax.grad}/\texttt{jax.jvp} differentiate field-by-field, no dict).
-  \item Hard-vertex weight: \texttt{ma\_reweight} (dipole-mass reweight of a quadratic form),
-        \texttt{strength\_reweight} (flat quadratic-in-scale) --- \texttt{amps2\_records.py:142-158}.
-        Both act on \emph{precomputed} $(a,b,c,Q^2)$ records: no DCC re-evaluation at fit time, hence
-        \texttt{bank\_weight} is cheap to jit and differentiate every iteration.
-  \item FSI weight: \texttt{pool\_fsi\_reweight} $\rightarrow$ \texttt{pool\_fsi\_reweight\_flat} for
-        ragged records (\texttt{cascade.py:1608-1698+}); pure in the FSI rate knobs
-        (\texttt{sabs}, \texttt{s\_piN\_elastic}, \texttt{s\_NN\_elastic[pp,pn,nn]}, \dots), $=1$ at nominal.
-  \item Spectral-function weight: \texttt{sf\_reweight} (density-ratio on struck-nucleon $(|p|,E)$),
-        knobs \texttt{kF\_sf, Eb\_shift, sf\_norm, src\_tail}. \texttt{Eb\_shift} nominal anchored at
-        \texttt{\_EB\_EPS=1e-2} (not 0): the SF has a non-differentiable corner at $E_b=0$; nominal sits
-        on the smooth one-sided branch (\texttt{core/params.py:22-25,60}).
-  \item JAX transform: \texttt{weight\_jit = jax.jit(bank\_weight)} (\texttt{bank\_reweight.py:65}).
-        \texttt{JB} is threaded as an \emph{argument}, never a captured constant --- compiled once,
-        $\theta$ varies per call (\texttt{multisample.py:197-199}). \texttt{to\_jax(B)}
-        (\texttt{bank\_reweight.py:58-62}) is the one-time numpy$\rightarrow$jnp boundary.
-\end{itemize}
+\adonis circumvents this in the same spirit that a differentiable detector
+simulator circumvents differentiating \textsc{Geant4}~\cite{LUCiD}: the
+well-understood physics that need not be optimized is evaluated \emph{once}, when
+the events are generated, and captured in a compact per-event record;
+differentiability is then arranged only over the physics parameters of interest,
+through a closed-form \emph{reweighting} of that record. Concretely, \adonis
+generates a fixed sample of events, a \emph{bank}, and stores with each event the
+auxiliary quantities from which its weight can be recomputed as a function of
+$\bm\theta$. The generation is a conventional, stochastic forward pass; the object
+that is made differentiable is the per-event weight
+\begin{equation}
+\label{eq:adonis_weight}
+w_i(\bm\theta) \;=\; w_i^{0}\,
+\underbrace{r^{\rm vertex}_i(\bm\theta)}_{\text{amplitude}}\,
+\underbrace{r^{\rm FSI}_i(\bm\theta)}_{\text{cascade}}\,
+\underbrace{r^{\rm SF}_i(\bm\theta)}_{\text{nucleus}},
+\end{equation}
+where $w_i^{0}$ is the fixed proposal weight assigned at generation and each
+factor $r_i$ is a differentiable ratio, equal to one at the nominal tune, that
+transports the event from the parameters it was generated with to the parameters
+$\bm\theta$. The three factors correspond to the three physics blocks above and
+are described in turn below. Because every $r_i$ is a pure JAX function of
+$\bm\theta$, so is the product, and the entire map
+$\bm\theta \mapsto w_i(\bm\theta)$ is available to automatic differentiation.
 
-\paragraph{Stage 2 --- $\theta$ (28-vec) $\leftrightarrow$ \texttt{PhysicsParams} knobs.}
-\begin{itemize}
-  \item \texttt{PhysicsParams} (\texttt{core/params.py:29-65}): \texttt{NamedTuple} of $\sim$20 scalar
-        knobs $+$ 3 tuple knobs (\texttt{pw\_norm[14]}, \texttt{s\_NN\_elastic[3]},
-        \texttt{s\_NN\_inelastic[3]}); auto-registered pytree, every field a differentiable leaf.
-  \item \texttt{nominal\_knobs()} (\texttt{params.py:72-75}): all multiplicative knobs $=1$,
-        \texttt{Eb\_shift}$=10^{-2}$. \texttt{knob\_specs(NOM)} (\texttt{params.py:78-93}): SINGLE SOURCE
-        OF TRUTH, expands tuple knobs to per-component entries, excludes \texttt{pw\_norm} and dead
-        \texttt{sscat}.
-  \item \texttt{SPEC/PNAMES/PRIOR/NPAR} (\texttt{physical\_fit.py:42-48}): enumerate into flat
-        $\theta$ (\texttt{NPAR=28}); per-knob prior widths (20\% multiplicative default;
-        \texttt{Eb\_shift} $\pm4$~MeV, \texttt{f\_NN\_cex} $\pm0.1$).
-  \item \texttt{theta\_nominal} / \texttt{knobs\_of(theta, nom)} (\texttt{physical\_fit.py:51-70};
-        dup \texttt{info\_content.py:201-212}): flatten / rebuild ($\theta\rightarrow$\texttt{PhysicsParams},
-        incl.\ tuple reassembly). \texttt{knobs\_of} is the map fed into \texttt{bank\_weight}.
-\end{itemize}
+The remainder of this section describes how each stage of the calculation
+supplies its part of Eq.~\ref{eq:adonis_weight} without breaking the gradient.
 
-\paragraph{Stage 3 --- weights $\rightarrow$ binned observables $\rightarrow$ $\chi^2$.}
-\begin{itemize}
-  \item \texttt{bin\_w0(d,w)}/\texttt{bin\_w(d,w)} (\texttt{info\_content.py:215-223}):
-        \texttt{scale\_bin * np.bincount(binidx, weights=np.asarray(w)[sel\_idx], minlength=nbin)}
-        ($+$ frozen free-H offset in \texttt{bin\_w}).
-  \item \textbf{This is the numpy boundary}: \texttt{w} is cast \texttt{np.asarray(w)} before
-        \texttt{np.bincount}. It works because it consumes an \emph{already-differentiated} quantity
-        (a \texttt{w} or a \texttt{dw/dtheta\_k} column out of \texttt{jax.jvp}/\texttt{jax.jit}).
-        \texttt{jax.ops.segment\_sum} is used instead where the histogram must stay differentiable
-        end-to-end (\texttt{reweight\_model.py:113-114}, \texttt{model\_hist\_full}) --- both binning
-        strategies exist for different use cases.
-  \item Diagonal error model: $\sigma^2=(\mathrm{SYST}\cdot\mathrm{central})^2+\mathrm{mcerr}^2$
-        (\texttt{bin\_sigma}, \texttt{fisher\_engine.py:19-28}; empty-bin guard $\sigma=\infty$, not
-        $0/0=$NaN). $\chi^2$ with prior: \texttt{chi2\_terms} (\texttt{physical\_fit\_run.py:260-265}):
-        $c_\mathrm{data}=\sum_b[(m_b-d_b)/\sigma_b]^2$ ($+$ optional Huber),
-        $c_\mathrm{prior}=\sum_k(\theta_k-\theta_{0,k})^2/\mathrm{prior}_k^2$.
-\end{itemize}
+\subsection{Initial state}
+\label{sec:adonis_initial}
 
-\paragraph{Stage 4 --- derivatives / autodiff.}
-\begin{itemize}
-  \item \textbf{1st derivative (Jacobian column) via forward-mode \texttt{jax.jvp}}, not \texttt{jax.grad}:
-        \texttt{jvp\_wf = jax.jit(lambda th,tang,JB: jax.jvp(lambda t: wf(t,JB),(th,),(tang,))[1])}
-        (\texttt{physical\_fit.py:237}; \texttt{multisample.py:77}). One \texttt{jvp} with a one-hot
-        tangent $e_k$ returns the full per-event $dw/d\theta_k$ in one forward pass. This is a
-        ``few-in, many-out'' map (28 inputs, $N$-event output), so forward mode wins: cost scales with
-        \#inputs (28 jvp calls) vs.\ one VJP per output for reverse mode. \texttt{bank\_jacobian}
-        (\texttt{fisher\_engine.py:31-47}) loops all 28 knobs to build $(n_\mathrm{bin},n_\mathrm{par})$
-        $J$.
-  \item \textbf{2nd directional derivative via nested jvp}:
-        \texttt{\_jvp2 = jax.jit(lambda th,tang,JB: jax.jvp(lambda t: jax.jvp(lambda s:\_w(s,JB),(t,),(tang,))[1],(th,),(tang,))[1])}
-        (\texttt{multisample.py:79-80}). \textbf{3rd mixed} via triple-nested jvp \texttt{\_jvp3}
-        (\texttt{multisample.py:81-83}, three tangents $(u,w,x)$).
-  \item \textbf{Arbitrary-order generic nested jvp}: \texttt{\_ddfn(k)} (\texttt{multisample.py:86-98};
-        \texttt{BeamSample.\_ddfn}, \texttt{multisample.py:144-155}) --- recursive closure
-        \texttt{rec(d,t)=w(t) if d==0 else jax.jvp(lambda u: rec(d-1,u),(t,),(T[d-1],))[1]}, jitted once
-        per depth and cached. Generalizes \texttt{\_jvp/\_jvp2/\_jvp3} to any order without hand-writing
-        each nesting level. \texttt{ddn\_binned} (\texttt{multisample.py:100-103}) bins the depth-$k$
-        output through \texttt{IC.bin\_w0}.
-  \item \texttt{MultiEngine.jac/dd/dd3/ddn} (\texttt{multisample.py:202-215}) stack per-sample
-        directional derivatives across all 6 sub-engines (T2K, MINERvA, electron banks $+$ 3 tagged-beam
-        samples) into one joint Jacobian/tensor, duck-typing the single-bank \texttt{Engine} interface.
-  \item Interpretation: \texttt{jax.jvp(w,(theta,),(v,))[1]}$=J\!\cdot\!v$ (push-forward of tangent $v$).
-        Nesting $k$ times along $v_1\dots v_k$ extracts the mixed $k$-th derivative
-        $D^k w(\theta)[v_1,\dots,v_k]$ by finite composition of exact forward-mode diff --- no
-        \texttt{jax.jet}, no symbolic Hessian/tensor code (design note, \texttt{multisample\_derivs.py:14}).
-  \item Polarization for off-diagonal 2nd-derivative entries from diagonal $+$ pairwise sums:
-        $B_{ij}=\tfrac12(\mathrm{dd}(e_i+e_j)-B_{ii}-B_{jj})$ (\texttt{multisample\_derivs.py:66-68}).
-  \item Gauss--Newton step: \texttt{lm\_fit} (\texttt{physical\_fit\_run.py:242-}): $A=J^\top W J +
-        \mathrm{diag}(\mathrm{prior}_w)$, $g=J^\top W(m-d)+\mathrm{prior}_w(\theta-\theta_0)$,
-        LM-damped Newton step $\delta\theta=-A^{-1}g$; convergence gated on the \textbf{Newton decrement}
-        $nd=g^\top A^{-1}g$ (not relative-$\chi^2$ --- flat/degenerate directions stalled that test;
-        \texttt{physfit\_run.py:248-252,278}), \texttt{TOL=1e-6}.
-  \item \texttt{x64} precision: \texttt{jax.config.update("jax\_enable\_x64", True)} at every fit entry
-        (\texttt{physical\_fit.py:25}, \texttt{multisample.py:37}) --- float32 insufficient for the small
-        perturbative reweights.
-\end{itemize}
+The generation of an event begins with the selection of the incident probe and
+the initial nuclear configuration: a neutrino (or, for electron-scattering
+validation, an electron) energy is drawn from the beam flux, an interaction
+channel is chosen, and a struck nucleon is sampled from the target nucleus.
+These choices define the event and are held fixed once generated; they set the
+kinematic support over which the reweighting acts, but are not themselves varied
+in $\bm\theta$. The flux and channel selection therefore enter only through the
+fixed proposal weight $w_i^{0}$, while the struck-nucleon draw is retained in the
+event record so that the nuclear ground state can be reweighted, as described in
+Sec.~\ref{sec:adonis_nucleus}. Keeping the sampling of the initial state outside
+the differentiable map is deliberate: it isolates the discrete, non-differentiable
+choices in the frozen generation pass, leaving the downstream weight a smooth
+function of the physics parameters.
 
-\paragraph{Stage 5 --- higher-order Taylor tensors $\rightarrow$ Taylor-model $\chi^2$.}
-\begin{itemize}
-  \item \texttt{multisample\_derivs.py}: computed ONCE at best-fit $\hat\theta$, over the
-        \texttt{nsub}$=$16 Gate-I dials, not all 28.
-  \item $J_b$ ($n_\mathrm{bin}\times n_\mathrm{sub}$): binned 1st directional derivatives
-        \texttt{eng.dd(bfp,e\_i,1)} (\texttt{multisample\_derivs.py:58}).
-  \item $B_b$ ($n_\mathrm{bin}\times n_\mathrm{sub}^2$): binned 2nd derivatives (nested jvp order 2)
-        via polarization (\texttt{multisample\_derivs.py:61-71}).
-  \item $A=J_b^\top(J_b\!\cdot\!W)$: the GN Hessian $=$ Gaussian curvature of $\chi^2$ at the minimum
-        (\texttt{multisample\_derivs.py:73}).
-  \item $C_b$ ($n_\mathrm{bin}\times n_\mathrm{sub}^3$): mixed 3rd derivatives via triple-nested jvp,
-        symmetrized over index permutations; only if \texttt{S4\_ORDER>=3} (\texttt{multisample\_derivs.py:76-87}).
-  \item Taylor-model $\chi^2$ (header, \texttt{multisample\_derivs.py:4-8}): around the MLE minimum
-        (zero residual), expand the \emph{model} (not $\chi^2$) to 2nd order:
-        $m(\hat\theta+D)_b\approx m_{0,b}+(J\!\cdot\!D)_b+\tfrac12(D\!\cdot\!d^2m\!\cdot\!D)_b$, then
-        $\chi^2(\hat\theta+D)=\sum_b W_b[(J\!\cdot\!D)_b+\tfrac12(D\!\cdot\!B_b\!\cdot\!D)_b+\dots]^2$.
-        Leading order reproduces the Gaussian ellipse $D^\top(J^\top W J)D$; $B_b$ (and $C_b$) carries
-        the leading non-Gaussianity. Squaring a truncated model (rather than Taylor-expanding $\chi^2$)
-        keeps $\chi^2\ge0$ and avoids tail blow-up.
-  \item Everything downstream (corner plots, profiling the other 14 dials as a cheap polynomial) is
-        offline post-processing of the cached $(J_b,B_b,C_b,W)$ npz --- no further autodiff.
-\end{itemize}
+\subsection{Nuclear ground state}
+\label{sec:adonis_nucleus}
 
-\subsection{Key equations}
-% diff_chain.md (c)
-\begin{align}
-\text{amps2 record:}\quad & \mathrm{amps2}(s)=a+b\,s+c\,s^2, \quad
-   w_\mathrm{strength}(s)=\frac{a+b s+c s^2}{a+b+c} && \text{[amps2\_records.py:150-158]}\\
-\text{per-event weight:}\quad & w(\theta)=w_0\cdot\mathrm{norm}(\theta)\cdot hv(\theta)\cdot fsi(\theta)\cdot sfw(\theta) && \text{[bank\_reweight.py:55]}\\
-\text{binned model:}\quad & m_b(\theta)=\mathrm{scale}_b\!\!\sum_{i\in b}\! w_i(\theta)\;[+\,\mathrm{offset}_b] && \text{[info\_content.py:215-223]}\\
-\chi^2(\theta)&=\sum_b\!\Big(\tfrac{m_b(\theta)-d_b}{\sigma_b}\Big)^2+\sum_k\!\Big(\tfrac{\theta_k-\theta_{0,k}}{\mathrm{prior}_k}\Big)^2,\;
-   \sigma_b^2=(\mathrm{SYST}\,m_b)^2+\mathrm{mcerr}_b^2 &&\\
-\text{Jacobian (jvp):}\quad & J[:,k]=D_\theta w(\theta)\!\cdot\!e_k=\mathrm{jax.jvp}(w,(\theta,),(e_k,))[1]\;\xrightarrow{\text{bin\_w0}}\; &&\\
-\text{Fisher/GN:}\quad & F=(J/\sigma)^\top(J/\sigma),\quad V=(F+\mathrm{diag}(1/\mathrm{prior}^2))^{-1},\quad \delta\theta=-A^{-1}g &&\\
-\text{nested jvp:}\quad & D^k w(\theta)[v_1,\dots,v_k]=\mathrm{jvp}\!\big(v_k\!\mapsto\!\cdots\mathrm{jvp}(v_1\!\mapsto\!w(\theta))\big) && \text{[multisample.py:92-95]}\\
-\text{Taylor-model }\chi^2:\quad & \chi^2(\hat\theta+D)=\sum_b\tfrac1{\sigma_b^2}\Big[(J\!\cdot\!D)_b+\tfrac12(D^\top B_b D)_b+\tfrac16(D,D,D\!\cdot\!C_b)_b+\dots\Big]^2 &&
-\end{align}
+The target nucleus is described by a spectral function, the probability density
+for finding the struck nucleon with momentum $|\mathbf{p}|$ and removal energy
+$E$~\cite{Isaacson:2020wlx}. Each generated event stores the $(|\mathbf{p}|, E)$
+of its struck nucleon, and the nuclear factor in Eq.~\ref{eq:adonis_weight} is
+the ratio of the spectral function under $\bm\theta$ to that under the nominal
+tune,
+\begin{equation}
+r^{\rm SF}_i(\bm\theta) \;=\;
+\frac{S_{\bm\theta}\!\left(|\mathbf{p}|_i, E_i\right)}
+     {S_{\rm nom}\!\left(|\mathbf{p}|_i, E_i\right)},
+\end{equation}
+a density ratio that is a smooth function of the ground-state parameters: the
+Fermi momentum $k_F$, an overall normalization, the strength of the
+short-range-correlation high-momentum tail, and a rigid shift of the removal
+energy. Because this factor is evaluated pointwise on the stored $(|\mathbf{p}|,E)$
+of each event, it is differentiable with respect to all of these parameters
+without re-sampling the nucleus.
 
-\subsection{NumPy vs.\ JAX boundary --- honest map}
-% diff_chain.md (d)
-\begin{itemize}
-  \item \textbf{JAX (differentiable, autodiff-traced):} \texttt{bank\_weight}/\texttt{weight\_jit}
-        (all knob-dependent physics: hard-vertex, FSI, SF; \texttt{bank\_reweight.py:26-65});
-        \texttt{model\_hist\_full} (in-graph histogram via \texttt{segment\_sum},
-        \texttt{reweight\_model.py:102-115}); \texttt{amplitudes\_spline}/\texttt{interp2d\_spline}
-        (DCC spline, \texttt{amplitudes.py:55-67}, \emph{bank-build time only}); all derivative
-        machinery (\texttt{jax.jit}, \texttt{jax.jvp}, nested \texttt{jax.jvp}).
-  \item \textbf{NumPy (forward-only, or downstream of an already-differentiated quantity):}
-        bank loading until cast; \texttt{amplitudes\_spline\_np} (eager numpy twin, $\sim$30$\times$,
-        \emph{not} autodiff-capable); the amps2 record \emph{builders} (\texttt{np.asarray(...)} wrap,
-        \texttt{amps2\_records.py:36-40}) --- differentiability w.r.t.\ $M_A$/strength is exact anyway
-        because \texttt{ma\_reweight}/\texttt{strength\_reweight} are closed-form quadratics/dipole-ratios,
-        not a re-run of the amps2 kernel (the codebase sidesteps autodiff through the DCC amplitude
-        evaluation itself); \texttt{bin\_w0}/\texttt{bin\_w} (\texttt{np.bincount} of a $w$/$dw$ already
-        out of JAX); the entire LM/GN solve (\texttt{np.linalg.solve}/\texttt{pinv}).
-  \item \textbf{Net effect}: JAX autodiff owns exactly the map $\theta\rightarrow w(\theta)$ (and the
-        in-graph histogram in \texttt{model\_hist\_full}). Everything after the first numpy cast
-        (binning, $\chi^2$, GN solve, Taylor-tensor assembly, corner plots) is ordinary numpy consuming
-        already-differentiated numbers. Deliberate design split: keep the autodiff graph small/cheap
-        (one jit'd per-event weight fn) and do all bookkeeping in plain numpy.
-\end{itemize}
+The removal-energy shift illustrates a subtlety common to any physically bounded
+parameter. The removal energy cannot be negative, and the spectral-function
+model is flat, with an identically vanishing gradient, once the shift would push
+$E$ below zero. This is a non-differentiable corner. We anchor the nominal value
+on the smooth, one-sided branch of the response, a small positive offset from the
+wall, so that a well-defined one-sided gradient is always available to the
+optimizer; the resulting truncated, non-Gaussian posterior at the boundary is
+studied explicitly in Sec.~\ref{sec:fitting}.
+
+\subsection{Hard-scattering amplitudes}
+\label{sec:adonis_amplitudes}
+
+At the interaction vertex the event is weighted by the squared electroweak
+amplitude for the selected channel: quasi-elastic scattering, governed by the
+nucleon axial and vector form factors, and resonant pion production, described by
+the dynamical coupled-channels amplitudes used in
+ACHILLES~\cite{Isaacson:2022cwh, Nakamura:2015rta}. Evaluating these amplitudes
+is the most expensive step of the calculation and, in the case of the tabulated
+coupled-channels amplitudes, is not written to be differentiated. Rather than
+autodifferentiate through that evaluation, \adonis captures its dependence on the
+parameters of interest at generation time.
+
+The key observation is that the squared amplitude is a low-order polynomial in
+the axial \emph{strength} scale of each channel. At generation, \adonis therefore
+evaluates the squared amplitude at three values of that scale and stores, per
+event, the coefficients $(a_i, b_i, c_i)$ of the resulting quadratic together
+with the momentum transfer $Q^2_i$. The vertex reweighting factor is then the
+closed form
+\begin{equation}
+r^{\rm vertex}_i(\bm\theta)
+= \frac{a_i + b_i\,s(\bm\theta) + c_i\,s(\bm\theta)^2}{a_i + b_i + c_i}
+\;\times\; \mathcal{R}\!\left(Q^2_i;\, M_A(\bm\theta)\right),
+\end{equation}
+where $s(\bm\theta)$ is the axial-strength dial and $\mathcal{R}$ is the smooth
+form-factor ratio that maps the generated axial mass to $M_A(\bm\theta)$, a
+dipole ratio for the quasi-elastic vertex. Both pieces are elementary
+differentiable functions of the vertex parameters. In this way the physics of the
+amplitude, its full $Q^2$ and kinematic structure, is computed once by the
+underlying generator and referenced to ACHILLES, while its dependence on the
+axial masses and strengths is exposed to automatic differentiation exactly and at
+negligible fit-time cost. This is the neutrino-vertex analogue of replacing an
+expensive, non-differentiable calculation by a compact differentiable stand-in,
+fit once and evaluated cheaply thereafter~\cite{LUCiD}.
+
+\subsection{Intranuclear cascade}
+\label{sec:adonis_cascade}
+
+The hadrons produced at the vertex propagate through the residual nucleus and
+undergo final-state interactions, modeled by the ACHILLES intranuclear
+cascade~\cite{Isaacson:2020wlx}: elastic and inelastic nucleon--nucleon and
+pion--nucleon scattering, pion absorption, and charge exchange. The cascade is
+the most stochastic stage of the generation, a variable-length sequence of
+sampled re-interactions, and is precisely the kind of discrete, path-dependent
+process whose derivative is not captured by differentiating any single realized
+history.
+
+\adonis records, for each event, the cascade history actually realized, in a
+compact per-event structure, so that the probability of that history can be
+recomputed under modified interaction rates. The cascade factor in
+Eq.~\ref{eq:adonis_weight} is the ratio of the history's probability under
+$\bm\theta$ to its probability under the nominal rates,
+\begin{equation}
+r^{\rm FSI}_i(\bm\theta)
+= \prod_{n \in \text{history}_i}
+\frac{p_n(\bm\theta)}{p_n(\text{nom})},
+\end{equation}
+a product over the interaction and survival probabilities of each step, each a
+smooth function of the corresponding rate dial (the pion and nucleon elastic and
+inelastic cross sections, the absorption rate, and the charge-exchange fraction)
+and equal to unity at nominal. Reweighting the stored history in this way is the
+importance-weight expression of the change of rates, and it is differentiable in
+the cascade parameters without re-running the cascade. In the discrete-choice
+setting this plays the role that score-function gradient estimators play for
+stochastic detector simulators~\cite{LUCiD}: the gradient of an expectation over
+sampled paths is carried by the derivative of the log-probability of the realized
+choices, here evaluated analytically from the stored history.
+
+\subsection{Differentiable events and observables}
+\label{sec:adonis_events}
+
+The result of the generation is a bank in which every event carries, alongside
+its final-state kinematics, the records of
+Secs.~\ref{sec:adonis_nucleus}--\ref{sec:adonis_cascade} that render its weight
+$w_i(\bm\theta)$ of Eq.~\ref{eq:adonis_weight} an exact, differentiable function
+of the physics parameters. Differentiability is thus a property of each stored
+event individually: for any event one can ask, and answer exactly, how its weight
+responds to any physics parameter.
+
+This event-by-event differentiability is what makes the downstream analysis
+differentiable for free. Physics observables are built from the events by
+operations that do not depend on $\bm\theta$: a signal or topology definition
+selects events by their final state, a choice of kinematic variable maps each
+event to an axis value, and a binning assigns each event to a bin. None of these
+touches the weights, so a binned prediction is simply the sum of the differentiable
+per-event weights falling in each bin,
+\begin{equation}
+\label{eq:adonis_binned}
+m_b(\bm\theta) = \sum_{i \in b} w_i(\bm\theta),
+\qquad
+\frac{\partial m_b}{\partial\bm\theta} = \sum_{i \in b}
+\frac{\partial w_i}{\partial\bm\theta}.
+\end{equation}
+The gradient of any histogram, and therefore of any downstream statistic built
+from it, is obtained by propagating the gradients of the weights through the same
+selection and binning. Changing the signal definition, the observable, or the bin
+edges changes which events enter each sum but not the differentiability of the
+result. An analysis is free to define its observables however it wishes and
+retains exact gradients with respect to the physics parameters throughout.
+
+We note the one boundary in this construction. The per-event weight
+$w_i(\bm\theta)$ is a pure JAX quantity and is the object automatic
+differentiation traces; the histogramming of Eq.~\ref{eq:adonis_binned} is a
+scatter-add of those weights into bins, which consumes an already-differentiated
+quantity and carries its gradient through unchanged. \adonis differentiates the
+map from physics parameters to per-event weights and, through it, to observables;
+it does not differentiate the frozen generation pass that produced the sample, by
+design, just as a differentiable detector simulator need not differentiate the
+\textsc{Geant4} photon sample underlying its emission surrogate~\cite{LUCiD}.
+
+\subsection{Gradients and higher-order derivatives}
+\label{sec:adonis_gradients}
+
+Because $\bm\theta \mapsto \{w_i\}$ is a JAX function, the Jacobian of the binned
+prediction,
+\begin{equation}
+J_{bk} = \frac{\partial m_b}{\partial\theta_k},
+\end{equation}
+is obtained by automatic differentiation. As the map takes few inputs (the
+parameter vector) to many outputs (the per-event weights, reduced to bins), we
+evaluate it in forward mode: a single Jacobian-vector product with a unit tangent
+$\mathbf{e}_k$ returns the full per-event derivative in the $k$-th parameter
+direction in one forward pass, and the columns for all parameters are batched into
+one vectorized evaluation whose cost is a small multiple of a single forward
+reweight. This replaces the finite differences a conventional generator would
+require, with their noise and step-size bias, and mirrors the forward-mode Fisher
+assembly used for gradient-based detector calibration~\cite{LUCiD}.
+
+The same construction extends to higher order. A directional second derivative is
+a nested Jacobian-vector product, a Jacobian-vector product of a
+Jacobian-vector product, and a mixed $k$-th derivative is a $k$-fold nesting along
+$k$ tangent directions; \adonis assembles these into the second- and
+third-derivative tensors of the prediction by automatic differentiation alone,
+with no symbolic derivative code. From the first derivatives we form the
+Gauss--Newton, or Fisher, matrix
+\begin{equation}
+\label{eq:adonis_fisher}
+F_{kl} = \sum_b \frac{1}{\sigma_b^{2}}\,
+\frac{\partial m_b}{\partial\theta_k}\,
+\frac{\partial m_b}{\partial\theta_l},
+\end{equation}
+with $\sigma_b$ the per-bin uncertainty, which is the positive-semidefinite
+curvature underlying the fits of Sec.~\ref{sec:fitting}, the same second-order
+object that drives gradient-based detector fits~\cite{LUCiD}. The higher tensors
+supply the non-Gaussian corrections to the likelihood used there.
+
+Two implementation choices make this practical. First, the expensive amplitude and
+cascade physics is amortized into the bank at generation time
+(Secs.~\ref{sec:adonis_amplitudes}--\ref{sec:adonis_cascade}), so the fit-time
+reweight evaluates only elementary closed forms and is inexpensive to compile and
+differentiate at every iteration. Second, the generation and reweighting are
+performed in double precision, as the perturbative reweighting factors of
+Eq.~\ref{eq:adonis_weight} lie too close to unity to resolve in single precision.
+The resulting cost of a full gradient is a small, parameter-count-independent
+multiple of one forward reweight.
 
 %% =====================================================================
 \section{Validation}
@@ -436,6 +483,7 @@ $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\math
 
 %% =====================================================================
 \section{Fitting and statistical interpretability}
+\label{sec:fitting}
 %% =====================================================================
 % Sec4. From sec4.md. MORE technical detail here (closure, MLE+Newton-decrement, exact profile,
 % Gaussian-vs-exact ridgeline, autodiff Taylor 3rd/4th order, coverage, E_b hard wall, NUTS).
