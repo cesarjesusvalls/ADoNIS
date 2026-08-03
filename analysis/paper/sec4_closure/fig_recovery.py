@@ -1,10 +1,12 @@
-"""Sec 4.1 — recovery + 1-D uncertainty: Gaussian sigma vs profile (Delta chi2 = 1) interval, per dial.
+"""Sec 4.1 — recovery + 1-D uncertainty: Gaussian sigma vs 68% BAYESIAN credible interval, per dial.
 
 Reads the closure profile npz (<label>_profile.npz).  For each of the 16 dials: the best-fit (= profile
 minimum, which after the Newton-decrement fit coincides with the GN best-fit) with TWO error bars overlaid
--- the symmetric Gaussian sigma (grey) and the asymmetric profile interval (blue) -- against the injected
-truth (star).  They coincide where the posterior is Gaussian and separate where it is not (Eb_shift, at its
-E_b >= 0 wall).  This single figure folds "does the fit recover truth" and "what do the error bars mean".
+-- the symmetric Gaussian sigma (grey) and the asymmetric 68% credible interval (blue) -- against the
+injected truth (star).  The credible interval is the highest-density 68.27% region of the marginal
+posterior, approximated by exp(-Delta chi2_profile / 2) (profile-as-marginal / Laplace).  They coincide
+where the posterior is Gaussian and separate where it is not (Eb_shift, at its E_b >= 0 wall).  This single
+figure folds "does the fit recover truth" and "what do the error bars mean".
 
 Usage:  python -m analysis.paper.sec4_closure.fig_recovery [label]     (default sec4_closure_random16)
 """
@@ -16,11 +18,25 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
+from scipy.interpolate import CubicSpline
 from analysis.paper.physical_fit import PRIOR, theta_nominal
 from adonis.reweight.reweight_model import nominal_knobs
-from analysis.paper.sec4_closure.asym_fig import profile_interval
 
 C_FIT, C_GAUSS = "#1f4b9c", "0.55"
+
+
+def _credible(grid, prof, mass=0.6827):
+    """68% BAYESIAN credible interval from a profiled Delta-chi2 curve: the marginal posterior is
+    approximated by exp(-Delta chi2 / 2) (profile-as-marginal / Laplace); return (mode, lo, hi) in
+    sigma_post units as the highest-density interval containing `mass`."""
+    spl = CubicSpline(grid, prof)
+    xf = np.linspace(grid.min(), grid.max(), 2001)
+    dens = np.exp(-0.5 * np.maximum(spl(xf), 0.0)); dens /= np.trapezoid(dens, xf)
+    o = np.argsort(dens)[::-1]
+    cum = np.cumsum(dens[o]) * (xf[1] - xf[0])
+    thr = dens[o][min(np.searchsorted(cum, mass), len(o) - 1)]
+    sel = dens >= thr
+    return float(xf[np.argmax(dens)]), float(xf[sel].min()), float(xf[sel].max())
 
 
 def main(label="sec4_closure_random16"):
@@ -38,14 +54,14 @@ def main(label="sec4_closure_random16"):
         yy = np.arange(len(order)); gid = [style.knob_group(pn[sub[c]]) for c in order]
         for i, c in enumerate(order):
             k = sub[c]; p = max(prior[k], 1e-12)
-            xm, slo, shi = profile_interval(grid, prof[c])                 # profile min + asym half-widths (sig)
-            xhat = (bfp[k] + xm * spost[c] - nom[k]) / p
-            # symmetric Gaussian sigma (grey, offset up)
+            mode, clo, chi = _credible(grid, prof[c])                      # 68% credible (sigma units)
+            xhat = (bfp[k] + mode * spost[c] - nom[k]) / p
+            # symmetric Gaussian sigma (grey, offset up) for comparison
             ax.errorbar([xhat], [yy[i] + 0.2], xerr=[[spost[c] / p], [spost[c] / p]], fmt="none",
                         ecolor=C_GAUSS, capsize=2.5, lw=1.3, zorder=3)
-            # asymmetric profile interval (blue)
-            ax.errorbar([xhat], [yy[i]], xerr=[[slo * spost[c] / p], [shi * spost[c] / p]], fmt="none",
-                        ecolor=C_FIT, capsize=3, lw=1.6, zorder=4)
+            # asymmetric 68% credible interval (blue)
+            ax.errorbar([xhat], [yy[i]], xerr=[[(mode - clo) * spost[c] / p], [(chi - mode) * spost[c] / p]],
+                        fmt="none", ecolor=C_FIT, capsize=3, lw=1.6, zorder=4)
             ax.plot(xhat, yy[i], "D", ms=5.5, color=C_FIT, mec="white", mew=0.6, zorder=6)
             ax.plot((truth[k] - nom[k]) / p, yy[i], marker="*", ms=13, color="k", zorder=5, ls="none")
         ax.axvline(0, color="0.8", lw=0.8, zorder=0)
@@ -57,10 +73,10 @@ def main(label="sec4_closure_random16"):
             ax.spines[sp].set_visible(False)
         ax.plot([], [], "*", color="k", ms=12, label="injected truth")
         ax.plot([], [], "D", color=C_FIT, mec="white", mew=0.6, ms=7, label="best-fit")
-        ax.plot([], [], "-", color=C_FIT, lw=1.6, label=r"profile ($\Delta\chi^2{=}1$)")
+        ax.plot([], [], "-", color=C_FIT, lw=1.6, label="68% credible (Bayesian)")
         ax.plot([], [], "-", color=C_GAUSS, lw=1.3, label=r"Gaussian $\sigma$")
         ax.legend(fontsize=8.5, loc="lower right", framealpha=0.95)
-        ax.set_title("Sec 4.1  recovery + 1-D uncertainty: Gaussian $\\sigma$ vs profile", fontsize=11.5, loc="left")
+        ax.set_title("Sec 4.1  recovery + 1-D uncertainty: Gaussian $\\sigma$ vs 68% credible", fontsize=11.5, loc="left")
         fig.tight_layout()
         style.save(fig, "sec4_fig41_recovery")
 

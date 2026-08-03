@@ -26,7 +26,7 @@ LABEL = "sec4_closure_r16_noprior"
 def _resid(Jb, Bb, D, Cb=None):
     r = Jb @ D + 0.5 * np.einsum("bjk,j,k->b", Bb, D, D)          # model to 2nd order (- m0), residual
     if Cb is not None:
-        r = r + (1.0 / 6.0) * np.einsum("bjkl,j,k,l->b", Cb, D, D, D)   # + 3rd-order model term
+        r = r + (1.0 / 6.0) * np.einsum("bjkl,j,k,l->b", Cb, D, D, D, optimize=True)   # + 3rd-order model term
     return r
 
 
@@ -42,7 +42,7 @@ def profile_pair(Jb, Bb, W, a, b, ga, gb, nit=10, Cb=None):
                 r = _resid(Jb, Bb, D, Cb)
                 Jr = Jb + np.einsum("bjk,k->bj", Bb, D)                  # d resid / d D
                 if Cb is not None:
-                    Jr = Jr + 0.5 * np.einsum("bjkl,k,l->bj", Cb, D, D)
+                    Jr = Jr + 0.5 * np.einsum("bjkl,k,l->bj", Cb, D, D, optimize=True)
                 Jr = Jr[:, others]
                 Ao = Jr.T @ (Jr * W[:, None]); go = Jr.T @ (W * r)
                 D[others] += np.linalg.solve(Ao + 1e-9 * np.eye(len(others)), -go)
@@ -95,7 +95,7 @@ def validate():
         Vp = V[np.ix_([a, b], [a, b])]; Pi = np.linalg.inv(Vp)
         GZ = (Pi[0, 0] * (X * spost[a])**2 + 2 * Pi[0, 1] * (X * spost[a]) * (Y * spost[b])
               + Pi[1, 1] * (Y * spost[b])**2)
-        ax_.contour(X, Y, GZ, levels=lev, colors="0.55", linewidths=0.9, linestyles=(0, (1, 1)))
+        ax_.contour(X, Y, GZ, levels=lev, colors="0.55", linewidths=0.9, linestyles=":")
         ax_.set_title(f"{style.plab(pn[sub[a]])} $\\times$ {style.plab(pn[sub[b]])}", fontsize=9)
         ax_.set_xlabel(r"$\Delta_a/\sigma$"); ax_.set_ylabel(r"$\Delta_b/\sigma$")
     axes[0].plot([], [], "k", lw=1.4, label="exact")
