@@ -74,7 +74,7 @@ def main(label="sec4_closure_r16_noprior"):
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
-        fig, ax = plt.subplots(figsize=(9.8, 8.8))
+        fig, ax = plt.subplots(figsize=(4.0, 7.4))
         baselines = []
         for i in range(n):
             y0 = n - 1 - i                                        # row 0 (first dial) on top
@@ -85,9 +85,12 @@ def main(label="sec4_closure_r16_noprior"):
                             lw=1.2, edgecolor=C_GAUSS, zorder=y0 * 3 + 1)
             ax.fill_between(xc, y0, y0 + ROWSCALE * dens_e[i], color=C_EXACT, alpha=0.30,
                             lw=1.2, edgecolor=style.darker(C_EXACT), zorder=y0 * 3 + 2)
-            # injected-truth tick (black vertical line up to the exact density there)
-            ht = ROWSCALE * float(np.interp(tx[i], xc, dens_e[i]))
-            ax.plot([tx[i], tx[i]], [y0, y0 + max(ht, 0.40)], color="k", lw=1.1, zorder=y0 * 3 + 3)
+            # injected-truth tick: rises to the TALLER of the two curves at the truth location
+            ht = ROWSCALE * max(float(np.interp(tx[i], xc, dens_e[i])), float(np.interp(tx[i], xc, dens_g[i])))
+            ax.plot([tx[i], tx[i]], [y0, y0 + ht], color="k", lw=1.1, zorder=y0 * 3 + 4)
+            # dial name in the top-left corner of its own row (frees the right margin -> narrower figure)
+            ax.text(xlo + 0.06, y0 + ROWSCALE, style.plab(pn[sub[order[i]]]), ha="left", va="top",
+                    fontsize=8.5, zorder=y0 * 3 + 5)
 
         # physics-group colour tabs + labels down the left edge
         for g in sorted(set(gid)):
@@ -99,25 +102,18 @@ def main(label="sec4_closure_r16_noprior"):
             ax.text(xlo - 0.46, (lo + hi) / 2, style.KNOB_GROUP_NAME[g], ha="center", va="center",
                     rotation=90, fontsize=8, color=style.darker(style.KNOB_GROUP_COLOR[g]))
 
-        ax.axvline(0, color="0.8", lw=0.8, zorder=0)
         ax.set_xlim(xlo - 0.05, xhi + 0.05); ax.set_ylim(-0.5, n - 1 + ROWSCALE + 0.35)
-        # dial labels as right-edge tick labels (clear of the densities)
-        ax.set_yticks(baselines); ax.set_yticklabels([style.plab(pn[sub[c]]) for c in order], fontsize=9)
-        ax.yaxis.tick_right()
-        ax.tick_params(axis="y", length=0)
-        ax.set_xlabel(r"value $-$ nominal   (prior $\sigma$ units)", fontsize=10)
+        ax.set_yticks([])                                         # dial names are drawn in-row (top-left)
+        ax.set_xlabel(r"value $-$ nominal   (prior $\sigma$)", fontsize=10)
         for sp in ("top", "right", "left"):
             ax.spines[sp].set_visible(False)
-        # legend above the plot (horizontal), clear of the densities
-        ax.fill_between([], [], color=C_EXACT, alpha=0.30, lw=1.2, edgecolor=style.darker(C_EXACT),
-                        label="exact posterior")
-        ax.fill_between([], [], color=C_GAUSS, alpha=0.30, lw=1.2, edgecolor=C_GAUSS,
-                        label=r"Gaussian $\mathcal{N}(\hat\theta,\sigma_{\rm post})$")
-        ax.plot([], [], color="k", lw=1.1, label="injected truth")
-        ax.legend(fontsize=9, loc="lower left", bbox_to_anchor=(0.0, 1.005), ncol=3,
-                  frameon=False, columnspacing=1.6, handlelength=1.6)
-        ax.set_title("Sec 4.1  per-dial posterior: exact (blue) vs Gaussian (orange)",
-                     fontsize=11.5, loc="left", pad=22)
+        # compact legend above the plot (fits a single column)
+        ax.fill_between([], [], color=C_EXACT, alpha=0.30, lw=1.2, edgecolor=style.darker(C_EXACT), label="exact")
+        ax.fill_between([], [], color=C_GAUSS, alpha=0.30, lw=1.2, edgecolor=C_GAUSS, label="Gaussian")
+        ax.plot([], [], color="k", lw=1.1, label="truth")
+        ax.legend(fontsize=8, loc="lower left", bbox_to_anchor=(0.0, 1.002), ncol=3,
+                  frameon=False, columnspacing=1.2, handlelength=1.3, handletextpad=0.5)
+        ax.set_title("Sec 4.1  per-dial posterior", fontsize=11, loc="left", pad=30)
         fig.tight_layout()
         style.save(fig, "sec4_fig41_recovery_ridge")
 
