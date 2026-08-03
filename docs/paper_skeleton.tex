@@ -1,0 +1,654 @@
+%% SKELETON --- no journal wording, no references, structure+figures+method-notes only
+%% ADoNIS methodology paper. Purpose: see how existing ingredients (figures + methods)
+%% assemble into a story, and review technical content. Bullets over prose throughout.
+\documentclass[11pt]{article}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{subcaption}
+
+\graphicspath{{../output/paper/}}
+
+\title{ADoNIS methodology paper --- skeleton}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+
+%% =====================================================================
+\section{Differentiability of the ADoNIS chain}
+%% =====================================================================
+% Technical core. From diff_chain.md. file:line refs are against the repo.
+% Mostly text + equations, no figures.
+
+\noindent\textbf{Story.} ADoNIS is a differentiable neutrino event generator: a pre-generated
+event bank is reweighted by a \emph{pure JAX} per-event weight function of a 28-knob physics
+vector $\theta$, and every downstream statistical object (Jacobian, Fisher/Gauss--Newton Hessian,
+higher-order Taylor tensors) comes from exact forward-mode autodiff of that weight, not finite
+differences.
+
+\subsection{Chain flow}
+% diff_chain.md (a)
+Bank $\rightarrow$ knobs $\rightarrow$ per-event weights $\rightarrow$ binning $\rightarrow$
+observables $\rightarrow$ $\chi^2$ $\rightarrow$ derivatives.
+
+\begin{verbatim}
+ [pre-generated event bank B]                       STATIC, theta-INDEPENDENT
+   B = {hv_* (a,b,c,Q2) hard-vertex amps2 records,   built ONCE by build_hv_sf()
+        f_*  (ragged kind-1 FSI cascade record),       reweight_model.py:45-74
+        p_struck, channel, w0 (proposal weight)}
+        | to_jax(B)   bank_reweight.py:58-62           numpy -> jnp, ONE-TIME cast
+        v
+   JB (on-device jnp pytree, ~GB)
+        | theta (28-vec) --knobs_of--> PhysicsParams knobs (NamedTuple pytree)
+        |    physical_fit.py:59-70 ; core/params.py:29-65
+        v
+   +----------------------------------------------------------+
+   | bank_weight(JB, knobs, grids)   <- JAX pure fn           |  per-event REWEIGHT
+   |   bank_reweight.py:26-55                                  |
+   |   hv  = prod ma_reweight/strength_reweight on (a,b,c,Q2) |
+   |   fsi = pool_fsi_reweight(...)   cascade.py:1608          |
+   |   sfw = sf_reweight(grids, p,E; kF_sf,Eb_shift,...)      |
+   |   w(theta)=w0*norm*hv*fsi*sfw                             |
+   +----------------------------------------------------------+
+        | weight_jit = jax.jit(bank_weight)  bank_reweight.py:65
+        v
+   w(theta)  (N_events,) jnp array          <-- JAX autodiff boundary is HERE and upstream
+        | bin_w0/bin_w   info_content.py:215-223
+        | np.bincount(binidx, weights=np.asarray(w)[sel_idx])   <-- NUMPY, w cast out of JAX
+        v
+   m_b(theta)  per-bin model prediction
+        | data d_b, sigma_b  ->  chi2 = sum_b [(m_b-d_b)/sigma_b]^2 + prior
+        v
+   chi2(theta) -----------------------------------------------------------
+        | jax.jvp along one-hot e_k                                       |
+        v                                                                 |
+   J[:,k] = dw/dtheta_k -> bin_w0 -> Jacobian column  physical_fit.py:237, |
+                                                       fisher_engine.py:31 |
+        | Gauss-Newton / Fisher: F=(J/sigma)^T(J/sigma); A=J^T W J + prior |
+        | nested jax.jvp (jvp-of-jvp[-of-jvp]) for 2nd/3rd directional deriv
+        v
+   Taylor tensors Jb, Bb(d2m), Cb(d3m) -> non-Gaussian chi2 / higher-order corner
+     multisample.py, multisample_derivs.py
+\end{verbatim}
+
+\subsection{Per-stage notes: functions, files, JAX transforms}
+% diff_chain.md (b)
+
+\paragraph{Stage 0 --- bank construction (upstream, $\theta$-independent).}
+\begin{itemize}
+  \item Hard-vertex amps2 is captured as a \emph{quadratic-in-strength} record $(a,b,c,Q^2)$,
+        computed ONCE at three axial-scale evaluations $s=+1,0,-1$
+        (\texttt{build\_qe\_ma\_records}/\texttt{build\_res\_ma\_records},
+        \texttt{amps2\_records.py:28-40,71-86}). This is where the expensive DCC spline amplitude
+        (\texttt{amplitudes\_spline}, \texttt{channels/dcc/amplitudes.py:55-67}, JAX) --- or its
+        eager numpy twin \texttt{amplitudes\_spline\_np} ($\sim$30$\times$ faster, \emph{not}
+        differentiable) --- gets evaluated, but only at bank-build time. This amortization is what
+        makes fit-time reweight cheap and exactly jit-able.
+  \item Memory note (\texttt{dcc-spline-jit}): jitting the JAX spline vs. the numpy twin was
+        measured 17$\times$ faster and $2\times10^{-12}$ equivalent in the generator, and restores
+        differentiability; that jit lives in the \emph{generation} path (\texttt{reweight/tune.py:20},
+        \texttt{BATCH\_INTERP="spline"}), not in fit-time reweight (which never touches the spline).
+  \item FSI kind-1 cascade record: ragged flat arrays (\texttt{\_FSI\_F}, \texttt{bank\_reweight.py:18-19})
+        produced once by the pool-cascade walk; kept out of the dense $(N,K)$ layout ($\sim$40$\times$
+        fewer slots).
+\end{itemize}
+
+\paragraph{Stage 1 --- bank $\rightarrow$ per-event weight.}
+\begin{itemize}
+  \item \texttt{bank\_weight(B, knobs, grids)} (\texttt{bank\_reweight.py:26-55}): pure fn of
+        $(B, \mathrm{knobs})$; \texttt{knobs} is a \texttt{PhysicsParams} NamedTuple (JAX pytree, so
+        \texttt{jax.grad}/\texttt{jax.jvp} differentiate field-by-field, no dict).
+  \item Hard-vertex weight: \texttt{ma\_reweight} (dipole-mass reweight of a quadratic form),
+        \texttt{strength\_reweight} (flat quadratic-in-scale) --- \texttt{amps2\_records.py:142-158}.
+        Both act on \emph{precomputed} $(a,b,c,Q^2)$ records: no DCC re-evaluation at fit time, hence
+        \texttt{bank\_weight} is cheap to jit and differentiate every iteration.
+  \item FSI weight: \texttt{pool\_fsi\_reweight} $\rightarrow$ \texttt{pool\_fsi\_reweight\_flat} for
+        ragged records (\texttt{cascade.py:1608-1698+}); pure in the FSI rate knobs
+        (\texttt{sabs}, \texttt{s\_piN\_elastic}, \texttt{s\_NN\_elastic[pp,pn,nn]}, \dots), $=1$ at nominal.
+  \item Spectral-function weight: \texttt{sf\_reweight} (density-ratio on struck-nucleon $(|p|,E)$),
+        knobs \texttt{kF\_sf, Eb\_shift, sf\_norm, src\_tail}. \texttt{Eb\_shift} nominal anchored at
+        \texttt{\_EB\_EPS=1e-2} (not 0): the SF has a non-differentiable corner at $E_b=0$; nominal sits
+        on the smooth one-sided branch (\texttt{core/params.py:22-25,60}).
+  \item JAX transform: \texttt{weight\_jit = jax.jit(bank\_weight)} (\texttt{bank\_reweight.py:65}).
+        \texttt{JB} is threaded as an \emph{argument}, never a captured constant --- compiled once,
+        $\theta$ varies per call (\texttt{multisample.py:197-199}). \texttt{to\_jax(B)}
+        (\texttt{bank\_reweight.py:58-62}) is the one-time numpy$\rightarrow$jnp boundary.
+\end{itemize}
+
+\paragraph{Stage 2 --- $\theta$ (28-vec) $\leftrightarrow$ \texttt{PhysicsParams} knobs.}
+\begin{itemize}
+  \item \texttt{PhysicsParams} (\texttt{core/params.py:29-65}): \texttt{NamedTuple} of $\sim$20 scalar
+        knobs $+$ 3 tuple knobs (\texttt{pw\_norm[14]}, \texttt{s\_NN\_elastic[3]},
+        \texttt{s\_NN\_inelastic[3]}); auto-registered pytree, every field a differentiable leaf.
+  \item \texttt{nominal\_knobs()} (\texttt{params.py:72-75}): all multiplicative knobs $=1$,
+        \texttt{Eb\_shift}$=10^{-2}$. \texttt{knob\_specs(NOM)} (\texttt{params.py:78-93}): SINGLE SOURCE
+        OF TRUTH, expands tuple knobs to per-component entries, excludes \texttt{pw\_norm} and dead
+        \texttt{sscat}.
+  \item \texttt{SPEC/PNAMES/PRIOR/NPAR} (\texttt{physical\_fit.py:42-48}): enumerate into flat
+        $\theta$ (\texttt{NPAR=28}); per-knob prior widths (20\% multiplicative default;
+        \texttt{Eb\_shift} $\pm4$~MeV, \texttt{f\_NN\_cex} $\pm0.1$).
+  \item \texttt{theta\_nominal} / \texttt{knobs\_of(theta, nom)} (\texttt{physical\_fit.py:51-70};
+        dup \texttt{info\_content.py:201-212}): flatten / rebuild ($\theta\rightarrow$\texttt{PhysicsParams},
+        incl.\ tuple reassembly). \texttt{knobs\_of} is the map fed into \texttt{bank\_weight}.
+\end{itemize}
+
+\paragraph{Stage 3 --- weights $\rightarrow$ binned observables $\rightarrow$ $\chi^2$.}
+\begin{itemize}
+  \item \texttt{bin\_w0(d,w)}/\texttt{bin\_w(d,w)} (\texttt{info\_content.py:215-223}):
+        \texttt{scale\_bin * np.bincount(binidx, weights=np.asarray(w)[sel\_idx], minlength=nbin)}
+        ($+$ frozen free-H offset in \texttt{bin\_w}).
+  \item \textbf{This is the numpy boundary}: \texttt{w} is cast \texttt{np.asarray(w)} before
+        \texttt{np.bincount}. It works because it consumes an \emph{already-differentiated} quantity
+        (a \texttt{w} or a \texttt{dw/dtheta\_k} column out of \texttt{jax.jvp}/\texttt{jax.jit}).
+        \texttt{jax.ops.segment\_sum} is used instead where the histogram must stay differentiable
+        end-to-end (\texttt{reweight\_model.py:113-114}, \texttt{model\_hist\_full}) --- both binning
+        strategies exist for different use cases.
+  \item Diagonal error model: $\sigma^2=(\mathrm{SYST}\cdot\mathrm{central})^2+\mathrm{mcerr}^2$
+        (\texttt{bin\_sigma}, \texttt{fisher\_engine.py:19-28}; empty-bin guard $\sigma=\infty$, not
+        $0/0=$NaN). $\chi^2$ with prior: \texttt{chi2\_terms} (\texttt{physical\_fit\_run.py:260-265}):
+        $c_\mathrm{data}=\sum_b[(m_b-d_b)/\sigma_b]^2$ ($+$ optional Huber),
+        $c_\mathrm{prior}=\sum_k(\theta_k-\theta_{0,k})^2/\mathrm{prior}_k^2$.
+\end{itemize}
+
+\paragraph{Stage 4 --- derivatives / autodiff.}
+\begin{itemize}
+  \item \textbf{1st derivative (Jacobian column) via forward-mode \texttt{jax.jvp}}, not \texttt{jax.grad}:
+        \texttt{jvp\_wf = jax.jit(lambda th,tang,JB: jax.jvp(lambda t: wf(t,JB),(th,),(tang,))[1])}
+        (\texttt{physical\_fit.py:237}; \texttt{multisample.py:77}). One \texttt{jvp} with a one-hot
+        tangent $e_k$ returns the full per-event $dw/d\theta_k$ in one forward pass. This is a
+        ``few-in, many-out'' map (28 inputs, $N$-event output), so forward mode wins: cost scales with
+        \#inputs (28 jvp calls) vs.\ one VJP per output for reverse mode. \texttt{bank\_jacobian}
+        (\texttt{fisher\_engine.py:31-47}) loops all 28 knobs to build $(n_\mathrm{bin},n_\mathrm{par})$
+        $J$.
+  \item \textbf{2nd directional derivative via nested jvp}:
+        \texttt{\_jvp2 = jax.jit(lambda th,tang,JB: jax.jvp(lambda t: jax.jvp(lambda s:\_w(s,JB),(t,),(tang,))[1],(th,),(tang,))[1])}
+        (\texttt{multisample.py:79-80}). \textbf{3rd mixed} via triple-nested jvp \texttt{\_jvp3}
+        (\texttt{multisample.py:81-83}, three tangents $(u,w,x)$).
+  \item \textbf{Arbitrary-order generic nested jvp}: \texttt{\_ddfn(k)} (\texttt{multisample.py:86-98};
+        \texttt{BeamSample.\_ddfn}, \texttt{multisample.py:144-155}) --- recursive closure
+        \texttt{rec(d,t)=w(t) if d==0 else jax.jvp(lambda u: rec(d-1,u),(t,),(T[d-1],))[1]}, jitted once
+        per depth and cached. Generalizes \texttt{\_jvp/\_jvp2/\_jvp3} to any order without hand-writing
+        each nesting level. \texttt{ddn\_binned} (\texttt{multisample.py:100-103}) bins the depth-$k$
+        output through \texttt{IC.bin\_w0}.
+  \item \texttt{MultiEngine.jac/dd/dd3/ddn} (\texttt{multisample.py:202-215}) stack per-sample
+        directional derivatives across all 6 sub-engines (T2K, MINERvA, electron banks $+$ 3 tagged-beam
+        samples) into one joint Jacobian/tensor, duck-typing the single-bank \texttt{Engine} interface.
+  \item Interpretation: \texttt{jax.jvp(w,(theta,),(v,))[1]}$=J\!\cdot\!v$ (push-forward of tangent $v$).
+        Nesting $k$ times along $v_1\dots v_k$ extracts the mixed $k$-th derivative
+        $D^k w(\theta)[v_1,\dots,v_k]$ by finite composition of exact forward-mode diff --- no
+        \texttt{jax.jet}, no symbolic Hessian/tensor code (design note, \texttt{multisample\_derivs.py:14}).
+  \item Polarization for off-diagonal 2nd-derivative entries from diagonal $+$ pairwise sums:
+        $B_{ij}=\tfrac12(\mathrm{dd}(e_i+e_j)-B_{ii}-B_{jj})$ (\texttt{multisample\_derivs.py:66-68}).
+  \item Gauss--Newton step: \texttt{lm\_fit} (\texttt{physical\_fit\_run.py:242-}): $A=J^\top W J +
+        \mathrm{diag}(\mathrm{prior}_w)$, $g=J^\top W(m-d)+\mathrm{prior}_w(\theta-\theta_0)$,
+        LM-damped Newton step $\delta\theta=-A^{-1}g$; convergence gated on the \textbf{Newton decrement}
+        $nd=g^\top A^{-1}g$ (not relative-$\chi^2$ --- flat/degenerate directions stalled that test;
+        \texttt{physfit\_run.py:248-252,278}), \texttt{TOL=1e-6}.
+  \item \texttt{x64} precision: \texttt{jax.config.update("jax\_enable\_x64", True)} at every fit entry
+        (\texttt{physical\_fit.py:25}, \texttt{multisample.py:37}) --- float32 insufficient for the small
+        perturbative reweights.
+\end{itemize}
+
+\paragraph{Stage 5 --- higher-order Taylor tensors $\rightarrow$ Taylor-model $\chi^2$.}
+\begin{itemize}
+  \item \texttt{multisample\_derivs.py}: computed ONCE at best-fit $\hat\theta$, over the
+        \texttt{nsub}$=$16 Gate-I dials, not all 28.
+  \item $J_b$ ($n_\mathrm{bin}\times n_\mathrm{sub}$): binned 1st directional derivatives
+        \texttt{eng.dd(bfp,e\_i,1)} (\texttt{multisample\_derivs.py:58}).
+  \item $B_b$ ($n_\mathrm{bin}\times n_\mathrm{sub}^2$): binned 2nd derivatives (nested jvp order 2)
+        via polarization (\texttt{multisample\_derivs.py:61-71}).
+  \item $A=J_b^\top(J_b\!\cdot\!W)$: the GN Hessian $=$ Gaussian curvature of $\chi^2$ at the minimum
+        (\texttt{multisample\_derivs.py:73}).
+  \item $C_b$ ($n_\mathrm{bin}\times n_\mathrm{sub}^3$): mixed 3rd derivatives via triple-nested jvp,
+        symmetrized over index permutations; only if \texttt{S4\_ORDER>=3} (\texttt{multisample\_derivs.py:76-87}).
+  \item Taylor-model $\chi^2$ (header, \texttt{multisample\_derivs.py:4-8}): around the MLE minimum
+        (zero residual), expand the \emph{model} (not $\chi^2$) to 2nd order:
+        $m(\hat\theta+D)_b\approx m_{0,b}+(J\!\cdot\!D)_b+\tfrac12(D\!\cdot\!d^2m\!\cdot\!D)_b$, then
+        $\chi^2(\hat\theta+D)=\sum_b W_b[(J\!\cdot\!D)_b+\tfrac12(D\!\cdot\!B_b\!\cdot\!D)_b+\dots]^2$.
+        Leading order reproduces the Gaussian ellipse $D^\top(J^\top W J)D$; $B_b$ (and $C_b$) carries
+        the leading non-Gaussianity. Squaring a truncated model (rather than Taylor-expanding $\chi^2$)
+        keeps $\chi^2\ge0$ and avoids tail blow-up.
+  \item Everything downstream (corner plots, profiling the other 14 dials as a cheap polynomial) is
+        offline post-processing of the cached $(J_b,B_b,C_b,W)$ npz --- no further autodiff.
+\end{itemize}
+
+\subsection{Key equations}
+% diff_chain.md (c)
+\begin{align}
+\text{amps2 record:}\quad & \mathrm{amps2}(s)=a+b\,s+c\,s^2, \quad
+   w_\mathrm{strength}(s)=\frac{a+b s+c s^2}{a+b+c} && \text{[amps2\_records.py:150-158]}\\
+\text{per-event weight:}\quad & w(\theta)=w_0\cdot\mathrm{norm}(\theta)\cdot hv(\theta)\cdot fsi(\theta)\cdot sfw(\theta) && \text{[bank\_reweight.py:55]}\\
+\text{binned model:}\quad & m_b(\theta)=\mathrm{scale}_b\!\!\sum_{i\in b}\! w_i(\theta)\;[+\,\mathrm{offset}_b] && \text{[info\_content.py:215-223]}\\
+\chi^2(\theta)&=\sum_b\!\Big(\tfrac{m_b(\theta)-d_b}{\sigma_b}\Big)^2+\sum_k\!\Big(\tfrac{\theta_k-\theta_{0,k}}{\mathrm{prior}_k}\Big)^2,\;
+   \sigma_b^2=(\mathrm{SYST}\,m_b)^2+\mathrm{mcerr}_b^2 &&\\
+\text{Jacobian (jvp):}\quad & J[:,k]=D_\theta w(\theta)\!\cdot\!e_k=\mathrm{jax.jvp}(w,(\theta,),(e_k,))[1]\;\xrightarrow{\text{bin\_w0}}\; &&\\
+\text{Fisher/GN:}\quad & F=(J/\sigma)^\top(J/\sigma),\quad V=(F+\mathrm{diag}(1/\mathrm{prior}^2))^{-1},\quad \delta\theta=-A^{-1}g &&\\
+\text{nested jvp:}\quad & D^k w(\theta)[v_1,\dots,v_k]=\mathrm{jvp}\!\big(v_k\!\mapsto\!\cdots\mathrm{jvp}(v_1\!\mapsto\!w(\theta))\big) && \text{[multisample.py:92-95]}\\
+\text{Taylor-model }\chi^2:\quad & \chi^2(\hat\theta+D)=\sum_b\tfrac1{\sigma_b^2}\Big[(J\!\cdot\!D)_b+\tfrac12(D^\top B_b D)_b+\tfrac16(D,D,D\!\cdot\!C_b)_b+\dots\Big]^2 &&
+\end{align}
+
+\subsection{NumPy vs.\ JAX boundary --- honest map}
+% diff_chain.md (d)
+\begin{itemize}
+  \item \textbf{JAX (differentiable, autodiff-traced):} \texttt{bank\_weight}/\texttt{weight\_jit}
+        (all knob-dependent physics: hard-vertex, FSI, SF; \texttt{bank\_reweight.py:26-65});
+        \texttt{model\_hist\_full} (in-graph histogram via \texttt{segment\_sum},
+        \texttt{reweight\_model.py:102-115}); \texttt{amplitudes\_spline}/\texttt{interp2d\_spline}
+        (DCC spline, \texttt{amplitudes.py:55-67}, \emph{bank-build time only}); all derivative
+        machinery (\texttt{jax.jit}, \texttt{jax.jvp}, nested \texttt{jax.jvp}).
+  \item \textbf{NumPy (forward-only, or downstream of an already-differentiated quantity):}
+        bank loading until cast; \texttt{amplitudes\_spline\_np} (eager numpy twin, $\sim$30$\times$,
+        \emph{not} autodiff-capable); the amps2 record \emph{builders} (\texttt{np.asarray(...)} wrap,
+        \texttt{amps2\_records.py:36-40}) --- differentiability w.r.t.\ $M_A$/strength is exact anyway
+        because \texttt{ma\_reweight}/\texttt{strength\_reweight} are closed-form quadratics/dipole-ratios,
+        not a re-run of the amps2 kernel (the codebase sidesteps autodiff through the DCC amplitude
+        evaluation itself); \texttt{bin\_w0}/\texttt{bin\_w} (\texttt{np.bincount} of a $w$/$dw$ already
+        out of JAX); the entire LM/GN solve (\texttt{np.linalg.solve}/\texttt{pinv}).
+  \item \textbf{Net effect}: JAX autodiff owns exactly the map $\theta\rightarrow w(\theta)$ (and the
+        in-graph histogram in \texttt{model\_hist\_full}). Everything after the first numpy cast
+        (binning, $\chi^2$, GN solve, Taylor-tensor assembly, corner plots) is ordinary numpy consuming
+        already-differentiated numbers. Deliberate design split: keep the autodiff graph small/cheap
+        (one jit'd per-event weight fn) and do all bookkeeping in plain numpy.
+\end{itemize}
+
+%% =====================================================================
+\section{Validation}
+%% =====================================================================
+% Sec1. ALL figures, one-line captions only. From sec1.md.
+% All reproduce ACHILLES paper (arXiv:2508.19213) figures with ADoNIS overlaid.
+% Source: analysis/paper/sec1_validation/make.py + per-fig YAML.
+
+\begin{figure}[htbp]\centering
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig01_ee_domega}
+    \caption{Inclusive $(e,e')$ $d\sigma/d\omega$, 2.222 GeV, $\theta_{e'}\!\approx\!15.5^\circ$, $^{40}$Ar \& $^{12}$C (QE/RES/total).}\end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig02_anl_sigma}
+    \caption{Free-nucleon resonance-production $\sigma(E_\nu)$, three CC channels.}\end{subfigure}
+  \caption{ADoNIS vs.\ ACHILLES: inclusive electron scattering and free-nucleon resonance.}
+  \label{fig:sec1_a}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig03_pi_nucleus_sigma}
+    \caption{$\pi^+$--nucleus absorption \& reaction $\sigma(p_\pi)$ on C and Ar.}\end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig0456_e4nu}
+    \caption{e4$\nu$ $(e,e')$ on $^{12}$C, 1.159 GeV: $E_\mathrm{QE}$, $E_\mathrm{cal}$, $P_T$.}\end{subfigure}
+  \caption{ADoNIS vs.\ ACHILLES: pion--nucleus cross sections and e4$\nu$ observables.}
+  \label{fig:sec1_b}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig07_t2k_cc0pi}
+    \caption{T2K CC0$\pi$-Np TKI ($\delta p_T,\delta\alpha_T,p_\mu,\cos\theta_\mu$) on $^{12}$C.}\end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig08_t2k_cc1pi}
+    \caption{T2K CC1$\pi^+$Np TKI ($p_N,\delta p_{TT},\delta\alpha_T,p_\pi,\cos\theta_\pi$) on $^{12}$C.}\end{subfigure}
+  \caption{ADoNIS vs.\ ACHILLES: T2K CC0$\pi$ and CC1$\pi$.}
+  \label{fig:sec1_c}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig09_minerva_cc0pi}
+    \caption{MINERvA CC0$\pi$ TKI ($\delta\alpha_T,p_n,\delta p_T$) on $^{12}$C, $\langle E_\nu\rangle\!\sim\!3$ GeV.}\end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig10_uboone_cc1p0pi}
+    \caption{MicroBooNE CC1p0$\pi$: $\delta p_T$ in $\delta\alpha_T$ slices on $^{40}$Ar.}\end{subfigure}
+  \caption{ADoNIS vs.\ ACHILLES: MINERvA CC0$\pi$ and MicroBooNE CC1p0$\pi$.}
+  \label{fig:sec1_d}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig11_uboone_nc1pi0_doublediff}
+    \caption{MicroBooNE NC 1$\pi^0$Xp double-diff.\ $d^2\sigma/d\cos\theta_{\pi^0}dp_{\pi^0}$ on $^{40}$Ar.}\end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig12_uboone_nc1pi0_cospi}
+    \caption{MicroBooNE NC 1$\pi^0$Xp $d\sigma/d\cos\theta_{\pi^0}$ on $^{40}$Ar, BNB flux.}\end{subfigure}
+  \caption{ADoNIS vs.\ ACHILLES: MicroBooNE NC 1$\pi^0$.}
+  \label{fig:sec1_e}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+  \includegraphics[width=0.6\linewidth]{fig13_piN_sigma}
+  \caption{Meson--baryon (DCC) $\sigma(W)$ for four species $+$ a $\pi^+p$ angular-sampler panel --- ADoNIS vs.\ ACHILLES.}
+  \label{fig:sec1_f}
+\end{figure}
+
+\subsection{Appendix: additional validation differentials}
+\begin{figure}[htbp]\centering
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{figA1_minerva_extras}
+    \caption{MINERvA CC0$\pi$ extras: proton/muon $p,\theta$ and $\delta p_T,\delta\phi_T$ on $^{12}$C.}\end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{figA2_t2k_cc0pi_dphit}
+    \caption{T2K CC0$\pi$ transverse deflection $\delta\phi_T$ on $^{12}$C.}\end{subfigure}
+  \caption{Appendix validation differentials --- ADoNIS vs.\ ACHILLES.}
+  \label{fig:sec1_appendix}
+\end{figure}
+
+%% =====================================================================
+\section{Constraints from the differentiable Jacobian}
+%% =====================================================================
+% Sec2. Fisher/shrinkage figures, MINIMAL how-calculated. From sec2.md.
+
+\noindent\textbf{Method (shared by every Sec-3/Sec-2 figure).}
+\begin{itemize}
+  \item One per-bin Jacobian $J$ (bins $\times$ 28 knobs), assembled on carbon by
+        \texttt{sec3\_gradients/build\_multisample.py::build()}, concatenating persisted per-sample
+        Jacobians (T2K CC0/1$\pi$ STV$+$muon, MINERvA STV, MINERvA $p_T/p_\parallel$, $(e,e')$) $+$ 3
+        FSI-only hadron-beam Jacobians ($\pi^+/p/n$--C, \texttt{beams/beam\_fisher.py}). Every $J_{ik}$ is
+        an \emph{exact autodiff} $\partial(\mathrm{bin}\,i)/\partial\theta_k$ via one \texttt{jax.jvp} per
+        knob --- not finite differences. Output: \texttt{output/altgen/multisample\_carbon.npz}.
+  \item Error model: diagonal $\sigma=\sqrt{(\mathrm{syst}\!\cdot\!\mathrm{central})^2+\mathrm{mcerr}^2}$,
+        empty-bin guard $\sigma=\infty$ (\texttt{fisher\_engine.py:19-28}).
+  \item Fisher: $F=(J/\sigma)^\top(J/\sigma)$ (Asimov, additive across samples/bins). Prior$+$posterior:
+        $V=(F+\mathrm{diag}(1/\mathrm{prior}^2))^{-1}$.
+  \item \textbf{Shrinkage} (Gate I): $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$; knob is FIT
+        when $\mathrm{shrink}<0.5$. \textbf{Reach}: $\mathrm{reach}=\sqrt{\mathrm{diag}(F)}$, raw shrinkage
+        $=1/(\mathrm{reach}\cdot\mathrm{prior})$ (other knobs fixed). Raw vs.\ marginalized separates:
+        MEASURABLE (both $<$cut), DEGENERATE (raw$<$, marg$>$), INVISIBLE (raw$>$cut).
+  \item Degeneracy: eigendecompose prior-scaled $F_s=F\odot\mathrm{prior}\otimes\mathrm{prior}$;
+        $\lambda>1=$ data-dominated modes. Column membership declared in \texttt{configs/paper/sec2\_subsets.yaml}
+        (row-slices of the one persisted npz, no re-run). Driver:
+        \texttt{python -m analysis.paper.sec2\_fisher.make}.
+\end{itemize}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_ladder}
+  \caption{Shrinkage ladder: cumulative samples (T2K $\rightarrow$ $+$MINERvA $\rightarrow$ $+(e,e')$
+    $\rightarrow$ $+$hadron beams); left $=$ marginalized shrinkage (red box $=$ FIT), right $=$ raw
+    (green box $=$ seen). $F$ additive $\Rightarrow$ each column is the running sum.
+    \texttt{fig\_shrinkage()}, axis \texttt{sample\_ladder}.}
+  \label{fig:sec2_ladder}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_samples}
+  \caption{Each sample evaluated \emph{alone} (not cumulative): what T2K, MINERvA, $(e,e')$, and each
+    tagged hadron beam individually constrain. Axis \texttt{samples\_alone} (columns not additive).}
+  \label{fig:sec2_samples}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_subsets}
+  \caption{What each probe type ($\nu$ / $e$ / hadron beams / ALL) buys, one marginalized panel grouped
+    by physics block. \texttt{fig\_shrinkage\_grouped()}, axis \texttt{by\_probe}.}
+  \label{fig:sec2_subsets}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_degeneracy}
+  \caption{Prior-scaled Fisher eigenspectrum (left) and knob composition of the best-measured eigenmodes
+    (right), all samples combined. \texttt{fig\_degeneracy()}: $F_s=F\odot\mathrm{prior}\otimes\mathrm{prior}$,
+    $\lambda=1$ dashed crossover.}
+  \label{fig:sec2_degeneracy}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_failure_modes}
+  \caption{Raw-vs-marginalized shrinkage plane, all knobs, reference column: INVISIBLE (gray) /
+    DEGENERATE (orange) / MEASURABLE (green) against $\mathrm{fit\_cut}=0.5$. \texttt{fig\_failure\_modes()}.}
+  \label{fig:sec2_failure}
+\end{figure}
+
+% TODO provenance: multisample_carbon_reach/shape are stale/duplicate renders. The module that wrote
+% them (analysis.paper.sec2_gradients.make_jacobian) has no live .py source (only a stray .pyc under
+% sec3_gradients/__pycache__). Maintained equivalents are sec3_gradients_shape (filtered to Gate-I knobs)
+% + sec3_gradient_reach. Regenerate over fisher_engine.gate1 if the unfiltered 28-knob versions are needed.
+\begin{figure}[htbp]\centering
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{multisample_carbon_reach}
+    \caption{Per-knob raw reach $\sqrt{F_{kk}}$, all 28 knobs; red $=$ passes combined-fit Gate I.}\end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{multisample_carbon_shape}
+    \caption{Per-bin per-knob signed gradient heatmap, all 28 knobs, each row normalized to own peak.}\end{subfigure}
+  \caption{Unfiltered (28-knob) reach and shape on \texttt{multisample\_carbon.npz}.
+    \textbf{[TODO provenance: no live generating script --- see LaTeX comment.]}}
+  \label{fig:sec2_carbon}
+\end{figure}
+
+%% =====================================================================
+\section{Gradient information}
+%% =====================================================================
+% Sec3. From sec3.md. Same Jacobian as Sec 2, read two ways.
+
+\noindent\textbf{Method.} Sec 2 and Sec 3 consume the \emph{same} per-bin Jacobian (\texttt{multisample\_carbon.npz}),
+computed once by autodiff, read two ways: Fisher/constrainability (Sec 2) vs.\ raw gradient reach $+$ shape
+(Sec 3). Per-knob directional derivative $=$ single forward-mode \texttt{jax.jvp} through the frozen
+\texttt{weight\_jit} with tangent $e_k$ (\texttt{physical\_fit.py:237-238}, \texttt{fisher\_engine.py:31-47});
+differentiates the importance weight of a frozen event bank (``the frozen walk''), no re-simulation.
+Primitives: $F=(J/\sigma)^\top(J/\sigma)$, $V=(F+\mathrm{diag}(1/\mathrm{prior}^2))^{-1}$,
+$\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\mathrm{reach}=\sqrt{\mathrm{diag}(F)}$.
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec3_gradients_shape}
+  \caption{Per-bin gradient \emph{shape}: for each Gate-I-fittable knob, sign and location of its pull
+    across the combined bin set, normalized to that knob's peak. Pull $S_{ik}=\mathrm{prior}_k J_{ik}/\sigma_i$
+    (\texttt{sec3\_gradients/make.py:66}), diverging colormap. Shows \emph{where} each knob acts.}
+  \label{fig:sec3_shape}
+\end{figure}
+
+% TODO provenance: sec3_gradient_reach has no standalone generator found in the current sec3_gradients/ tree
+% (only make.py=shape and build_multisample.py=npz remain). A stale __pycache__ points at a retired
+% sec2_gradients/make_jacobian.py (different, jacfwd-based reach def, superseded). PNG title/split match
+% fisher_engine.gate1 exactly -> almost certainly a thin driver over that engine; re-locate/re-derive the
+% script before finalizing so the figure has a live source.
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec3_gradient_reach}
+  \caption{Per-knob raw gradient \emph{reach}: $\mathrm{reach}_k\cdot\mathrm{prior}_k=\sqrt{F_{kk}}\cdot\mathrm{prior}_k$
+    over all 28 knobs (sorted bar chart), red $=$ passes combined Gate I. Magnitude-only complement to the
+    shape figure. \textbf{[TODO provenance: no live generating script --- see LaTeX comment.]}}
+  \label{fig:sec3_reach}
+\end{figure}
+
+%% =====================================================================
+\section{Fitting and statistical interpretability}
+%% =====================================================================
+% Sec4. From sec4.md. MORE technical detail here (closure, MLE+Newton-decrement, exact profile,
+% Gaussian-vs-exact ridgeline, autodiff Taylor 3rd/4th order, coverage, E_b hard wall, NUTS).
+
+\subsection{Methods}
+
+\paragraph{M1 --- multisample closure setup (\texttt{physfit/multisample.py}).}
+\begin{itemize}
+  \item All fits in the same 28-knob \texttt{physical\_fit} basis (\texttt{SPEC/NPAR/PNAMES/PRIOR},
+        sourced from \texttt{reweight\_model.knob\_specs}). Priors 20\% multiplicative default, with
+        \texttt{Eb\_shift} $\pm4$~MeV and \texttt{f\_NN\_cex} $\pm0.10$ (\texttt{\_PRIOR\_POLICY}).
+  \item \textbf{Gate-I dial subset (16 of 28)}: knobs with combined marginalized shrinkage $<0.5$ from the
+        Asimov Fisher study (\texttt{multisample\_carbon.npz}); \texttt{np.where(g["shrink"]<0.5)}
+        (\texttt{multisample.py:274}). Same subset as Sec 2/3 --- Sec 4 closes the loop with a genuine
+        nonlinear fit instead of the linear Fisher toy.
+  \item 20 sample blocks stacked in one fixed order (asserted against \texttt{multisample\_carbon.npz}):
+        T2K CC0/1$\pi$ STV$+$muon (7), MINERvA STV (3) $+$ qelike $p_T/p_\parallel$ (2), $(e,e')$ QE/RES
+        $\omega$ (2), $\pi^+/p/n\!\rightarrow\!$C tagged beams (2 each). \texttt{MultiEngine}
+        (\texttt{multisample.py:188-227}) duck-types the single-bank \texttt{Engine} over
+        \texttt{BankSample} $+$ \texttt{BeamSample}; both reweights pure JAX $\Rightarrow$ exact 1st/2nd/3rd
+        directional derivatives via nested \texttt{jax.jvp}.
+  \item \textbf{Closure data}: \texttt{set\_closure\_data(truth)} sets \texttt{d["data"]} $=$ the EXACT
+        nonlinear reweight at an injected truth (not a linearization); refresh $\sigma$ via
+        \texttt{bin\_sigma} (SYST $=5\%$). Headline ``random'' truth: each dial displaced by
+        $U(0.5,2)\cdot\mathrm{prior}$ with random sign (\texttt{Eb\_shift} forced positive).
+\end{itemize}
+
+\paragraph{M2 --- MLE/MAP fit and Newton-decrement convergence (\texttt{physical\_fit\_run.py:242-303}).}
+\begin{itemize}
+  \item \texttt{lm\_fit} minimizes $\chi^2_\mathrm{total}=\chi^2_\mathrm{data}+\chi^2_\mathrm{prior}$ by
+        LM/Gauss--Newton over the 16-dial subset; prior for FITTED knobs only, always centered at
+        \texttt{eng.th0}.
+  \item \textbf{Stopping rule: Newton decrement} $nd=g^\top A^{-1}g$ (\texttt{physical\_fit\_run.py:278}),
+        $A=J^\top W J+\mathrm{diag}(\mathrm{prior}_w)$. $nd$ is the predicted objective gap to the
+        quadratic minimum and is landscape-invariant: certifies the argmin even on flat/near-degenerate
+        directions, where a relative-$\chi^2$ test can stall. Converge when $nd<\mathrm{tol}$ ($10^{-6}$)
+        or step-norm underflow.
+  \item Full GN steps (\texttt{PHYSFIT\_STEP\_SCALE=1.0} default) $\Rightarrow$ quadratic convergence
+        near the minimum; \texttt{STEP\_SCALE}$<1$ only to force a slow, visualizable trajectory demo.
+  \item \texttt{Eb\_shift} boundary: \texttt{sf\_reweight} clamps $E_b<0\rightarrow0$ (model exactly flat,
+        zero gradient below the wall --- an absorbing LM trap); every trial step projects
+        $\texttt{Eb\_shift}=\max(\texttt{Eb\_shift},10^{-2})$ to keep the one-sided gradient alive.
+  \item Covariance: $V=\mathrm{pinv}(A,\mathrm{rcond}=10^{-12})$ --- the GN/Laplace (parabolic) posterior
+        curvature; $\sigma_\mathrm{post}=\sqrt{\mathrm{diag}(V)}$ is every ``Gaussian $\sigma$'' bar in Sec 4.
+  \item MLE vs MAP: \texttt{S4\_PRIOR\_SCALE} scales the fit's prior width after truth injection.
+        $=0\Rightarrow$ prior$\times10^6\Rightarrow$ MLE (unregularized); $=1.0\Rightarrow$ MAP. On a
+        noiseless closure the MLE lands exactly on truth ($\chi^2_\mathrm{data}=0$); the MAP is prior-pulled
+        toward nominal by an amount tracking the dial's Gate-I shrinkage.
+\end{itemize}
+
+\paragraph{M3 --- exact profile-likelihood posterior (\texttt{multisample\_profile.py}).}
+\begin{itemize}
+  \item Per fitted dial $k$: scan $\theta_k$ on $\hat\theta_k\pm3\sigma_{\mathrm{post},k}$ ($S4\_PROFILE\_N$
+        nodes/side, default 6 $\rightarrow$ 13), at each node FIX $\theta_k$ and re-minimize the other 15
+        dials by \texttt{lm\_fit} --- a genuine profile likelihood, not a linearization.
+        $\Delta_\mathrm{profile}(\theta_k)=\mathrm{obj}(\theta_k,\hat\theta_{-k})-\mathrm{obj}(\mathrm{BFP})$.
+  \item Marginal density $\propto\exp(-\tfrac12\Delta_\mathrm{profile})$ (profile-as-marginal/Laplace).
+        Diagnostic: compare to the GN parabola $((\theta_k-\hat\theta_k)/\sigma_{\mathrm{post},k})^2$ ---
+        agreement over $\pm3\sigma$ means the quoted quadratic error IS the likelihood.
+  \item 68\% credible interval: cubic-spline the profile, density $\propto\exp(-\Delta\chi^2/2)$, normalize,
+        take the highest-density region containing 68.27\% --- NOT symmetric $\pm1\sigma$; lets the interval
+        go one-sided/asymmetric at a wall.
+\end{itemize}
+
+\paragraph{M4 --- autodiff Taylor corner (\texttt{multisample\_derivs.py} $+$ \texttt{corner\_taylor.py}).}
+\begin{itemize}
+  \item At the noiseless MLE minimum (zero residual), expand the model to 2nd order:
+        $\chi^2(D)=\sum_b W_b((J\!\cdot\!D)_b+\tfrac12(D\!\cdot\!d^2m\!\cdot\!D)_b+\dots)^2$. Gaussian at
+        leading order, non-Gaussianity carried by $d^2m$; sum of squares $\Rightarrow\ge0$, never diverges.
+  \item Tensors computed once at the BFP by nested \texttt{jax.jvp} (no \texttt{jax.jet}): $J_b$,
+        $B_b$ (via polarization $B_{ij}=\tfrac12(d^2(e_i+e_j)-d^2e_i-d^2e_j)$), optional $C_b$ (3rd mixed,
+        gated \texttt{S4\_ORDER}$\ge3$, symmetrized).
+  \item \textbf{Model order $N\Rightarrow\chi^2$ exact to order $N{+}1$}: 2nd-order model ($J_b,B_b$)
+        $\Rightarrow\chi^2$ exact to 3rd order; adding $C_b\Rightarrow$ exact to 4th order.
+  \item \texttt{corner\_taylor.profile\_pair} profiles this polynomial $\chi^2$ over an $(a,b)$ grid by a
+        cheap inner GN over the other 14 dials directly on the polynomial (no bank re-eval) --- orders of
+        magnitude cheaper than re-fitting the full nonlinear model per node.
+  \item Exact numerical corner (\texttt{multisample\_corner.py}) avoids 16-D importance-sampling
+        degeneracy (ESS $\sim$1\%): sets the other 14 dials to their Gaussian-conditional mean given
+        $(a,b)$ ($M=V_{o,ab}\,\mathrm{pinv}(V_{ab,ab})$), then evaluates the true nonlinear $\chi^2$ ---
+        exact to leading order in the nuisance shift, one model eval per node.
+\end{itemize}
+
+\subsection{Headline recovery and posterior shape}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig41_recovery_ridge}
+  \caption{\textbf{Headline 4.1.} Per-dial posterior ridgeline (MLE, label \texttt{sec4\_closure\_r16\_noprior}):
+    each row overlays the EXACT non-Gaussian marginal (filled, from $\exp(-\Delta\chi^2_\mathrm{profile}/2)$)
+    against the Gaussian $\mathcal N(\mathrm{BFP},\sigma_\mathrm{post})$ (grey), black tick $=$ injected truth,
+    on a common $(\mathrm{value}-\mathrm{nominal})/\mathrm{prior}$ axis. Per-knob unit-area normalization then
+    height-rescaled to the sharper curve (cross-row width $=$ constraint, height not comparable).
+    exact $=$ blue \texttt{\#1f4b9c}, Gaussian $=$ orange \texttt{\#fe6100}.}
+  \label{fig:sec4_ridge}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig41_recovery}
+  \caption{Recovery $+$ 1-D uncertainty (MAP, label \texttt{sec4\_closure\_random16}): per-dial best-fit vs
+    injected truth with TWO error bars --- symmetric Gaussian $\sigma_\mathrm{post}$ (grey) and asymmetric
+    68\% credible from the exact profile (blue). Where grey and blue disagree is the non-Gaussian tell.}
+  \label{fig:sec4_recovery}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig42_dists}
+  \caption{Pre/post-closure observable distributions (MLE): $2\times2$ nominal (dotted grey) vs best-fit
+    (solid blue) against closure data (black), across probe types (T2K $\delta p_T$, MINERvA $p_T^\mu$,
+    $(e,e')$ $\omega_\mathrm{QE}$, $\pi^+$--C reaction $\sigma$). On the noiseless MLE closure the blue curve
+    coincides with the data.}
+  \label{fig:sec4_dists}
+\end{figure}
+
+\subsection{The $E_b\!\ge\!0$ hard-wall non-Gaussian example}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.7\linewidth]{sec4_ebwall}
+  \caption{\textbf{Headline non-Gaussian example.} \texttt{Eb\_shift} posterior as a density: truncated profile
+    posterior $\propto\exp(-\Delta\chi^2/2)$ for $E_b\ge0$ (blue, 68\% HPD band) vs Gaussian
+    $\mathcal N(\hat E_b,\sigma)$ (red dashed, unphysical $E_b<0$ tail shaded). Inject $E_b\!\approx\!0.5$~MeV,
+    MLE fit, scan $E_b$ from $-1.0$ to $2.5$~MeV pinning $\&$ re-minimizing the other 15; model clamps
+    $E_b<0\!\rightarrow\!0$ (flat $\chi^2$) exposing the one-sided profile. Annotated: fraction of Gaussian
+    probability that is unphysical.}
+  \label{fig:sec4_ebwall}
+\end{figure}
+
+\subsection{2-D corner and autodiff-Taylor validation}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig44_corner_reduced}
+  \caption{Reduced 2-D parameter corner (main body; MLE label \texttt{sec4\_closure\_r16\_noprior}): explicit
+    dial subset in $\sigma_\mathrm{post}$ units. Off-diagonal $=$ exact 68/95\% contour (filled blue,
+    $\Delta\chi^2\!=\!2.30,6.17$, 2 dof) vs Gaussian ellipse (dashed orange). Shows correlations/degeneracies
+    and where the exact contour departs from the ellipse.}
+  \label{fig:sec4_corner_reduced}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_closure_r16_noprior_corner_validate}
+  \caption{Autodiff-Taylor corner validation: 4 dial pairs ($(0,1),(1,3),(0,13),(6,9)$), each overlaying
+    exact numerical contour (black), 3rd-order Taylor $\chi^2$ (orange dashed, $J_b,B_b$), 4th-order
+    (green dotted, adds $C_b$), Gaussian ellipse (grey dotted), at 68/95\% ($\Delta\chi^2\!=\!2.3,6.17$).
+    Cross-checks the cheap polynomial-$\chi^2$ profiling against the expensive exact grid to the stated
+    Taylor order over $\pm3.5\sigma$.}
+  \label{fig:sec4_taylor_validate}
+\end{figure}
+
+\subsection{Convergence, MLE unbiasedness, and prior pull}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_closure_r16_noprior_convergence}
+  \caption{LM/Gauss--Newton trajectory: (a) objective vs step (log) --- $\chi^2_\mathrm{total}$ and
+    $\chi^2_\mathrm{data}$; (b) per-dial $|\theta_k-\theta_k^*|/\sigma_{\mathrm{prior},k}$ vs step (log),
+    coloured by physics block, 16 lines collapsing to 0. Full GN steps ($\mathrm{STEP\_SCALE}=1$) show the
+    sharp late-iteration Newton collapse. Re-styles the saved \texttt{traj\_*} arrays, no re-fit.}
+  \label{fig:sec4_convergence}
+\end{figure}
+
+\begin{figure}[htbp]\centering
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{sec4_mle_closure}
+    \caption{MLE (prior OFF) best-fit $\pm$ data-only $\sigma=\sqrt{\mathrm{diag}((J^\top W J)^{-1})}$ vs
+      truth; noiseless closure $\Rightarrow$ lands on truth, $\chi^2_\mathrm{data}\!\rightarrow\!0$ (unbiased).}\end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{sec4_prior_pull}
+    \caption{MLE vs MAP: MLE (blue diamond, on truth) vs MAP $\pm\sigma_\mathrm{post}$ (orange, prior-pulled);
+      the gap IS the prior pull, largest for weakly-constrained dials (shrinkage $\rightarrow0.5$).}\end{subfigure}
+  \caption{MLE unbiasedness and the MLE-vs-MAP prior pull.}
+  \label{fig:sec4_mle_prior}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_closure_multisample}
+  \caption{Headline multisample closure (MAP, fixed 5-dial injection): (a) recovery panel truth vs blind
+    $\chi^2$ BFP$\pm\sigma$ in prior-$\sigma$ units; (b) pulls $(\mathrm{BFP}-\mathrm{truth})/\sigma_\mathrm{post}$
+    with $\pm1,\pm2\sigma$ bands; (c-e) T2K $\delta p_T$ / MINERvA $\delta p_T$ / $\pi^+\!\rightarrow$C
+    reaction $\sigma$ overlays (data / nominal / BFP). Re-styles the cached fit; suptitle reports
+    $\chi^2_\mathrm{data}/\mathrm{ndf}$.}
+  \label{fig:sec4_closure_multisample}
+\end{figure}
+
+\subsection{Coverage over a toy ensemble}
+
+% TODO provenance: sec4_fig43a_coverage_mle exists as PNG only (no PDF). coverage_fig.py hard-codes
+% style.save(fig,"sec4_coverage") regardless of label, so the current script cannot itself write this
+% filename -- it is almost certainly a manually renamed MLE-shard (S4_PRIOR_SCALE=0) output. Verify which
+% shard set produced it before citing numbers; re-running coverage_fig.py overwrites sec4_coverage, not this.
+\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig43a_coverage_mle}
+  \caption{Coverage (MLE toy ensemble): (a) pooled pull $(\theta_\mathrm{fit}-\theta^*)/\sigma_\mathrm{fit}$
+    vs $\mathcal N(0,1)$ (mean/std/KS $p$); (b) per-dial pull mean$\pm$std vs $\pm1\sigma$ band; (c)
+    $\chi^2_\mathrm{data}$ across toys vs $\chi^2(\mathrm{ndf}=n_\mathrm{bin}-n_\mathrm{dial})$. Per toy:
+    throw $\theta^*=\mathrm{nom}+\mathrm{prior}\,\mathcal N(0,1)$, data $=$ exact reweight $+$ per-bin
+    Gaussian stat throw, blind LM fit. $|\mathrm{pull}|>8$ dropped as numerical (\texttt{pinv} degeneracy).
+    Pooled pull $\approx\mathcal N(0,1)$ $\Rightarrow$ GN covariance calibrated across the prior volume.
+    \textbf{[TODO provenance: PNG-only / renamed output --- see LaTeX comment.]}}
+  \label{fig:sec4_coverage}
+\end{figure}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig43b_ebcov}
+  \caption{$E_b$ coverage at the physical wall: (a) per-toy 68\% intervals for \texttt{Eb\_shift}, Gaussian
+    $[\hat\pm\sigma]$ (red) vs profile $\Delta\chi^2\!=\!1$ crossing (blue), near-wall truth $E_b^*\!\approx\!0.15$~MeV,
+    shaded $E_b<0$; (b) empirical 68\% coverage, Gaussian vs profile, vs nominal 0.68. Gaussian under-covers
+    near the wall; profile respects the boundary and covers $\sim$68\%.}
+  \label{fig:sec4_ebcov}
+\end{figure}
+
+\subsection{NUTS marginal vs.\ profile vs.\ Gaussian}
+% sec4_nuts_compare is in output/paper/ (requested by the task); not detailed in sec4.md's per-figure entries.
+% TODO provenance: sec4_nuts_compare not described in the Sec-4 reviewer md -- confirm generating script/label.
+\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_nuts_compare}
+  \caption{NUTS comparison: the exact HMC/NUTS marginal posterior against the profile-likelihood marginal
+    and the Gaussian $\sigma_\mathrm{post}$ approximation --- cross-check that the profile-as-marginal used
+    throughout Sec 4 matches a full MCMC sampling of the same nonlinear likelihood.
+    \textbf{[TODO provenance: not described in the Sec-4 reviewer md --- confirm script/label.]}}
+  \label{fig:sec4_nuts}
+\end{figure}
+
+\subsection{Appendix: full 2-D corner}
+
+\begin{figure}[htbp]\centering\includegraphics[width=0.95\linewidth]{sec4_fig44_corner}
+  \caption{Full $16\times16$ lower-triangular parameter corner (appendix): exact 68/95\% filled contours vs
+    Gaussian ellipses, diagonal 1-D Gaussian marginals, all Gate-I dials.}
+  \label{fig:sec4_corner_full}
+\end{figure}
+
+\end{document}
