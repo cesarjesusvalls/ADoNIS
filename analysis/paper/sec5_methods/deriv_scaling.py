@@ -58,7 +58,7 @@ def main():
     log(f"self-check: |ddn2-dd2|={r2:.2e}  |ddn3-dd3|={r3:.2e}")
     assert r2 < 1e-8 and r3 < 1e-8, "generic ddn disagrees with hand-written dd/dd3"
 
-    out = "output/altgen/deriv_scaling.npz"
+    out = f"output/altgen/deriv_scaling{os.environ.get('DERIV_TAG', '')}.npz"
     def save(rows):
         np.savez(out, nsub=nsub, order=np.array([r[0] for r in rows]),
                  n_terms=np.array([r[1] for r in rows], dtype=float),
