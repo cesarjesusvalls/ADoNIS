@@ -64,11 +64,12 @@ def main(label="sec4_closure_r16_noprior"):
     xc = np.linspace(xlo, xhi, NX)
     for i, c in enumerate(order):
         k = sub[c]; p = max(prior[k], 1e-12)
-        de = _density(grid, prof[c], xrows[i], xc)
-        de = de / de.max() if de.max() > 0 else de
+        pe = _density(grid, prof[c], xrows[i], xc)                # exact posterior, unnormalised
+        pe = pe / np.trapezoid(pe, xc)                            # -> unit-area probability density
         xbf = (bfp[k] - nom[k]) / p; sg = spost[c] / p
-        dg = np.exp(-0.5 * ((xc - xbf) / sg) ** 2)                # Gaussian N(best-fit, sigma_post)
-        dens_e.append(de); dens_g.append(dg)
+        pg = np.exp(-0.5 * ((xc - xbf) / sg) ** 2); pg = pg / np.trapezoid(pg, xc)   # Gaussian density
+        m = max(pe.max(), pg.max(), 1e-300)                       # PER-KNOB norm: taller of the two sets it
+        dens_e.append(pe / m); dens_g.append(pg / m)              # so the sharper curve stands taller in-row
         tx.append((truth[k] - nom[k]) / p); gid.append(style.knob_group(pn[sub[c]]))
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
@@ -80,9 +81,9 @@ def main(label="sec4_closure_r16_noprior"):
             baselines.append(y0)
             ax.axhline(y0, color="0.85", lw=0.6, zorder=y0 * 3)   # baseline separator
             # Gaussian (orange, faint fill + line) then exact (blue fill) -- two colours, method-coded
-            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, alpha=0.16, zorder=y0 * 3 + 1)
+            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, alpha=0.10, zorder=y0 * 3 + 1)
             ax.plot(xc, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, lw=1.2, zorder=y0 * 3 + 2)
-            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_e[i], color=C_EXACT, alpha=0.55,
+            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_e[i], color=C_EXACT, alpha=0.38,
                             lw=1.0, edgecolor=style.darker(C_EXACT), zorder=y0 * 3 + 3)
             # injected-truth tick (black vertical line up to the exact density there)
             ht = ROWSCALE * float(np.interp(tx[i], xc, dens_e[i]))
@@ -108,7 +109,7 @@ def main(label="sec4_closure_r16_noprior"):
         for sp in ("top", "right", "left"):
             ax.spines[sp].set_visible(False)
         # legend above the plot (horizontal), clear of the densities
-        ax.fill_between([], [], color=C_EXACT, alpha=0.55, label="exact posterior")
+        ax.fill_between([], [], color=C_EXACT, alpha=0.38, label="exact posterior")
         ax.plot([], [], color=C_GAUSS, lw=1.4, label=r"Gaussian $\mathcal{N}(\hat\theta,\sigma_{\rm post})$")
         ax.plot([], [], color="k", lw=1.1, label="injected truth")
         ax.legend(fontsize=9, loc="lower left", bbox_to_anchor=(0.0, 1.005), ncol=3,
