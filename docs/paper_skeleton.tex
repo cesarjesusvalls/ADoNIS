@@ -1,28 +1,31 @@
-%% SKELETON --- no journal wording, no references, structure+figures+method-notes only
-%% ADoNIS methodology paper. Purpose: see how existing ingredients (figures + methods)
-%% assemble into a story, and review technical content. Bullets over prose throughout.
-\documentclass[11pt]{article}
+%% SKELETON --- REVTeX/PRD port. No journal wording, no references (cite keys are
+%% placeholders showing as [?]); structure + figures + method-notes only.
+\documentclass[aps,prd,reprint,superscriptaddress,nofootinbib,amsmath,amssymb,floatfix]{revtex4-1}
 
 \usepackage{graphicx}
-\usepackage{amsmath}
-\usepackage{amssymb}
 \usepackage{bm}
 \usepackage{booktabs}
-\usepackage[margin=1in]{geometry}
 \usepackage{xcolor}
-\usepackage[hidelinks]{hyperref}
 \usepackage{subcaption}
 \usepackage{xspace}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{colorlinks=true,citecolor=teal,linkcolor=teal,urlcolor=teal}
 \newcommand{\adonis}{{ADoNIS}\xspace}
 \newcommand{\lucid}{{LUCiD}\xspace}
 
 \graphicspath{{../output/paper/}}
 
-\title{ADoNIS methodology paper --- skeleton}
-\author{}
-\date{}
-
 \begin{document}
+
+\title{ADoNIS: a differentiable neutrino event generator (skeleton)}
+\author{C\'esar Jes\'us-Valls}
+\email{Cesar.Jesus@cern.ch}
+\affiliation{European Organization for Nuclear Research (CERN), 1211 Geneva 23, Switzerland}
+
+\begin{abstract}
+\noindent TBD --- skeleton draft.
+\end{abstract}
+
 \maketitle
 
 \tableofcontents
@@ -314,66 +317,66 @@ multiple of one forward reweight.
 % All reproduce ACHILLES paper (arXiv:2508.19213) figures with ADoNIS overlaid.
 % Source: analysis/paper/sec1_validation/make.py + per-fig YAML.
 
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig01_ee_domega}
     \caption{Inclusive $(e,e')$ $d\sigma/d\omega$, 2.222 GeV, $\theta_{e'}\!\approx\!15.5^\circ$, $^{40}$Ar \& $^{12}$C (QE/RES/total).}\end{subfigure}\hfill
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig02_anl_sigma}
     \caption{Free-nucleon resonance-production $\sigma(E_\nu)$, three CC channels.}\end{subfigure}
   \caption{ADoNIS vs.\ ACHILLES: inclusive electron scattering and free-nucleon resonance.}
   \label{fig:sec1_a}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig03_pi_nucleus_sigma}
     \caption{$\pi^+$--nucleus absorption \& reaction $\sigma(p_\pi)$ on C and Ar.}\end{subfigure}\hfill
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig0456_e4nu}
     \caption{e4$\nu$ $(e,e')$ on $^{12}$C, 1.159 GeV: $E_\mathrm{QE}$, $E_\mathrm{cal}$, $P_T$.}\end{subfigure}
   \caption{ADoNIS vs.\ ACHILLES: pion--nucleus cross sections and e4$\nu$ observables.}
   \label{fig:sec1_b}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig07_t2k_cc0pi}
     \caption{T2K CC0$\pi$-Np TKI ($\delta p_T,\delta\alpha_T,p_\mu,\cos\theta_\mu$) on $^{12}$C.}\end{subfigure}\hfill
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig08_t2k_cc1pi}
     \caption{T2K CC1$\pi^+$Np TKI ($p_N,\delta p_{TT},\delta\alpha_T,p_\pi,\cos\theta_\pi$) on $^{12}$C.}\end{subfigure}
   \caption{ADoNIS vs.\ ACHILLES: T2K CC0$\pi$ and CC1$\pi$.}
   \label{fig:sec1_c}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig09_minerva_cc0pi}
     \caption{MINERvA CC0$\pi$ TKI ($\delta\alpha_T,p_n,\delta p_T$) on $^{12}$C, $\langle E_\nu\rangle\!\sim\!3$ GeV.}\end{subfigure}\hfill
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig10_uboone_cc1p0pi}
     \caption{MicroBooNE CC1p0$\pi$: $\delta p_T$ in $\delta\alpha_T$ slices on $^{40}$Ar.}\end{subfigure}
   \caption{ADoNIS vs.\ ACHILLES: MINERvA CC0$\pi$ and MicroBooNE CC1p0$\pi$.}
   \label{fig:sec1_d}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig11_uboone_nc1pi0_doublediff}
     \caption{MicroBooNE NC 1$\pi^0$Xp double-diff.\ $d^2\sigma/d\cos\theta_{\pi^0}dp_{\pi^0}$ on $^{40}$Ar.}\end{subfigure}\hfill
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{fig12_uboone_nc1pi0_cospi}
     \caption{MicroBooNE NC 1$\pi^0$Xp $d\sigma/d\cos\theta_{\pi^0}$ on $^{40}$Ar, BNB flux.}\end{subfigure}
   \caption{ADoNIS vs.\ ACHILLES: MicroBooNE NC 1$\pi^0$.}
   \label{fig:sec1_e}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \includegraphics[width=0.6\linewidth]{fig13_piN_sigma}
   \caption{Meson--baryon (DCC) $\sigma(W)$ for four species $+$ a $\pi^+p$ angular-sampler panel --- ADoNIS vs.\ ACHILLES.}
   \label{fig:sec1_f}
-\end{figure}
+\end{figure*}
 
 \subsection{Appendix: additional validation differentials}
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{figA1_minerva_extras}
     \caption{MINERvA CC0$\pi$ extras: proton/muon $p,\theta$ and $\delta p_T,\delta\phi_T$ on $^{12}$C.}\end{subfigure}\hfill
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{figA2_t2k_cc0pi_dphit}
     \caption{T2K CC0$\pi$ transverse deflection $\delta\phi_T$ on $^{12}$C.}\end{subfigure}
   \caption{Appendix validation differentials --- ADoNIS vs.\ ACHILLES.}
   \label{fig:sec1_appendix}
-\end{figure}
+\end{figure*}
 
 %% =====================================================================
 \section{Constraints from the differentiable Jacobian}
@@ -402,44 +405,44 @@ multiple of one forward reweight.
         \texttt{python -m analysis.paper.sec2\_fisher.make}.
 \end{itemize}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_ladder}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_ladder}
   \caption{Shrinkage ladder: cumulative samples (T2K $\rightarrow$ $+$MINERvA $\rightarrow$ $+(e,e')$
     $\rightarrow$ $+$hadron beams); left $=$ marginalized shrinkage (red box $=$ FIT), right $=$ raw
     (green box $=$ seen). $F$ additive $\Rightarrow$ each column is the running sum.
     \texttt{fig\_shrinkage()}, axis \texttt{sample\_ladder}.}
   \label{fig:sec2_ladder}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_samples}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_samples}
   \caption{Each sample evaluated \emph{alone} (not cumulative): what T2K, MINERvA, $(e,e')$, and each
     tagged hadron beam individually constrain. Axis \texttt{samples\_alone} (columns not additive).}
   \label{fig:sec2_samples}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_subsets}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_shrinkage_subsets}
   \caption{What each probe type ($\nu$ / $e$ / hadron beams / ALL) buys, one marginalized panel grouped
     by physics block. \texttt{fig\_shrinkage\_grouped()}, axis \texttt{by\_probe}.}
   \label{fig:sec2_subsets}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_degeneracy}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_degeneracy}
   \caption{Prior-scaled Fisher eigenspectrum (left) and knob composition of the best-measured eigenmodes
     (right), all samples combined. \texttt{fig\_degeneracy()}: $F_s=F\odot\mathrm{prior}\otimes\mathrm{prior}$,
     $\lambda=1$ dashed crossover.}
   \label{fig:sec2_degeneracy}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_failure_modes}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec2_failure_modes}
   \caption{Raw-vs-marginalized shrinkage plane, all knobs, reference column: INVISIBLE (gray) /
     DEGENERATE (orange) / MEASURABLE (green) against $\mathrm{fit\_cut}=0.5$. \texttt{fig\_failure\_modes()}.}
   \label{fig:sec2_failure}
-\end{figure}
+\end{figure*}
 
 % TODO provenance: multisample_carbon_reach/shape are stale/duplicate renders. The module that wrote
 % them (analysis.paper.sec2_gradients.make_jacobian) has no live .py source (only a stray .pyc under
 % sec3_gradients/__pycache__). Maintained equivalents are sec3_gradients_shape (filtered to Gate-I knobs)
 % + sec3_gradient_reach. Regenerate over fisher_engine.gate1 if the unfiltered 28-knob versions are needed.
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{multisample_carbon_reach}
     \caption{Per-knob raw reach $\sqrt{F_{kk}}$, all 28 knobs; red $=$ passes combined-fit Gate I.}\end{subfigure}\hfill
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{multisample_carbon_shape}
@@ -447,7 +450,7 @@ multiple of one forward reweight.
   \caption{Unfiltered (28-knob) reach and shape on \texttt{multisample\_carbon.npz}.
     \textbf{[TODO provenance: no live generating script --- see LaTeX comment.]}}
   \label{fig:sec2_carbon}
-\end{figure}
+\end{figure*}
 
 %% =====================================================================
 \section{Gradient information}
@@ -462,24 +465,24 @@ differentiates the importance weight of a frozen event bank (``the frozen walk''
 Primitives: $F=(J/\sigma)^\top(J/\sigma)$, $V=(F+\mathrm{diag}(1/\mathrm{prior}^2))^{-1}$,
 $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\mathrm{reach}=\sqrt{\mathrm{diag}(F)}$.
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec3_gradients_shape}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec3_gradients_shape}
   \caption{Per-bin gradient \emph{shape}: for each Gate-I-fittable knob, sign and location of its pull
     across the combined bin set, normalized to that knob's peak. Pull $S_{ik}=\mathrm{prior}_k J_{ik}/\sigma_i$
     (\texttt{sec3\_gradients/make.py:66}), diverging colormap. Shows \emph{where} each knob acts.}
   \label{fig:sec3_shape}
-\end{figure}
+\end{figure*}
 
 % TODO provenance: sec3_gradient_reach has no standalone generator found in the current sec3_gradients/ tree
 % (only make.py=shape and build_multisample.py=npz remain). A stale __pycache__ points at a retired
 % sec2_gradients/make_jacobian.py (different, jacfwd-based reach def, superseded). PNG title/split match
 % fisher_engine.gate1 exactly -> almost certainly a thin driver over that engine; re-locate/re-derive the
 % script before finalizing so the figure has a live source.
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec3_gradient_reach}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec3_gradient_reach}
   \caption{Per-knob raw gradient \emph{reach}: $\mathrm{reach}_k\cdot\mathrm{prior}_k=\sqrt{F_{kk}}\cdot\mathrm{prior}_k$
     over all 28 knobs (sorted bar chart), red $=$ passes combined Gate I. Magnitude-only complement to the
     shape figure. \textbf{[TODO provenance: no live generating script --- see LaTeX comment.]}}
   \label{fig:sec3_reach}
-\end{figure}
+\end{figure*}
 
 %% =====================================================================
 \section{Fitting and statistical interpretability}
@@ -569,7 +572,7 @@ $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\math
 
 \subsection{Headline recovery and posterior shape}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig41_recovery_ridge}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig41_recovery_ridge}
   \caption{\textbf{Headline 4.1.} Per-dial posterior ridgeline (MLE, label \texttt{sec4\_closure\_r16\_noprior}):
     each row overlays the EXACT non-Gaussian marginal (filled, from $\exp(-\Delta\chi^2_\mathrm{profile}/2)$)
     against the Gaussian $\mathcal N(\mathrm{BFP},\sigma_\mathrm{post})$ (grey), black tick $=$ injected truth,
@@ -577,26 +580,26 @@ $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\math
     height-rescaled to the sharper curve (cross-row width $=$ constraint, height not comparable).
     exact $=$ blue \texttt{\#1f4b9c}, Gaussian $=$ orange \texttt{\#fe6100}.}
   \label{fig:sec4_ridge}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig41_recovery}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig41_recovery}
   \caption{Recovery $+$ 1-D uncertainty (MAP, label \texttt{sec4\_closure\_random16}): per-dial best-fit vs
     injected truth with TWO error bars --- symmetric Gaussian $\sigma_\mathrm{post}$ (grey) and asymmetric
     68\% credible from the exact profile (blue). Where grey and blue disagree is the non-Gaussian tell.}
   \label{fig:sec4_recovery}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig42_dists}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig42_dists}
   \caption{Pre/post-closure observable distributions (MLE): $2\times2$ nominal (dotted grey) vs best-fit
     (solid blue) against closure data (black), across probe types (T2K $\delta p_T$, MINERvA $p_T^\mu$,
     $(e,e')$ $\omega_\mathrm{QE}$, $\pi^+$--C reaction $\sigma$). On the noiseless MLE closure the blue curve
     coincides with the data.}
   \label{fig:sec4_dists}
-\end{figure}
+\end{figure*}
 
 \subsection{The $E_b\!\ge\!0$ hard-wall non-Gaussian example}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.7\linewidth]{sec4_ebwall}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.7\linewidth]{sec4_ebwall}
   \caption{\textbf{Headline non-Gaussian example.} \texttt{Eb\_shift} posterior as a density: truncated profile
     posterior $\propto\exp(-\Delta\chi^2/2)$ for $E_b\ge0$ (blue, 68\% HPD band) vs Gaussian
     $\mathcal N(\hat E_b,\sigma)$ (red dashed, unphysical $E_b<0$ tail shaded). Inject $E_b\!\approx\!0.5$~MeV,
@@ -604,38 +607,38 @@ $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\math
     $E_b<0\!\rightarrow\!0$ (flat $\chi^2$) exposing the one-sided profile. Annotated: fraction of Gaussian
     probability that is unphysical.}
   \label{fig:sec4_ebwall}
-\end{figure}
+\end{figure*}
 
 \subsection{2-D corner and autodiff-Taylor validation}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig44_corner_reduced}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_fig44_corner_reduced}
   \caption{Reduced 2-D parameter corner (main body; MLE label \texttt{sec4\_closure\_r16\_noprior}): explicit
     dial subset in $\sigma_\mathrm{post}$ units. Off-diagonal $=$ exact 68/95\% contour (filled blue,
     $\Delta\chi^2\!=\!2.30,6.17$, 2 dof) vs Gaussian ellipse (dashed orange). Shows correlations/degeneracies
     and where the exact contour departs from the ellipse.}
   \label{fig:sec4_corner_reduced}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_closure_r16_noprior_corner_validate}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_closure_r16_noprior_corner_validate}
   \caption{Autodiff-Taylor corner validation: 4 dial pairs ($(0,1),(1,3),(0,13),(6,9)$), each overlaying
     exact numerical contour (black), 3rd-order Taylor $\chi^2$ (orange dashed, $J_b,B_b$), 4th-order
     (green dotted, adds $C_b$), Gaussian ellipse (grey dotted), at 68/95\% ($\Delta\chi^2\!=\!2.3,6.17$).
     Cross-checks the cheap polynomial-$\chi^2$ profiling against the expensive exact grid to the stated
     Taylor order over $\pm3.5\sigma$.}
   \label{fig:sec4_taylor_validate}
-\end{figure}
+\end{figure*}
 
 \subsection{Convergence, MLE unbiasedness, and prior pull}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_closure_r16_noprior_convergence}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_closure_r16_noprior_convergence}
   \caption{LM/Gauss--Newton trajectory: (a) objective vs step (log) --- $\chi^2_\mathrm{total}$ and
     $\chi^2_\mathrm{data}$; (b) per-dial $|\theta_k-\theta_k^*|/\sigma_{\mathrm{prior},k}$ vs step (log),
     coloured by physics block, 16 lines collapsing to 0. Full GN steps ($\mathrm{STEP\_SCALE}=1$) show the
     sharp late-iteration Newton collapse. Re-styles the saved \texttt{traj\_*} arrays, no re-fit.}
   \label{fig:sec4_convergence}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering
+\begin{figure*}[htbp]\centering
   \begin{subfigure}{0.48\linewidth}\centering\includegraphics[width=\linewidth]{sec4_mle_closure}
     \caption{MLE (prior OFF) best-fit $\pm$ data-only $\sigma=\sqrt{\mathrm{diag}((J^\top W J)^{-1})}$ vs
       truth; noiseless closure $\Rightarrow$ lands on truth, $\chi^2_\mathrm{data}\!\rightarrow\!0$ (unbiased).}\end{subfigure}\hfill
@@ -644,16 +647,16 @@ $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\math
       the gap IS the prior pull, largest for weakly-constrained dials (shrinkage $\rightarrow0.5$).}\end{subfigure}
   \caption{MLE unbiasedness and the MLE-vs-MAP prior pull.}
   \label{fig:sec4_mle_prior}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_closure_multisample}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_closure_multisample}
   \caption{Headline multisample closure (MAP, fixed 5-dial injection): (a) recovery panel truth vs blind
     $\chi^2$ BFP$\pm\sigma$ in prior-$\sigma$ units; (b) pulls $(\mathrm{BFP}-\mathrm{truth})/\sigma_\mathrm{post}$
     with $\pm1,\pm2\sigma$ bands; (c-e) T2K $\delta p_T$ / MINERvA $\delta p_T$ / $\pi^+\!\rightarrow$C
     reaction $\sigma$ overlays (data / nominal / BFP). Re-styles the cached fit; suptitle reports
     $\chi^2_\mathrm{data}/\mathrm{ndf}$.}
   \label{fig:sec4_closure_multisample}
-\end{figure}
+\end{figure*}
 
 \subsection{Coverage over a toy ensemble}
 
@@ -661,7 +664,7 @@ $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\math
 % style.save(fig,"sec4_coverage") regardless of label, so the current script cannot itself write this
 % filename -- it is almost certainly a manually renamed MLE-shard (S4_PRIOR_SCALE=0) output. Verify which
 % shard set produced it before citing numbers; re-running coverage_fig.py overwrites sec4_coverage, not this.
-\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig43a_coverage_mle}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig43a_coverage_mle}
   \caption{Coverage (MLE toy ensemble): (a) pooled pull $(\theta_\mathrm{fit}-\theta^*)/\sigma_\mathrm{fit}$
     vs $\mathcal N(0,1)$ (mean/std/KS $p$); (b) per-dial pull mean$\pm$std vs $\pm1\sigma$ band; (c)
     $\chi^2_\mathrm{data}$ across toys vs $\chi^2(\mathrm{ndf}=n_\mathrm{bin}-n_\mathrm{dial})$. Per toy:
@@ -670,33 +673,33 @@ $\mathrm{shrink}=\sqrt{\mathrm{diag}(V)}/\mathrm{prior}$ (Gate I $<0.5$), $\math
     Pooled pull $\approx\mathcal N(0,1)$ $\Rightarrow$ GN covariance calibrated across the prior volume.
     \textbf{[TODO provenance: PNG-only / renamed output --- see LaTeX comment.]}}
   \label{fig:sec4_coverage}
-\end{figure}
+\end{figure*}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig43b_ebcov}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.85\linewidth]{sec4_fig43b_ebcov}
   \caption{$E_b$ coverage at the physical wall: (a) per-toy 68\% intervals for \texttt{Eb\_shift}, Gaussian
     $[\hat\pm\sigma]$ (red) vs profile $\Delta\chi^2\!=\!1$ crossing (blue), near-wall truth $E_b^*\!\approx\!0.15$~MeV,
     shaded $E_b<0$; (b) empirical 68\% coverage, Gaussian vs profile, vs nominal 0.68. Gaussian under-covers
     near the wall; profile respects the boundary and covers $\sim$68\%.}
   \label{fig:sec4_ebcov}
-\end{figure}
+\end{figure*}
 
 \subsection{NUTS marginal vs.\ profile vs.\ Gaussian}
 % sec4_nuts_compare is in output/paper/ (requested by the task); not detailed in sec4.md's per-figure entries.
 % TODO provenance: sec4_nuts_compare not described in the Sec-4 reviewer md -- confirm generating script/label.
-\begin{figure}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_nuts_compare}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.8\linewidth]{sec4_nuts_compare}
   \caption{NUTS comparison: the exact HMC/NUTS marginal posterior against the profile-likelihood marginal
     and the Gaussian $\sigma_\mathrm{post}$ approximation --- cross-check that the profile-as-marginal used
     throughout Sec 4 matches a full MCMC sampling of the same nonlinear likelihood.
     \textbf{[TODO provenance: not described in the Sec-4 reviewer md --- confirm script/label.]}}
   \label{fig:sec4_nuts}
-\end{figure}
+\end{figure*}
 
 \subsection{Appendix: full 2-D corner}
 
-\begin{figure}[htbp]\centering\includegraphics[width=0.95\linewidth]{sec4_fig44_corner}
+\begin{figure*}[htbp]\centering\includegraphics[width=0.95\linewidth]{sec4_fig44_corner}
   \caption{Full $16\times16$ lower-triangular parameter corner (appendix): exact 68/95\% filled contours vs
     Gaussian ellipses, diagonal 1-D Gaussian marginals, all Gate-I dials.}
   \label{fig:sec4_corner_full}
-\end{figure}
+\end{figure*}
 
 \end{document}
