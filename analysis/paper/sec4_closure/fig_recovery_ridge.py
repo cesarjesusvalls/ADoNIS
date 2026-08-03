@@ -22,7 +22,8 @@ from analysis.paper import style
 from analysis.paper.physical_fit import PRIOR, theta_nominal
 from adonis.reweight.reweight_model import nominal_knobs
 
-C_GAUSS = "0.45"
+C_EXACT = "#1f4b9c"     # exact non-Gaussian posterior  (blue -- matches the 4.4 corner)
+C_GAUSS = "#fe6100"     # Gaussian posterior             (orange -- matches the 4.4 corner)
 ROWSCALE = 0.90         # peak height in row units (<1 -> every curve stays within its own row, uniform height)
 NX = 600
 
@@ -77,13 +78,12 @@ def main(label="sec4_closure_r16_noprior"):
         for i in range(n):
             y0 = n - 1 - i                                        # row 0 (first dial) on top
             baselines.append(y0)
-            col = style.KNOB_GROUP_COLOR[gid[i]]
             ax.axhline(y0, color="0.85", lw=0.6, zorder=y0 * 3)   # baseline separator
-            # Gaussian (grey line, faint fill) then exact (filled group colour) -- exact drawn on top
-            ax.plot(xc, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, lw=1.0, zorder=y0 * 3 + 1)
-            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, alpha=0.10, zorder=y0 * 3 + 1)
-            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_e[i], color=col, alpha=0.78,
-                            lw=0.9, edgecolor=style.darker(col), zorder=y0 * 3 + 2)
+            # Gaussian (orange, faint fill + line) then exact (blue fill) -- two colours, method-coded
+            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, alpha=0.16, zorder=y0 * 3 + 1)
+            ax.plot(xc, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, lw=1.2, zorder=y0 * 3 + 2)
+            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_e[i], color=C_EXACT, alpha=0.55,
+                            lw=1.0, edgecolor=style.darker(C_EXACT), zorder=y0 * 3 + 3)
             # injected-truth tick (black vertical line up to the exact density there)
             ht = ROWSCALE * float(np.interp(tx[i], xc, dens_e[i]))
             ax.plot([tx[i], tx[i]], [y0, y0 + max(ht, 0.40)], color="k", lw=1.1, zorder=y0 * 3 + 3)
@@ -108,12 +108,12 @@ def main(label="sec4_closure_r16_noprior"):
         for sp in ("top", "right", "left"):
             ax.spines[sp].set_visible(False)
         # legend above the plot (horizontal), clear of the densities
-        ax.fill_between([], [], color="#7b6f9e", alpha=0.78, label="exact posterior")
-        ax.plot([], [], color=C_GAUSS, lw=1.2, label=r"Gaussian $\mathcal{N}(\hat\theta,\sigma_{\rm post})$")
+        ax.fill_between([], [], color=C_EXACT, alpha=0.55, label="exact posterior")
+        ax.plot([], [], color=C_GAUSS, lw=1.4, label=r"Gaussian $\mathcal{N}(\hat\theta,\sigma_{\rm post})$")
         ax.plot([], [], color="k", lw=1.1, label="injected truth")
         ax.legend(fontsize=9, loc="lower left", bbox_to_anchor=(0.0, 1.005), ncol=3,
                   frameon=False, columnspacing=1.6, handlelength=1.6)
-        ax.set_title("Sec 4.1  per-dial posterior: exact (filled) vs Gaussian (grey)",
+        ax.set_title("Sec 4.1  per-dial posterior: exact (blue) vs Gaussian (orange)",
                      fontsize=11.5, loc="left", pad=22)
         fig.tight_layout()
         style.save(fig, "sec4_fig41_recovery_ridge")
