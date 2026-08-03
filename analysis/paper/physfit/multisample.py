@@ -81,6 +81,26 @@ class BankSample:
         self._jvp3 = jax.jit(lambda th, u, w, x, JB: jax.jvp(
             lambda t3: jax.jvp(lambda t2: jax.jvp(lambda t1: _w(t1, JB), (t2,), (u,))[1], (t3,), (w,))[1],
             (th,), (x,))[1])
+        self._wbase = _w; self._ddn = {}                          # generic depth-k nested-jvp cache
+
+    def _ddfn(self, k):
+        """jit'd depth-k mixed directional derivative: fn(th, T, JB) = sum d^k w . T[0]...T[k-1]."""
+        f = self._ddn.get(k)
+        if f is None:
+            _w = self._wbase
+            def make(kk):
+                def fn(th, T, JB):
+                    def rec(d, t):
+                        return _w(t, JB) if d == 0 else jax.jvp(lambda u: rec(d - 1, u), (t,), (T[d - 1],))[1]
+                    return rec(kk, th)
+                return jax.jit(fn)
+            f = make(k); self._ddn[k] = f
+        return f
+
+    def ddn_binned(self, theta, tangents):
+        """Binned MIXED k-th directional derivative along the k tangent vectors in `tangents`."""
+        g = np.asarray(self._ddfn(len(tangents))(jnp.asarray(theta), jnp.asarray(np.stack(tangents)), self.JB))
+        return np.concatenate([IC.bin_w0(d, g) for d in self.ds])
 
     def weights(self, theta):
         return np.asarray(self._wf(jnp.asarray(theta), self.JB))
@@ -119,6 +139,24 @@ class BeamSample:
             sl = slice(i * nb, (i + 1) * nb)
             self.ds.append(dict(name=f"{beam} {key}", key=key, nbin=nb, edges=self.m["edges"],
                                 data=c[sl].copy(), sigma=s[sl].copy(), mcerr=e[sl].copy()))
+        self._ddn = {}                                            # generic depth-k nested-jvp cache
+
+    def _ddfn(self, k):
+        f = self._ddn.get(k)
+        if f is None:
+            wf = self.m["w_of"]
+            def make(kk):
+                def fn(th, T):
+                    def rec(d, t):
+                        return wf(t) if d == 0 else jax.jvp(lambda u: rec(d - 1, u), (t,), (T[d - 1],))[1]
+                    return rec(kk, th)
+                return jax.jit(fn)
+            f = make(k); self._ddn[k] = f
+        return f
+
+    def ddn_binned(self, theta, tangents):
+        g = self._ddfn(len(tangents))(jnp.asarray(theta), jnp.asarray(np.stack(tangents)))
+        return self.m["binned"](np.asarray(g))
 
     def weights(self, theta):
         return np.asarray(self.m["w_of"](jnp.asarray(theta)))
@@ -171,6 +209,10 @@ class MultiEngine:
     def dd3(self, theta, u, w, x):
         """Binned MIXED 3rd directional derivative d3m(u,w,x) of the FULL stacked model."""
         return np.concatenate([s.dd3_binned(theta, u, w, x) for s in self.samples])
+
+    def ddn(self, theta, tangents):
+        """Binned MIXED k-th directional derivative (k = len(tangents)) of the FULL stacked model."""
+        return np.concatenate([s.ddn_binned(theta, tangents) for s in self.samples])
 
     def data_sigma(self):
         return (np.concatenate([d["data"] for d in self.ds]),
