@@ -80,11 +80,11 @@ def main(label="sec4_closure_r16_noprior"):
             y0 = n - 1 - i                                        # row 0 (first dial) on top
             baselines.append(y0)
             ax.axhline(y0, color="0.85", lw=0.6, zorder=y0 * 3)   # baseline separator
-            # Gaussian (orange, faint fill + line) then exact (blue fill) -- two colours, method-coded
-            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, alpha=0.10, zorder=y0 * 3 + 1)
-            ax.plot(xc, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, lw=1.2, zorder=y0 * 3 + 2)
-            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_e[i], color=C_EXACT, alpha=0.38,
-                            lw=1.0, edgecolor=style.darker(C_EXACT), zorder=y0 * 3 + 3)
+            # both densities drawn the SAME way: matching semi-transparent fill + edge line (method-coded)
+            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_g[i], color=C_GAUSS, alpha=0.30,
+                            lw=1.2, edgecolor=C_GAUSS, zorder=y0 * 3 + 1)
+            ax.fill_between(xc, y0, y0 + ROWSCALE * dens_e[i], color=C_EXACT, alpha=0.30,
+                            lw=1.2, edgecolor=style.darker(C_EXACT), zorder=y0 * 3 + 2)
             # injected-truth tick (black vertical line up to the exact density there)
             ht = ROWSCALE * float(np.interp(tx[i], xc, dens_e[i]))
             ax.plot([tx[i], tx[i]], [y0, y0 + max(ht, 0.40)], color="k", lw=1.1, zorder=y0 * 3 + 3)
@@ -109,8 +109,10 @@ def main(label="sec4_closure_r16_noprior"):
         for sp in ("top", "right", "left"):
             ax.spines[sp].set_visible(False)
         # legend above the plot (horizontal), clear of the densities
-        ax.fill_between([], [], color=C_EXACT, alpha=0.38, label="exact posterior")
-        ax.plot([], [], color=C_GAUSS, lw=1.4, label=r"Gaussian $\mathcal{N}(\hat\theta,\sigma_{\rm post})$")
+        ax.fill_between([], [], color=C_EXACT, alpha=0.30, lw=1.2, edgecolor=style.darker(C_EXACT),
+                        label="exact posterior")
+        ax.fill_between([], [], color=C_GAUSS, alpha=0.30, lw=1.2, edgecolor=C_GAUSS,
+                        label=r"Gaussian $\mathcal{N}(\hat\theta,\sigma_{\rm post})$")
         ax.plot([], [], color="k", lw=1.1, label="injected truth")
         ax.legend(fontsize=9, loc="lower left", bbox_to_anchor=(0.0, 1.005), ncol=3,
                   frameon=False, columnspacing=1.6, handlelength=1.6)
