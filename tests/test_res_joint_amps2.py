@@ -76,6 +76,49 @@ def test_res_reduced_mixed_second_derivative():
     assert np.isfinite(d2) and abs(d2) > 1e-8, d2
 
 
+# ---- wiring + first-order invariance vs the legacy per-knob product ----
+from adonis.reweight.amps2_records import (build_res_ma_records, build_res_pionpole_records,
+                                        build_res_pw_records, strength_reweight, ma_reweight)
+
+_MAREC = build_res_ma_records(*_ARG, _IP, _PP)
+_PPREC = build_res_pionpole_records(*_ARG, _IP, _PP)
+_DLREC = build_res_pw_records(*_ARG, _IP, _PP, dcc._DELTA_WAVE)
+_GOOD = np.isfinite(_Q2) & (np.abs(_M).sum(axis=(1, 2)) > 0)
+
+
+def _old_hv_res(k):
+    return (ma_reweight(_MAREC, k.M_A_res) * strength_reweight(_MAREC, k.res_axial_strength)
+            * strength_reweight(_PPREC, k.pion_pole) * strength_reweight(_DLREC, k.delta_strength))
+
+
+_RES_SINGLE = [("M_A_res", 1.05), ("res_axial_strength", 0.85), ("pion_pole", 1.2), ("delta_strength", 0.9)]
+
+
+def test_res_single_knob_matches_legacy():
+    nom = nominal_knobs()
+    for fld, val in _RES_SINGLE:
+        wn = np.asarray(res_reduced_reweight(_REC, nom._replace(**{fld: val})))
+        wo = np.asarray(_old_hv_res(nom._replace(**{fld: val})))
+        assert np.allclose(wn[_GOOD], wo[_GOOD], rtol=1e-4), fld
+
+
+def test_res_first_order_invariance():
+    nom = nominal_knobs(); keep = jnp.asarray(_GOOD)
+    for fld, _ in _RES_SINGLE:
+        x0 = float(getattr(nom, fld))
+        fn = lambda x: jnp.sum(jnp.where(keep, res_reduced_reweight(_REC, nom._replace(**{fld: x})), 0.0))
+        fo = lambda x: jnp.sum(jnp.where(keep, _old_hv_res(nom._replace(**{fld: x})), 0.0))
+        gn, go = float(jax.grad(fn)(x0)), float(jax.grad(fo)(x0))
+        assert abs(gn - go) / max(abs(go), 1e-30) < 1e-4, (fld, gn, go)
+
+
+def test_hv_res_dispatch():
+    from adonis.reweight.reweight_model import _hv_res
+    HV = {"res_reduced": _REC}
+    k = nominal_knobs()._replace(res_axial_strength=1.1, pion_pole=0.9)
+    assert np.allclose(np.asarray(_hv_res(k, HV)), np.asarray(res_reduced_reweight(_REC, k)), rtol=1e-12)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
