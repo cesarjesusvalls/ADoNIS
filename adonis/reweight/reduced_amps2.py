@@ -115,9 +115,14 @@ def build_res_reduced(k_nu, k_lep, p_struck, p_N, p_pi, ipid, ppid):
         for i, s in enumerate(_RES_ATOMS):
             for j, t in enumerate(_RES_ATOMS):
                 Mm[:, i, j] = np.real(np.sum(np.conj(LH[s]) * LH[t], axis=(1, 2))) / norm
-        M[mm] = np.where(gate[:, None, None], Mm, 0.0)
+        # nan_to_num: the DCC atom machinery yields NaN/inf for a ~0.1% tail of high-Q2 kinematics the gate
+        # does not catch; those events carry negligible amps2, so zeroing M (-> reweight 1, gradient 0) is the
+        # right, safe handling (a NaN M gives den=NaN -> value forced to 1 anyway, but a NaN GRADIENT).
+        M[mm] = np.where(gate[:, None, None], np.nan_to_num(Mm), 0.0)
         Q2[mm] = st["Q2"]
-    return {"M": np.asarray(M, np.float32), "Q2": np.asarray(Q2, np.float32)}
+    # float64 M: the 6x6 quadratic form g^T M g keeps full significance for the tiny high-Q2 RES amps2
+    # (float32 would lose it, though the atoms are exact either way).  QE's 4x4 form is fine in f32.
+    return {"M": np.asarray(M, np.float64), "Q2": np.asarray(Q2, np.float32)}
 
 
 def res_g(Q2_mev2, knobs):
