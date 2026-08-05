@@ -43,7 +43,8 @@ def refresh_chunk(inpath, outpath):
         Mr[res] = np.asarray(rr["M"], np.float32); Q2r[res] = np.asarray(rr["Q2"], np.float32)
     out = {k: v for k, v in B.items() if not k.startswith(_DROP)}
     out.update(hv_qe_mij=Mq, hv_qe_Q2=Q2q, hv_res_mij=Mr, hv_res_Q2=Q2r)
-    np.savez(outpath, **out)
+    tmp = outpath + ".tmp.npz"                          # atomic: a preempted job leaves no half-written chunk
+    np.savez(tmp, **out); os.replace(tmp, outpath)
     return int(qe.sum()), int(res.sum()), n
 
 
@@ -53,11 +54,16 @@ def main():
     chunks = sorted(glob.glob(os.path.join(src, "chunk_*.npz")))
     if not chunks:
         raise SystemExit(f"no chunk_*.npz in {src}")
-    nq = nr = nt = 0
+    nq = nr = nt = skip = 0
     for i, c in enumerate(chunks):
-        q, r, t = refresh_chunk(c, os.path.join(dst, os.path.basename(c)))
+        op = os.path.join(dst, os.path.basename(c))
+        if os.path.exists(op):                         # RESUMABLE: skip chunks already written (atomic -> complete)
+            skip += 1
+            continue
+        q, r, t = refresh_chunk(c, op)
         nq += q; nr += r; nt += t
         print(f"[{i + 1}/{len(chunks)}] {os.path.basename(c)}  QE={q} RES={r} /{t}", flush=True)
+    print(f"(resumed: {skip} chunks already present)", flush=True)
     man = os.path.join(src, "manifest.json")
     if os.path.exists(man):
         shutil.copy(man, os.path.join(dst, "manifest.json"))
