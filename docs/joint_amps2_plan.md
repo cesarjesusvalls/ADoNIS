@@ -1,6 +1,24 @@
 # Joint amps2 hard-vertex reweight — flexible reduced-quadratic design (QE + RES)
 
-**Status:** planned. Implement QE first (gates → refresh QE records → commit/push), then RES.
+## Progress (branch joint-amps2)
+- **QE core** (`8be37ba`): `dirac.return_structures` + `reduced_amps2.py` (`build_qe_reduced`, `qe_F`,
+  `qe_reduced_reweight`); exactness/joint/mixed-2nd-deriv gates pass.
+- **QE wiring** (`2de5873`): `_hv_qe` via `qe_joint` switch; first-order-invariance gate (caught a q2>0 vs
+  Q2_FF>-TCUT mask mismatch — fixed so it's an exact drop-in).
+- **QE bank refresh** (`e256a91`): `bank_reweight` reads `hv_qe_mij`; `jobs/refresh_qe_mij.py` rebuilds M from
+  stored kinematics — **p_out = k_nu + p_struck - k_lep** (2-body conservation; verified to reproduce the
+  stored records to float32); handles the **k_mu/k_lep** chunk schema drift. **nu_T2K_C refreshed + validated
+  + swapped LIVE** (nominal exact; single-knob ~1e-7; JOINT median 1.6%/max 6.4%; first-order grads identical);
+  backup at `merged_perknob`. **nu_MINERvA_C / nu_uBooNE_Ar held on legacy** (see refresh decision below).
+- **Next:** RES (§4), then the combined refresh.
+
+## Refresh decision (chosen)
+RES will also need a refresh (its records are still per-knob). To avoid rewriting each 30 GB bank twice,
+**hold the MINERvA/uBooNE swaps and do ONE combined QE+RES refresh** once RES lands (regenerate `merged_mij`
+QE+RES from the untouched legacy `merged`, validate, swap). T2K is already QE-live → RES-only second pass.
+No event regeneration in either channel (all kinematics are in the banks).
+
+**Status:** QE done (core+wiring+CC bank refresh, T2K live); RES next; then the combined refresh.
 **Scope:** the *hard-vertex* reweight `r_vertex` only. `w = w0·r_vertex·r_FSI·r_SF`; FSI (`cascade.pool_fsi_reweight`)
 and SF (`sf_reweight`) already take all their knobs jointly-exact in closed form, and the blocks share no knobs, so
 once `r_vertex` is exact the full weight is exact and any-order differentiable in all 28 dials.
