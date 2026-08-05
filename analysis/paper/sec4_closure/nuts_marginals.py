@@ -65,7 +65,7 @@ def main():
     def run_chain(seed):
         key = jax.random.PRNGKey(seed)
         wk, sk = jax.random.split(key)
-        warmup = blackjax.window_adaptation(blackjax.nuts, logdensity, progress_bar=False)
+        warmup = blackjax.window_adaptation(blackjax.nuts, logdensity)
         (state, params), _ = warmup.run(wk, jnp.zeros(nsub), num_steps=NWARM)
         step = jax.jit(blackjax.nuts(logdensity, **params).step)
 
