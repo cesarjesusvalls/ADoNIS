@@ -206,7 +206,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             if do_qe and do_res:                                 # differentiable (e,e') hard-vertex records
                 from adonis.reweight.reweight_model import build_hv_sf
                 nq = ns[0]; nr = ns[-1]; qraw = evs[0][1]["_raw"]; rraw = evs[-1][1]["_raw"]
-                HV, _SF = build_hv_sf(qraw, rraw, sf, with_pw=False, probe="EM")   # vector+FF+SF; axial->identity
+                # qe_joint=False: keep storing the legacy per-knob (a,b,c) records until the M-record refresh
+                HV, _SF = build_hv_sf(qraw, rraw, sf, with_pw=False, probe="EM", qe_joint=False)
                 hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
                 hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
                 hv = dict(qe_ma=hv_q(HV["qe_ma"]), res_ma=hv_r(HV["res_ma"]), qe_vec=hv_q(HV["qe_vec"]),
@@ -230,7 +231,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             # fails loud on a bank without hv_* (see adonis/reweight/bank_reweight).  Skip for NC -- this
             # block was unreachable while NC was RES-only (do_qe False); NC QE+RES now reaches it.
             if do_qe and do_res and not NC:
-                HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False)
+                HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False, qe_joint=False)   # legacy per-knob storage
                 hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
                 hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
                 qe_ma = [np.concatenate([np.asarray(HV["qe_ma"][i], np.float32), _idma(nr)[i]]) for i in range(4)]

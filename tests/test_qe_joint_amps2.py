@@ -31,7 +31,9 @@ _KN, _KM, _PS, _PO = (jnp.asarray(_QE[k]) for k in ("k_nu", "k_lep", "p_struck",
 _REC = build_qe_reduced(_KN, _KM, _PS, _PO)
 _M, _Q2 = np.asarray(_REC["M"]), np.asarray(_REC["Q2"])
 _A_NOM = np.asarray(me_cross_section(_KN, _KM, _PS, _PO)["amps2"])
-_VALID = np.isfinite(_A_NOM) & (_A_NOM > 0)                    # drop rejected/unphysical draws
+# shared validity: physical amps2 AND q2>0 (the legacy records' mask, which build_qe_reduced matches).
+# The near-threshold q2<=0 events get hard-vertex reweight==1 in BOTH paths (placeholder), so exclude them.
+_VALID = np.isfinite(_A_NOM) & (_A_NOM > 0) & (_Q2 > 0)
 
 
 def _FtMF(F):
@@ -96,6 +98,72 @@ def test_qe_reduced_mixed_second_derivative_nonzero_and_correct():
              - float(logsumw_direct(1 - e, 1 + e)) + float(logsumw_direct(1 - e, 1 - e))) / (4 * e * e)
     assert abs(d2_ad) > 1e-6, "mixed 2nd derivative is ~0 -- the cross term is missing"
     assert abs(d2_ad - d2_fd) / max(abs(d2_fd), 1e-30) < 1e-3, (d2_ad, d2_fd)
+
+
+# ---- wiring (step 1) + first-order invariance (step 2): joint vs the legacy per-knob product ----
+from adonis.reweight.amps2_records import (build_qe_ma_records, build_qe_vector_records,
+                                        build_qe_ff_records, ma_reweight, strength_reweight)
+
+_MAREC = build_qe_ma_records(_KN, _KM, _PS, _PO)
+_VREC = build_qe_vector_records(_KN, _KM, _PS, _PO)
+_FF = {k: build_qe_ff_records(_KN, _KM, _PS, _PO, k) for k in ("gmp", "gmn", "gep", "gen")}
+
+
+def _old_hv_qe(k):
+    """The legacy per-knob product (reweight_model._hv_qe, qe_joint=False)."""
+    return (ma_reweight(_MAREC, k.M_A_qe) * strength_reweight(_MAREC, k.axial_strength)
+            * strength_reweight(_VREC, k.vector_strength) * strength_reweight(_FF["gmp"], k.mu_p)
+            * strength_reweight(_FF["gmn"], k.mu_n) * strength_reweight(_FF["gep"], k.gep)
+            * strength_reweight(_FF["gen"], k.gen))
+
+
+_SINGLE = [("vector_strength", 1.2), ("axial_strength", 0.85), ("M_A_qe", 1.05),
+           ("gep", 1.1), ("gen", 0.95), ("mu_p", 0.9), ("mu_n", 1.1)]
+
+
+def test_single_knob_matches_legacy():
+    """Moving ONE knob: joint == the old per-knob reweight (the old code is exact single-axis -> no regression)."""
+    nom = nominal_knobs()
+    for fld, val in _SINGLE:
+        w_new = np.asarray(qe_reduced_reweight(_REC, nom._replace(**{fld: val})))
+        w_old = np.asarray(_old_hv_qe(nom._replace(**{fld: val})))
+        assert np.allclose(w_new[_VALID], w_old[_VALID], rtol=1e-9), fld
+
+
+def test_first_order_invariance():
+    """d(sum w)/d(knob) at nominal == the legacy value, per knob -> the Jacobian/Fisher (sec2/sec3) are unchanged."""
+    nom = nominal_knobs(); keep = jnp.asarray(_VALID)
+    for fld, _ in _SINGLE:
+        x0 = float(getattr(nom, fld))
+        f_new = lambda x: jnp.sum(jnp.where(keep, qe_reduced_reweight(_REC, nom._replace(**{fld: x})), 0.0))
+        f_old = lambda x: jnp.sum(jnp.where(keep, _old_hv_qe(nom._replace(**{fld: x})), 0.0))
+        g_new, g_old = float(jax.grad(f_new)(x0)), float(jax.grad(f_old)(x0))
+        assert abs(g_new - g_old) / max(abs(g_old), 1e-30) < 1e-6, (fld, g_new, g_old)
+
+
+def test_hv_qe_dispatch():
+    """build_hv_sf(qe_joint=True) puts 'qe_reduced' in HV and _hv_qe routes to the joint reweight."""
+    from adonis.reweight.reweight_model import _hv_qe
+    HV = {"qe_reduced": _REC, "qe_probe": "CC", "qe_isp": None}
+    k = nominal_knobs()._replace(vector_strength=1.1, axial_strength=0.9, gep=1.05)
+    assert np.allclose(np.asarray(_hv_qe(k, HV)), np.asarray(qe_reduced_reweight(_REC, k)), rtol=1e-12)
+
+
+def test_qe_mij_exact_em():
+    """EM probe: F^T M F (vector-only, struck nucleon's own FFs) == direct EM amps2."""
+    isp = jnp.asarray(np.arange(N) % 2 == 0)
+    rec = build_qe_reduced(_KN, _KM, _PS, _PO, probe="EM", is_proton=isp)
+    Mem = jnp.asarray(rec["M"]); Q2 = jnp.asarray(rec["Q2"])
+    a_nom = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, probe="EM", is_proton=isp)["amps2"])
+    valid = np.isfinite(a_nom) & (a_nom > 0) & (np.asarray(Q2) > 0)   # q2>0: the reduced record's mask
+    for v, fs in [(1.0, {}), (1.2, {"gep": 1.1}), (0.8, {"gmp": 0.9, "gep": 1.05})]:
+        ff = nucleon_ff(Q2 / 1.0e6, ff_scale=fs)
+        f1 = jnp.where(isp, ff["F1p"], ff["F1n"]) * v; f2 = jnp.where(isp, ff["F2p"], ff["F2n"]) * v
+        F = jnp.stack([f1, f2, jnp.zeros_like(f1), jnp.zeros_like(f1)], axis=-1)
+        lhs = np.asarray(jnp.einsum('ni,nij,nj->n', F, Mem, F))
+        rhs = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, vector_scale=v, ff_scale=fs or None,
+                                          probe="EM", is_proton=isp)["amps2"])
+        assert np.allclose(lhs[valid], rhs[valid], rtol=1e-9), (v, fs)
 
 
 if __name__ == "__main__":

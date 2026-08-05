@@ -42,7 +42,17 @@ def _qe_hv(qa, **kw):
                 qe_gep=build_qe_ff_records(*qa, "gep", **kw), qe_gen=build_qe_ff_records(*qa, "gen", **kw))
 
 
-def build_hv_sf(qe, res, sf, with_pw=True, probe="CC"):
+def _qe_records(qa, probe, isp, qe_joint):
+    """The QE slice of HV.  qe_joint=True (default): the EXACT reduced-quadratic record (one 4x4 M covering all
+    cross terms; _hv_qe -> qe_reduced_reweight).  qe_joint=False: the legacy per-knob (a,b,c) records (product;
+    exact only to first order).  The switch keeps the old path alive until the banks carry M (docs/joint_amps2_plan)."""
+    if qe_joint:
+        from adonis.reweight.reduced_amps2 import build_qe_reduced
+        return {"qe_reduced": build_qe_reduced(*qa, probe=probe, is_proton=isp), "qe_probe": probe, "qe_isp": isp}
+    return _qe_hv(qa, probe=probe, is_proton=isp)
+
+
+def build_hv_sf(qe, res, sf, with_pw=True, probe="CC", qe_joint=True):
     """Build the per-channel hard-vertex amps2 records + SF grids/points ONCE (theta-independent).
     with_pw=False skips the 14 DCC partial-wave records (the dominant build cost) -> pw_norm has no effect.
 
@@ -60,14 +70,14 @@ def build_hv_sf(qe, res, sf, with_pw=True, probe="CC"):
         qa = (qe["k_e"], qe["k_lep"], qe["p_struck"], qe["p_out"]); isp = np.asarray(qe["is_p"])
         nres = len(np.asarray(res["p_N"]))
         # RES hard-vertex records are identity for EM (the EM-Delta / delta_strength handle is a v2 item)
-        HV = dict(**_qe_hv(qa, probe="EM", is_proton=isp),
+        HV = dict(**_qe_records(qa, "EM", isp, qe_joint),
                   res_ma=_ident_rec(nres), res_pp=_ident_rec(nres), res_delta=_ident_rec(nres), res_pw=None)
         return HV, SF
 
     qa = (qe["k_nu"], qe["k_lep"], qe["p_struck"], qe["p_out"])
     ra = (res["k_nu"], res["k_lep"], res["p_struck"], res["p_N"], res["p_pi"])
     ip, pp = np.asarray(res["ipid"]), np.asarray(res["ppid"])
-    HV = dict(**_qe_hv(qa),
+    HV = dict(**_qe_records(qa, "CC", None, qe_joint),
               res_ma=build_res_ma_records(*ra, ip, pp), res_pp=build_res_pionpole_records(*ra, ip, pp),
               res_delta=build_res_pw_records(*ra, ip, pp, _DELTA_WAVE),   # P33 Delta(1232) strength knob
               res_pw=[build_res_pw_records(*ra, ip, pp, w) for w in range(_NPW)] if with_pw else None)
@@ -75,6 +85,9 @@ def build_hv_sf(qe, res, sf, with_pw=True, probe="CC"):
 
 
 def _hv_qe(k, HV):
+    if "qe_reduced" in HV:      # EXACT joint reduced-quadratic path (all cross terms; any-order differentiable)
+        from adonis.reweight.reduced_amps2 import qe_reduced_reweight
+        return qe_reduced_reweight(HV["qe_reduced"], k, probe=HV.get("qe_probe", "CC"), is_proton=HV.get("qe_isp"))
     return (ma_reweight(HV["qe_ma"], k.M_A_qe) * strength_reweight(HV["qe_ma"], k.axial_strength)
             * strength_reweight(HV["qe_vec"], k.vector_strength) * strength_reweight(HV["qe_gmp"], k.mu_p)
             * strength_reweight(HV["qe_gmn"], k.mu_n) * strength_reweight(HV["qe_gep"], k.gep)

@@ -45,7 +45,13 @@ def build_qe_reduced(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=None):
     LH = jnp.einsum('...am,...sbm->...sab', Lm, Hs)                    # (...,4s,4a,4b) = L_a . H_s,b
     m = jnp.einsum('...sab,...tab->...st', jnp.conj(LH), LH)           # (...,4s,4t) Hermitian
     M = jnp.real(m)                                                    # amps2 = F^T M F  (F real -> Im cancels)
-    return {"M": np.asarray(M), "Q2": np.asarray(_q2_mev2(kn, km))}
+    # Match the legacy per-knob records' validity mask (build_qe_*_records: ok = q2 > 0), so the reduced
+    # record is an EXACT drop-in -- same events counted, first derivatives (Jacobian/Fisher) unchanged.  The
+    # near-threshold q2<=0 events (dirac's wider Q2_FF>-TCUT mask keeps them) are dropped identically to the
+    # old records; revisiting that acceptance is a separate change, not part of the cross-term fix.
+    Q2 = _q2_mev2(kn, km)
+    M = jnp.where((Q2 > 0)[..., None, None], M, 0.0)
+    return {"M": np.asarray(M), "Q2": np.asarray(Q2)}
 
 
 def qe_F(Q2_mev2, knobs, probe="CC", is_proton=None):
