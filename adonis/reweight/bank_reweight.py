@@ -26,7 +26,7 @@ def default_grids():
 def bank_weight(B, knobs, grids):
     """Exact per-event weight w(theta) (N,).  knobs: a PhysicsParams (adonis.core.params); grids: sf_grids output."""
     k = knobs
-    if "hv_qe_ma_a" not in B:
+    if "hv_qe_ma_a" not in B and "hv_qe_mij" not in B:
         # Fail loud, not with a cryptic deep KeyError.  NC RES-only banks (channels=[res]) never write
         # hard-vertex records, and NC QE nuclear generation is not implemented, so their differentiable
         # weight is undefined -- the sec2/sec3 gradient machinery does not yet support NC.  NC selections
@@ -34,15 +34,25 @@ def bank_weight(B, knobs, grids):
         raise KeyError("bank_weight: bank carries no hard-vertex (hv_*) records; NC banks are not "
                        "reweightable through this path (see adonis/workflow NC selection helpers).")
     def ma(name): return (B[f"hv_{name}_a"], B[f"hv_{name}_b"], B[f"hv_{name}_c"], B[f"hv_{name}_Q2"])
-    qe_ma, res_ma = ma("qe_ma"), ma("res_ma")
-    hv = (ma_reweight(qe_ma, k.M_A_qe) * ma_reweight(res_ma, k.M_A_res)
-          * strength_reweight(qe_ma, k.axial_strength) * strength_reweight(res_ma, k.res_axial_strength)
-          * strength_reweight(ma("qe_vec"), k.vector_strength)
-          * strength_reweight(ma("qe_gmp"), k.mu_p) * strength_reweight(ma("qe_gmn"), k.mu_n)
-          * strength_reweight(ma("qe_gep"), k.gep) * strength_reweight(ma("qe_gen"), k.gen)
-          * strength_reweight(ma("res_pp"), k.pion_pole))
+    # RES stays on the per-knob records (its joint decomposition is a later step); QE takes the exact
+    # reduced-quadratic M when the bank has been refreshed (hv_qe_mij), else the legacy per-knob product.
+    res_ma = ma("res_ma")
+    res = (ma_reweight(res_ma, k.M_A_res) * strength_reweight(res_ma, k.res_axial_strength)
+           * strength_reweight(ma("res_pp"), k.pion_pole))
     if "hv_res_delta_a" in B:                      # optional P33 Delta-strength knob (banks that carry it)
-        hv = hv * strength_reweight(ma("res_delta"), k.delta_strength)
+        res = res * strength_reweight(ma("res_delta"), k.delta_strength)
+    if "hv_qe_mij" in B:
+        from adonis.reweight.reduced_amps2 import qe_reduced_reweight
+        probe = "EM" if int(np.asarray(B.get("qe_probe_em", 0)).item() if "qe_probe_em" in B else 0) else "CC"
+        qe = qe_reduced_reweight({"M": B["hv_qe_mij"], "Q2": B["hv_qe_Q2"]}, k,
+                                 probe=probe, is_proton=B.get("hv_qe_isp"))
+    else:
+        qe_ma = ma("qe_ma")
+        qe = (ma_reweight(qe_ma, k.M_A_qe) * strength_reweight(qe_ma, k.axial_strength)
+              * strength_reweight(ma("qe_vec"), k.vector_strength)
+              * strength_reweight(ma("qe_gmp"), k.mu_p) * strength_reweight(ma("qe_gmn"), k.mu_n)
+              * strength_reweight(ma("qe_gep"), k.gep) * strength_reweight(ma("qe_gen"), k.gen))
+    hv = qe * res
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
     rec["n_events"] = len(B["w0"])               # ragged reduction needs the event count
     fsi = pool_fsi_reweight(rec, k.sabs, 1.0, s_piN_elastic=k.s_piN_elastic, s_piN_cex=k.s_piN_cex,
