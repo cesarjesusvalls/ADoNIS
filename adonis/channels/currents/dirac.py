@@ -113,8 +113,21 @@ def _spinors(p3, E):
     return u, ubar
 
 
+def _ubar_vtx_u(vtx, u_in, ubar_out):
+    """H[...,combo,mu] = ubar_out[f1] . vtx[mu] . u_in[i1], combos ordered (i1 init outer, f1 final inner)
+    -- matching ACHILLES cur(i+2*(j-1)).  The single home of the spinor sandwich, shared by the summed
+    current and the per-structure (return_structures) unit currents so the two cannot drift."""
+    out = []
+    for i1 in range(2):          # initial spin
+        Vu = jnp.einsum('...mij,...j->...mi', vtx, u_in[..., i1, :])     # (...,4mu,4)
+        for f1 in range(2):      # final spin
+            out.append(jnp.einsum('...i,...mi->...m', ubar_out[..., f1, :], Vu))
+    return jnp.stack(out, axis=-2)                                       # (...,4combo,4mu)
+
+
 def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scale=1.0, vector_scale=1.0,
-                            ff_scale=None, probe="CC", is_proton=None, coupl1_quirk=False):
+                            ff_scale=None, probe="CC", is_proton=None, coupl1_quirk=False,
+                            return_structures=False):
     """All (...,4) MeV.  p_in_nuc OFF-SHELL struck nucleon (E=mN-removal); p_out_nuc outgoing
     (mp-on-shell energy).  Returns H (...,4combo,4mu) matching ACHILLES cur(i+2*(j-1)).
     axial_scale (scalar or (...,)) multiplies FA and FAP (FAP ~ FA): the M_A reweight hook;
@@ -207,16 +220,27 @@ def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scal
 
     u_in, _ = _spinors(p3_in, E_in_on)                           # incoming: mN-on-shell energy
     _, ubar_out = _spinors(p_out_nuc[..., 1:], p_out_nuc[..., 0])  # outgoing: actual (mp) energy
-    # H[mu]_(i1 init, f1 final) = ubar_out[f1] . J_1[mu] . u_in[i1]
-    out = []
-    for i1 in range(2):          # initial spin
-        Vu = jnp.einsum('...mij,...j->...mi', vtx, u_in[..., i1, :])     # (...,4mu,4)
-        for f1 in range(2):      # final spin
-            out.append(jnp.einsum('...i,...mi->...m', ubar_out[..., f1, :], Vu))
-    # ACHILLES cur(i+2*(j-1),:) = J_mu(j=final, i=initial); order loop i1(init) outer, f1(final) inner
-    H = jnp.stack(out, axis=-2)                                  # (...,4combo,4mu)
+    ok = (_FF_TCUT + Q2_FF) > 0.0
     # Zero the unphysical (Q2 < -TCUT) events so amps2 -> 0, matching ACHILLES's post-hoc
     # `if(isnan(amps2)) amps2=0` (XSecBackend.cc:156).  H is already finite (safe sqrts above), so this
     # mask is gradient-clean; for every physical Q2>=0 the condition is True -> exact no-op.
-    ok = (_FF_TCUT + Q2_FF) > 0.0
+
+    if return_structures:
+        # The FOUR unit currents H_i (kinematics only) for the reduced-quadratic amps2:  H = sum_i F_i H_i,
+        # F_i the REAL form factors (F1p-F1n, F2p-F2n, FA, FAP) x dial scales, H_i the current with the i-th
+        # vertex term at unit form factor -- COUPL and the intrinsic factors (i/2m, q^mu/m) folded IN, so
+        # F_i is coupling-free.  amps2 = sum_ij F_i F_j Re[ sum_ab (L.H_i)*(L.H_j) ] exactly (see reduced_amps2).
+        cpl = {"CC": _COUPL_CC, "EM": _COUPL_EM}.get(probe)
+        if cpl is None:
+            raise NotImplementedError(f"return_structures supports probe CC/EM only, not {probe!r} "
+                                      "(NC has per-structure couplings; add when NC QE is fit)")
+        unit_vtx = (cpl * _GJ,                                                  # F1  : gamma^mu
+                    cpl * (_I / (2.0 * _XMN)) * sterm,                          # F2  : (i/2m) sigma^{mu nu} q_nu
+                    cpl * _GG5J,                                                # FA  : gamma^mu gamma5
+                    cpl * (qsh / _XMN)[..., :, None, None] * _G5J)              # FAP : (q^mu/m) gamma5
+        Hs = jnp.stack([_ubar_vtx_u(v, u_in, ubar_out) for v in unit_vtx], axis=-3)  # (...,4struct,4combo,4mu)
+        return jnp.where(ok[..., None, None, None], Hs, 0.0)
+
+    # H[mu]_(i1 init, f1 final) = ubar_out[f1] . J_1[mu] . u_in[i1]
+    H = _ubar_vtx_u(vtx, u_in, ubar_out)                         # (...,4combo,4mu)
     return jnp.where(ok[..., None, None], H, 0.0)
