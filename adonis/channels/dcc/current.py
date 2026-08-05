@@ -26,6 +26,7 @@ _AMP = DCCAmplitudes()
 _T = load_cached()
 _PW_2J = np.asarray(_T.pw_2J); _PW_2L = np.asarray(_T.pw_2L); _PW_2I = np.asarray(_T.pw_2I)
 _NPW = len(_PW_2J)
+_DELTA_WAVE = 5              # DCC partial-wave index of the P33 Delta(1232) (matches reweight_model._DELTA_WAVE)
 _JMAX = int(_PW_2J.max())
 _LMAX = 5
 _ISP = {-1: 1, 1: 0}                      # spin index: up(+1)->0, down(-1)->1  (0-based)
@@ -212,9 +213,46 @@ def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None, pion_po
                 mode=mode, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial, pion_pole=pion_pole)
 
 
+def _zmtx_to_zjx(zmtx, N, itiz, tcrz, tm_f, tpiz, bleg, zphi_pin, dfun, off, zphi_q):
+    """The LINEAR zmtx -> 2CM current zjx (N,2,2,4) map -- the angular assembly, shared by the summed
+    current and the per-structure unit currents (return_structures), so the two cannot drift."""
+    tiz = itiz / 2.0; tpinz = tcrz + tiz; tmax = tm_f + 0.5 + _EPS_TPIN
+    IGM1 = (-1, 0, 1, 2)
+    zcrnt = np.zeros((N, 2, 2, 4), complex)
+    for ixi1 in range(1, 9):
+        igm1 = int(ISMI[ixi1]); igm1x = int(ISMIX[ixi1]); lambda_N = -int(ISBI[ixi1])
+        lam_idx = _ISP[lambda_N]; Lambda_i = 2 * igm1x - lambda_N; ig_idx = IGM1.index(igm1)
+        for pw in range(_NPW):
+            jpin = int(_PW_2J[pw]); Lpin = int(_PW_2L[pw]); itpin = int(_PW_2I[pw])
+            tpin = itpin / 2.0; xlpin = Lpin / 2.0; xjpin = jpin / 2.0; llpin = Lpin // 2
+            if not (tpin + _EPS_TPIN > abs(tpinz) and tmax > tpin and jpin >= abs(Lambda_i)):
+                continue
+            cgi = cbg(1.0, tcrz, 0.5, tiz, tpin, tpinz) * cbg(tm_f, tpiz, 0.5, tpinz - tpiz, tpin, tpinz)
+            if cgi == 0:
+                continue
+            zfac = np.sqrt(jpin + 1.0) * cgi * zmtx[:, ixi1 - 1, pw]          # (N,)
+            for isf in (-1, 1):
+                isf_idx = _ISP[isf]; xs = isf / 2.0
+                zzz = np.zeros(N, complex)
+                for mj in range(max(-Lpin + isf, -jpin), min(Lpin + isf, jpin) + 1, 2):
+                    xmj = mj / 2.0; llz = (mj - isf) // 2
+                    if abs(llz) > llpin:
+                        continue
+                    zzz += (cbg(xlpin, xmj - xs, 0.5, xs, xjpin, xmj) * bleg[:, llpin, llz + _LMAX]
+                            * (zphi_pin ** llz) * dfun[:, jpin, mj + off, Lambda_i + off]
+                            * (zphi_q ** ((-mj + Lambda_i) // 2)))
+                zcrnt[:, isf_idx, lam_idx, ig_idx] += zfac * zzz
+    sq = 1.0 / np.sqrt(2.0)
+    zjx = np.zeros((N, 2, 2, 4), complex)
+    zjx[:, :, :, 0] = zcrnt[:, :, :, 1]; zjx[:, :, :, 3] = zcrnt[:, :, :, 3]
+    zjx[:, :, :, 1] = (zcrnt[:, :, :, 0] - zcrnt[:, :, :, 2]) * sq
+    zjx[:, :, :, 2] = (zcrnt[:, :, :, 0] + zcrnt[:, :, :, 2]) * sq * 1j
+    return zjx
+
+
 def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
                           return_zj=False, q_direct=None, r_axial=None, return_q2=False, knobs=None,
-                          pion_pole=1.0, probe="CC"):
+                          pion_pole=1.0, probe="CC", return_structures=False):
     """Vectorised exclusive amps2 over a batch of events (all SAME channel: itiz, hPID).
     Returns amps2 (N,) on the ACHILLES absolute scale (/_NORM).
     return_zj=True returns the lab hadron current zj (N,4_combo,4_mu) instead (DIAGNOSTIC).
@@ -269,37 +307,41 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     r_ax = None if r_axial is None else jnp.asarray(r_axial)
     zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, amp_mpi,
                                           r_axial=r_ax, pion_pole=pion_pole, mode=_mode))  # (N,8,npw)
-    tiz = itiz / 2.0; tpinz = tcrz + tiz; tmax = tm_f + 0.5 + _EPS_TPIN
-    IGM1 = (-1, 0, 1, 2)
-    zcrnt = np.zeros((N, 2, 2, 4), complex)
-    for ixi1 in range(1, 9):
-        igm1 = int(ISMI[ixi1]); igm1x = int(ISMIX[ixi1]); lambda_N = -int(ISBI[ixi1])
-        lam_idx = _ISP[lambda_N]; Lambda_i = 2 * igm1x - lambda_N; ig_idx = IGM1.index(igm1)
-        for pw in range(_NPW):
-            jpin = int(_PW_2J[pw]); Lpin = int(_PW_2L[pw]); itpin = int(_PW_2I[pw])
-            tpin = itpin / 2.0; xlpin = Lpin / 2.0; xjpin = jpin / 2.0; llpin = Lpin // 2
-            if not (tpin + _EPS_TPIN > abs(tpinz) and tmax > tpin and jpin >= abs(Lambda_i)):
-                continue
-            cgi = cbg(1.0, tcrz, 0.5, tiz, tpin, tpinz) * cbg(tm_f, tpiz, 0.5, tpinz - tpiz, tpin, tpinz)
-            if cgi == 0:
-                continue
-            zfac = np.sqrt(jpin + 1.0) * cgi * zmtx[:, ixi1 - 1, pw]          # (N,)
-            for isf in (-1, 1):
-                isf_idx = _ISP[isf]; xs = isf / 2.0
-                zzz = np.zeros(N, complex)
-                for mj in range(max(-Lpin + isf, -jpin), min(Lpin + isf, jpin) + 1, 2):
-                    xmj = mj / 2.0; llz = (mj - isf) // 2
-                    if abs(llz) > llpin:
-                        continue
-                    zzz += (cbg(xlpin, xmj - xs, 0.5, xs, xjpin, xmj) * bleg[:, llpin, llz + _LMAX]
-                            * (zphi_pin ** llz) * dfun[:, jpin, mj + off, Lambda_i + off]
-                            * (zphi_q ** ((-mj + Lambda_i) // 2)))
-                zcrnt[:, isf_idx, lam_idx, ig_idx] += zfac * zzz
-    sq = 1.0 / np.sqrt(2.0)
-    zjx = np.zeros((N, 2, 2, 4), complex)
-    zjx[:, :, :, 0] = zcrnt[:, :, :, 1]; zjx[:, :, :, 3] = zcrnt[:, :, :, 3]
-    zjx[:, :, :, 1] = (zcrnt[:, :, :, 0] - zcrnt[:, :, :, 2]) * sq
-    zjx[:, :, :, 2] = (zcrnt[:, :, :, 0] + zcrnt[:, :, :, 2]) * sq * 1j
+    ang = (N, itiz, tcrz, tm_f, tpiz, bleg, zphi_pin, dfun, off, zphi_q)      # shared angular kernel
+
+    if return_structures:
+        # Per-atom UNIT currents for the reduced-quadratic RES amps2 (docs/joint_amps2_plan.md).  The current
+        # zj is LINEAR in zmtx and zmtx is LINEAR in the amplitude blocks, so build the block/wave-split zmtx
+        # and map each to a zj.  Atoms {V,A,P} x {rest, wave5}: V=vector, A=axial(r=1,pole=0), P=pole only
+        # (=[axial+pole]-axial); wave5 split out for delta_strength.  Shared angular kernel `ang` is reused.
+        w5 = _DELTA_WAVE if _DELTA_WAVE < _NPW else None
+        def _wmask(a, keep5):                                    # keep only wave 5 (keep5) or all-but-5
+            out = np.array(a)
+            if w5 is not None:
+                if keep5:
+                    out[:, :, [i for i in range(_NPW) if i != w5]] = 0   # assignment (fancy index copy -> can't .fill)
+                else:
+                    out[:, :, w5] = 0
+            return out
+        zero = np.zeros_like(vec)
+        def _zmtx(v, s, ax, pole):
+            return np.asarray(_build_zmtx_vmapped(v, s, ax, jnp.asarray(wcm), jnp.asarray(Q2), itiz, amp_mpi,
+                                                  r_axial=jnp.ones(N), pion_pole=pole, mode=_mode))
+        atoms = {}
+        for tag, keep5 in (("rest", False), ("w5", True)):
+            vv, ss, aa = _wmask(vec, keep5), _wmask(isv, keep5), _wmask(axial, keep5)
+            zV = _zmtx(vv, ss, zero, 0.0)                        # vector only
+            zA = _zmtx(zero, zero, aa, 0.0)                      # axial only (no pole)
+            zAP = _zmtx(zero, zero, aa, 1.0)                     # axial + pole
+            atoms[f"V_{tag}"] = _zmtx_to_zjx(zV, *ang)
+            atoms[f"A_{tag}"] = _zmtx_to_zjx(zA, *ang)
+            atoms[f"P_{tag}"] = _zmtx_to_zjx(zAP - zA, *ang)     # pole only
+        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_lep), kind=_lep_kind))
+        gate = (wcm >= _W_LO) & (wcm <= _W_HI) & (Q2 >= 0) & (Q2 <= _Q2_HI)
+        zjs = {k: np.einsum('nmk,nabk->nabm', xlr, v).reshape(N, 4, 4) for k, v in atoms.items()}
+        return dict(zj=zjs, L=L, gate=gate, Q2=Q2, norm=_norm)
+
+    zjx = _zmtx_to_zjx(zmtx, *ang)
     # DIAGNOSTIC frame toggle: amps2 is a Lorentz scalar, so contracting in the 2CM frame
     # (no boost on zj, boost the leptons in instead) must equal the lab contraction.
     import os as _os

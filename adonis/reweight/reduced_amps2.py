@@ -86,3 +86,56 @@ def qe_reduced_reweight(record, knobs, probe="CC", is_proton=None, nominal=None)
     num = jnp.einsum('...i,...ij,...j->...', F, M, F)
     den = jnp.einsum('...i,...ij,...j->...', F0, M, F0)
     return jnp.where(den > 0, num / jnp.where(den > 0, den, 1.0), 1.0)
+
+
+# =============================================================================== RES (paper dials)
+# Atoms = {V,A,P} x {rest, wave5}; the paper's RES dials (M_A_res, res_axial_strength, pion_pole,
+# delta_strength) touch them via nested coefficients g_s(knobs).  pw_norm is dormant (add more wave-splits
+# to the atom set if it is ever released).  Unit currents come from dcc.exclusive_amps2_batch(return_structures).
+_RES_ATOMS = ("V_rest", "A_rest", "P_rest", "V_w5", "A_w5", "P_w5")
+_RES_ITIZ = {(2112, 211): -1, (2112, 111): -1, (2212, 211): +1}   # (ipid, ppid) -> itiz
+
+
+def build_res_reduced(k_nu, k_lep, p_struck, p_N, p_pi, ipid, ppid):
+    """Per-event RES reduced record {M (...,6,6) real symmetric, Q2 (...,)} over the 6 atoms (channel loop)."""
+    from adonis.channels.dcc import current as dcc
+    metric = np.asarray(dcc._METRIC)
+    n = len(np.asarray(k_nu))
+    M = np.zeros((n, 6, 6)); Q2 = np.ones(n)
+    ipid = np.asarray(ipid); ppid = np.asarray(ppid)
+    for (ip, pp), itiz in _RES_ITIZ.items():
+        mm = (ipid == ip) & (ppid == pp)
+        if not mm.any():
+            continue
+        args = [np.asarray(x)[mm] for x in (k_nu, k_lep, p_struck, p_N, p_pi)]
+        st = dcc.exclusive_amps2_batch(*args, itiz, pp, return_structures=True)
+        zj, L, gate, norm = st["zj"], st["L"], st["gate"], st["norm"]
+        LH = {s: np.einsum('ncm,nbm,m->ncb', L, zj[s], metric) for s in _RES_ATOMS}   # L_c . zj_s,b
+        Mm = np.zeros((len(args[0]), 6, 6))
+        for i, s in enumerate(_RES_ATOMS):
+            for j, t in enumerate(_RES_ATOMS):
+                Mm[:, i, j] = np.real(np.sum(np.conj(LH[s]) * LH[t], axis=(1, 2))) / norm
+        M[mm] = np.where(gate[:, None, None], Mm, 0.0)
+        Q2[mm] = st["Q2"]
+    return {"M": np.asarray(M, np.float32), "Q2": np.asarray(Q2, np.float32)}
+
+
+def res_g(Q2_mev2, knobs):
+    """The 6 atom coefficients g=(V,A,P)x(rest,w5).  r_axial = dipole(Q2;M_A_res)*res_axial_strength (scales the
+    axial + pole blocks); pion_pole scales the pole; delta_strength scales wave 5.  g=1 everywhere at nominal."""
+    r_ax = axial_reweight_dipole(jnp.asarray(Q2_mev2), knobs.M_A_res) * jnp.asarray(knobs.res_axial_strength)
+    pp = jnp.asarray(knobs.pion_pole); dl = jnp.asarray(knobs.delta_strength)
+    one = jnp.ones_like(r_ax)
+    return jnp.stack([one, r_ax, r_ax * pp, dl * one, dl * r_ax, dl * r_ax * pp], axis=-1)   # (...,6)
+
+
+def res_reduced_reweight(record, knobs, nominal=None):
+    """Exact per-event RES hard-vertex weight g^T M g / g0^T M g0; pure/differentiable in M_A_res,
+    res_axial_strength, pion_pole, delta_strength, and exact for arbitrary simultaneous variation."""
+    if nominal is None:
+        nominal = nominal_knobs()
+    M = jnp.asarray(record["M"]); Q2 = jnp.asarray(record["Q2"])
+    g, g0 = res_g(Q2, knobs), res_g(Q2, nominal)
+    num = jnp.einsum('...i,...ij,...j->...', g, M, g)
+    den = jnp.einsum('...i,...ij,...j->...', g0, M, g0)
+    return jnp.where(den > 0, num / jnp.where(den > 0, den, 1.0), 1.0)
