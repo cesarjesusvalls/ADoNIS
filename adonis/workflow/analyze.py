@@ -49,9 +49,10 @@ def build_reference(cfg):
     return _merge([fn(p, cfg.signal) for p in refs])
 
 
-def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, **style_kw):
-    """style_kw (panel_kw / legend_fn / fig_h / title_kw / label_as_xlabel) is forwarded verbatim to
-    make_figure; omitted -> the historical look.  Keeps this core driver free of any analysis/ import."""
+def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, title=None, **style_kw):
+    """style_kw (panel_kw / legend_fn / fig_h / title_kw / label_as_xlabel / max_cols) is forwarded verbatim
+    to make_figure; omitted -> the historical look.  Keeps this core driver free of any analysis/ import.
+    title overrides cfg.title when given (paper figures pass title="" -- the caption carries the title)."""
     ado = build_adonis(cfg); ref = build_reference(cfg)
     specs = [(o.key, o.bin_edges(), o.label) for o in cfg.observables]
     data = load_overlay(cfg, specs)
@@ -61,7 +62,8 @@ def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, **s
     if lf is not None and getattr(cfg, "legend_loc", ""):
         _inner, _loc = lf, cfg.legend_loc
         lf = lambda ax, has_parts: _inner(ax, has_parts, loc=_loc)
-    fig, results, sig = make_figure(specs, ref, ado, title=cfg.title, ratio_band=cfg.ratio_band,
+    fig, results, sig = make_figure(specs, ref, ado, title=cfg.title if title is None else title,
+                                    ratio_band=cfg.ratio_band,
                                     ratio_ylim=cfg.ratio_ylim, ado_label=ado_label,
                                     ref_label=ref_label, data=data, panel_w=panel_w,
                                     legend_fn=lf, **style_kw)

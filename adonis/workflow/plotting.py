@@ -224,22 +224,34 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     # 2-row gridspec per row with hspace=0.  (Single-row figures take the same path with nrow=1, and
     # come out identical to the original plt.subplots layout.)
     fig = plt.figure(figsize=(total_w, fig_h * nrow))
-    outer = fig.add_gridspec(nrow, 1, hspace=0.42 if nrow > 1 else 0.0)
+    # Row gap: must clear the upper row's x-label + the lower row's y-exponent offset (e.g. "1e-8"),
+    # which overlap horizontally in a CENTRED short last row -- so the gap can't go below ~0.30 of a
+    # row height without the two colliding.  0.30 packs the rows tighter than the old 0.42 margin.
+    outer = fig.add_gridspec(nrow, 1, hspace=0.30 if nrow > 1 else 0.0)
     ax = np.empty((2, nv), dtype=object)      # historical (2, nv) shape: ax[0,c] top, ax[1,c] ratio
     for r in range(nrow):
-        inner = outer[r].subgridspec(2, ncol, height_ratios=[3, 1], hspace=0.0, wspace=wspace)
-        for cc in range(ncol):
+        k = min(ncol, nv - r * ncol)          # panels in THIS row (< ncol only in a ragged last row)
+        if k == ncol:
+            inner = outer[r].subgridspec(2, ncol, height_ratios=[3, 1], hspace=0.0, wspace=wspace)
+            gcols = list(range(ncol))
+        else:
+            # CENTRE a short last row (the odd 3->2x2, 5->3x2 cases): pad each side by (ncol-k)/2
+            # panel-widths so the k panels keep the SAME width as a full row and sit in the middle,
+            # instead of the old left-aligned blank-right-cell.  The pad columns hold no axes.
+            pad = (ncol - k) / 2.0
+            inner = outer[r].subgridspec(2, k + 2, width_ratios=[pad] + [1.0] * k + [pad],
+                                         height_ratios=[3, 1], hspace=0.0, wspace=wspace)
+            gcols = list(range(1, k + 1))
+        for cc in range(k):
             i = r * ncol + cc
-            top = fig.add_subplot(inner[0, cc])
+            gc = gcols[cc]
+            top = fig.add_subplot(inner[0, gc])
             # sharex WITHIN the pair only.  Sharing down a whole column would suppress the x tick
             # labels on every row but the last -- fatal here, because each wrapped panel is a
             # DIFFERENT slice and its own axis is the only thing identifying it.
-            rat = fig.add_subplot(inner[1, cc], sharex=top)
+            rat = fig.add_subplot(inner[1, gc], sharex=top)
             top.tick_params(labelbottom=False)
-            if i < nv:
-                ax[0, i], ax[1, i] = top, rat
-            else:
-                top.axis("off"); rat.axis("off")   # blank any unused cell in the last row
+            ax[0, i], ax[1, i] = top, rat
     results = {}
     for c, (key, edges, label) in enumerate(specs):
         # curve/points mode: a compute may hand a pre-reduced {x,y,yerr} per key (chi2_ratio_panel

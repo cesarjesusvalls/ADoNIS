@@ -34,8 +34,4 @@ params:
     - [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.47, 0.55, 0.65, 0.75, 0.90]
     - [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.47, 0.55, 0.65, 0.75, 0.90]
 layout:
-  panel_w: 2.4
-  fig_h: 3.0
-  max_cols: 4
-  wspace: 0.32
-  ratio_ylim: [0.75, 1.25]
+  ratio_ylim: [0.75, 1.25]   # geometry/columns now come from the shared standard (style.PANEL_*, 2 cols)

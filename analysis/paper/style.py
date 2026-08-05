@@ -12,6 +12,15 @@ from matplotlib.legend_handler import HandlerBase
 OUTDIR = Path(os.environ.get("ADONIS_PAPER_OUT", "output/paper"))
 ALTGEN = Path(os.environ.get("ADONIS_ALTGEN", "output/altgen"))   # persisted physfit npz
 
+# Standard panel PROPORTIONS, shared by EVERY multi-panel sec1 figure so a panel (and thus its font)
+# reads identically across figures.  Output is vector PDF, so the absolute inches are irrelevant -- what
+# these fix is the aspect ratio: one panel = PANEL_W wide x PANEL_H tall (top:ratio = 3:1 within PANEL_H).
+# All grid figures pack 2 columns (STD_COLS); N panels -> ceil(N/2) rows, an odd last row centred.  The
+# bespoke drivers (fig03/fig13) size their canvas off these too, so nothing renders at a one-off scale.
+PANEL_W = 3.5
+PANEL_H = 3.0
+STD_COLS = 2
+
 # ADoNIS / ACHILLES / data colours, used identically in every section.
 C_ADONIS = "#1f77b4"
 C_ACHILLES = "#d62728"
@@ -131,10 +140,10 @@ def paper_run_analysis_kw():
     """The EXACT run_analysis(**kw) styling the paper's config-driven figures use -- SINGLE SOURCE (was
     inlined at the make.py call site).  Pure-config figures pass this to run_analysis; the standalone
     drivers already self-style via style.use() + the style.* palette, so they need nothing from here."""
-    return dict(panel_w=2.4, fig_h=3.0, min_w=3.2,
+    return dict(panel_w=PANEL_W, fig_h=PANEL_H, min_w=PANEL_W, max_cols=STD_COLS,
                 panel_kw=panel_kw(ratio_yticks=[0.8, 1.0, 1.2]),
                 legend_fn=panel_legend, label_as_xlabel=True,
-                title_kw={"fontsize": 9, "y": 0.955, "va": "top"}, rect_top=1.0)
+                rect_top=1.0)   # no title on the plot (the caption carries it) -> pack flush to the top
 
 
 def swatches(entries, lighten=ADO_LIGHTEN, darken=REF_DARKEN):

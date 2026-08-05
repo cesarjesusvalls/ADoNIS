@@ -116,8 +116,8 @@ def _compute_sliced(spec):
                        "ref": (vr[kr], np.asarray(ref["w"], float)[kr], np.asarray(ref["chan"])[kr])})
     specs, ado_sel, ref_sel = _assemble(panels)
     _suppress_breakdown(p, ado_sel, ref_sel)
-    layout = dict(title=cfg.title, ratio_band=tuple(cfg.ratio_band), ratio_ylim=tuple(cfg.ratio_ylim),
-                  panel_kw=_panel_kw(p))
+    layout = dict(ratio_band=tuple(cfg.ratio_band), ratio_ylim=tuple(cfg.ratio_ylim),
+                  panel_kw=_panel_kw(p))   # no title -> caption carries it
     return specs, ado_sel, ref_sel, layout
 
 
@@ -180,8 +180,8 @@ def _compute_ele(spec):
             rxmax[key] = float(ps["ratio_xmax"])
     specs, ado_sel, ref_sel = _assemble(panels)
     _suppress_breakdown(p, ado_sel, ref_sel)                  # breakdown: false -> single IBM-blue line (fig0456)
-    layout = dict(title=cfg.title, ratio_ylim=tuple(cfg.ratio_ylim), annotations=ann, ylabel=p.get("ylabel"),
-                  ratio_xmax=rxmax or None, panel_kw=_panel_kw(p))
+    layout = dict(ratio_ylim=tuple(cfg.ratio_ylim), annotations=ann, ylabel=p.get("ylabel"),
+                  ratio_xmax=rxmax or None, panel_kw=_panel_kw(p))   # no title -> caption carries it
     return specs, ado_sel, ref_sel, layout
 
 
@@ -192,7 +192,7 @@ _COMPUTE = {"sliced": _compute_sliced, "ele": _compute_ele}
 def render_multiobs(spec):
     """Pure selection-histogram figure: straight through run_analysis under the paper style."""
     cfg = load_analysis_config(_rel(spec["_path"]))
-    return run_analysis(cfg, **style.paper_run_analysis_kw())
+    return run_analysis(cfg, title="", **style.paper_run_analysis_kw())   # title -> caption, not on the plot
 
 
 # =================================================================================== RENDER: panels
@@ -201,12 +201,11 @@ def render_panels(spec):
     shared grid-of-chi2_ratio_panel builder.  Layout kwargs come from the compute + spec['layout']."""
     specs, ado_sel, ref_sel, layout = _COMPUTE[spec["compute"]](spec)
     layout.update(spec.get("layout", {}) or {})
-    kw = dict(ado_label="ADoNIS", ref_label="ACHILLES", panel_w=2.4, fig_h=2.6, min_w=3.2,
+    kw = dict(ado_label="ADoNIS", ref_label="ACHILLES",
+              panel_w=style.PANEL_W, fig_h=style.PANEL_H, min_w=style.PANEL_W, max_cols=style.STD_COLS,
               legend_fn=style.panel_legend, label_as_xlabel=True,
               panel_kw=layout.pop("panel_kw", style.panel_kw(ratio_yticks=[0.8, 1.0, 1.2])),
-              # rect_top=1.0 packs the panels flush; the suptitle sits just above them (y=0.95).  The
-              # old rect_top=0.95 / y=0.995 left a large title gap under make_figure's nested gridspec.
-              title_kw={"fontsize": 9, "y": 0.95, "va": "top"}, rect_top=1.0)
+              rect_top=1.0)   # no title on the plot (the caption carries it) -> pack flush to the top
     kw.update(layout)
     out = ROOT / f"output/paper/{spec['name']}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -259,8 +258,7 @@ def render_sigma_channels(spec):
         bot.axhline(1.0 - off, ls="--", color="0.7", lw=0.6); bot.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
     bot.set_ylim(0.6, 1.4); bot.set_yticks([0.8, 1.0, 1.2])
     bot.set_xlabel(r"$E_\nu$ [MeV]"); bot.set_ylabel("ratio")
-    fig.suptitle(r"Free-nucleon RES single-pion $\sigma(E_\nu)$", fontsize=9, y=0.995, va="top")
-    fig.tight_layout(rect=[0, 0, 1, 0.94]); style.save(fig, spec["name"])
+    fig.tight_layout(rect=[0, 0, 1, 1.0]); style.save(fig, spec["name"])   # no title -> caption carries it
 
 
 def render_beam_sigma(spec):
@@ -284,8 +282,9 @@ def render_beam_sigma(spec):
                              params={"beam": BEAM, "target": nuc, "nbins": nbins})
         return d["edges"], d["sr"], d["ss"], d["er"], d["es"], d["hr"], d["hs"], d["her"], d["hes"]
 
-    style.use(); fig = plt.figure(figsize=(7.1, 4.6))
-    outer = fig.add_gridspec(2, 2, hspace=0.30, wspace=0.28); ax = {}
+    # 2x2 of (top+ratio) blocks at the shared panel proportions: 2 cols x PANEL_W, 2 rows x PANEL_H.
+    style.use(); fig = plt.figure(figsize=(2 * style.PANEL_W, 2 * style.PANEL_H))
+    outer = fig.add_gridspec(2, 2, hspace=0.18, wspace=0.28); ax = {}   # tight row gap (matches make_figure)
     for ni in range(2):
         for oi in range(2):
             inner = outer[ni, oi].subgridspec(2, 1, height_ratios=[3, 1], hspace=0.0)
@@ -306,8 +305,7 @@ def render_beam_sigma(spec):
             if ni == 0:
                 a0.set_title(lab, fontsize=9); a1.set_xlabel("")
             a0.text(0.97, 0.95, rf"$\pi^+$ {_NUC_TEX[nuc]}", transform=a0.transAxes, fontsize=8, va="top", ha="right")
-    fig.suptitle(r"$\pi^+$ absorption + reaction on $^{12}$C / $^{40}$Ar (pure transport)", fontsize=9, y=0.985)
-    style.save(fig, spec["name"])
+    style.save(fig, spec["name"])   # no title -> caption carries it
 
 
 def render_dcc(spec):
@@ -343,8 +341,9 @@ def render_dcc(spec):
         hit = rng.random(P.shape) < P; ph = hit.mean(1)
         return (np.pi * R2 * ph) / MB_FM2, (np.pi * R2 * np.sqrt(np.clip(ph * (1 - ph), 0, None) / ntrial)) / MB_FM2
 
+    # two standalone panels (sigma(W), angular) at the shared width: 2 cols x PANEL_W, one PANEL_H row.
     style.use(); rng = np.random.default_rng(0)
-    fig, ax = plt.subplots(1, 2, figsize=(11.8, 4.7))
+    fig, ax = plt.subplots(1, 2, figsize=(2 * style.PANEL_W, style.PANEL_H))
     W, curves = totals(); WG = W / 1000.0; Wc = W[::3]
     for lab, (col, sig) in curves.items():
         ax[0].plot(WG, sig, "-", color=col, lw=1.6, label=lab, zorder=2)
@@ -356,7 +355,7 @@ def render_dcc(spec):
     ax[0].set_xlim(1.08, 2.0); ax[0].set_ylim(0, None)
     ax[0].set_xlabel(r"$W$ [GeV]"); ax[0].set_ylabel(r"$\sigma$ [mb]")
     ax[0].legend(fontsize=8, ncol=2, title="off proton", title_fontsize=8)
-    ax[0].set_title(r"total meson-baryon $\sigma(W)$", fontsize=10)
+    ax[0].set_title(r"total meson-baryon $\sigma(W)$", fontsize=9)
     W300 = float(np.sqrt(M_PI ** 2 + M_N ** 2 + 2 * M_N * np.sqrt(300.0 ** 2 + M_PI ** 2)))
     cg = np.linspace(-1, 1, 200); dd = dsigma_dOmega(W300, cg, {3: 1.0}, i=0, f=0)
     _trap = getattr(np, "trapezoid", None) or np.trapz
@@ -371,9 +370,8 @@ def render_dcc(spec):
                    elinewidth=0.8, capsize=0, lw=0, label=r"ADoNIS sampler ($\pi^+ p$)")
     ax[1].set_xlim(-1, 1); ax[1].set_ylim(0, None)
     ax[1].set_xlabel(r"$\cos(\theta_{\rm CM})$"); ax[1].set_ylabel(r"$(1/\sigma)\, d\sigma/d\Omega$")
-    ax[1].legend(fontsize=8); ax[1].set_title(r"$\pi^+ p$ angular at $p=300$ MeV", fontsize=10)
-    fig.suptitle(r"ADoNIS vs ANL-Osaka --- meson-baryon DCC (shared cascade cross sections)", fontsize=11)
-    fig.tight_layout(rect=[0, 0, 1, 0.95]); style.save(fig, spec["name"])
+    ax[1].legend(fontsize=8); ax[1].set_title(r"$\pi^+ p$ angular at $p=300$ MeV", fontsize=9)
+    fig.tight_layout(rect=[0, 0, 1, 1.0]); style.save(fig, spec["name"])   # no title -> caption carries it
 
 
 RENDERERS = {"multiobs": render_multiobs, "panels": render_panels,

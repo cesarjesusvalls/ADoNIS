@@ -27,9 +27,4 @@ params:
   obs: p_pi0
   obs_linspace: [0.0, 1000.0, 17]
   obs_label: '$p_{\pi^0}$ [MeV/c]'
-layout:
-  panel_w: 2.6
-  fig_h: 3.2
-  max_cols: 2
-  title_kw: {fontsize: 9, y: 0.985, va: top}
-  rect_top: 0.97
+# geometry/columns now come from the shared standard (style.PANEL_*, 2 cols) -- 4 slices -> 2x2

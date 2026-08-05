@@ -38,8 +38,9 @@ an ADoNIS-vs-ACHILLES overlay + ratio, from the live paper_banks banks (ADoNIS) 
 (ACHILLES), through the one validated `plotting.chi2_ratio_panel` under the paper style. Config-driven
 per-event TKI figures come from `configs/analysis/*.yaml` via `adonis.workflow.analyze.run_analysis`; the
 non-histogram figures (σ(E), σ(p), σ(W), dσ/dω, angular) are standalone drivers in the same package.
-`python -m analysis.paper.sec1_validation.make [--light]` builds them all (--light skips the heavy amps2/MC
-drivers fig2/fig13).
+`python -m analysis.paper.sec1_validation.make` builds every figure except the heavy opt-out (fig13: live
+INC MC + angular draw, no cache); `make fig13` or `make --all` includes it. fig02/fig03 are cache/scan-backed
+and always build.
 
 - `fig01_ee_domega` — inclusive (e,e') dσ/dω on ⁴⁰Ar/¹²C, QE/RES/total (χ²/ndf 1.04 / 1.56)
 - `fig02_anl_sigma` — free-nucleon RES σ(E_ν): pπ⁺ / nπ⁺ / pπ⁰ (χ²/ndf 32.8 / 3.4 / 0.9; pπ⁺ driven by the near-threshold point)

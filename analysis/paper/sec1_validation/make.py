@@ -3,12 +3,15 @@
 Every figure is one YAML spec in this directory; helper.render(spec) draws it (its `render:` key selects
 the render function).  Nothing else generates these figures -- there is exactly one way to run them.
 
-    python -m analysis.paper.sec1_validation.make                # ALL figures
+    python -m analysis.paper.sec1_validation.make                # every figure EXCEPT the heavy opt-outs
     python -m analysis.paper.sec1_validation.make fig07 fig11     # only specs whose stem contains these
-    python -m analysis.paper.sec1_validation.make --light         # skip the heavy MC figures (fig02, fig13)
+    python -m analysis.paper.sec1_validation.make --all           # include the heavy opt-outs too (fig13)
 
-Each figure renders in its own subprocess (isolates its jax import + matplotlib state), as the pipeline
-always did; --one <stem> renders a single spec in-process (used internally by the orchestrator).
+A spec tagged `heavy: true` (fig13: live INC MC + a 200k-sample angular draw every run, no cache) is
+OPT-OUT of the default full build -- it is built only when named explicitly (`make fig13`) or with `--all`.
+Everything else, incl. the cache/scan-backed fig02/fig03, always builds.  Each figure renders in its own
+subprocess (isolates its jax import + matplotlib state); --one <stem> renders a single spec in-process
+(used internally by the orchestrator).
 """
 import subprocess
 import sys
@@ -39,7 +42,7 @@ def _load(path):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    light = "--light" in argv
+    all_ = "--all" in argv or "--heavy" in argv
     one = "--one" in argv
     names = [a for a in argv if not a.startswith("--")]
     specs = specs_for(names)
@@ -52,15 +55,19 @@ def main(argv=None):
             helper.render(_load(p))
         return
 
-    ok = 0
+    # heavy specs are opt-out of the default full build: skipped unless --all, or the stem was named
+    # explicitly (naming a fig is an explicit opt-in).  `--light` is accepted for back-compat (no-op now).
+    include_heavy = all_ or bool(names)
+    ok = skipped = 0
     for p in specs:
-        if light and (yaml.safe_load(p.read_text()) or {}).get("heavy"):
-            print(f"  [skip heavy] {p.stem}", flush=True)
+        if not include_heavy and (yaml.safe_load(p.read_text()) or {}).get("heavy"):
+            print(f"  [skip heavy, opt-out] {p.stem}  (run `make {p.stem}` or `make --all`)", flush=True)
+            skipped += 1
             continue
         print(f"\n=== {p.stem} ===", flush=True)
         cmd = [sys.executable, "-m", "analysis.paper.sec1_validation.make", "--one", p.stem]
         ok += subprocess.run(cmd, cwd=str(ROOT)).returncode == 0
-    print(f"\n{ok} figures built" + ("  (heavy fig02/fig13 skipped: --light)" if light else ""), flush=True)
+    print(f"\n{ok} figures built" + (f"  ({skipped} heavy opt-out skipped; --all to include)" if skipped else ""), flush=True)
 
 
 if __name__ == "__main__":
