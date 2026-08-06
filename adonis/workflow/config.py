@@ -232,6 +232,10 @@ class NuSignalDef:
     proton_lead: str = "in_window"          # "in_window" (CC1pi) | "global" (CC0pi NUISANCE def)
     proton_count: str = "ge1"               # "ge1" | "eq1"
     require_proton: bool = True
+    pt_hi: float | None = None              # muon transverse-momentum cap [MeV] (MINERvA qelike pT/pz box)
+    pz_win: tuple | None = None             # muon longitudinal-momentum window [MeV] (MINERvA qelike);
+    #                                         with require_proton=False these give the hadron-inclusive
+    #                                         isCC0pi_MINERvAPTPZ phase space (0 mesons, theta_mu<20).
     pion_id: str = "pip"                    # "pip" | "pi0" | "anypi" | "none" (CC0pi: veto all pions)
     count_recoil_neutron: bool = False
     target: str = "carbon"                  # "carbon" | "hydrogen" | "CH"
@@ -245,6 +249,7 @@ class NuSignalDef:
         self.mu_win = tuple(_resolve_seq(self.mu_win))
         self.p_win = tuple(_resolve_seq(self.p_win))
         self.pi_win = None if self.pi_win is None else tuple(_resolve_seq(self.pi_win))
+        self.pz_win = None if self.pz_win is None else tuple(_resolve_seq(self.pz_win))
         self.cos_mu = _resolve_scalar(self.cos_mu)
         self.cth = _resolve_scalar(self.cth)
         if self.proton_lead not in ("in_window", "global"):

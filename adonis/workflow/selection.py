@@ -40,6 +40,7 @@ def _obs(mu, lead, pip):
             "pn": np.asarray(BP.pN_1pi(mu, lead, pip)),            # inferred nucleon |p| (carbon reco) [MeV]
             "dptt": np.asarray(BP.dptt_1pi(mu, lead, pip)),        # double-transverse imbalance [MeV] (CC1pi)
             "pmu": pmu, "cos_mu": cmu, "th_mu": np.degrees(np.arccos(np.clip(cmu, -1.0, 1.0))),
+            "pt": np.sqrt(mu[:, 1] ** 2 + mu[:, 2] ** 2), "pz": mu[:, 3],   # MINERvA qelike muon pT/p||
             "lp_p": pl, "cos_lp": clp, "th_lp": np.degrees(np.arccos(np.clip(clp, -1.0, 1.0))),
             "ppi": ppi, "cos_pi": cpi}
 
@@ -88,17 +89,22 @@ def _cc_full(B, sd):
     per-event DIFFERENTIATED weight over the SAME mask/edges).  sel/obs/w0/chan are all bank-length."""
     mu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(mu[:, 1:], axis=1); cmu = _cos(mu, pmu)
-    if sd.pion_id == "none":                                   # ---- CC0pi ----
+    if sd.pion_id == "none":                                   # ---- CC0pi (Np) / CC-inclusive muon box ----
         n_meson = BP._event_sum(B, np.isin(B["fs_pid"], _MESONS).astype(float))
         lead, hasp = BP.leading_proton(B)                      # global leading proton (NUISANCE def)
         pip = np.zeros_like(mu)
-        pl = np.linalg.norm(lead[:, 1:], axis=1); cl = _cos(lead, pl)
-        sel = (hasp & (n_meson == 0) & _mu_pass(pmu, cmu, sd)
-               & (pl > sd.p_win[0]) & (pl < sd.p_win[1]) & (cl > sd.cth))
-        if sd.proton_count == "eq1":                           # exactly ONE proton in acceptance (CC1p0pi)
-            pid = B["fs_pid"]; p4p = B["fs_p4"]; pmp = np.linalg.norm(p4p[:, 1:], axis=1)
-            inacc = (pid == 2212) & (pmp > sd.p_win[0]) & (pmp < sd.p_win[1]) & (_cos(p4p, pmp) > sd.cth)
-            sel = sel & (BP._event_sum(B, inacc.astype(float)).astype(int) == 1)
+        sel = (n_meson == 0) & _mu_pass(pmu, cmu, sd)
+        if sd.require_proton:                                  # NUISANCE CC0pi-Np: leading proton in window
+            pl = np.linalg.norm(lead[:, 1:], axis=1); cl = _cos(lead, pl)
+            sel = sel & hasp & (pl > sd.p_win[0]) & (pl < sd.p_win[1]) & (cl > sd.cth)
+            if sd.proton_count == "eq1":                       # exactly ONE proton in acceptance (CC1p0pi)
+                pid = B["fs_pid"]; p4p = B["fs_p4"]; pmp = np.linalg.norm(p4p[:, 1:], axis=1)
+                inacc = (pid == 2212) & (pmp > sd.p_win[0]) & (pmp < sd.p_win[1]) & (_cos(p4p, pmp) > sd.cth)
+                sel = sel & (BP._event_sum(B, inacc.astype(float)).astype(int) == 1)
+        if sd.pt_hi is not None:                               # MINERvA qelike muon pT cap (hadron-inclusive)
+            sel = sel & (np.sqrt(mu[:, 1] ** 2 + mu[:, 2] ** 2) <= sd.pt_hi)
+        if sd.pz_win is not None:                              # + muon p|| window
+            sel = sel & (mu[:, 3] >= sd.pz_win[0]) & (mu[:, 3] <= sd.pz_win[1])
     else:                                                      # ---- CC1pi ----
         npip, npi0, npim = BP.pion_counts(B); pip = BP.single_pip(B)
         if sd.pion_id == "anypi":

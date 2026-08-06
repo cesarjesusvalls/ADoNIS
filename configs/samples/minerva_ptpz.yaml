@@ -1,0 +1,25 @@
+# MINERvA "qelike" muon pT / p|| double-differential on 12C (Ruterbories et al., PRD 99 012004,
+# arXiv:1811.12569).  Hadron-inclusive: 0 mesons, theta_mu < 20 deg, p|| in [1.5,15] GeV, pT < 2.5 GeV,
+# NO proton requirement.  This is the isCC0pi_MINERvAPTPZ phase space -- a new NuSignalDef mode (mu box,
+# require_proton: false).  No sec1 figure; a gradient-only sample.  Edges are the muon box (the NUISANCE
+# ptpz release is not loaded, so no experimental edge table -- the box at 20 bins reproduces the old
+# minerva_ptpz_fit design binning intent).
+render: multiobs
+name: minerva_ptpz
+inputs:
+  adonis_bank: [output/paper_banks_p4/nu_MINERvA_C/merged]
+  reference:   [output/achilles/fsrich/nu_MINERvA_C.npz]
+signal:
+  mu_win: [0.0, inf]
+  cos_mu: 0.9396926207859084   # cos(20 deg) -- theta_mu < 20 deg
+  require_proton: false        # hadron-inclusive
+  pion_id: none                # 0 mesons
+  pt_hi: 2500.0                # pT < 2.5 GeV
+  pz_win: [1500.0, 15000.0]    # p|| in [1.5, 15] GeV
+observables:
+  - {key: pt, label: '$p_T^\mu$ [MeV/c]',  linspace: [0.0, 2500.0, 21]}
+  - {key: pz, label: '$p_\parallel^\mu$ [MeV/c]', linspace: [1500.0, 15000.0, 21]}
+out_path: output/paper/minerva_ptpz.png
+title: 'MINERvA qelike $p_T$-$p_\parallel$ on $^{12}$C'
+ratio_band: [0.9, 1.1]
+ratio_ylim: [0.75, 1.25]
