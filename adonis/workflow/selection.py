@@ -82,8 +82,10 @@ def _stream_select(bank_dir, loader, select_fn, sd):
 
 
 # --------------------------------------------------------------------------- ADoNIS paper_banks side
-def _select_cc(B, sd):
-    """CC0pi/CC1pi selection body on ONE chunk's bank dict (streamed by bank_signal)."""
+def _cc_full(B, sd):
+    """Full-length (sel mask, obs dict, w0, chan) for ONE CC bank/chunk -- the pre-compaction body shared
+    by bank_signal (which _finish-compacts it for plotting) and the Gate-I jacobian (which bins the
+    per-event DIFFERENTIATED weight over the SAME mask/edges).  sel/obs/w0/chan are all bank-length."""
     mu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(mu[:, 1:], axis=1); cmu = _cos(mu, pmu)
     if sd.pion_id == "none":                                   # ---- CC0pi ----
@@ -115,7 +117,20 @@ def _select_cc(B, sd):
                    ((npip == 1) & (npi0 == 0) & (npim == 0))
         sel = (one_pion & hasp & _mu_pass(pmu, cmu, sd)
                & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
-    return _finish(_obs(mu, lead, pip), sel, B["w0"], B["channel"])       # channel: 0 QE, 1 RES
+    return sel, _obs(mu, lead, pip), np.asarray(B["w0"]), np.asarray(B["channel"])   # chan: 0 QE, 1 RES
+
+
+def _select_cc(B, sd):
+    """CC selection compacted to the passing events -- the streaming bank_signal reducer (unchanged output)."""
+    sel, obs, w0, chan = _cc_full(B, sd)
+    return _finish(obs, sel, w0, chan)
+
+
+def select_full(B, sd):
+    """Full-length selection dispatch (sel mask + obs dict + w0 + chan) for the Gate-I jacobian, which must
+    bin the per-event differentiated weight over the SAME mask/edges bank_signal plots.  CC now; the NC /
+    electron full-length variants are added next to their bank_signal_* siblings as those samples migrate."""
+    return _cc_full(B, sd)
 
 
 def bank_signal(bank_dir, sd):

@@ -47,7 +47,8 @@ def bank_jacobian(jvp_wf, th0, JB, ds, npar, log=None, names=None):
     return J, row0
 
 
-def bank_jacobian_chunked(jvp_wf, th0, bank_dir, chunk_ds, nbins_list, npar, log=None, names=None):
+def bank_jacobian_chunked(jvp_wf, th0, bank_dir, chunk_ds, nbins_list, npar, log=None, names=None,
+                          max_chunks=None):
     """Same Jacobian as bank_jacobian, but STREAMED over the bank's chunk files so peak memory is ONE chunk,
     not the whole bank -- which is what lets the 20M-event banks run on the GPU (the concatenated bank is
     11.8GB > GPU memory).  J[bin,k] = sum_events (dw/dtheta_k) is additive over events, and np.bincount
@@ -64,6 +65,8 @@ def bank_jacobian_chunked(jvp_wf, th0, bank_dir, chunk_ds, nbins_list, npar, log
     th0 = jnp.asarray(th0)
     tang = [jnp.zeros(npar).at[k].set(1.0) for k in range(npar)]
     files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
+    if max_chunks:
+        files = files[:max_chunks]                          # subsampled bank (smoke/validation runs)
     nch = BP.bank_nchunks(bank_dir)
     for ci, f in enumerate(files):
         Bc = BP.load_bank_chunk(f, nch); JBc = BR.to_jax(Bc)     # one chunk on the GPU
