@@ -126,10 +126,26 @@ def _select_cc(B, sd):
     return _finish(obs, sel, w0, chan)
 
 
+def _ele_full_bank(B, sd):
+    """Full-length (mask, obs, w0, chan) for the (e,e') gradient on a STANDARD bank chunk (BP.load_bank_chunk,
+    which carries omega/theta AND the EM reweight records the jvp needs -- unlike the plot-side
+    _load_ele_chunk).  mask = scattered electron inside the theta window & non-zero weight (the generation
+    acceptance is already baked into the bank, so this reproduces the old physfit good=w0>0)."""
+    theta = np.asarray(B["theta"], float)
+    Ee = float(sd.beam_energy) - np.asarray(B["omega"], float)
+    w0 = np.asarray(B["w0"], float)
+    mask = (theta >= sd.e_theta_win[0]) & (theta <= sd.e_theta_win[1]) & (w0 > 0)
+    if sd.e_min is not None:
+        mask = mask & (Ee >= sd.e_min)
+    return mask, {"omega": np.asarray(B["omega"], float)}, w0, np.asarray(B["channel"])
+
+
 def select_full(B, sd):
-    """Full-length selection dispatch (sel mask + obs dict + w0 + chan) for the Gate-I jacobian, which must
-    bin the per-event differentiated weight over the SAME mask/edges bank_signal plots.  CC now; the NC /
-    electron full-length variants are added next to their bank_signal_* siblings as those samples migrate."""
+    """Full-length selection dispatch (mask + obs dict + w0 + chan) for the Gate-I jacobian, which bins the
+    per-event DIFFERENTIATED weight over the SAME mask/edges bank_signal plots.  Dispatches on the signal
+    type: EleBeamSignalDef -> (e,e') electron; NuSignalDef -> CC.  (NC gradient is a later sample.)"""
+    if hasattr(sd, "e_theta_win"):                            # EleBeamSignalDef (duck-typed to avoid a cycle)
+        return _ele_full_bank(B, sd)
     return _cc_full(B, sd)
 
 

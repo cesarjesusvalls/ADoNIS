@@ -107,8 +107,6 @@ class AnaSample:
 
     # ---- gradient (streamed; J + central + sigma from ONE pass) ----
     def _gradient(self, max_chunks=None, log=print):
-        if self.is_electron:
-            raise NotImplementedError("electron (e,e') full-length selector lands in P1 (select_full_ele)")
         specs = self.fit_specs(); keys = [o.key for o in specs]
         edges_by = {o.key: o.bin_edges() for o in specs}
         nbins = [len(edges_by[k]) - 1 for k in keys]
