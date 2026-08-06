@@ -74,10 +74,13 @@ class AnaSample:
         self.name = name
         self.syst = float(os.environ.get("ADONIS_SYST", syst))
         self._sel = None
+        self._path = None                       # config file path (set by from_config; needed by .plot())
 
     @classmethod
     def from_config(cls, path, **kw):
-        return cls(load_analysis_config(path), name=Path(path).stem, **kw)
+        s = cls(load_analysis_config(path), name=Path(path).stem, **kw)
+        s._path = str(path)
+        return s
 
     # ---- sample properties ----
     @property
@@ -189,12 +192,18 @@ class AnaSample:
         r.update(F=F, V=V, sig_post=sig_post, shrink=shrink, reach=reach, prior=K.PRIOR, pnames=K.PNAMES)
         return r
 
-    def plot(self, **kw):
-        """The sec1 ADoNIS-vs-ACHILLES figure for this sample (the plot verb).  Delegates to the sec1
-        renderer on this sample's config -- the config IS a sec1 spec."""
+    def plot(self, show_ratio=True):
+        """The sec1 ADoNIS-vs-ACHILLES figure for this sample (the plot verb).  The sample config IS a sec1
+        spec: load the raw YAML (for the render/params keys), tag it with its path, and hand it to the sec1
+        renderer -- render_multiobs/render_panels re-load the AnalysisConfig (signal/observables) from _path.
+        So one config file drives both .plot() and .gate1()."""
+        import yaml
         from analysis.paper.sec1_validation import helper
-        spec = dict(self.cfg.__dict__); spec["_path"] = getattr(self, "_path", None)
-        return helper.render(spec, **kw)
+        if not self._path:
+            raise ValueError("plot() needs the config path -- build via AnaSample.from_config(path)")
+        spec = yaml.safe_load(Path(self._path).read_text()) or {}
+        spec["_path"] = self._path; spec.setdefault("name", self.name)
+        return helper.render(spec, show_ratio=show_ratio)
 
     # ---- cache ----
     def dump_cache(self, label=None, res=None, max_chunks=None, log=print):
