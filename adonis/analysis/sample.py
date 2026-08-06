@@ -34,6 +34,8 @@ from adonis.workflow import selection as SG
 from adonis.analysis import knobs as K
 
 ALTGEN = Path("output/altgen")
+T2K_H_BANK = os.environ.get("ADONIS_T2K_H_BANK", "output/paper_banks_p4/nu_T2K_H/merged")
+FREEH_KEYS = ("pn", "dptt", "dalphat")      # CC1pi+ observables free-H (nu_mu p -> mu- p pi+) contributes to
 
 
 # --------------------------------------------------------------------------- small self-contained helpers
@@ -106,42 +108,71 @@ class AnaSample:
         return self._sel
 
     # ---- gradient (streamed; J + central + sigma from ONE pass) ----
-    def _gradient(self, max_chunks=None, log=print):
-        specs = self.fit_specs(); keys = [o.key for o in specs]
-        edges_by = {o.key: o.bin_edges() for o in specs}
-        nbins = [len(edges_by[k]) - 1 for k in keys]
-        row0 = np.cumsum([0] + nbins)
-        J = np.zeros((int(row0[-1]), K.NPAR))
-        sumw = [np.zeros(n) for n in nbins]
-        sumw2 = [np.zeros(n) for n in nbins]
-
+    @staticmethod
+    def _jvp_ctx():
+        """The reweight jvp closure + nominal theta + per-knob tangents (shared by carbon and free-H passes)."""
         grids = BR.default_grids(); nom = nominal_knobs(); th0 = jnp.asarray(K.theta_nominal(nom))
         jvp = jax.jit(lambda th, tang, JB:
                       jax.jvp(lambda t: BR.bank_weight(JB, K.knobs_of(t, nom), grids), (th,), (tang,))[1])
-        tang = [jnp.zeros(K.NPAR).at[k].set(1.0) for k in range(K.NPAR)]
+        return th0, jvp, [jnp.zeros(K.NPAR).at[k].set(1.0) for k in range(K.NPAR)]
 
-        files = sorted(glob.glob(f"{self.bank}/chunk_*.npz"))
+    def _stream_grad(self, bank, signal, keys, edges_by, ctx, override=None, max_chunks=None, log=print, tag=""):
+        """Stream `bank` one chunk at a time; per obs `keys` accumulate the per-bin Jacobian rows (one jvp
+        per knob) AND the nominal central (sum w0) + MC-error (sum w0^2) -- all from the SAME pass, so J and
+        sigma are consistent.  `override(obs, n)` may rewrite an observable in place (free-H daT randomization).
+        Returns (J[sum nbins, NPAR], row0, sumw[list], sumw2[list])."""
+        th0, jvp, tang = ctx
+        nbins = [len(edges_by[k]) - 1 for k in keys]; row0 = np.cumsum([0] + nbins)
+        J = np.zeros((int(row0[-1]), K.NPAR)); sumw = [np.zeros(n) for n in nbins]; sumw2 = [np.zeros(n) for n in nbins]
+        files = sorted(glob.glob(f"{bank}/chunk_*.npz"))
         if max_chunks:
             files = files[:max_chunks]
-        nch = BP.bank_nchunks(self.bank)
+        nch = BP.bank_nchunks(bank)
         for ci, f in enumerate(files):
             Bc = BP.load_bank_chunk(f, nch); JBc = BR.to_jax(Bc)
-            selm, obs, _w0, _chan = SG.select_full(Bc, self.cfg.signal)      # full-length mask + observables
-            w0c = np.asarray(Bc["w0"])
-            binned = []
+            selm, obs, _w0, _chan = SG.select_full(Bc, signal)
+            if override is not None:
+                override(obs, len(selm))
+            w0c = np.asarray(Bc["w0"]); binned = []
             for j, k in enumerate(keys):
-                bw = np.diff(edges_by[k]); s, bidx, nb = _binidx(selm, obs[k], edges_by[k])
-                sc = 1.0 / bw
+                bw = np.diff(edges_by[k]); s, bidx, nb = _binidx(selm, obs[k], edges_by[k]); sc = 1.0 / bw
                 binned.append((s, bidx, nb, sc))
                 sumw[j] += sc * np.bincount(bidx, weights=w0c[s], minlength=nb)
                 sumw2[j] += sc ** 2 * np.bincount(bidx, weights=w0c[s] ** 2, minlength=nb)
             for kk in range(K.NPAR):
-                g = np.asarray(jvp(th0, tang[kk], JBc))                      # per-event dw/dtheta_kk (chunk)
+                g = np.asarray(jvp(th0, tang[kk], JBc))
                 for j, (s, bidx, nb, sc) in enumerate(binned):
                     J[row0[j]:row0[j + 1], kk] += sc * np.bincount(bidx, weights=g[s], minlength=nb)
             del Bc, JBc
             if log:
-                log(f"  [{self.name}] chunk {ci + 1}/{len(files)}")
+                log(f"  [{self.name}{tag}] chunk {ci + 1}/{len(files)}")
+        return J, row0, sumw, sumw2
+
+    def _gradient(self, max_chunks=None, log=print):
+        specs = self.fit_specs(); keys = [o.key for o in specs]
+        edges_by = {o.key: o.bin_edges() for o in specs}
+        ctx = self._jvp_ctx()
+        J, row0, sumw, sumw2 = self._stream_grad(self.bank, self.cfg.signal, keys, edges_by, ctx,
+                                                 max_chunks=max_chunks, log=log)
+        # CH target: ADD the reweightable free-H (nu_mu p -> mu- p pi+) contribution (central offset + its
+        # gradient) to the CC1pi+ observables, streamed from the hydrogen bank.  On the H bank every event is
+        # free-H, so NUISANCE's hydrogen daT prescription = dalphat uniform on [0,pi] (radians -- the sample's
+        # own units).  This is the "non-pure (CH) target" demonstration: the RES-knob shrinkage barely moves.
+        if getattr(self.cfg.signal, "target", "carbon") == "CH":
+            fk = [k for k in keys if k in FREEH_KEYS]
+            if fk:
+                def _rand_daT(obs, n):
+                    if "dalphat" in obs:
+                        obs["dalphat"] = np.random.default_rng(0).uniform(0.0, np.pi, len(obs["dalphat"]))
+                JH, rH, swH, sw2H = self._stream_grad(T2K_H_BANK, self.cfg.signal, fk, {k: edges_by[k] for k in fk},
+                                                      ctx, override=_rand_daT, max_chunks=max_chunks, log=log,
+                                                      tag=":freeH")
+                for jf, k in enumerate(fk):
+                    jc = keys.index(k)
+                    J[row0[jc]:row0[jc + 1]] += JH[rH[jf]:rH[jf + 1]]        # add free-H gradient to carbon rows
+                    sumw[jc] += swH[jf]; sumw2[jc] += sw2H[jf]              # + free-H central + MC error
+                if log:
+                    log(f"  [{self.name}] free-H (CH) added to {fk}")
         central = {k: sumw[j] for j, k in enumerate(keys)}
         mcerr = {k: np.sqrt(sumw2[j]) for j, k in enumerate(keys)}
         sigma = np.concatenate([_bin_sigma(central[k], mcerr[k], self.syst) for k in keys])

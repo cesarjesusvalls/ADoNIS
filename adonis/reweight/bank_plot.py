@@ -69,6 +69,7 @@ def load_bank(outdir, max_chunks=None):
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
     B["n_chunks"] = nchunks
+    _coerce_fsi_dtypes(B)                               # empty (free-H) banks default bool/int FSI to float32
     from adonis.reweight.reweight_model import nominal_knobs, knob_specs
     B["labels"] = [s[2] for s in knob_specs(nominal_knobs())]   # plotted knobs (no pw_norm, no sscat)
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
@@ -78,6 +79,21 @@ def load_bank(outdir, max_chunks=None):
 def bank_nchunks(outdir):
     """The manifest n_chunks (the w0 divisor -> absolute nb), without loading any events."""
     return json.load(open(f"{outdir}/manifest.json"))["n_chunks"]
+
+
+# Canonical dtypes for the integer/bool FSI records.  An EMPTY bank (e.g. free hydrogen: a free proton has
+# no nucleon cascade, so every f_* nucleon/pion record is length 0) lets numpy default those arrays to
+# float32 -- and jax then rejects a float-typed `iso` used as an index (se[iso]).  Coercing to the canonical
+# dtypes at load is a no-op on a populated carbon bank and fixes the empty-bank schema.
+_FSI_CANON = (("f_iso", np.int8), ("f_bc", np.int8), ("f_hh", bool), ("f_inel", bool),
+              ("f_swap", bool), ("f_pi_hh", bool), ("f_p_eidx", np.int32), ("f_n_eidx", np.int32))
+
+
+def _coerce_fsi_dtypes(B):
+    for _k, _dt in _FSI_CANON:
+        if _k in B and B[_k].dtype != np.dtype(_dt):
+            B[_k] = B[_k].astype(_dt)
+    return B
 
 
 def load_bank_chunk(f, nchunks):
@@ -97,6 +113,7 @@ def load_bank_chunk(f, nchunks):
     B["w0"] = B["w0"] / nchunks
     B["fs_pid"] = d["fs_pid"]; B["fs_chg"] = d["fs_chg"]; B["fs_p4"] = d["fs_p4"]; B["fs_off"] = d["fs_off"]
     B["n_chunks"] = nchunks
+    _coerce_fsi_dtypes(B)                               # empty (free-H) banks default bool/int FSI to float32
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
     return B
 
