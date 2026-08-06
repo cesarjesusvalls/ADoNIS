@@ -1,6 +1,7 @@
 # Paper Figs 4/5/6 -- e4nu (e,e') on 12C @1.159 GeV: E_QE (0pi), E_cal (1p0pi), P_T (1p0pi).
 # Electron-beam selection (probe: electron -> EleBeamSignalDef): one bank, three observables under two
-# topologies.  Panels via make_figure (render: panels, compute: ele).  No QE/RES split (breakdown: false).
+# topologies.  Panels via make_figure (render: panels, compute: ele).  QE/RES split shown (breakdown: true):
+# the energy estimators are built to separate the channels.
 render: panels
 compute: ele
 name: fig0456_e4nu
@@ -20,7 +21,7 @@ ratio_ylim: [0.75, 1.25]
 params:
   ylabel: '$d\sigma/dx$ [nb]'
   ratio_yticks: [0.8, 1.0, 1.2]   # shared window with the other figures
-  breakdown: false           # e4nu figures show the total only, no QE/RES components
+  breakdown: true            # show QE/RES split: the energy estimators are built to separate the channels
   panels:
     - {obs: E_QE,  topo: 0pi,   linspace: [600, 1300, 25], label: '$E_{QE}$ [MeV]',  annotate: '0$\pi$'}
     # E_cal ratio stops at the kinematic cliff (E_cal <= E_beam+eps): the 1175-1200 bin holds ~0.02% of

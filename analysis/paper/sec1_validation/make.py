@@ -6,6 +6,7 @@ the render function).  Nothing else generates these figures -- there is exactly 
     python -m analysis.paper.sec1_validation.make                # every figure EXCEPT the heavy opt-outs
     python -m analysis.paper.sec1_validation.make fig07 fig11     # only specs whose stem contains these
     python -m analysis.paper.sec1_validation.make --all           # include the heavy opt-outs too (fig13)
+    python -m analysis.paper.sec1_validation.make --no-ratio      # drop the ACH/ADO ratio strip; write *_noratio
 
 A spec tagged `heavy: true` (fig13: live INC MC + a 200k-sample angular draw every run, no cache) is
 OPT-OUT of the default full build -- it is built only when named explicitly (`make fig13`) or with `--all`.
@@ -44,6 +45,7 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     all_ = "--all" in argv or "--heavy" in argv
     one = "--one" in argv
+    no_ratio = "--no-ratio" in argv          # drop the ACH/ADO ratio strip -> *_noratio files (paper figs untouched)
     names = [a for a in argv if not a.startswith("--")]
     specs = specs_for(names)
     if not specs:
@@ -52,7 +54,7 @@ def main(argv=None):
     if one:
         style.use()
         for p in specs:
-            helper.render(_load(p))
+            helper.render(_load(p), show_ratio=not no_ratio)
         return
 
     # heavy specs are opt-out of the default full build: skipped unless --all, or the stem was named
@@ -66,6 +68,8 @@ def main(argv=None):
             continue
         print(f"\n=== {p.stem} ===", flush=True)
         cmd = [sys.executable, "-m", "analysis.paper.sec1_validation.make", "--one", p.stem]
+        if no_ratio:
+            cmd.append("--no-ratio")
         ok += subprocess.run(cmd, cwd=str(ROOT)).returncode == 0
     print(f"\n{ok} figures built" + (f"  ({skipped} heavy opt-out skipped; --all to include)" if skipped else ""), flush=True)
 

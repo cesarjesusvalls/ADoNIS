@@ -1,4 +1,0 @@
-# Paper Fig 13 -- meson-baryon DCC sigma(W) (4 species) + pi+p angular sampler (2 bespoke panels).
-name: fig13_piN_sigma
-render: dcc
-heavy: true            # live INC MC + 200k-sample angular draw every run (no cache) -> opt-out of the default build; run `make fig13` or `make --all`

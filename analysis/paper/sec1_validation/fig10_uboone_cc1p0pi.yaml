@@ -26,7 +26,7 @@ params:
   slice_edges: [0, 45, 90, 135, 180]
   slice_tex: '\delta\alpha_T[^\circ]'
   obs: dpt
-  breakdown: false                    # paper draws a single total (IBM blue), no QE/RES split
+  breakdown: true                     # show QE/RES split: the resonant fraction shifts across the dalpha_T slices
   edge_scale: 1000.0                  # bin edges given in GeV/c -> MeV
   obs_edges:                          # NUISANCE per-slice dp_T edges [GeV/c]
     - [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.47, 0.55, 0.90]

@@ -45,7 +45,8 @@ def _headroom(a0, frac):
 
 
 def _curve_panel(a0, a1, ref, ado, *, label, ratio_band, ratio_ylim, ado_label, ref_label, xlabel=None,
-                 curve_color="0.1", ratio_color="navy", ref_darken=0.0, headroom=0.0, ado_lighten=0.0):
+                 curve_color="0.1", ratio_color="navy", ref_darken=0.0, headroom=0.0, ado_lighten=0.0,
+                 show_ratio=True):
     """Precomputed-curve/points variant: ref/ado are {x, y, yerr} (NOT per-event {values, w}).
     For sigma-vs-scan (E_nu, W) curves and per-bin efficiency points -- same line+band + ratio style as
     the histogram panel, but the y is handed in already reduced (integrated sigma / per-bin efficiency)."""
@@ -75,11 +76,14 @@ def _curve_panel(a0, a1, ref, ado, *, label, ratio_band, ratio_ylim, ado_label, 
     with np.errstate(divide="ignore", invalid="ignore"):
         r = np.where(m, ry / ay, np.nan)
         re = np.where(m, r * np.sqrt((aye / ay) ** 2 + (rye / ry) ** 2), np.nan)
-    a1.axhline(1.0, ls="-", color="0.6", lw=0.8)
-    for off in (0.1, 0.2):
-        a1.axhline(1.0 - off, ls="--", color="0.7", lw=0.6); a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
-    _draw(a1, r, re, ratio_color, 1.2)
-    a1.set_ylim(*ratio_ylim); a1.set_xlabel(xlabel or label, fontsize=8)
+    if show_ratio:
+        a1.axhline(1.0, ls="-", color="0.6", lw=0.8)
+        for off in (0.1, 0.2):
+            a1.axhline(1.0 - off, ls="--", color="0.7", lw=0.6); a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
+        _draw(a1, r, re, ratio_color, 1.2)
+        a1.set_ylim(*ratio_ylim); a1.set_xlabel(xlabel or label, fontsize=8)
+    else:                                          # no ratio panel -> the x label moves onto the top axis
+        a0.set_xlabel(xlabel or label, fontsize=8)
     a0.set_xlim(*(( x[0], x[-1]) if edges is None else (edges[0], edges[-1])))
     chi2 = float(np.nansum((ry[m] - ay[m]) ** 2 / (rye[m] ** 2 + aye[m] ** 2 + 1e-30))); ndf = int(m.sum())
     return dict(chi2=chi2, ndf=ndf, ach_ado=float(np.nansum(ry[m]) / max(np.nansum(ay[m]), 1e-30)), n_shadow=0)
@@ -90,7 +94,7 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
                      logy=False, shadow_frac=None, ref_parts=None, ado_parts=None, xlabel=None,
                      total_color="0.1", part_colors=None, ratio_color="navy",
                      ref_darken=0.0, headroom=0.0, ado_lighten=0.0, ratio_xmax=None,
-                     ratio_yticks=None):
+                     ratio_yticks=None, show_ratio=True):
     """Render one observable into top axis a0 (dsigma/dx) + bottom a1 (ACH/ADO ratio).
     ref/ado: dict with the observable key -> values, plus 'w'.  Returns dict(chi2, ndf, ach_ado).
     total_color / part_colors / ratio_color are the palette hooks (defaults = the historical look, so
@@ -104,7 +108,8 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
         return _curve_panel(a0, a1, ref, ado, label=label, ratio_band=ratio_band, ratio_ylim=ratio_ylim,
                             ado_label=ado_label, ref_label=ref_label, xlabel=xlabel,
                             curve_color=total_color, ratio_color=ratio_color,
-                            ref_darken=ref_darken, headroom=headroom, ado_lighten=ado_lighten)
+                            ref_darken=ref_darken, headroom=headroom, ado_lighten=ado_lighten,
+                            show_ratio=show_ratio)
     bw = np.diff(edges); ctr = 0.5 * (edges[1:] + edges[:-1])
     da, ea = hist_with_errors(ref["values"], ref["w"], edges)
     dd, ed = hist_with_errors(ado["values"], ado["w"], edges)
@@ -144,7 +149,8 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     if shadow.any():                            # shadowed bins: grey vertical spans in both panels (no markers)
         for i in np.where(shadow)[0]:
             a0.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
-            a1.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
+            if show_ratio:
+                a1.axvspan(edges[i], edges[i + 1], color="0.88", zorder=0)
     if data is not None:
         a0.errorbar(data["ctr"], data["val"], yerr=data["err"], fmt="o", color="k", ms=3,
                     capsize=2, lw=0.9, label="data")
@@ -163,26 +169,29 @@ def chi2_ratio_panel(a0, a1, edges, ref, ado, *, label, ratio_band=(0.9, 1.1),
     rkeep = keep if ratio_xmax is None else (keep & (ctr < float(ratio_xmax)))
     chi2 = float(np.sum((da[rkeep] - dd[rkeep]) ** 2 / (ea[rkeep] ** 2 + ed[rkeep] ** 2)))
     ndf = int(rkeep.sum())
-    with np.errstate(divide="ignore", invalid="ignore"):
-        r = da / dd; re = r * np.sqrt((ed / dd) ** 2 + (ea / da) ** 2)
-    a1.axhline(1.0, ls="-", color="0.6", lw=0.8)                 # central reference
-    for off in (0.1, 0.2):                                       # +/-10% and +/-20% shift guides (thin grey lines)
-        a1.axhline(1.0 - off, ls="--", color="0.7", lw=0.6)
-        a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
-    rm = np.where(rkeep, r, np.nan); rem = np.where(rkeep, re, np.nan)   # ratio: step + shaded band
-    a1.fill_between(edges, np.append(rm - rem, (rm - rem)[-1]), np.append(rm + rem, (rm + rem)[-1]),
-                    step="post", color=ratio_color, alpha=0.25, lw=0)
-    a1.step(edges, np.append(rm, rm[-1]), where="post", color=ratio_color, lw=1.2)
-    lo, hi = ratio_ylim
-    if ratio_yticks is not None:
-        a1.set_yticks(ratio_yticks)
-        # Pad the window beyond the outermost ticks so the end labels get margin -- the TOP one sits
-        # against the top panel's y=0 label at the flush spine and would otherwise overprint it.  Take
-        # the WIDER of the config ylim and (ticks +/- pad), so a figure that needs a wider window keeps it.
-        tlo, thi = min(ratio_yticks), max(ratio_yticks)
-        step = (thi - tlo) / max(len(ratio_yticks) - 1, 1)
-        lo, hi = min(lo, tlo - 0.6 * step), max(hi, thi + 0.6 * step)
-    a1.set_ylim(lo, hi); a1.set_xlabel(xlabel or label, fontsize=8)   # xlabel was ignored here
+    if show_ratio:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            r = da / dd; re = r * np.sqrt((ed / dd) ** 2 + (ea / da) ** 2)
+        a1.axhline(1.0, ls="-", color="0.6", lw=0.8)                 # central reference
+        for off in (0.1, 0.2):                                       # +/-10% and +/-20% shift guides (thin grey lines)
+            a1.axhline(1.0 - off, ls="--", color="0.7", lw=0.6)
+            a1.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
+        rm = np.where(rkeep, r, np.nan); rem = np.where(rkeep, re, np.nan)   # ratio: step + shaded band
+        a1.fill_between(edges, np.append(rm - rem, (rm - rem)[-1]), np.append(rm + rem, (rm + rem)[-1]),
+                        step="post", color=ratio_color, alpha=0.25, lw=0)
+        a1.step(edges, np.append(rm, rm[-1]), where="post", color=ratio_color, lw=1.2)
+        lo, hi = ratio_ylim
+        if ratio_yticks is not None:
+            a1.set_yticks(ratio_yticks)
+            # Pad the window beyond the outermost ticks so the end labels get margin -- the TOP one sits
+            # against the top panel's y=0 label at the flush spine and would otherwise overprint it.  Take
+            # the WIDER of the config ylim and (ticks +/- pad), so a figure that needs a wider window keeps it.
+            tlo, thi = min(ratio_yticks), max(ratio_yticks)
+            step = (thi - tlo) / max(len(ratio_yticks) - 1, 1)
+            lo, hi = min(lo, tlo - 0.6 * step), max(hi, thi + 0.6 * step)
+        a1.set_ylim(lo, hi); a1.set_xlabel(xlabel or label, fontsize=8)   # xlabel was ignored here
+    else:                                          # no ratio panel -> the x label moves onto the top axis
+        a0.set_xlabel(xlabel or label, fontsize=8)
 
     a0.set_xlim(edges[0], edges[-1])           # clamp to bin edges (sharex -> a1 too): no "floating" margin
     ach_ado = float(np.sum(da * bw) / max(np.sum(dd * bw), 1e-30))
@@ -203,7 +212,7 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                 ado_label="ENGINE", ref_label="ACHILLES", data=None, panel_w=3.4,
                 panel_kw=None, legend_fn=None, fig_h=6.4, title_kw=None, label_as_xlabel=False,
                 rect_top=0.96, min_w=7.5, max_cols=None, ylabel_var=False,
-                wspace=None, annotations=None, ylabel=None, ratio_xmax=None):
+                wspace=None, annotations=None, ylabel=None, ratio_xmax=None, show_ratio=True):
     """specs: list of (key, edges, label).  ref_sel/ado_sel: full selection dicts (key->array + 'w').
     Returns (fig, results{key: {chi2,ndf,ach_ado}}, sigma{'ref','ado','ach_ado'}).
     Style hooks (all optional, defaults = the historical look, so existing callers are unchanged):
@@ -223,35 +232,44 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     # next row's exponent and tick labels.  So: an OUTER gridspec with real spacing, and one INNER
     # 2-row gridspec per row with hspace=0.  (Single-row figures take the same path with nrow=1, and
     # come out identical to the original plt.subplots layout.)
-    fig = plt.figure(figsize=(total_w, fig_h * nrow))
+    # show_ratio=False -> drop the bottom ACH/ADO panel: each row is one axis, not a (top, ratio) pair.
+    # Shrink the row height to 3/4 (the top panel's former share of the 3:1 split) so the top panels keep
+    # their absolute size instead of stretching to fill the freed space.
+    nsub = 2 if show_ratio else 1
+    hr = [3, 1] if show_ratio else [1]
+    row_h = fig_h if show_ratio else fig_h * 0.75
+    fig = plt.figure(figsize=(total_w, row_h * nrow))
     # Row gap: must clear the upper row's x-label + the lower row's y-exponent offset (e.g. "1e-8"),
     # which overlap horizontally in a CENTRED short last row -- so the gap can't go below ~0.30 of a
     # row height without the two colliding.  0.30 packs the rows tighter than the old 0.42 margin.
     outer = fig.add_gridspec(nrow, 1, hspace=0.30 if nrow > 1 else 0.0)
-    ax = np.empty((2, nv), dtype=object)      # historical (2, nv) shape: ax[0,c] top, ax[1,c] ratio
+    ax = np.empty((2, nv), dtype=object)      # historical (2, nv) shape: ax[0,c] top, ax[1,c] ratio (None if no ratio)
     for r in range(nrow):
         k = min(ncol, nv - r * ncol)          # panels in THIS row (< ncol only in a ragged last row)
         if k == ncol:
-            inner = outer[r].subgridspec(2, ncol, height_ratios=[3, 1], hspace=0.0, wspace=wspace)
+            inner = outer[r].subgridspec(nsub, ncol, height_ratios=hr, hspace=0.0, wspace=wspace)
             gcols = list(range(ncol))
         else:
             # CENTRE a short last row (the odd 3->2x2, 5->3x2 cases): pad each side by (ncol-k)/2
             # panel-widths so the k panels keep the SAME width as a full row and sit in the middle,
             # instead of the old left-aligned blank-right-cell.  The pad columns hold no axes.
             pad = (ncol - k) / 2.0
-            inner = outer[r].subgridspec(2, k + 2, width_ratios=[pad] + [1.0] * k + [pad],
-                                         height_ratios=[3, 1], hspace=0.0, wspace=wspace)
+            inner = outer[r].subgridspec(nsub, k + 2, width_ratios=[pad] + [1.0] * k + [pad],
+                                         height_ratios=hr, hspace=0.0, wspace=wspace)
             gcols = list(range(1, k + 1))
         for cc in range(k):
             i = r * ncol + cc
             gc = gcols[cc]
             top = fig.add_subplot(inner[0, gc])
-            # sharex WITHIN the pair only.  Sharing down a whole column would suppress the x tick
-            # labels on every row but the last -- fatal here, because each wrapped panel is a
-            # DIFFERENT slice and its own axis is the only thing identifying it.
-            rat = fig.add_subplot(inner[1, gc], sharex=top)
-            top.tick_params(labelbottom=False)
-            ax[0, i], ax[1, i] = top, rat
+            if show_ratio:
+                # sharex WITHIN the pair only.  Sharing down a whole column would suppress the x tick
+                # labels on every row but the last -- fatal here, because each wrapped panel is a
+                # DIFFERENT slice and its own axis is the only thing identifying it.
+                rat = fig.add_subplot(inner[1, gc], sharex=top)
+                top.tick_params(labelbottom=False)
+                ax[0, i], ax[1, i] = top, rat
+            else:
+                ax[0, i], ax[1, i] = top, None    # no ratio axis: chi2_ratio_panel gets a1=None
     results = {}
     for c, (key, edges, label) in enumerate(specs):
         # curve/points mode: a compute may hand a pre-reduced {x,y,yerr} per key (chi2_ratio_panel
@@ -282,14 +300,15 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
                                xlabel=label if label_as_xlabel else None,
                                ratio_band=ratio_band, ratio_ylim=ratio_ylim,
                                ado_label=ado_label, ref_label=ref_label, data=d,
-                               ref_parts=rp, ado_parts=ap, ratio_xmax=rx, **panel_kw)
+                               ref_parts=rp, ado_parts=ap, ratio_xmax=rx, show_ratio=show_ratio, **panel_kw)
         if c == 0:
             if legend_fn is None:
                 ax[0, c].legend(fontsize=7)
             else:
                 legend_fn(ax[0, c], ap is not None)
             ax[0, c].set_ylabel(ylabel if ylabel is not None else _ylabel(label, name_var=ylabel_var))
-            ax[1, c].set_ylabel("ratio")
+            if show_ratio:
+                ax[1, c].set_ylabel("ratio")
         results[key] = res
     if annotations:                                  # optional in-axes per-panel tag (e.g. a slice range)
         for c, (key, _e, _l) in enumerate(specs):
@@ -302,8 +321,8 @@ def make_figure(specs, ref_sel, ado_sel, *, title="", ratio_band=(0.9, 1.1), rat
     if title:
         fig.suptitle(title, **(title_kw or {"fontsize": 12, "wrap": True}))
     fig.tight_layout(rect=[0, 0, 1, rect_top])
-    if nrow == 1:
+    if nrow == 1 and show_ratio:
         # top + ratio share one x-axis (no gap).  NOT applied when wrapped: a global hspace=0 would
-        # undo the outer gridspec's row spacing and re-collide the rows.
+        # undo the outer gridspec's row spacing and re-collide the rows.  (No ratio -> no pair to fuse.)
         fig.subplots_adjust(hspace=0.0)
     return fig, results, sig

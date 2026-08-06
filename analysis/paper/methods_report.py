@@ -138,9 +138,9 @@ READINESS = [
      "ok", "figure-complete",
      "all non-NC ACHILLES-paper figures; ratios within a few % (near-threshold outliers documented: fig2 pπ⁺, fig13 ηN cusp)"),
     ("2", "Which knobs the data can constrain (Fisher / Gate I)",
-     "sec2_shrinkage_subsets · sec2_failure_modes · sec2_degeneracy", "ok", "figure-complete",
-     "16/28 FIT combined; probe-type + sample-ladder figures"),
-    ("3", "Gradient information for the fittable knobs", "sec3_gradients_shape · sec3_gradient_reach",
+     "sec2_shrinkage_subsets", "ok", "figure-complete",
+     "16/28 FIT combined; constraining power per probe type"),
+    ("3", "Gradient information for the fittable knobs", "sec3_gradients_shape",
      "ok", "figure-complete", "exact per-bin ∂(dσ/dx)/∂θ, autodiff, the fittable subset"),
     ("4", "Closures on the Fisher-selected knobs", "physfit_fig7_closure5", "ok", "figure-complete",
      "5-param recovered ≤ 0.5σ"),
@@ -271,8 +271,6 @@ BODY = f"""
   <p class="deffile mono">analysis/paper/physical_fit.py (Gate I) · analysis/paper/sec2_fisher/make.py</p>
   </div>
   {figure("paper/sec2_shrinkage_subsets.png", "<b>Constraining power per probe</b> — ν (T2K+MINERvA), e beam, hadron beam, and ALL combined. Dark = tighter constraint; orange outline = FIT (σ_post/σ_prior &lt; 0.5); rows grouped by physics block.")}
-  {figure("paper/sec2_failure_modes.png", "<b>The two failure modes.</b> x = can the data see it (raw), y = can the fit deliver it (marginalized). qe_norm is the extreme: raw 0.033 (one of the most sensitive knobs) → marginalized 0.86, a degeneracy penalty against axial/vector_strength + sf_norm.")}
-  {figure("paper/sec2_degeneracy.png", "<b>Degeneracy structure</b> — eigen-spectrum of the prior-scaled Fisher (left) and the eigenvector composition of the best-measured modes (right).")}
 
   <div class="reading">
   <h3>Knob × sample (the tagged-beam payoff)</h3>

@@ -56,9 +56,34 @@ def _finish(obs, sel, w, chan):
     return out
 
 
+# --------------------------------------------------------------------------- streaming (bounded memory)
+# The ADoNIS banks are 20M events across ~240 chunk_*.npz; a signal cut keeps ~0.1-1% of them.  Loading
+# the whole concatenated bank just to select that sliver OOMs the big Ar/uBooNE banks (needs ~128G).  So
+# every bank-side reducer STREAMS: load one chunk, keep only the passing events, free the chunk.  Peak
+# memory = one chunk + the (tiny) accumulated selection -- independent of bank size.  Exactly reproduces
+# load-all-then-select: load_bank_chunk divides w0 by the manifest n_chunks (as load_bank does), and chunk
+# + within-chunk order is preserved, so the histograms/chi2 are bit-identical.
+def _merge_sel(parts):
+    parts = [p for p in parts if len(p["w"])]
+    if not parts:
+        raise ValueError("selection returned no events on any chunk")
+    keys = list(parts[0])
+    return {k: np.concatenate([p[k] for p in parts]) for k in keys}
+
+
+def _stream_select(bank_dir, loader, select_fn, sd):
+    nch = BP.bank_nchunks(bank_dir)
+    parts = []
+    for f in sorted(glob.glob(f"{bank_dir}/chunk_*.npz")):
+        B = loader(f, nch)
+        parts.append(select_fn(B, sd))
+        del B                                    # free the chunk before the next one loads
+    return _merge_sel(parts)
+
+
 # --------------------------------------------------------------------------- ADoNIS paper_banks side
-def bank_signal(bank_dir, sd):
-    B = BP.load_bank(bank_dir)                                 # w0 already /n_chunks -> absolute nb
+def _select_cc(B, sd):
+    """CC0pi/CC1pi selection body on ONE chunk's bank dict (streamed by bank_signal)."""
     mu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(mu[:, 1:], axis=1); cmu = _cos(mu, pmu)
     if sd.pion_id == "none":                                   # ---- CC0pi ----
@@ -91,6 +116,11 @@ def bank_signal(bank_dir, sd):
         sel = (one_pion & hasp & _mu_pass(pmu, cmu, sd)
                & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
     return _finish(_obs(mu, lead, pip), sel, B["w0"], B["channel"])       # channel: 0 QE, 1 RES
+
+
+def bank_signal(bank_dir, sd):
+    """CC selection over an ADoNIS bank -- STREAMED chunk-by-chunk (bounded memory, see _stream_select)."""
+    return _stream_select(bank_dir, BP.load_bank_chunk, _select_cc, sd)
 
 
 # --------------------------------------------------------------------------- ACHILLES fs_rich side
@@ -150,9 +180,9 @@ def _obs_nc(pi0, protons_lead, has_p):
             "has_proton": has_p.astype(float)}
 
 
-def bank_signal_nc(bank_dir, sd):
-    """NC1pi0(Xp) on an ADoNIS bank: EXACTLY one pi0, no charged pions, no non-pion mesons."""
-    B = BP.load_bank(bank_dir)
+def _select_nc(B, sd):
+    """NC1pi0(Xp) selection body on ONE chunk's bank dict (streamed by bank_signal_nc): EXACTLY one pi0,
+    no charged pions, no non-pion mesons."""
     npip, npi0, npim = BP.pion_counts(B)
     pi0 = BP.single_pi0(B)
     lead, hasp = BP.leading_proton(B)                       # global leading proton (Xp: 0 or more)
@@ -166,6 +196,11 @@ def bank_signal_nc(bank_dir, sd):
     if sd.proton_count == "eq1":
         sel = sel & hasp
     return _finish(_obs_nc(pi0, lead, hasp), sel, B["w0"], B["channel"])
+
+
+def bank_signal_nc(bank_dir, sd):
+    """NC1pi0(Xp) over an ADoNIS bank -- STREAMED chunk-by-chunk (bounded memory)."""
+    return _stream_select(bank_dir, BP.load_bank_chunk, _select_nc, sd)
 
 
 def oracle_signal_nc(oracle_npz, sd):
@@ -271,9 +306,23 @@ def _ele_finish(obs, elec, w, chan, npi, nprot):
     return out
 
 
-def ele_signal(bank_dir, sd):
-    """(e,e') on an ADoNIS bank: apply the electron acceptance, return per-event observables + topology."""
-    B = _load_ele_bank(bank_dir)
+def _load_ele_chunk(f, nch):
+    """ONE (e,e') bank chunk as the dict _select_ele expects (w0 = c/nch).  Single-chunk peer of
+    _load_ele_bank, for the streaming (bounded-memory) selection."""
+    d = np.load(f); n = len(d["c"])
+    lep = next((o for o in ("k_lep", "k_e", "k_mu") if o in d.files), None)
+    B = {"omega": np.asarray(d["omega"], float), "theta": np.asarray(d["theta"], float),
+         "channel": np.asarray(d["channel"]),
+         "n_pi_out": np.asarray(d["n_pi_out"]) if "n_pi_out" in d.files else np.zeros(n, int),
+         "k_lep": np.asarray(d[lep], float) if lep else np.zeros((n, 4)),
+         "w0": np.asarray(d["c"], float) / nch,
+         "fs_pid": d["fs_pid"], "fs_p4": d["fs_p4"], "fs_off": d["fs_off"]}
+    B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
+    return B
+
+
+def _select_ele(B, sd):
+    """(e,e') selection body on ONE chunk's bank dict (streamed by ele_signal)."""
     theta = np.asarray(B["theta"], float)                     # degrees
     Ee = float(sd.beam_energy) - np.asarray(B["omega"], float)
     cth = np.cos(np.radians(theta)); klep = B["k_lep"].astype(np.float64)
@@ -283,6 +332,11 @@ def ele_signal(bank_dir, sd):
     lead, nprot = _ele_lead_bank(B, sd)
     obs = {"omega": np.asarray(B["omega"], float), **_ele_obs(Ee, cth, klep, lead, sd.removal_energy)}
     return _ele_finish(obs, elec, B["w0"], B["channel"], B["n_pi_out"], nprot)
+
+
+def ele_signal(bank_dir, sd):
+    """(e,e') selection over an ADoNIS bank -- STREAMED chunk-by-chunk (bounded memory)."""
+    return _stream_select(bank_dir, _load_ele_chunk, _select_ele, sd)
 
 
 def ele_oracle_signal(oracle_npz, sd):

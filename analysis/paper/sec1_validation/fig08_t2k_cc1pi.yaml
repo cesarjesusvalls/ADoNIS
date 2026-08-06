@@ -13,9 +13,12 @@ signal:      # CC1pi+: exactly 1 pi+ ; mu/pi/lead-p in window & all forward cos>
   pion_id: pip
   proton_lead: in_window
 observables:
-  - {key: pn,      label: '$p_N$ [MeV/c]',            linspace: [0.0, 800.0, 21]}
-  - {key: dptt,    label: '$\delta p_{TT}$ [MeV/c]',  linspace: [-700.0, 700.0, 29]}
-  - {key: dalphat, label: '$\delta\alpha_T$ [rad]',   linspace: [0.0, pi, 19]}
+  # pn, dptt, dalphat: exact NUISANCE T2K_CC1pipNp STV release edges (T2K:2021naz), matching the ACHILLES
+  # paper panels -- a COARSE measurement (4/5/3 bins).  dalphat release is in DEGREES [0,60,120,180] ->
+  # radians here since the ADoNIS observable is rad.  ppi/cos_pi are validation extras (not in the release).
+  - {key: pn,      label: '$p_N$ [MeV/c]',            edges: [0, 120, 240, 600, 1500]}
+  - {key: dptt,    label: '$\delta p_{TT}$ [MeV/c]',  edges: [-700, -300, -100, 100, 300, 700]}
+  - {key: dalphat, label: '$\delta\alpha_T$ [rad]',   edges: [0.0, 1.0471975512, 2.0943951024, pi]}
   - {key: ppi,     label: '$p_\pi$ [MeV/c]',          linspace: [150.0, 1200.0, 22]}
   - {key: cos_pi,  label: '$\cos\theta_\pi$',         linspace: [0.3, 1.0, 15]}
 out_path: output/paper/fig08_t2k_cc1pi.png

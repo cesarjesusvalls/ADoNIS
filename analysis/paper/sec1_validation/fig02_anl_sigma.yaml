@@ -1,8 +1,0 @@
-# Paper Fig 2 -- free-nucleon RES sigma(E_nu), 3 CC channels overlaid (multi-series curve; bespoke).
-name: fig02_anl_sigma
-render: sigma_channels
-# NOT heavy: both series are read from precomputed scans on disk (ADoNIS output/adonis_freenucleon_scan/,
-# ACHILLES output/oracle_freenucleon_scan/) -- the amps2 scan generation is a separate offline step, so at
-# figure time this is just a load+draw.  (load_scan raises if the scan dirs are missing; it does not regen.)
-inputs:
-  oracle_scan: output/oracle_freenucleon_scan   # ACHILLES free-nucleon energy scan (per-point npz dirs)

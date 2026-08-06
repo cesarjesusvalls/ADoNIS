@@ -13,8 +13,10 @@ signal:      # CC0pi: mu 250-inf & cos>-0.6 ; global leading p 450-1000 & cos>0.
   pion_id: none
   proton_lead: global
 observables:
-  - {key: dpt,     label: '$\delta p_T$ [MeV/c]',    linspace: [0.0, 800.0, 21]}
-  - {key: dalphat, label: '$\delta\alpha_T$ [rad]',  linspace: [0.0, pi, 21]}
+  # dpt, dalphat: exact NUISANCE T2K_CC0pi STV release edges (T2K:2018rnz / 1802.05078), matching the
+  # ACHILLES paper's fig:T2K CC0pi panels.  pmu/cos_mu are ADoNIS validation extras (not in the release).
+  - {key: dpt,     label: '$\delta p_T$ [MeV/c]',    edges: [0, 80, 120, 155, 200, 260, 360, 510, 1100]}
+  - {key: dalphat, label: '$\delta\alpha_T$ [rad]',  edges: [0.0, 0.47, 1.02, 1.54, 1.98, 2.34, 2.64, 2.89, pi]}
   - {key: pmu,     label: '$p_\mu$ [MeV/c]',         linspace: [0.0, 2000.0, 21]}
   - {key: cos_mu,  label: '$\cos\theta_\mu$',        linspace: [-0.6, 1.0, 21]}
 out_path: output/paper/fig07_t2k_cc0pi.png

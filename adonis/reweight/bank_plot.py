@@ -75,6 +75,32 @@ def load_bank(outdir, max_chunks=None):
     return B
 
 
+def bank_nchunks(outdir):
+    """The manifest n_chunks (the w0 divisor -> absolute nb), without loading any events."""
+    return json.load(open(f"{outdir}/manifest.json"))["n_chunks"]
+
+
+def load_bank_chunk(f, nchunks):
+    """ONE chunk file as a full-record bank dict -- same schema as load_bank for a single chunk (ev_off=0,
+    so its ragged indices are already 0-based / self-contained).  w0 is divided by `nchunks` (the manifest
+    total, passed in) so that SUMMING a per-chunk reduction over all chunks reproduces load_bank's
+    cross-section exactly.  This is what the streaming, bounded-memory selection in workflow.selection uses:
+    it loads one chunk, keeps only the ~1% of events that pass the cut, frees the chunk, and never holds the
+    whole concatenated bank in memory (which OOMs on the 20M-event Ar/uBooNE banks)."""
+    d = np.load(f)
+    _lep_alias = None if "k_lep" in d.files else next((o for o in ("k_mu", "k_e") if o in d.files), None)
+    B = {}
+    for key in d.files:                                # per-event records (skip the ragged final-state keys)
+        if key in _FS:
+            continue
+        B["k_lep" if key == _lep_alias else key] = d[key]   # f_p_eidx/f_n_eidx need no ev_off shift (ev_off=0)
+    B["w0"] = B["w0"] / nchunks
+    B["fs_pid"] = d["fs_pid"]; B["fs_chg"] = d["fs_chg"]; B["fs_p4"] = d["fs_p4"]; B["fs_off"] = d["fs_off"]
+    B["n_chunks"] = nchunks
+    n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
+    return B
+
+
 # ---- per-event reductions over the ragged final state ----------------------------------------------- #
 def _event_sum(B, per_particle):
     n = len(B["w0"])

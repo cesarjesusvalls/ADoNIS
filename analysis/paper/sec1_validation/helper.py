@@ -189,16 +189,20 @@ _COMPUTE = {"sliced": _compute_sliced, "ele": _compute_ele}
 
 
 # =================================================================================== RENDER: multiobs
-def render_multiobs(spec):
-    """Pure selection-histogram figure: straight through run_analysis under the paper style."""
+def render_multiobs(spec, show_ratio=True):
+    """Pure selection-histogram figure: straight through run_analysis under the paper style.
+    show_ratio=False drops the ACH/ADO ratio strip and writes to a *_noratio file (paper fig untouched)."""
     cfg = load_analysis_config(_rel(spec["_path"]))
-    return run_analysis(cfg, title="", **style.paper_run_analysis_kw())   # title -> caption, not on the plot
+    if not show_ratio:
+        cfg.out_path = cfg.out_path.replace(".png", "_noratio.png")
+    return run_analysis(cfg, title="", show_ratio=show_ratio, **style.paper_run_analysis_kw())   # title -> caption
 
 
 # =================================================================================== RENDER: panels
-def render_panels(spec):
+def render_panels(spec, show_ratio=True):
     """Compute a panel set (compute selected by spec['compute']) and draw it with make_figure -- the
-    shared grid-of-chi2_ratio_panel builder.  Layout kwargs come from the compute + spec['layout']."""
+    shared grid-of-chi2_ratio_panel builder.  Layout kwargs come from the compute + spec['layout'].
+    show_ratio=False drops the ACH/ADO ratio strip and writes to a *_noratio file (paper fig untouched)."""
     specs, ado_sel, ref_sel, layout = _COMPUTE[spec["compute"]](spec)
     layout.update(spec.get("layout", {}) or {})
     kw = dict(ado_label="ADoNIS", ref_label="ACHILLES",
@@ -207,7 +211,8 @@ def render_panels(spec):
               panel_kw=layout.pop("panel_kw", style.panel_kw(ratio_yticks=[0.8, 1.0, 1.2])),
               rect_top=1.0)   # no title on the plot (the caption carries it) -> pack flush to the top
     kw.update(layout)
-    out = ROOT / f"output/paper/{spec['name']}.png"
+    kw["show_ratio"] = show_ratio
+    out = ROOT / f"output/paper/{spec['name']}{'' if show_ratio else '_noratio'}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     fig, results, sig = make_figure(specs, ref_sel, ado_sel, **kw)
     fig.savefig(out, dpi=300, bbox_inches="tight"); fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
@@ -220,8 +225,9 @@ def render_panels(spec):
 # =================================================================================== RENDER: bespoke
 # figs 2, 3, 13 are multi-series overlays / angular samplers -- NOT one-observable panels, so they draw
 # with matplotlib directly (still here, still one entry point).  save via style.save (paper .png+.pdf).
-def render_sigma_channels(spec):
-    """Fig 2 -- free-nucleon RES sigma(E_nu), 3 CC channels overlaid in one panel + a 3-channel ratio."""
+def render_sigma_channels(spec, show_ratio=True):
+    """Fig 2 -- free-nucleon RES sigma(E_nu), 3 CC channels overlaid in one panel + a 3-channel ratio.
+    (Cut from the paper; show_ratio is accepted for a uniform renderer signature but not applied here.)"""
     import matplotlib.pyplot as plt
     from analysis.paper.freenucleon_bank import ENERGIES, CHANNEL_SPECS, load_scan
     NB = 1.0e5                                                     # nb -> 10^-38 cm^2 (plotted axis unit)
@@ -261,8 +267,9 @@ def render_sigma_channels(spec):
     fig.tight_layout(rect=[0, 0, 1, 1.0]); style.save(fig, spec["name"])   # no title -> caption carries it
 
 
-def render_beam_sigma(spec):
-    """Fig 3 -- pi+ nucleus absorption+reaction sigma(p), 2x2 curve blocks (nucleus rows, channel cols)."""
+def render_beam_sigma(spec, show_ratio=True):
+    """Fig 3 -- pi+ nucleus absorption+reaction sigma(p), 2x2 curve blocks (nucleus rows, channel cols).
+    show_ratio=False drops the per-block ACH/ADO ratio strip and writes to a *_noratio file."""
     import os
     import matplotlib.pyplot as plt
     pp = _p(spec)
@@ -283,13 +290,17 @@ def render_beam_sigma(spec):
         return d["edges"], d["sr"], d["ss"], d["er"], d["es"], d["hr"], d["hs"], d["her"], d["hes"]
 
     # 2x2 of (top+ratio) blocks at the shared panel proportions: 2 cols x PANEL_W, 2 rows x PANEL_H.
-    style.use(); fig = plt.figure(figsize=(2 * style.PANEL_W, 2 * style.PANEL_H))
+    # no ratio -> each block is a single axis; shrink the row height to the top panel's 3/4 share.
+    style.use(); fig = plt.figure(figsize=(2 * style.PANEL_W, 2 * style.PANEL_H * (1.0 if show_ratio else 0.75)))
     outer = fig.add_gridspec(2, 2, hspace=0.18, wspace=0.28); ax = {}   # tight row gap (matches make_figure)
     for ni in range(2):
         for oi in range(2):
-            inner = outer[ni, oi].subgridspec(2, 1, height_ratios=[3, 1], hspace=0.0)
-            a0 = fig.add_subplot(inner[0]); ax[ni, oi] = (a0, fig.add_subplot(inner[1], sharex=a0))
-            a0.tick_params(labelbottom=False)
+            if show_ratio:
+                inner = outer[ni, oi].subgridspec(2, 1, height_ratios=[3, 1], hspace=0.0)
+                a0 = fig.add_subplot(inner[0]); ax[ni, oi] = (a0, fig.add_subplot(inner[1], sharex=a0))
+                a0.tick_params(labelbottom=False)
+            else:
+                ax[ni, oi] = (fig.add_subplot(outer[ni, oi]), None)
     for ni, nuc in enumerate(("C", "Ar")):
         edges, sr, ss, er, es, hr, hs, her, hes = reduce_nuc(nuc)
         cen = 0.5 * (edges[:-1] + edges[1:]) / 1000.0; PMAX = {"absorption": 0.5, "reaction": 1.0}
@@ -300,16 +311,19 @@ def render_beam_sigma(spec):
                                    xlabel=r"beam $|p|$ [GeV/c]", ratio_ylim=(0.8, 1.2),
                                    ado_label="ADoNIS", ref_label="ACHILLES", total_color=style.C_QE,
                                    ratio_color=style.C_RATIO, ado_lighten=style.ADO_LIGHTEN,
-                                   ref_darken=style.REF_DARKEN, headroom=0.30)
-            a0.set_ylabel(r"$\sigma$ [mb]"); a1.set_ylabel("ratio"); a1.set_yticks([0.9, 1.0, 1.1])
+                                   ref_darken=style.REF_DARKEN, headroom=0.30, show_ratio=show_ratio)
+            a0.set_ylabel(r"$\sigma$ [mb]")
+            if show_ratio:
+                a1.set_ylabel("ratio"); a1.set_yticks([0.9, 1.0, 1.1])
             if ni == 0:
-                a0.set_title(lab, fontsize=9); a1.set_xlabel("")
+                a0.set_title(lab, fontsize=9); (a1 if show_ratio else a0).set_xlabel("")
             a0.text(0.97, 0.95, rf"$\pi^+$ {_NUC_TEX[nuc]}", transform=a0.transAxes, fontsize=8, va="top", ha="right")
-    style.save(fig, spec["name"])   # no title -> caption carries it
+    style.save(fig, spec["name"] + ("" if show_ratio else "_noratio"))   # no title -> caption carries it
 
 
-def render_dcc(spec):
-    """Fig 13 -- meson-baryon DCC: total sigma(W) for 4 species (analytic + INC MC) + pi+p angular sampler."""
+def render_dcc(spec, show_ratio=True):
+    """Fig 13 -- meson-baryon DCC: total sigma(W) for 4 species (analytic + INC MC) + pi+p angular sampler.
+    (Cut from the paper; has no ratio strip, so show_ratio is accepted but a no-op.)"""
     import matplotlib.pyplot as plt
     import jax
     import jax.numpy as jnp
@@ -378,6 +392,7 @@ RENDERERS = {"multiobs": render_multiobs, "panels": render_panels,
              "sigma_channels": render_sigma_channels, "beam_sigma": render_beam_sigma, "dcc": render_dcc}
 
 
-def render(spec):
-    """Dispatch one figure spec (dict, with '_path' injected by make.py) to its render function."""
-    return RENDERERS[spec["render"]](spec)
+def render(spec, show_ratio=True):
+    """Dispatch one figure spec (dict, with '_path' injected by make.py) to its render function.
+    show_ratio=False renders the ratio-less variant to a *_noratio file (see make.py --no-ratio)."""
+    return RENDERERS[spec["render"]](spec, show_ratio=show_ratio)

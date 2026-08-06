@@ -23,15 +23,12 @@
 npz: multisample_carbon
 fit_cut: 0.5                   # a knob is FIT when shrinkage sigma_post/sigma_prior < this
 
-# The column of the reference axis that fig 2 (failure modes) and fig 3 (degeneracy) are computed on.
-# `group: -1` means "the last column that survived resolution", which stays correct as samples change.
-reference:
-  axis: sample_ladder
-  group: -1
-
 axes:
 
   # ---- What does each PROBE TYPE buy you?  (neutrino / electron / hadron beams) ------------------ #
+  # The ONLY axis kept: it makes sec2_shrinkage_subsets, the paper's "constraining power per probe"
+  # figure.  (The per-sample / cumulative-ladder axes and the failure-mode + degeneracy reference
+  # figures were pruned -- they are not paper figures.)
   by_probe:
     figure: sec2_shrinkage_subsets       # kept at the historical name
     title: Gate I per probe type
@@ -41,25 +38,3 @@ axes:
       ebeam: {label: "$e$ beam\n$(e,e')$",        keys: ["e_*"]}
       hadr:  {label: "hadron beam\n$\\pi^+,p,n$", keys: ["pip_*", "prot_*", "neut_*"]}
       all:   {label: "ALL",                       keys: ["<nu>", "<ebeam>", "<hadr>"]}   # every sample at once
-
-  # ---- What does each SAMPLE ALONE measure?  (knob x sample, un-stacked) ------------------------- #
-  samples_alone:
-    figure: sec2_shrinkage_samples
-    title: Gate I per sample, each on its own
-    groups:
-      T2K:       {label: "T2K\n$\\nu$ CC0/1$\\pi$",  keys: [dpt, dat, pmu, cosmu, pn, dptt, daT]}   # sec2's 7-obs T2K
-      MINERvA:   {label: "MINERvA\n$\\nu$ CC0$\\pi$", keys: ["mnv_*"]}
-      ee:        {label: "$(e,e')$\nQE + RES",        keys: ["e_*"]}
-      pip:       {label: "$\\pi^+$–C\nbeam",          keys: ["pip_*"]}
-      prot:      {label: "p–C\nbeam",                 keys: ["prot_*"]}
-      neut:      {label: "n–C\nbeam",                 keys: ["neut_*"]}     # dropped if absent
-
-  # ---- What does each ADDED sample buy on top of the last?  (Fisher is additive) ----------------- #
-  sample_ladder:
-    figure: sec2_shrinkage_ladder
-    title: "Gate I as samples are added (F = $\\sum_s$ F$_s$)"
-    groups:
-      T2K:      {label: "T2K",            keys: [dpt, dat, pmu, cosmu, pn, dptt, daT]}   # sec2's 7-obs T2K
-      p_mnv:    {label: "+MINERvA",       keys: ["<T2K>", "mnv_*"]}
-      p_ee:     {label: "+$(e,e')$",      keys: ["<p_mnv>", "e_*"]}
-      p_had:    {label: "+hadron\nbeams", keys: ["<p_ee>", "pip_*", "prot_*", "neut_*"]}
