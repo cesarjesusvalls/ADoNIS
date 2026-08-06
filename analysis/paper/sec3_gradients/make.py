@@ -26,21 +26,18 @@ from analysis.paper import fisher_engine as FE
 
 # every observable label carries its EXPERIMENT (+ topology): line 1 = experiment/sample, line 2 = the
 # observable variable (the thin inclusive-multiplicity rows use a compact single-line superscript form).
-DSLABEL = {"dpt": "T2K CC0$\\pi$\n$\\delta p_T$", "dat": "T2K CC0$\\pi$\n$\\delta\\alpha_T$",
-           "pmu": "T2K CC0$\\pi$\n$p_\\mu$", "cosmu": "T2K CC0$\\pi$\n$\\cos\\theta_\\mu$",
-           "pn": "T2K CC1$\\pi$\n$p_N$", "dptt": "T2K CC1$\\pi$\n$\\delta p_{TT}$",
-           "daT": "T2K CC1$\\pi$\n$\\delta\\alpha_T$", "ppi": "T2K CC1$\\pi$\n$p_\\pi$",
-           "cospi": "T2K CC1$\\pi$\n$\\cos\\theta_\\pi$",
-           "n_p": "T2K $N_p^{\\rm incl}$", "n_chpi": "T2K $N_{\\pi^\\pm}^{\\rm incl}$",
-           "mnv_dat": "MINERvA\nCC0$\\pi$ $\\delta\\alpha_T$", "mnv_pn": "MINERvA\nCC0$\\pi$ $p_n$",
-           "mnv_dpt": "MINERvA\nCC0$\\pi$ $\\delta p_T$",
+# dskeys are namespaced `sample:obs` (AnaSample/SampleSet); the beam keys stay bare.
+DSLABEL = {"t2k_cc0pi:dpt": "T2K CC0$\\pi$\n$\\delta p_T$", "t2k_cc0pi:dalphat": "T2K CC0$\\pi$\n$\\delta\\alpha_T$",
+           "t2k_cc0pi:pmu": "T2K CC0$\\pi$\n$p_\\mu$", "t2k_cc0pi:cos_mu": "T2K CC0$\\pi$\n$\\cos\\theta_\\mu$",
+           "t2k_cc1pi_ch:pn": "T2K CC1$\\pi$\n$p_N$", "t2k_cc1pi_ch:dptt": "T2K CC1$\\pi$\n$\\delta p_{TT}$",
+           "t2k_cc1pi_ch:dalphat": "T2K CC1$\\pi$\n$\\delta\\alpha_T$",
+           "minerva_stv:dalphat": "MINERvA\nCC0$\\pi$ $\\delta\\alpha_T$", "minerva_stv:pn": "MINERvA\nCC0$\\pi$ $p_n$",
+           "minerva_stv:dpt": "MINERvA\nCC0$\\pi$ $\\delta p_T$",
+           "minerva_ptpz:pt": "MINERvA\n$p_T^\\mu$", "minerva_ptpz:pz": "MINERvA\n$p_\\parallel^\\mu$",
+           "ee_omega:omega": "$(e,e')$C\n$\\omega$",
            "pip_react": "$\\pi^+$C\n$\\sigma_{\\rm reac}$", "pip_abs": "$\\pi^+$C\n$\\sigma_{\\rm abs}$",
            "prot_react": "$p$C\n$\\sigma_{\\rm reac}$", "prot_pipro": "$p$C\n$\\sigma_{\\pi\\rm prod}$",
-           "neut_react": "$n$C\n$\\sigma_{\\rm reac}$", "neut_pipro": "$n$C\n$\\sigma_{\\pi\\rm prod}$",
-           "e_omega": "$(e,e')$C\n$\\omega$",
-           "t2k_pcos": "T2K CC0$\\pi$\n2D $p_\\mu$-$\\cos\\theta_\\mu$",
-           "mnv_ptmu": "MINERvA\n$p_T^\\mu$", "mnv_pzmu": "MINERvA\n$p_\\parallel^\\mu$",
-           "mnv_ptpl": "MINERvA qe\n2D $p_T$-$p_\\parallel$"}
+           "neut_react": "$n$C\n$\\sigma_{\\rm reac}$", "neut_pipro": "$n$C\n$\\sigma_{\\pi\\rm prod}$"}
 
 
 

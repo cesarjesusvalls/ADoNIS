@@ -34,7 +34,8 @@ axes:
     title: Gate I per probe type
     marginalized_only: true              # single panel: what the joint fit delivers (no raw/degeneracy panel)
     groups:                              # all samples, grouped by beam particle (uses the default npz)
-      nu:    {label: "$\\nu$\nT2K + MINERvA",     keys: [dpt, dat, pmu, cosmu, pn, dptt, daT, "mnv_*"]}
-      ebeam: {label: "$e$ beam\n$(e,e')$",        keys: ["e_*"]}
+      # dskeys are now namespaced `sample:obs` (AnaSample/SampleSet), so a probe is a clean glob over samples
+      nu:    {label: "$\\nu$\nT2K + MINERvA",     keys: ["t2k_*", "minerva_*"]}
+      ebeam: {label: "$e$ beam\n$(e,e')$",        keys: ["ee_*"]}
       hadr:  {label: "hadron beam\n$\\pi^+,p,n$", keys: ["pip_*", "prot_*", "neut_*"]}
       all:   {label: "ALL",                       keys: ["<nu>", "<ebeam>", "<hadr>"]}   # every sample at once
