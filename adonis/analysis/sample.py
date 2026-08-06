@@ -90,6 +90,10 @@ class AnaSample:
     def obs_keys(self):
         return [o.key for o in self.cfg.observables]
 
+    def fit_specs(self):
+        """Observables that enter the Fisher/fit (ObservableSpec.fit); plot uses ALL of them."""
+        return [o for o in self.cfg.observables if getattr(o, "fit", True)]
+
     def edges(self):
         return {o.key: o.bin_edges() for o in self.cfg.observables}
 
@@ -105,7 +109,8 @@ class AnaSample:
     def _gradient(self, max_chunks=None, log=print):
         if self.is_electron:
             raise NotImplementedError("electron (e,e') full-length selector lands in P1 (select_full_ele)")
-        edges_by = self.edges(); keys = self.obs_keys
+        specs = self.fit_specs(); keys = [o.key for o in specs]
+        edges_by = {o.key: o.bin_edges() for o in specs}
         nbins = [len(edges_by[k]) - 1 for k in keys]
         row0 = np.cumsum([0] + nbins)
         J = np.zeros((int(row0[-1]), K.NPAR))

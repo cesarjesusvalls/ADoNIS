@@ -282,6 +282,9 @@ class ObservableSpec:
     label: str
     edges: list | None = None               # explicit edges (may contain sentinels e.g. "pi")
     linspace: list | None = None            # [lo, hi, n_edges] (sentinels allowed)
+    fit: bool = True                        # enters the Gate-I Fisher / fit?  False = plot-only validation
+    #                                         extra (e.g. ppi/cos_pi, MINERvA dphit/lp_p) NUISANCE never
+    #                                         released -- sec1 still plots it, the gradient ignores it.
 
     def bin_edges(self) -> np.ndarray:
         if self.edges is not None:
