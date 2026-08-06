@@ -47,6 +47,37 @@ def bank_jacobian(jvp_wf, th0, JB, ds, npar, log=None, names=None):
     return J, row0
 
 
+def bank_jacobian_chunked(jvp_wf, th0, bank_dir, chunk_ds, nbins_list, npar, log=None, names=None):
+    """Same Jacobian as bank_jacobian, but STREAMED over the bank's chunk files so peak memory is ONE chunk,
+    not the whole bank -- which is what lets the 20M-event banks run on the GPU (the concatenated bank is
+    11.8GB > GPU memory).  J[bin,k] = sum_events (dw/dtheta_k) is additive over events, and np.bincount
+    accumulates, so this is BIT-IDENTICAL to bank_jacobian over the concatenated bank (chunk + within-chunk
+    order preserved).
+
+    chunk_ds(B_chunk) -> the per-chunk dataset list (sel_idx/binidx/nbin/scale_bin on the SAME fixed edges
+    as the whole-bank datasets; NO central/offset needed -- only the bin_w0 fields).  nbins_list = the
+    per-dataset nbin, in the same order chunk_ds returns, fixing the row layout."""
+    import glob
+    from adonis.reweight import bank_plot as BP, bank_reweight as BR
+    row0 = np.cumsum([0] + list(nbins_list))
+    J = np.zeros((int(row0[-1]), npar))
+    th0 = jnp.asarray(th0)
+    tang = [jnp.zeros(npar).at[k].set(1.0) for k in range(npar)]
+    files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
+    nch = BP.bank_nchunks(bank_dir)
+    for ci, f in enumerate(files):
+        Bc = BP.load_bank_chunk(f, nch); JBc = BR.to_jax(Bc)     # one chunk on the GPU
+        dsc = chunk_ds(Bc)
+        for k in range(npar):
+            g = np.asarray(jvp_wf(th0, tang[k], JBc))            # per-event dw/dtheta_k for THIS chunk
+            for j, d in enumerate(dsc):
+                J[row0[j]:row0[j + 1], k] += IC.bin_w0(d, g)     # accumulate (bincount is additive)
+        del Bc, JBc
+        if log is not None:
+            log(f"  chunk {ci + 1}/{len(files)} ({int(row0[-1])} bins x {npar} knobs)")
+    return J, row0
+
+
 def fisher(J, sigma, rows=None):
     """Asimov Fisher F = (J/sigma)^T (J/sigma).  `rows`: restrict to a subset of bin rows (sec3 subsets);
     Fisher is ADDITIVE, so a subset's F is the sum of its bins' outer products -- exactly this slice."""

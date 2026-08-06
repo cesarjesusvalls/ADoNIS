@@ -140,7 +140,7 @@ READINESS = [
     ("2", "Which knobs the data can constrain (Fisher / Gate I)",
      "sec2_shrinkage_subsets", "ok", "figure-complete",
      "16/28 FIT combined; constraining power per probe type"),
-    ("3", "Gradient information for the fittable knobs", "sec3_gradients_shape",
+    ("3", "Gradient information for the fittable knobs", "multisample_carbon_shape",
      "ok", "figure-complete", "exact per-bin ∂(dσ/dx)/∂θ, autodiff, the fittable subset"),
     ("4", "Closures on the Fisher-selected knobs", "physfit_fig7_closure5", "ok", "figure-complete",
      "5-param recovered ≤ 0.5σ"),
@@ -301,7 +301,7 @@ BODY = f"""
   (which knobs are constrainable / where their gradient comes from).</p>
   <p class="deffile mono">analysis/paper/sec3_gradients/make.py — reads multisample_carbon.npz (no bank pass)</p>
   </div>
-  {figure("paper/sec3_gradients_shape.png", "<b>Per-bin gradients for the fittable knobs</b>, autodiff through the cascade — each knob's row normalized to its own peak, so WHERE it pulls is readable; signed (blue↔orange). Rows grouped by physics block, columns by observable: the cross-section knobs draw from ν, the FSI knobs from the hadron beams, the nuclear knobs from ν + (e,e').")}
+  {figure("paper/multisample_carbon_shape.png", "<b>Per-bin gradients for the fittable knobs</b>, autodiff through the cascade — each knob's row normalized to its own peak, so WHERE it pulls is readable; signed (blue↔orange). Rows grouped by physics block, columns by observable: the cross-section knobs draw from ν, the FSI knobs from the hadron beams, the nuclear knobs from ν + (e,e').")}
 </section>
 
 <section class="sec">

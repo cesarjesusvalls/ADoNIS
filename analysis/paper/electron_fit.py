@@ -6,8 +6,11 @@ identical to analysis/paper/physical_fit.py / minerva_fit.py; the sample is the 
 
   * bank    : output/beam_e_C_hv (monochromatic e- beam on 12C, E=2222 MeV, theta_e in [14,17] deg,
               EM hard vertex, QE+RES; carries the hv_ vector/FF/SF records added for EM gradients)
-  * signal  : all accepted (in-acceptance) events, split by channel into QE and RES
-  * observable : omega = energy transfer [MeV], one spectrum per channel (e_qe, e_res)
+  * signal  : all accepted (in-acceptance) events -- QE + RES together, exactly as measured
+  * observable : omega = INCLUSIVE energy-transfer spectrum [MeV], ONE dataset key (e_omega).
+                 QE/RES are a decomposition of one measured spectrum (cf. the §1 fig01_ee_domega),
+                 NOT two independent measurements -- no experiment separates them event-by-event, so a
+                 truth-level channel split would hand the electron probe unmeasurable information.
 
 Because the probe is a PHOTON there is no axial current: the EM hv_ records collapse the QE axial and
 all RES hard-vertex records to identity, so d(sigma)/d{M_A_qe,axial_strength,res_axial_strength} and the
@@ -45,16 +48,15 @@ _EM_ZERO = ["M_A_qe", "axial_strength", "res_axial_strength", "M_A_res", "pion_p
 
 
 def build_electron_datasets(B, w0, log):
-    """2 observables: omega for QE (channel==0) and RES (channel==1). design_edges over [min,p99]+fold,
-    diagonal syst+MC error, Asimov centrals.  Signal = in-acceptance events with non-zero weight."""
+    """ONE observable: the INCLUSIVE energy-transfer spectrum omega over ALL accepted events (QE + RES
+    together, as a measurement reports it -- NO truth-level channel split, since no experiment separates
+    QE from RES event-by-event).  design_edges over [min,p99]+fold, diagonal syst+MC error, Asimov
+    centrals.  Signal = in-acceptance events with non-zero weight."""
     omega = np.asarray(B["omega"], float)
-    chan = np.asarray(B["channel"]).astype(int)
-    good = np.asarray(w0) > 0                                   # drop zero-weight padding rows
-    obs_defs = [("(e,e') QE omega",  "e_qe",  chan == 0),
-                ("(e,e') RES omega", "e_res", chan == 1)]
+    good = np.asarray(w0) > 0                                   # in-acceptance events (drop zero-weight padding)
+    obs_defs = [("(e,e') omega", "e_omega", good)]
     ds = []
-    for name, dkey, chmask in obs_defs:
-        mask = good & chmask
+    for name, dkey, mask in obs_defs:
         v = omega[mask]
         edges = design_edges(v, N_BINS, domain=None)           # [min, p99] + overflow fold
         nb = len(edges) - 1; bw = np.diff(edges)

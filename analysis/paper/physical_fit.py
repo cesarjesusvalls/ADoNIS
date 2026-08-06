@@ -35,6 +35,13 @@ N_BINS = int(os.environ.get("ADONIS_NBINS", "20"))
 SYST = float(os.environ.get("ADONIS_SYST", "0.05"))
 OBS = os.environ.get("PHYSFIT_OBS", "all")               # observable subset (see OBS_SUBSETS)
 LABEL = os.environ.get("ADONIS_LABEL", "physfit_gate1" if OBS == "all" else f"physfit_gate1_{OBS}")
+# CH target for T2K CC1pi+: add the reweightable free-H (nu_mu p -> mu- p pi+) GRADIENT to pN/dpTT/daT.
+# The central already carries free-H via the frozen freeH_offsets; only the gradient was carbon-only.
+T2K_CH = os.environ.get("ADONIS_T2K_CH", "") == "1"
+T2K_H_BANK = os.environ.get("ADONIS_T2K_H_BANK", "output/paper_banks_p4/nu_T2K_H/merged")
+# Stream the jvp over chunk files (peak memory = one chunk) instead of loading the whole bank onto the
+# device -> lets the 20M-event Jacobian run on the GPU.  Bit-identical to the whole-bank path.
+CHUNK_JVP = os.environ.get("ADONIS_CHUNK_JVP", "") == "1"
 
 # ---- knob spec: enumerated through the SINGLE SOURCE OF TRUTH (full_knobs.knob_specs), which drops
 # sscat (dead) and pw_norm (dormant DCC infra) and expands the tuple knobs. We attach only the fit-local
@@ -119,27 +126,16 @@ OBS_SUBSETS["all"] = list(OBS_SUBSETS["kin9"])                      # back-compa
 OBS_SUBSETS["full"] = OBS_SUBSETS["kin9"] + OBS_SUBSETS["mult"]     # everything (needs its own run)
 
 
-def build_physfit_datasets(B, w0, log, obs=None):
-    """9 observables, uniform bins (p99+overflow fold, or full range for bounded), diagonal syst+MC
-    errors, Asimov centrals. Muon/pion kinematics carry the Q^2 information the STV variables
-    integrate out. NB: the new CC1pi kinematics (ppi/cospi) get offset=0 (no free-H term) — valid
-    for closure-type modes where data and model share the bank (any offset cancels identically);
-    NOT valid for GENIE mode without extending freeH_offsets.
-
-    obs: list of dkeys to keep (see OBS_SUBSETS); None = all 9. Binning is defined per observable, so
-    a subset is exactly the corresponding subset of the full-suite datasets (bin edges are identical)."""
-    ds = []
+def _physfit_obs_defs(B):
+    """(name, mask, vals, dkey, chan) for every physfit observable on bank B.  Depends ONLY on B, so the
+    chunked Jacobian can re-derive it per chunk (whole bank OR one chunk file)."""
     lead0, _ = BP.leading_proton(B); sig0 = BP.signal_cc0pi(B)[0]
     kmu = B["k_lep"].astype(np.float64)
     mask1, lead1, pip1 = BP.signal_cc1pi_stv(B)
-    # muon kinematics (junk zero-weight padding rows -> harmless clipped values)
-    kmu_ok = np.where(np.isfinite(kmu) & (np.abs(kmu) < 1e6), kmu, 0.0)
-    pmu = np.sqrt(np.sum(kmu_ok[:, 1:]**2, axis=1))
-    cmu = kmu_ok[:, 3] / np.maximum(pmu, 1e-9)
-    # pion kinematics (CC1pi single pi+)
-    pip_ok = np.where(np.isfinite(pip1) & (np.abs(pip1) < 1e6), pip1, 0.0)
-    ppi = np.sqrt(np.sum(np.asarray(pip_ok)[:, 1:]**2, axis=1))
-    cpi = np.asarray(pip_ok)[:, 3] / np.maximum(ppi, 1e-9)
+    kmu_ok = np.where(np.isfinite(kmu) & (np.abs(kmu) < 1e6), kmu, 0.0)      # junk padding -> clipped
+    pmu = np.sqrt(np.sum(kmu_ok[:, 1:]**2, axis=1)); cmu = kmu_ok[:, 3] / np.maximum(pmu, 1e-9)
+    pip_ok = np.where(np.isfinite(pip1) & (np.abs(pip1) < 1e6), pip1, 0.0)   # CC1pi single pi+
+    ppi = np.sqrt(np.sum(np.asarray(pip_ok)[:, 1:]**2, axis=1)); cpi = np.asarray(pip_ok)[:, 3] / np.maximum(ppi, 1e-9)
     obs_defs = [
         ("CC0pi dpt",   sig0,  np.asarray(BP.dpt(B, lead0)),  "dpt",   "cc0pi"),
         ("CC0pi dat",   sig0,  np.asarray(BP.dat(B, lead0)),  "dat",   "cc0pi"),
@@ -152,7 +148,6 @@ def build_physfit_datasets(B, w0, log, obs=None):
         ("CC1pi cospi", mask1, cpi,                           "cospi", "cc1pi"),
     ]
     # observed multiplicities, CC-inclusive under the MUON acceptance only (see MULT_EDGES above).
-    # Acceptance constants come from the tune module (single source of truth for the T2K cuts).
     _T = BP._tune()
     inc = (pmu > _T.MU_LO) & (cmu > _T.COSMU)
     npip, _npi0, npim = BP.pion_counts(B)
@@ -160,62 +155,229 @@ def build_physfit_datasets(B, w0, log, obs=None):
         ("Incl N_p",     inc, BP.n_protons(B, pmin=P_THR_MULT).astype(float), "n_p",    "incl"),
         ("Incl N_pi+-",  inc, (npip + npim).astype(float),                    "n_chpi", "incl"),
     ]
+    return obs_defs
+
+
+def _physfit_scale_bin(dkey, chan, bw):
+    """Per-bin conversion (theta- and bank-INDEPENDENT).  CC0pi/incl -> NUISANCE 1e-38/nucleon conv
+    (pmu displayed per GeV/c -> x1000); CC1pi -> nb/unit (1/bw)."""
+    if chan == "cc0pi":
+        if dkey in ("dpt", "dat"):
+            _, conv, _, _ = IC.load_cc0pi(dkey)
+        else:
+            _, conv0, _, _ = IC.load_cc0pi("dat"); conv = conv0 * (1000.0 if dkey == "pmu" else 1.0)
+        return conv / bw
+    if chan == "incl":
+        _, conv0, _, _ = IC.load_cc0pi("dat"); return conv0 / bw
+    return 1.0 / bw
+
+
+def _physfit_bin_ds(B, edges_by, dkeys):
+    """Per-obs dataset dicts (sel_idx/binidx/nbin/scale_bin) for bank B on the FIXED edges_by -- exactly
+    the fields IC.bin_w0 needs, for the (chunked) Jacobian.  NO central/sigma/offset.  The chunked jvp
+    calls this per chunk; build_physfit_datasets calls it once on the whole bank and adds central/sigma."""
+    defs = {d[3]: d for d in _physfit_obs_defs(B)}
+    ds = []
+    for dkey in dkeys:
+        name, mask, vals, _, chan = defs[dkey]
+        edges = edges_by[dkey]; nb = len(edges) - 1; bw = np.diff(edges)
+        eps = (edges[-1] - edges[0]) * 1e-12
+        vc = np.clip(vals, edges[0] + eps, edges[-1] - eps)      # overflow fold
+        sel, bidx, nbA = IC._bin(mask, vc, edges); assert nbA == nb
+        ds.append(dict(name=name, key=dkey, sel_idx=sel, binidx=bidx, nbin=nb,
+                       scale_bin=_physfit_scale_bin(dkey, chan, bw)))
+    return ds
+
+
+def physfit_edges(B, obs=None):
+    """design_edges per observable over the WHOLE bank (fixes the binning every chunk shares) + the
+    free-H offsets.  Returns (edges_by, fH, dkeys)."""
+    obs_defs = _physfit_obs_defs(B)
     if obs is not None:
-        keep = set(obs)
-        unknown = keep - {d[3] for d in obs_defs}
+        keep = set(obs); unknown = keep - {d[3] for d in obs_defs}
         if unknown:
             raise KeyError(f"unknown observable key(s): {sorted(unknown)}")
         obs_defs = [d for d in obs_defs if d[3] in keep]
-    # free-H offsets on OUR edges (theta-independent; enters centrals -> syst sigma, cancels in J)
     edges_by = {}
     for name, mask, vals, dkey, chan in obs_defs:
         if dkey in MULT_EDGES:                          # integer multiplicity bins (top bin = overflow)
-            edges_by[dkey] = MULT_EDGES[dkey]
-            continue
-        v = vals[np.asarray(mask, bool)]
-        dom = DOMAINS.get(dkey)
+            edges_by[dkey] = MULT_EDGES[dkey]; continue
+        v = vals[np.asarray(mask, bool)]; dom = DOMAINS.get(dkey)
         if dkey in ("cosmu", "cospi"):                  # bounded above at 1, cut below by acceptance
             dom = (float(v.min()), 1.0)
         edges_by[dkey] = design_edges(v, N_BINS, domain=dom)
     fH_edges = {k: v for k, v in edges_by.items() if k in ("pn", "dptt", "daT")}
     fH = IC.freeH_offsets(fH_edges) if fH_edges else {}   # skip the free-H generation when unused
-    for name, mask, vals, dkey, chan in obs_defs:
-        edges = edges_by[dkey]; nb = len(edges) - 1; bw = np.diff(edges)
-        eps = (edges[-1] - edges[0]) * 1e-12
-        vc = np.clip(vals, edges[0] + eps, edges[-1] - eps)      # overflow fold
-        sel, bidx, nbA = IC._bin(mask, vc, edges); assert nbA == nb
-        if chan == "cc0pi":
-            if dkey in ("dpt", "dat"):
-                _, conv, _, _ = IC.load_cc0pi(dkey)
-            else:
-                # base 1e-38/nucleon per NATIVE unit (dat conv is per rad = per native);
-                # pmu binned in MeV but displayed per GeV/c -> x1000 (same convention as dpt)
-                _, conv0, _, _ = IC.load_cc0pi("dat")
-                conv = conv0 * (1000.0 if dkey == "pmu" else 1.0)
-            scale_bin = conv / bw
-            offset = np.zeros(nb)
-        elif chan == "incl":
-            # sigma per multiplicity bin, same absolute units as the CC0pi rows (1e-38/nucleon);
-            # the bin "width" is 1 count, so scale_bin is just the conversion.  Carbon bank -> no free-H.
-            _, conv0, _, _ = IC.load_cc0pi("dat")
-            scale_bin = conv0 / bw
-            offset = np.zeros(nb)
-        else:
-            scale_bin = 1.0 / bw
-            offset = fH[dkey] if dkey in fH else np.zeros(nb)   # new CC1pi kin: no free-H (closure-safe)
-        d = dict(name=name, key=dkey, sel_idx=sel, binidx=bidx, nbin=nb, scale_bin=scale_bin,
-                 offset=offset, edges=edges)
-        central = IC.bin_w(d, w0)                                 # Asimov central (incl. free-H)
-        sw2 = np.bincount(bidx, weights=np.asarray(w0)[sel]**2, minlength=nb)
-        mcerr = scale_bin * np.sqrt(sw2)
+    return edges_by, fH, [d[3] for d in obs_defs]
+
+
+def build_physfit_datasets(B, w0, log, obs=None):
+    """Full datasets (sel/binidx/scale_bin + Asimov central, sigma, Cinv, offset) over the WHOLE bank.
+    The binning (sel/binidx/scale_bin) comes from the SAME _physfit_bin_ds the chunked Jacobian uses; this
+    adds the whole-bank central/sigma + the frozen free-H offset (theta-independent -> cancels in J).
+    obs: dkeys to keep (None = all)."""
+    edges_by, fH, dkeys = physfit_edges(B, obs)
+    binds = _physfit_bin_ds(B, edges_by, dkeys)
+    ds = []
+    for bd in binds:
+        offset = fH.get(bd["key"], np.zeros(bd["nbin"]))         # free-H only on pn/dptt/daT; else zeros
+        d = dict(bd, offset=offset, edges=edges_by[bd["key"]])
+        central = IC.bin_w(d, w0)                                 # Asimov central (incl. frozen free-H)
+        sw2 = np.bincount(d["binidx"], weights=np.asarray(w0)[d["sel_idx"]]**2, minlength=d["nbin"])
+        mcerr = d["scale_bin"] * np.sqrt(sw2)
         var = (SYST * central)**2 + mcerr**2                      # kept for Cinv + the total-error log
-        sigma = FE.bin_sigma(central, mcerr, SYST)                # empty-bin guarded (sigma=inf, not 0/0)
-        d.update(data=central, sigma=sigma, Cinv=np.diag(1.0 / np.maximum(var, 1e-300)),
-                 mcerr=mcerr)
+        d.update(data=central, sigma=FE.bin_sigma(central, mcerr, SYST),  # empty-bin guarded
+                 Cinv=np.diag(1.0 / np.maximum(var, 1e-300)), mcerr=mcerr)
         ds.append(d)
-        log(f"  [{name}] {nb} bins | MC err med {np.median(mcerr/np.maximum(central,1e-30)):.1%} "
+        log(f"  [{d['name']}] {d['nbin']} bins | MC err med {np.median(mcerr/np.maximum(central,1e-30)):.1%} "
             f"| total err med {np.median(np.sqrt(var)/np.maximum(central,1e-30)):.1%}")
     return ds
+
+
+def _stream_selected(bank_dir, obs_fn, log=None):
+    """Stream a bank ONE CHUNK AT A TIME; accumulate only the SELECTED (signal) events' (value, nominal
+    weight) per observable.  Peak memory = one chunk (~76MB) of PURE NUMPY: no jax array is ever created
+    here, so Pass 1 cannot accumulate device buffers.  The nominal per-event weight is the bank's stored w0
+    (the same weight bank_plot's forward histogram uses), NOT weight_jit(nom) -- the two agree to the
+    reduced-quadratic nominal-identity roundoff (~1e-7), so central/sigma match the whole-bank path
+    negligibly, and the Jacobian (built separately by the pass-2 jvp) is unaffected.  The accumulator is the
+    signal sample (~0.1-1% of the bank), never the bank.  obs_fn(B_chunk) -> iterable of
+    (name, mask, vals, dkey, chan).
+
+    Order-independent: mask/vals/w are per-event, and everything downstream (design_edges = min/percentile;
+    central = bincount) is order-independent, so chunk order is irrelevant."""
+    import glob
+    nch = BP.bank_nchunks(bank_dir); files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
+    acc = {}
+    for ci, f in enumerate(files):
+        Bc = BP.load_bank_chunk(f, nch)
+        w0c = np.asarray(Bc["w0"])                              # stored nominal per-event weight (numpy)
+        for name, mask, vals, dkey, chan in obs_fn(Bc):
+            m = np.asarray(mask, bool)
+            a = acc.setdefault(dkey, dict(name=name, chan=chan, vals=[], w=[]))
+            a["vals"].append(np.asarray(vals)[m]); a["w"].append(w0c[m])
+        del Bc, w0c
+        if log is not None and ((ci + 1) % 20 == 0 or ci + 1 == len(files)):
+            log(f"  scan {ci + 1}/{len(files)} chunks")
+    return {k: dict(name=v["name"], chan=v["chan"],
+                    vals=np.concatenate(v["vals"]) if v["vals"] else np.zeros(0),
+                    w=np.concatenate(v["w"]) if v["w"] else np.zeros(0)) for k, v in acc.items()}
+
+
+def _central_from_selected(vals, w, edges, scale_bin, offset):
+    """Per-bin dsigma/dx + MC error from an accumulated (selected value, nominal weight) sample -- the
+    streamed twin of IC.bin_w: clip (overflow fold) -> IC._bin -> scale*bincount + offset."""
+    nb = len(edges) - 1; eps = (edges[-1] - edges[0]) * 1e-12
+    vc = np.clip(vals, edges[0] + eps, edges[-1] - eps)
+    sel, bidx, nbA = IC._bin(np.ones(len(vc), bool), vc, edges); assert nbA == nb
+    central = scale_bin * np.bincount(bidx, weights=w[sel], minlength=nb) + offset
+    mcerr = scale_bin * np.sqrt(np.bincount(bidx, weights=w[sel] ** 2, minlength=nb))
+    return central, mcerr
+
+
+def physfit_stream_datasets(bank_dir, grids, nom, log, obs=None):
+    """Full physfit datasets built by STREAMING the bank one chunk at a time (peak = one chunk) -- the 20M
+    bank is never concatenated in memory.  Returns the SAME datasets as build_physfit_datasets over the whole
+    bank (edges/central/sigma/Cinv/offset), minus the global sel/binidx (the chunked Jacobian recomputes
+    those per chunk).  Matches the whole-bank path to the nominal-identity roundoff (~1e-7: the streamed
+    nominal weight is the stored w0, see _stream_selected); the Jacobian is built separately and is exact."""
+    keep = None if obs is None else set(obs)
+
+    def obs_fn(Bc):
+        for t in _physfit_obs_defs(Bc):
+            if keep is None or t[3] in keep:
+                yield t
+    acc = _stream_selected(bank_dir, obs_fn, log=log)
+    if keep is not None:
+        unknown = keep - set(acc)
+        if unknown:
+            raise KeyError(f"unknown observable key(s): {sorted(unknown)}")
+    dkeys = list(acc)                                            # obs_defs order (first-chunk insertion)
+    edges_by = {}
+    for k in dkeys:
+        if k in MULT_EDGES:                                      # integer multiplicity bins
+            edges_by[k] = MULT_EDGES[k]; continue
+        v = acc[k]["vals"]; dom = DOMAINS.get(k)
+        if k in ("cosmu", "cospi"):
+            dom = (float(v.min()), 1.0)
+        edges_by[k] = design_edges(v, N_BINS, domain=dom)
+    fH_edges = {k: edges_by[k] for k in dkeys if k in ("pn", "dptt", "daT")}
+    fH = IC.freeH_offsets(fH_edges) if fH_edges else {}
+    ds = []
+    for k in dkeys:
+        edges = edges_by[k]; nb = len(edges) - 1; bw = np.diff(edges)
+        scale_bin = _physfit_scale_bin(k, acc[k]["chan"], bw)
+        offset = fH.get(k, np.zeros(nb))
+        central, mcerr = _central_from_selected(acc[k]["vals"], acc[k]["w"], edges, scale_bin, offset)
+        var = (SYST * central) ** 2 + mcerr ** 2
+        ds.append(dict(name=acc[k]["name"], key=k, nbin=nb, scale_bin=scale_bin, offset=offset, edges=edges,
+                       data=central, sigma=FE.bin_sigma(central, mcerr, SYST),
+                       Cinv=np.diag(1.0 / np.maximum(var, 1e-300)), mcerr=mcerr))
+        log(f"  [{acc[k]['name']}] {nb} bins | {len(acc[k]['vals']):,} sig ev | "
+            f"MC err med {np.median(mcerr/np.maximum(central,1e-30)):.1%}")
+    return ds
+
+
+def cc1pi_freeH_jacobian(ds, row0, J, grids, nom, log):
+    """CH mode: ADD the reweightable free-H (nu_mu p -> mu- p pi+) GRADIENT to the T2K CC1pi+ observables
+    (pN, dpTT, daT), in place in J.  The CC1pi+ central already carries free-H via the frozen freeH_offsets
+    (theta-independent -> its derivative is zero, so the gradient was carbon-only).  The free-H Jacobian is
+    computed on the reweightable nu_T2K_H bank with the SAME per-observable edges, STREAMED per chunk when
+    CHUNK_JVP (peak = one H chunk).  daT gets the NUISANCE hydrogen randomization (flat).  Returns per-obs
+    free-H central for a consistency check vs freeH_offsets."""
+    from adonis.workflow.data_overlay import hydrogen_daT
+    cc1 = [(i, d) for i, d in enumerate(ds) if d["key"] in ("pn", "dptt", "daT")]
+    if not cc1:
+        return {}
+    edges_by = {d["key"]: d["edges"] for _, d in cc1}; dkeys = [d["key"] for _, d in cc1]
+
+    def h_obs(BH):                                          # (name, mask, vals, dkey, chan) for H CC1pi+
+        kmu = BH["k_lep"].astype(np.float64)
+        mask, lead, pip = BP.signal_cc1pi_stv(BH)
+        dptt_v = np.asarray(BP.dptt_1pi(kmu, lead, pip))
+        daT_v = np.degrees(hydrogen_daT(dptt_v, np.asarray(BP.dat_1pi(kmu, lead, pip)),
+                                        np.ones(len(kmu), bool), 0))     # every event free-H -> flat daT
+        vmap = {"pn": np.asarray(BP.pN_1pi(kmu, lead, pip)), "dptt": dptt_v, "daT": daT_v}
+        return [(f"H {k}", mask, vmap[k], k, "cc1pi") for k in dkeys]
+
+    def h_bin_ds(BH):                                       # per-chunk sel/binidx/scale for the jvp
+        defs = {t[3]: t for t in h_obs(BH)}
+        out = []
+        for k in dkeys:
+            _, mask, vals, _, _ = defs[k]
+            edges = edges_by[k]; nb = len(edges) - 1; bw = np.diff(edges)
+            eps = (edges[-1] - edges[0]) * 1e-12
+            vc = np.clip(vals, edges[0] + eps, edges[-1] - eps)
+            sel, bidx, nbA = IC._bin(mask, vc, edges); assert nbA == nb
+            out.append(dict(key=k, sel_idx=sel, binidx=bidx, nbin=nb, scale_bin=1.0 / bw))
+        return out
+
+    # free-H central (for the consistency check) -- streamed selected (value, nominal weight)
+    if CHUNK_JVP:
+        accH = _stream_selected(T2K_H_BANK, h_obs, log=log)
+    else:
+        BH = BP.load_bank(T2K_H_BANK); w0H = np.asarray(BH["w0"])        # stored nominal weight (numpy)
+        accH = {t[3]: dict(vals=np.asarray(t[2])[np.asarray(t[1], bool)], w=w0H[np.asarray(t[1], bool)])
+                for t in h_obs(BH)}
+    centralH = {}
+    for k in dkeys:
+        edges = edges_by[k]; bw = np.diff(edges)
+        centralH[k], _ = _central_from_selected(accH[k]["vals"], accH[k]["w"], edges, 1.0 / bw,
+                                                np.zeros(len(edges) - 1))
+
+    th0 = theta_nominal(nom)
+    def wfH(theta, JB):
+        return BR.bank_weight(JB, knobs_of(theta, nom), grids)
+    jvp_wfH = jax.jit(lambda th, tang, JB: jax.jvp(lambda t: wfH(t, JB), (th,), (tang,))[1])
+    nbins_H = [len(edges_by[k]) - 1 for k in dkeys]
+    if CHUNK_JVP:
+        JH, row0H = FE.bank_jacobian_chunked(jvp_wfH, th0, T2K_H_BANK, h_bin_ds, nbins_H, NPAR,
+                                             log=log, names=PNAMES)
+    else:
+        JH, row0H = FE.bank_jacobian(jvp_wfH, th0, BR.to_jax(BH), h_bin_ds(BH), NPAR, log=log, names=PNAMES)
+    for j, (i, _d) in enumerate(cc1):
+        J[row0[i]:row0[i + 1]] += JH[row0H[j]:row0H[j + 1]]             # add free-H gradient to carbon rows
+    return centralH
 
 
 def main():
@@ -223,20 +385,39 @@ def main():
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 
     obs = OBS_SUBSETS[OBS] if OBS != "all" else None
-    B = BP.load_bank(BANKDIR); JB = BR.to_jax(B); grids = BR.default_grids(); nom = nominal_knobs()
-    w0 = np.asarray(BR.weight_jit(JB, nom, grids))
-    log(f"bank {len(w0)} events | {NPAR} knobs | {N_BINS} bins/obs | syst {SYST:.0%} | obs set '{OBS}'")
-    ds = build_physfit_datasets(B, w0, log, obs=obs)
-    nbins = sum(d["nbin"] for d in ds)
-    log(f"{len(ds)} datasets, {nbins} bins")
-
-    # ---- Jacobian at nominal: one jvp per knob (info_content pattern; JB as argument) ------------- #
-    th0 = theta_nominal(nom)
+    grids = BR.default_grids(); nom = nominal_knobs(); th0 = theta_nominal(nom)
     def wf(theta, JB):
         return BR.bank_weight(JB, knobs_of(theta, nom), grids)
     jvp_wf = jax.jit(lambda th, tang, JB: jax.jvp(lambda t: wf(t, JB), (th,), (tang,))[1])
-    J, row0 = FE.bank_jacobian(jvp_wf, th0, JB, ds, NPAR, log=log, names=PNAMES)
+    if CHUNK_JVP:
+        # TRUE streaming: neither pass ever holds more than ONE chunk (~76MB).  Pass 1 = datasets
+        # (edges/central/sigma) from the selected events only; pass 2 = the per-knob jvp Jacobian.
+        # Jacobian is exact (bincount is additive); central/sigma match the whole-bank path to the nominal
+        # roundoff (~1e-7: pass 1 uses the stored nominal w0, no jax -> no per-chunk device buffers).
+        log(f"streaming {BANKDIR} | {NPAR} knobs | {N_BINS} bins/obs | syst {SYST:.0%} | obs '{OBS}'")
+        ds = physfit_stream_datasets(BANKDIR, grids, nom, log, obs=obs)
+        nbins = sum(d["nbin"] for d in ds); log(f"{len(ds)} datasets, {nbins} bins")
+        edges_by = {d["key"]: d["edges"] for d in ds}; dkeys = [d["key"] for d in ds]
+        J, row0 = FE.bank_jacobian_chunked(jvp_wf, th0, BANKDIR,
+                                           lambda Bc: _physfit_bin_ds(Bc, edges_by, dkeys),
+                                           [d["nbin"] for d in ds], NPAR, log=log, names=PNAMES)
+    else:                                          # whole-bank path (unchanged): load once, one jvp per knob
+        B = BP.load_bank(BANKDIR); JB = BR.to_jax(B)
+        w0 = np.asarray(BR.weight_jit(JB, nom, grids))
+        log(f"bank {len(w0)} events | {NPAR} knobs | {N_BINS} bins/obs | syst {SYST:.0%} | obs set '{OBS}'")
+        ds = build_physfit_datasets(B, w0, log, obs=obs)
+        nbins = sum(d["nbin"] for d in ds); log(f"{len(ds)} datasets, {nbins} bins")
+        J, row0 = FE.bank_jacobian(jvp_wf, th0, JB, ds, NPAR, log=log, names=PNAMES)
+        del B, JB
     sigma = np.concatenate([d["sigma"] for d in ds])
+
+    if T2K_CH:                                    # CC1pi+ CH: add the free-H GRADIENT (central already CH)
+        log("CH mode: adding reweightable free-H CC1pi+ gradient from nu_T2K_H")
+        cH = cc1pi_freeH_jacobian(ds, row0, J, grids, nom, log)
+        for d in ds:                              # consistency: bank free-H central vs the frozen offset
+            if d["key"] in cH:
+                log(f"  [check {d['key']}] free-H central sum: bank={cH[d['key']].sum():.4e} "
+                    f"frozen_offset={np.asarray(d['offset']).sum():.4e}")
 
     # ---- Gate I: Asimov Fisher + priors ----------------------------------------------------------- #
     F, V, sig_post, shrink, _reach = FE.gate1(J, sigma, PRIOR)

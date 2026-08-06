@@ -37,7 +37,7 @@ DSLABEL = {"dpt": "T2K CC0$\\pi$\n$\\delta p_T$", "dat": "T2K CC0$\\pi$\n$\\delt
            "pip_react": "$\\pi^+$C\n$\\sigma_{\\rm reac}$", "pip_abs": "$\\pi^+$C\n$\\sigma_{\\rm abs}$",
            "prot_react": "$p$C\n$\\sigma_{\\rm reac}$", "prot_pipro": "$p$C\n$\\sigma_{\\pi\\rm prod}$",
            "neut_react": "$n$C\n$\\sigma_{\\rm reac}$", "neut_pipro": "$n$C\n$\\sigma_{\\pi\\rm prod}$",
-           "e_qe": "$(e,e')$C\n$\\omega_{\\rm QE}$", "e_res": "$(e,e')$C\n$\\omega_{\\rm RES}$",
+           "e_omega": "$(e,e')$C\n$\\omega$",
            "t2k_pcos": "T2K CC0$\\pi$\n2D $p_\\mu$-$\\cos\\theta_\\mu$",
            "mnv_ptmu": "MINERvA\n$p_T^\\mu$", "mnv_pzmu": "MINERvA\n$p_\\parallel^\\mu$",
            "mnv_ptpl": "MINERvA qe\n2D $p_T$-$p_\\parallel$"}
@@ -92,7 +92,7 @@ def main(label="multisample_carbon"):
         cb = fig.colorbar(im, ax=ax, fraction=0.020, pad=0.015, ticks=[-1, 0, 1])
         cb.set_label("per-bin gradient (normalized per knob)", fontsize=8.5)
         cb.ax.tick_params(labelsize=7.5)
-        style.save(fig, "sec3_gradients_shape")
+        style.save(fig, "multisample_carbon_shape")   # name the paper references (\includegraphics)
 
 
 if __name__ == "__main__":
