@@ -72,10 +72,23 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None):
     PIR2 = man["pir2_mb"]
     keys = [f"{beam}_react", f"{beam}_abs" if is_pion else f"{beam}_pipro"]
 
-    rec = {f: jnp.asarray(B[f"f_{f}"]) for f in
-           ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "p_eidx",
-            "hh", "a", "iso", "finel", "inel", "swap", "n_eidx")}
-    rec["n_events"] = len(p)
+    # N_selected for the beams: the reaction observables sigma_X = PIR2 * sum(X_i w_i) / n_tried involve only
+    # REACTED events (non-reacted carry w==1, contribute 0 to the react/second numerators AND have zero
+    # gradient), while n_tried (the denominator, over ALL events) is already computed above and is
+    # theta-independent.  So compact to the reacted events before building the reweight record -- only ~8%
+    # goes on device.  The beam bank has no w0/hv_/fs_ this path needs, only the f_* FSI slot record (pion
+    # family via f_p_eidx, nucleon via f_n_eidx), so compact THAT directly, remapping the event index.
+    rmask = react.astype(bool); ridx = np.where(rmask)[0]
+    remap = np.full(len(rmask), -1, np.int64); remap[ridx] = np.arange(len(ridx))
+    idx = idx[rmask]; second = second[rmask]; react = np.ones(len(idx))   # reacted subset (react == 1)
+    _PION = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
+    _NUC = ("hh", "a", "iso", "finel", "inel", "swap")
+    mp = remap[np.asarray(B["f_p_eidx"])] >= 0; mn = remap[np.asarray(B["f_n_eidx"])] >= 0
+    rec = {f: jnp.asarray(np.asarray(B[f"f_{f}"])[mp]) for f in _PION}
+    rec.update({f: jnp.asarray(np.asarray(B[f"f_{f}"])[mn]) for f in _NUC})
+    rec["p_eidx"] = jnp.asarray(remap[np.asarray(B["f_p_eidx"])[mp]])
+    rec["n_eidx"] = jnp.asarray(remap[np.asarray(B["f_n_eidx"])[mn]])
+    rec["n_events"] = len(ridx)
     from adonis.fsi.cascade import pool_fsi_reweight
 
     def w_of(theta):
