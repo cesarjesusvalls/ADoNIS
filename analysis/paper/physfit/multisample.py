@@ -58,12 +58,14 @@ T2K_KEEP = ("dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT")   # the 7 T2K obs
 class BankSample:
     """A `bank_weight` sample (T2K / MINERvA / (e,e')).  One bank can feed several dataset builders
     (MINERvA STV + qelike pT/p|| share the nu_MINERvA_C bank); `builders` is a list of (fn, keep)."""
-    def __init__(self, name, bankdir, builders, max_chunks, log, signal=None):
+    def __init__(self, name, bankdir, builders, max_chunks, log, signal=None, cap=None):
         self.name = name
         # signal!=None -> cache only the SELECTED events (N_selected, streamed via select_bank); else the
         # whole (subsampled) bank.  The fit re-evaluates model(theta) every iteration, so caching the signal
-        # instead of N_total is what keeps it cheap on arbitrarily large banks.
-        B = (SG.select_bank(bankdir, signal, max_chunks=max_chunks) if signal is not None
+        # instead of N_total is what keeps it cheap on arbitrarily large banks.  `cap` further subsamples the
+        # signal to at most that many events (fit-side; unbiased normalization) so the resident set fits in
+        # memory -- a closure/fit-test needs far fewer events than the full signal (its MC error << SYST).
+        B = (SG.select_bank(bankdir, signal, max_chunks=max_chunks, cap=cap) if signal is not None
              else BP.load_bank(bankdir, max_chunks=max_chunks))
         self.JB = BR.to_jax(B); self.grids = BR.default_grids(); self.nom = nominal_knobs()
         w0 = np.asarray(BR.weight_jit(self.JB, self.nom, self.grids))
@@ -236,13 +238,16 @@ def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=Non
     e_chunks = e_chunks or int(os.environ.get("S4_E_CHUNKS", "64"))          # ~32k/chunk   -> ~2M
     log(f"loading banks: nu={nu_chunks}ch minerva={nu_chunks}ch e={e_chunks}ch beams={beam_chunks}ch")
 
+    sig_cap = int(os.environ.get("S4_SIG_CAP", "1000000"))   # per-sample event cap for the FIT (0 -> no cap)
+
     def _bank(cfg_name, max_chunks):
         """A BankSample whose datasets come from the CENTRALIZED sample config (AnaSample.bin_datasets):
         same signal + observables + REAL edges as sec1/sec2/sec3, so sec4 fits the SAME sample.  Loaded via
-        select_bank -> only the N_selected signal events are cached on device (not N_total)."""
+        select_bank -> only the N_selected signal events are cached (not N_total), further capped to
+        S4_SIG_CAP events (unbiased) so the resident fit set fits in memory."""
         s = AnaSample.from_config(f"configs/samples/{cfg_name}.yaml")
         return BankSample(s.name, s.bank, [(lambda B, w, l: s.bin_datasets(B, w), None)], max_chunks, log,
-                          signal=s.cfg.signal)
+                          signal=s.cfg.signal, cap=(sig_cap or None))
 
     samples = [
         _bank("t2k_cc0pi",    nu_chunks),

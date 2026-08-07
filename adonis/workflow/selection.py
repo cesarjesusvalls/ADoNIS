@@ -187,23 +187,36 @@ def _concat_compact(parts):
     return out
 
 
-def select_bank(bank_dir, sd, max_chunks=None):
+def select_bank(bank_dir, sd, max_chunks=None, cap=None):
     """A compact full-record bank of ONLY the signal events (N_selected), built by STREAMING the full bank
     and filter_events-ing each chunk to `sd`.  Peak memory = one chunk + the accumulated signal (never the
     whole bank); bank_weight / the observables on the result reproduce the full bank restricted to the
-    signal.  This is what lets the fit (sec4) cache N_selected instead of N_total.  w0 is divided by the
-    number of chunks LOADED, so a subsample stays a proper cross-section estimate."""
+    signal.  This is what lets the fit (sec4) cache N_selected instead of N_total.
+
+    `cap` (fit-side subsample): keep EXACTLY `cap` selected events.  Stream chunks; when a chunk would push
+    the total past cap, keep only its first (cap - accumulated) selected events and stop.  w0 is normalized
+    by the EFFECTIVE chunk count = (full chunks kept) + (fraction of the last chunk's SELECTED events kept).
+    That is an exact, UNBIASED cross section: each chunk's selected-w0 sum is an iid estimate of
+    sigma_selected (different seeds), and a random fraction f of a chunk's selected events sums to ~f*sigma,
+    so dividing by K+f recovers sigma.  No partial-chunk bias.  cap=None -> the full signal (loaded chunk
+    count).  (Events aren't physically ordered within a chunk, so the first-N is a fine random subsample.)"""
     import glob
     files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
     if max_chunks:
         files = files[:max_chunks]
-    nch = len(files)
-    parts = []
+    parts = []; nsel = 0; eff = 0.0
     for f in files:
-        B = BP.load_bank_chunk(f, nch)
-        parts.append(BP.filter_events(B, select_full(B, sd)[0]))
-        del B
-    return _concat_compact(parts)
+        B = BP.load_bank_chunk(f, 1)                       # raw w0 (undivided); divide by the eff. count below
+        Bc = BP.filter_events(B, select_full(B, sd)[0]); m = len(Bc["w0"]); del B
+        if cap is not None and nsel + m > cap:
+            take = cap - nsel
+            keep = np.zeros(m, bool); keep[:take] = True   # first `take` selected events of this chunk
+            parts.append(BP.filter_events(Bc, keep)); eff += take / m; nsel += take
+            break
+        parts.append(Bc); nsel += m; eff += 1.0
+    out = _concat_compact(parts)
+    out["w0"] = np.asarray(out["w0"]) / eff                # unbiased sigma from the effective chunk count
+    return out
 
 
 # --------------------------------------------------------------------------- ACHILLES fs_rich side
