@@ -35,6 +35,9 @@ def main(label="sec4_coverage"):
     subset = [int(k) for k in Z[0]["subset"]]
     pnames = [str(x) for x in Z[0]["pnames"]]
     nbins = int(Z[0]["nbins"])
+    # ndf must count only bins that CONSTRAIN: empty bins carry sigma=inf -> weight 0, contributing
+    # neither to chi2 nor to the degrees of freedom.  Older npz lack nbins_live; fall back loudly.
+    nlive = int(Z[0]["nbins_live"]) if "nbins_live" in Z[0].files else None
     star = np.concatenate([z["th_star"] for z in Z], axis=0)      # (ntoy, nsub)
     fit = np.concatenate([z["th_fit"] for z in Z], axis=0)
     sig = np.concatenate([z["sig_fit"] for z in Z], axis=0)
@@ -87,13 +90,18 @@ def main(label="sec4_coverage"):
 
         # (c) chi2_data vs chi2(ndf) --------------------------------------------------------------- #
         ax = fig.add_subplot(gs[0, 2])
-        ndf = nbins - len(subset)
+        ndf = (nlive if nlive is not None else nbins) - len(subset)
+        if nlive is None:
+            print(f"[warn] npz has no nbins_live; ndf falls back to ALL {nbins} bins -> the chi2 curve "
+                  f"will sit high if any bins are empty")
         ax.hist(chi2d, bins=25, density=True, color=C_FIT, alpha=0.75, edgecolor="white", lw=0.4)
         xx = np.linspace(max(0, chi2d.min() * 0.7), chi2d.max() * 1.15, 200)
         ax.plot(xx, stats.chi2.pdf(xx, ndf), "k-", lw=1.4, label=f"$\\chi^2$(ndf={ndf})")
         ax.set_xlabel(r"$\chi^2_{\rm data}$ at BFP"); ax.set_ylabel("density")
         ax.set_title("(c)  goodness of fit", fontsize=10.5, loc="left")
-        ax.text(0.03, 0.97, f"mean {chi2d.mean():.0f}\nndf {ndf}", transform=ax.transAxes, va="top",
+        ax.text(0.03, 0.97, f"mean {chi2d.mean():.0f}\nndf {ndf}"
+                + (f"\n({nbins-nlive} empty bins\n dropped)" if nlive is not None and nlive < nbins else ""),
+                transform=ax.transAxes, va="top",
                 fontsize=8.5)
         ax.legend(fontsize=8, loc="upper right")
         for sp in ("top", "right"):

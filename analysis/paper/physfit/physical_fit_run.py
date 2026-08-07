@@ -24,6 +24,8 @@ import os, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 import numpy as np
+
+from adonis.analysis import knobs as _K   # PHYS_BOUND / clip_phys: one source of truth for bounds
 from scipy import stats as sstats
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -279,12 +281,19 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
         for _ in range(12):
             dth = STEP_SCALE * np.linalg.solve(A + lam * np.diag(np.maximum(np.diag(A), 1e-12)), -g)
             th_try = th.copy(); th_try[subset] = th[subset] + dth
-            # box constraint: Eb_shift >= eps.  sf_reweight clamps Eb<0 -> 0, so below zero the model
-            # is EXACTLY flat (zero gradient) -- an absorbing trap for LM.  Projecting onto the
-            # boundary keeps the one-sided gradient alive (validated by the coverage-toy campaign).
+            # BOX CONSTRAINTS from the PHYS_BOUND registry (was hardcoded for Eb_shift alone).  Outside
+            # these the MODEL is not merely disfavoured, it is meaningless:
+            #   * M_A_* enter the dipole only as M_A^2, so an unbounded fit has a MIRROR MINIMUM at
+            #     negative M_A with IDENTICAL chi2.  Observed at M_A_qe=-1.55, delta_strength=-2.81 in
+            #     the prior-thrown coverage ensemble, where they produced |pull| up to 6.7e11 that the
+            #     coverage figure then silently discarded via its |pull|>8 cut.
+            #   * f_NN_cex outside [0,1] gives NEGATIVE event weights.
+            #   * scale knobs <= 0 give a negative cross-section contribution; cascade rates appear as
+            #     exp(-a/s), singular at s=0.
+            #   * Eb_shift < 0 is clamped by sf_reweight, so the likelihood is EXACTLY flat there -- an
+            #     absorbing trap for LM.  Projecting onto the boundary keeps the one-sided gradient alive.
             for _k in subset:
-                if eng.pnames[_k] == "Eb_shift":
-                    th_try[_k] = max(th_try[_k], 1e-2)
+                th_try[_k] = _K.clip_phys(eng.pnames[_k], th_try[_k])
             c_try, cd_try, m_try, hw_try = chi2_terms(th_try)
             if c_try < c_cur:
                 th, c_cur, c_data, m, hw = th_try, c_try, cd_try, m_try, hw_try
