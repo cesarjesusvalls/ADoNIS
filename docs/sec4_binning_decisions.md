@@ -21,15 +21,25 @@ for the figures, and it dilutes the dial sensitivity of those bins.
 
 ## The decisions
 
-1. **ω — range becomes a selection, 45 → 24 bins.**
-   `omega_win: [50.0, 950.0]` in the signal + `linspace: [50.0, 950.0, 25]` (24 × 37.5 MeV).
+0. **THE FIX: drop overflow instead of folding it. Do not cut the sample.** (user, 2026-08-07)
+   `_binidx` no longer clips; an out-of-range value simply enters **no bin**. The event stays
+   selected, weighted and available to every *other* observable — only that one histogram omits it.
+   This is strictly better than the alternatives considered:
+   - no `mu_win`/`omega_win` surgery, so `dpt`/`dalphat` keep the exact NUISANCE selection
+     (a shared `mu_win` cut would have silently truncated them — 5.77% of the cross section);
+   - one change fixes every observable, present and future, with no per-observable config field.
+
+   A histogram then integrates to the cross section **inside its range**, not the sample total.
+   That is the honest reading of a binned differential distribution. Model and data go through the
+   same function, so χ² is unaffected.
+
+1. **ω — 45 → 24 bins**, `linspace: [50.0, 950.0, 25]` (24 × 37.5 MeV).
    QE peak and Δ shoulder both stay resolved at 24 bins (verified on 2.1M events).
 
-2. **p_μ — extend to 5 GeV with wider bins above 2 GeV**, 24 bins:
-   `[0,100,...,1900,2000, 2500, 3000, 4000, 5000]`
-   NOT done with a `mu_win` cut: **`mu_win` is shared by every observable in the sample**, so
-   truncating it would also drop those events from the NUISANCE-matched `dpt`/`dalphat`.
-   Residual: ~1% of the cross section still sits above 5 GeV and folds into the last bin.
+2. **p_μ — uniform `[0, 3000]` × 100 MeV (30 bins).**
+   3.53% of the cross section sits above 3 GeV; with no-clip it is simply outside the measurement.
+   Verified on 1.3M events: the tail now falls monotonically through the last bin
+   (last/previous = 0.914; it was a ~4.5× step).
 
 3. **`cos_mu` → `th_mu_rad`**, 22 bins on a round 0.1 rad grid, top edge = `arccos(-0.6) = 2.2143`
    (= the `cos_mu` signal cut, so the histogram boundary IS the selection boundary):
@@ -63,7 +73,9 @@ of the three changes the dskeys and aborts every sec4 driver until the Gate-I ob
 
 ## Checklist when we ARE ready
 
-1. `git checkout sec4-binning -- configs/samples/t2k_cc0pi.yaml configs/samples/ee_omega.yaml`
+1. `git merge sec4-binning` (or cherry-pick `3f0f412`) — brings the no-clip `_binidx` **and** both YAMLs.
+   Note `EleBeamSignalDef.omega_win` on main is then redundant; it stays as an inert capability
+   (genuinely cutting the sample) but nothing uses it — consider removing to avoid two mechanisms.
 2. Rebuild the Gate-I object: `analysis.paper.sec3_gradients.build_multisample` → `multisample_carbon.npz`
 3. Re-run **sec2 + sec3** (they read that npz — their figures WILL move)
 4. Re-run sec4: closure → profile → ebwall → coverage → corner
