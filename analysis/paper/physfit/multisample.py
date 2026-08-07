@@ -65,8 +65,20 @@ class BankSample:
         # instead of N_total is what keeps it cheap on arbitrarily large banks.  `cap` further subsamples the
         # signal to at most that many events (fit-side; unbiased normalization) so the resident set fits in
         # memory -- a closure/fit-test needs far fewer events than the full signal (its MC error << SYST).
-        B = (SG.select_bank(bankdir, signal, max_chunks=max_chunks, cap=cap) if signal is not None
-             else BP.load_bank(bankdir, max_chunks=max_chunks))
+        # EVERY sample has a signal.  "No selection" is not a special case -- it is the selection that keeps
+        # everything, and it must still be written down (select-all) so it goes through the SAME select_bank
+        # path and therefore obeys the SAME event cap.  A None signal used to silently fall back to loading
+        # the whole bank uncapped, which is exactly how ~1M uncapped events hid behind "S4_SIG_CAP=50000".
+        if signal is None:
+            raise ValueError(
+                f"sample {name!r}: signal is None.  Every sample must declare a selection -- use an explicit "
+                f"select-all condition in its config rather than omitting it (None bypasses the event cap).")
+        B = SG.select_bank(bankdir, signal, max_chunks=max_chunks, cap=cap)
+        self.n_events = int(len(B["w0"]))
+        # ALWAYS report the resident event count: this is what the fit holds on the device every iteration,
+        # and it is the only number that explains a memory failure.
+        log(f"[events] {name:<14} N={self.n_events:>9,}  (cap={cap:,} , {max_chunks} chunks)"
+            if cap else f"[events] {name:<14} N={self.n_events:>9,}  (no cap, {max_chunks} chunks)")
         self.JB = BR.to_jax(B); self.grids = BR.default_grids(); self.nom = nominal_knobs()
         w0 = np.asarray(BR.weight_jit(self.JB, self.nom, self.grids))
         ds = []
@@ -136,8 +148,9 @@ class BankSample:
 
 class BeamSample:
     """A tagged-beam sample (pi+/p/n -> C): pure-FSI reweight via beam_model.  Two observables/bank."""
-    def __init__(self, beam, nbins, syst, max_chunks, log):
-        self.m = beam_model(beam, nbins=nbins, syst=syst, log=log, max_chunks=max_chunks)
+    def __init__(self, beam, nbins, syst, max_chunks, log, cap=None):
+        self.m = beam_model(beam, nbins=nbins, syst=syst, log=log, max_chunks=max_chunks, cap=cap)
+        self.n_events = int(self.m["n_events"]) if "n_events" in self.m else None
         nb = self.m["nbins"]; c = self.m["central"]; s = self.m["sigma"]; e = self.m["mcerr"]
         self.ds = []
         for i, key in enumerate(self.m["keys"]):
@@ -255,10 +268,13 @@ def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=Non
         _bank("minerva_stv",  nu_chunks),
         _bank("minerva_ptpz", nu_chunks),
         _bank("ee_omega",     e_chunks),
-        BeamSample("pip", 15, SYST, beam_chunks, log),
-        BeamSample("prot", 15, SYST, beam_chunks, log),
-        BeamSample("neut", 15, SYST, beam_chunks, log),
+        BeamSample("pip", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
+        BeamSample("prot", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
+        BeamSample("neut", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
     ]
+    tot = sum(s.n_events for s in samples if getattr(s, "n_events", None))
+    log(f"[events] TOTAL RESIDENT = {tot:,} events across {len(samples)} samples "
+        f"(S4_SIG_CAP={sig_cap:,}) -- this is what the fit holds on device EVERY iteration")
     eng = MultiEngine(samples)
     want = [str(x) for x in np.load(MULTISAMPLE_NPZ, allow_pickle=True)["dskeys"]]
     got = [d["key"] for d in eng.ds]

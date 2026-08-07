@@ -38,7 +38,7 @@ BEAM_DIRS = {"pip": f"{_BANKS}/beam_pip_C/merged", "prot": f"{_BANKS}/beam_prot_
 BEAM_LABEL = {"pip": "$\\pi^+$–C", "prot": "p–C", "neut": "n–C"}
 
 
-def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None):
+def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     """Load one beam bank and return the DIFFERENTIABLE model pieces a fit needs (not just the Jacobian):
 
         w_of(theta)   -> per-event FSI reweight (pure JAX, ==1 at nominal)
@@ -78,7 +78,23 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None):
     # theta-independent.  So compact to the reacted events before building the reweight record -- only ~8%
     # goes on device.  The beam bank has no w0/hv_/fs_ this path needs, only the f_* FSI slot record (pion
     # family via f_p_eidx, nucleon via f_n_eidx), so compact THAT directly, remapping the event index.
-    rmask = react.astype(bool); ridx = np.where(rmask)[0]
+    # The beam sample's SIGNAL is `reacted` -- the same role the CC0pi/CC1pi conditions play for the neutrino
+    # samples (sigma_X involves only reacted events; the rest carry w==1 and have zero gradient).  Naming it
+    # as the signal is what makes the event cap below apply here exactly as it does everywhere else.
+    #
+    # Event cap (fit-side).  Cap on EVENTS, exactly: keep the prefix of TRIED events that contains the first
+    # `cap` signal (reacted) events and recompute n_tried over exactly that prefix.  The retained set is then
+    # a smaller but COMPLETE beam exposure, so sigma_X = PIR2*sum(X_i w_i)/n_tried needs no rescaling.
+    if cap and int(react.sum()) > cap:
+        M = int(np.searchsorted(np.cumsum(react), cap) + 1)
+        keep_ev = np.zeros(len(react), bool); keep_ev[:M] = True
+        n_tried = np.bincount(idx[:M], minlength=nbins).astype(float)
+    else:
+        M = len(react); keep_ev = np.ones(len(react), bool)
+
+    rmask = react.astype(bool) & keep_ev; ridx = np.where(rmask)[0]
+    log(f"[events] beam {beam:<4} N={len(ridx):>9,} signal=reacted  (of {M:,} tried"
+        f"{'' if M == len(react) else ', cap=%s' % f'{cap:,}'}, {max_chunks} chunks)")
     remap = np.full(len(rmask), -1, np.int64); remap[ridx] = np.arange(len(ridx))
     idx = idx[rmask]; second = second[rmask]; react = np.ones(len(idx))   # reacted subset (react == 1)
     _PION = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
@@ -126,7 +142,8 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None):
     log(f"  [{beam}] {len(p):,} tried | {int(react.sum()):,} reacted | {int(ns.sum()):,} second-obs "
         f"| {2*nbins} bins | med MC err {np.median(mcerr[central > 0] / central[central > 0]):.1%}")
     return dict(w_of=w_of, jvp=jvp, jvp2=jvp2, jvp3=jvp3, binned=binned, central=central, sigma=sig,
-                mcerr=mcerr, edges=edges, keys=keys, th0=th0, nbins=nbins, n_tried=n_tried)
+                mcerr=mcerr, edges=edges, keys=keys, th0=th0, nbins=nbins, n_tried=n_tried,
+                n_events=len(ridx))
 
 
 def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
