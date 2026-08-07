@@ -96,6 +96,57 @@ def _coerce_fsi_dtypes(B):
     return B
 
 
+# The ragged FSI slot records (bank_reweight._FSI_F) split into a PION family (indexed by f_p_eidx) and a
+# NUCLEON family (indexed by f_n_eidx); filter_events gathers each by its own event index.
+_FSI_PION = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
+_FSI_NUC = ("hh", "a", "iso", "finel", "inel", "swap")
+
+
+def filter_events(B, keep):
+    """Compact full-record bank of ONLY the events where keep[i] is True.
+
+    Per-event fields (w0, k_lep, the hard-vertex hv_qe_/hv_res_ records, ...) are gathered by event; the
+    ragged families -- final state (fs_off/fs_pid/fs_chg/fs_p4), the ks_ summary (ks_eidx), and the two FSI
+    slot families (pion via f_p_eidx, nucleon via f_n_eidx) -- keep only the selected events' slots with
+    their event index REMAPPED to the new 0..M-1 order, and fs_off/_eidx are rebuilt.  So the compact bank is
+    self-consistent for every downstream reducer AND bank_weight(filter_events(B, sig), theta) equals
+    bank_weight(B, theta)[sig] -- i.e. a fit can cache N_selected instead of N_total (see workflow.selection
+    .select_bank for the streaming, full-bank version)."""
+    keep = np.asarray(keep, bool); idx = np.where(keep)[0]; n = len(B["w0"])
+    remap = np.full(n, -1, np.int64); remap[idx] = np.arange(len(idx))
+    out = {}
+    # ragged final state: rebuild fs_off, gather the selected events' particles
+    off = np.asarray(B["fs_off"]); lens = np.diff(off)[idx]
+    new_off = np.concatenate([[0], np.cumsum(lens)]).astype(off.dtype)
+    part = (np.concatenate([np.arange(off[e], off[e + 1]) for e in idx]) if len(idx)
+            else np.zeros(0, np.int64))
+    out["fs_off"] = new_off
+    for k in ("fs_pid", "fs_chg", "fs_p4"):
+        out[k] = np.asarray(B[k])[part]
+    # eidx-indexed ragged families: ks_ summary + the two FSI slot families
+    fams = []
+    if "ks_eidx" in B:
+        fams.append(("ks_eidx", [k for k in B if k.startswith("ks_") and k != "ks_eidx"]))
+    fams.append(("f_p_eidx", [f"f_{x}" for x in _FSI_PION]))
+    fams.append(("f_n_eidx", [f"f_{x}" for x in _FSI_NUC]))
+    for eidxname, fields in fams:
+        if eidxname not in B:
+            continue
+        e = np.asarray(B[eidxname]); m = remap[e] >= 0
+        out[eidxname] = remap[e[m]]
+        for x in fields:
+            out[x] = np.asarray(B[x])[m]
+    # per-event fields (length n): gather by event; scalars / grids pass through
+    handled = set(out) | {"_eidx"}
+    for k, v in B.items():
+        if k in handled:
+            continue
+        a = np.asarray(v)
+        out[k] = a[idx] if (a.ndim >= 1 and a.shape[0] == n) else v
+    out["_eidx"] = np.repeat(np.arange(len(idx)), np.diff(new_off))
+    return out
+
+
 def load_bank_chunk(f, nchunks):
     """ONE chunk file as a full-record bank dict -- same schema as load_bank for a single chunk (ev_off=0,
     so its ragged indices are already 0-based / self-contained).  w0 is divided by `nchunks` (the manifest
