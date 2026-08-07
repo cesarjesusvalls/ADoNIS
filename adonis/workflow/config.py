@@ -271,6 +271,10 @@ class EleBeamSignalDef:
     beam_energy: float = 0.0            # MeV; incident electron energy E_beam
     e_min: float | None = None          # MeV; scattered-electron energy floor E_e (None -> no cut)
     e_theta_win: tuple = (0.0, 180.0)   # deg; scattered-electron polar acceptance [lo, hi]
+    omega_win: tuple | None = None      # MeV; energy-transfer range [lo, hi] (None -> no cut).  Set this to
+                                        # the histogram range: the binning folds out-of-range events INTO the
+                                        # edge bins, so without it the last bin is an integral over all
+                                        # omega above the top edge, drawn as if it were one narrow bin.
     p_min: float | None = None          # MeV; proton momentum floor for the 1p0pi topology (None -> no lead)
     p_theta_win: tuple | None = None    # deg; proton polar acceptance [lo, hi] (None -> no lead)
     removal_energy: float = 0.0         # MeV; nuclear removal/binding energy epsilon in E_QE / E_cal
@@ -279,6 +283,8 @@ class EleBeamSignalDef:
         self.e_theta_win = tuple(_resolve_seq(self.e_theta_win))
         if self.p_theta_win is not None:
             self.p_theta_win = tuple(_resolve_seq(self.p_theta_win))
+        if self.omega_win is not None:
+            self.omega_win = tuple(_resolve_seq(self.omega_win))
 
 
 @dataclass

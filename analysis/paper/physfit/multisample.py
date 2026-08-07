@@ -48,10 +48,39 @@ from analysis.paper.physical_fit import SYST                      # env-driven e
 from analysis.paper.beams.beam_fisher import beam_model
 
 MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", "output/altgen/multisample_carbon.npz")
-# Jacobian dial-batch: how many tangents go through ONE vmapped jvp.  Default = all 16 dials in one call.
-# Lower it (or set 1) if the vmap's 16x intermediates ever strain device memory -- results are identical,
-# only the number of dispatches changes.  S4_JAC_BATCH=1 is NOT the old loop; use jac_blocks_ref for that.
+# Jacobian dial-batch: how many tangents go through ONE vmapped jvp.  Default = all dials in one call.
+# Under vmap only the TANGENT arrays gain a batch dimension (th/JB are unbatched, so the primal trace is
+# NOT replicated) -- the cost is ~1x primal + Bx tangent, not Bx everything.  Results are identical for any
+# B; only dispatch count and peak memory change.  S4_JAC_BATCH=1 is NOT the old loop (still vmap, width 1);
+# use jac_blocks_ref for that.  On device OOM the batch HALVES and retries rather than killing the job.
 JAC_BATCH = int(os.environ.get("S4_JAC_BATCH", "16"))
+
+
+def _oom(e):
+    s = str(e)
+    return "RESOURCE_EXHAUSTED" in s or "out of memory" in s.lower() or "OUT_OF_MEMORY" in s
+
+
+def _batched_jac(subset, call, bin_cols):
+    """Run `call(ks)` over dial batches, halving the batch on device-OOM instead of dying.
+
+    call(ks)     -> (len(ks), n_events) stacked per-event derivatives for those dials
+    bin_cols(g)  -> the binned column for one dial's per-event derivative
+    """
+    bs = max(1, JAC_BATCH)
+    while True:
+        try:
+            cols = []
+            for lo in range(0, len(subset), bs):
+                G = np.asarray(call(subset[lo:lo + bs]))
+                cols += [bin_cols(g) for g in G]
+            return cols
+        except Exception as e:                       # noqa: BLE001 -- re-raised unless it is a device OOM
+            if bs == 1 or not _oom(e):
+                raise
+            bs = max(1, bs // 2)
+            print(f"[jac] device OOM at batch {bs * 2} -> retrying at {bs} "
+                  f"(identical result, more dispatches)", flush=True)
 T2K_KEEP = ("dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT")   # the 7 T2K obs sec2/sec3 stack
 
 
@@ -140,13 +169,14 @@ class BankSample:
         nb = sum(d["nbin"] for d in self.ds)
         if not subset:
             return np.zeros((nb, 0))
-        th = jnp.asarray(theta); cols = []
-        for lo in range(0, len(subset), JAC_BATCH):
-            ks = subset[lo:lo + JAC_BATCH]
+        th = jnp.asarray(theta)
+
+        def call(ks):
             T = np.zeros((len(ks), NPAR)); T[np.arange(len(ks)), ks] = 1.0
-            G = np.asarray(self._jvpv(th, jnp.asarray(T), self.JB))        # (len(ks), n_events)
-            cols += [np.concatenate([IC.bin_w0(d, g) for d in self.ds]) for g in G]
-        return np.column_stack(cols)
+            return self._jvpv(th, jnp.asarray(T), self.JB)                 # (len(ks), n_events)
+
+        return np.column_stack(_batched_jac(
+            subset, call, lambda g: np.concatenate([IC.bin_w0(d, g) for d in self.ds])))
 
     def jac_blocks_ref(self, theta, subset):
         """Reference: one jvp per dial in a Python loop.  Kept ONLY so the vmapped path above can be
@@ -212,13 +242,13 @@ class BeamSample:
         nb = 2 * self.m["nbins"]
         if not subset:
             return np.zeros((nb, 0))
-        th = jnp.asarray(theta); cols = []
-        for lo in range(0, len(subset), JAC_BATCH):
-            ks = subset[lo:lo + JAC_BATCH]
+        th = jnp.asarray(theta)
+
+        def call(ks):
             T = np.zeros((len(ks), NPAR)); T[np.arange(len(ks)), ks] = 1.0
-            G = np.asarray(self.m["jvpv"](th, jnp.asarray(T)))
-            cols += [self.m["binned"](g) for g in G]
-        return np.column_stack(cols)
+            return self.m["jvpv"](th, jnp.asarray(T))
+
+        return np.column_stack(_batched_jac(subset, call, self.m["binned"]))
 
     def jac_blocks_ref(self, theta, subset):
         """Reference (one jvp per dial) kept for element-wise validation of the vmapped path."""

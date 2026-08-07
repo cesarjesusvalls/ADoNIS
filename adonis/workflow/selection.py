@@ -40,6 +40,8 @@ def _obs(mu, lead, pip):
             "pn": np.asarray(BP.pN_1pi(mu, lead, pip)),            # inferred nucleon |p| (carbon reco) [MeV]
             "dptt": np.asarray(BP.dptt_1pi(mu, lead, pip)),        # double-transverse imbalance [MeV] (CC1pi)
             "pmu": pmu, "cos_mu": cmu, "th_mu": np.degrees(np.arccos(np.clip(cmu, -1.0, 1.0))),
+            "th_mu_rad": np.arccos(np.clip(cmu, -1.0, 1.0)),       # same angle in RADIANS
+
             "pt": np.sqrt(mu[:, 1] ** 2 + mu[:, 2] ** 2), "pz": mu[:, 3],   # MINERvA qelike muon pT/p||
             "lp_p": pl, "cos_lp": clp, "th_lp": np.degrees(np.arccos(np.clip(clp, -1.0, 1.0))),
             "ppi": ppi, "cos_pi": cpi}
@@ -143,7 +145,10 @@ def _ele_full_bank(B, sd):
     mask = (theta >= sd.e_theta_win[0]) & (theta <= sd.e_theta_win[1]) & (w0 > 0)
     if sd.e_min is not None:
         mask = mask & (Ee >= sd.e_min)
-    return mask, {"omega": np.asarray(B["omega"], float)}, w0, np.asarray(B["channel"])
+    om = np.asarray(B["omega"], float)
+    if getattr(sd, "omega_win", None) is not None:                # range is a SELECTION, not an overflow bin
+        mask = mask & (om >= sd.omega_win[0]) & (om <= sd.omega_win[1])
+    return mask, {"omega": om}, w0, np.asarray(B["channel"])
 
 
 def select_full(B, sd):
@@ -425,8 +430,11 @@ def _select_ele(B, sd):
     elec = (theta >= sd.e_theta_win[0]) & (theta <= sd.e_theta_win[1])
     if sd.e_min is not None:
         elec = elec & (Ee >= sd.e_min)
+    om = np.asarray(B["omega"], float)
+    if getattr(sd, "omega_win", None) is not None:                # keep in step with _ele_full_bank
+        elec = elec & (om >= sd.omega_win[0]) & (om <= sd.omega_win[1])
     lead, nprot = _ele_lead_bank(B, sd)
-    obs = {"omega": np.asarray(B["omega"], float), **_ele_obs(Ee, cth, klep, lead, sd.removal_energy)}
+    obs = {"omega": om, **_ele_obs(Ee, cth, klep, lead, sd.removal_energy)}
     return _ele_finish(obs, elec, B["w0"], B["channel"], B["n_pi_out"], nprot)
 
 
@@ -445,6 +453,9 @@ def ele_oracle_signal(oracle_npz, sd):
     elec = (theta >= sd.e_theta_win[0]) & (theta <= sd.e_theta_win[1])
     if sd.e_min is not None:
         elec = elec & (Ee >= sd.e_min)
+    if getattr(sd, "omega_win", None) is not None:                # ORACLE side: same cut, else ADoNIS/ACHILLES
+        _om = float(sd.beam_energy) - Ee                          # comparisons would be over different ranges
+        elec = elec & (_om >= sd.omega_win[0]) & (_om <= sd.omega_win[1])
     n = len(w)
     if "prot_p4" in d.files and sd.p_min is not None and sd.p_theta_win is not None:
         prot = np.asarray(d["prot_p4"], float); pm = np.linalg.norm(prot[:, :, 1:], axis=2)
