@@ -42,7 +42,30 @@ built from an `adonis.workflow.config.AnalysisConfig`; samples live in `configs/
 `sec4_closure/*`, `sec5_methods/*` import `SPEC/PNAMES/PRIOR/NPAR/theta_nominal/knobs_of/
 build_physfit_datasets/OBS_SUBSETS` from `physical_fit`. Slimming (step 2) keeps them working.
 
-## Remaining — sec4/5 `.fit()` verb  ⛔ BLOCKED ON A DECISION
+## sec4 (4.1–4.4) migration — IN PROGRESS
+
+**Done + committed (main):**
+- The closure fit ENGINE is sourced from `configs/samples/` (`AnaSample.bin_datasets` builds the engine
+  `ds`); `build_multisample_engine` builds 5 bank sub-engines from the configs + 3 `BeamSample`s; `lm_fit`
+  / `MultiEngine` / `set_closure_data` + all 5 sec4 drivers unchanged. dskeys now match the new
+  `multisample_carbon.npz`, so the 16-dial subset comes from it. `fig_dists` (4.2) repointed to namespaced
+  keys; the other figs are per-dial (unaffected).
+- **N_selected, not N_total** (user request): `bank_plot.filter_events` (gather a selected-event subset,
+  remapping every ragged family — validated EXACT) + `selection.select_bank` (stream the full bank, filter
+  each chunk, concat — validated EXACT: reweight/normalization/observables 0.0 rel). `BankSample(signal=)`
+  caches only the compact signal, so the fit streams the full bank but resides `N_selected`. Closure smoke
+  recovers all 16 dials (~0.5σ).
+
+**Remaining for 4.1–4.4:** regenerate the 5 driver npzs at a consistent label + render:
+- 4.1 recovery: `multisample_profile` -> `<L>_profile.npz` -> `fig_recovery.py`. 4.1b Eb-wall:
+  `multisample_ebwall` -> `sec4_ebwall.npz` -> `fig_ebwall.py`.
+- 4.2 dists: `multisample` (main closure) -> `<L>.npz` -> `fig_dists.py` (keys already fixed).
+- 4.3 coverage: `multisample_coverage` (N toys, EXPENSIVE) -> `sec4_coverage_*.npz` -> `coverage_fig.py`.
+- 4.4 corner: `multisample_corner` (120 pairs x 19^2, EXPENSIVE) -> `<L>_corner.npz` -> `corner_fig.py`.
+  `profile`/`corner` read `<L>.npz` first, so run the main closure at `<L>` before them.
+- Decisions kept from old sec4: carbon T2K CC1pi (t2k_cc1pi_ch keys, no free-H offset), scale=1/bw.
+
+## Remaining — sec5 `.fit()` verb  ⛔ BLOCKED ON A DECISION
 
 The sec4/5 fit machinery (`analysis/paper/physfit/*` = closures/coverage/methods, `sec4_closure/*`,
 `sec5_methods/*`) is UNTOUCHED and still runs on the old `physical_fit` (`build_physfit_datasets` +
