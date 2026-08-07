@@ -39,6 +39,13 @@ from adonis.analysis import knobs as K
 
 DEFAULT_DIALS = "M_A_res,delta_strength,Eb_shift,sabs,f_NN_cex,kF_sf"
 
+# PHYSICAL ranges for MODE=grad (the "we have gradient information everywhere" figure).  Not sigma_post
+# windows: the claim is about the whole physically allowed region, so the grid must span it.
+PHYS_RANGE = {"M_A_res": (0.05, 2.0), "delta_strength": (0.05, 2.0), "Eb_shift": (0.01, 5.0),
+              "sabs": (0.05, 2.0), "f_NN_cex": (0.01, 0.99), "kF_sf": (0.05, 2.0),
+              "M_A_qe": (0.05, 2.0), "s_piN_elastic": (0.05, 2.0), "s_conv": (0.05, 2.0),
+              "src_tail": (0.05, 2.0), "axial_strength": (0.05, 2.0)}
+
 
 def main():
     t0 = time.time()
@@ -85,41 +92,65 @@ def main():
 
     ax = np.linspace(-RANGE, RANGE, N)
     chi = np.full((len(pairs), N, N), np.nan)
-    gn = np.full((len(pairs), N, N, 2), np.nan)      # projected full-16D GN step (cond mode only)
+    gn = np.full((len(pairs), N, N, 2), np.nan)      # projected full-16D GN step
+    g2 = np.full((len(pairs), N, N, 2), np.nan)      # RAW 2-D gradient on the shown pair (grad mode)
+    axes_phys = np.full((len(pairs), 2, N), np.nan)  # the physical grid per pair (grad mode)
+
+    def _axis(kk, cc):
+        """Grid for one dial: PHYSICAL range in grad mode, bfp +- RANGE*sigma_post otherwise."""
+        if MODE != "grad":
+            return bfp[kk] + ax * spost[cc]
+        lo, hi = PHYS_RANGE.get(pn[kk].split("[", 1)[0], (bfp[kk] - 3 * spost[cc], bfp[kk] + 3 * spost[cc]))
+        lo = max(lo, K.phys_lo(pn[kk]) or -np.inf)        # never grid outside the model's validity
+        hi = min(hi, K.phys_hi(pn[kk]) or np.inf)
+        return np.linspace(lo, hi, N)
 
     for pi, (a, b) in enumerate(pairs):
         ca, cb = idx[a], idx[b]                      # positions in `subset`
         ka, kb = subset[ca], subset[cb]
         others = [c for c in range(len(subset)) if c not in (ca, cb)]
         ko = [subset[c] for c in others]
+        axa, axb = _axis(ka, ca), _axis(kb, cb)
+        axes_phys[pi] = np.stack([axa, axb])
         # snake order so every node starts from its neighbour's solution
         order = [(ia, ib) for ia in range(N) for ib in (range(N) if ia % 2 == 0 else range(N - 1, -1, -1))]
         warm = bfp.copy()
         for (ia, ib) in order:
             th = (warm if MODE == "prof" else bfp).copy()
-            th[ka] = bfp[ka] + ax[ia] * spost[ca]
-            th[kb] = bfp[kb] + ax[ib] * spost[cb]
+            th[ka], th[kb] = axa[ia], axb[ib]
             for kk in (ka, kb):                      # respect hard boundaries (E_b >= 0)
                 th[kk] = K.clip_phys(pn[kk], th[kk])
             if MODE == "prof":
                 th, *_ = lm_fit(eng, ko, f"p{pi}", nit=NIT, th_init=th)
-                th[ka] = bfp[ka] + ax[ia] * spost[ca]     # lm_fit never moves the pinned pair, re-assert
-                th[kb] = bfp[kb] + ax[ib] * spost[cb]
+                th[ka], th[kb] = axa[ia], axb[ib]    # lm_fit never moves the pinned pair, re-assert
                 for kk in (ka, kb):
                     th[kk] = K.clip_phys(pn[kk], th[kk])
                 warm = th.copy()
-            chi[pi, ia, ib] = chi2(th)
+            r = resid(th)
+            chi[pi, ia, ib] = float(np.sum(W * r * r))
             if MODE == "cond":
-                grad = 2.0 * J.T @ (W * resid(th))        # (nsub,) in the FULL fitted space
-                step = -V @ grad                          # Gauss-Newton step, all 16 dials
-                gn[pi, ia, ib] = (step[ca] / spost[ca], step[cb] / spost[cb])   # projected, sigma units
+                grad = 2.0 * J.T @ (W * r)                # J FROZEN at the BFP (cheap, near-BFP only)
+                step = -V @ grad
+                gn[pi, ia, ib] = (step[ca] / spost[ca], step[cb] / spost[cb])
+            elif MODE == "grad":
+                # J RECOMPUTED at this node (16 jvps) -- the whole point: over a full physical range a
+                # BFP-frozen linearisation is meaningless.  One Jacobian gives BOTH fields, so running
+                # "raw 2-D gradient" and "full 16-D GN step" together costs the same as GN alone.
+                Jn = eng.jac(th, subset)
+                gradn = 2.0 * Jn.T @ (W * r)
+                g2[pi, ia, ib] = (gradn[ca], gradn[cb])   # raw gradient, PHYSICAL units
+                An = Jn.T @ (Jn * W[:, None])
+                stepn = -np.linalg.pinv(An, rcond=1e-12) @ gradn
+                gn[pi, ia, ib] = (stepn[ca], stepn[cb])   # full 16-D GN step, projected, PHYSICAL units
+            if MODE == "grad" and (ia * N + ib + 1) % 100 == 0:
+                log(f"    pair {pi+1}: node {ia*N+ib+1}/{N*N}")
         log(f"  pair {pi+1}/{len(pairs)} ({pn[ka]},{pn[kb]}) done")
 
     chi -= np.nanmin(chi)
     out = f"output/altgen/{LABEL}_corner2d_{MODE}_{PB:02d}.npz"
     np.savez(out, mode=MODE, dials=want, pair_idx=np.array(pairs), pair_base=PB, axis_sigma=ax,
-             dchi2=chi, gn_step=gn, bfp=bfp, truth=truth, subset=subset, pnames=pn,
-             sigma_post=spost, V=V, A=A, sel_pos=np.array(idx))
+             dchi2=chi, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
+             subset=subset, pnames=pn, sigma_post=spost, V=V, A=A, sel_pos=np.array(idx))
     log(f"[out] {out}")
 
 

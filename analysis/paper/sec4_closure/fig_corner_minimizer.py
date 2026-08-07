@@ -19,13 +19,19 @@ import sys
 import glob
 from pathlib import Path
 
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm, AsinhNorm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
+from adonis.analysis import knobs as K
 
 C_TRAJ, C_BFP = "#d24", "#1f4b9c"
+SCALE = os.environ.get("CORNER_SCALE", "sqrt")     # sqrt | log
+CMAP = os.environ.get("CORNER_CMAP", "Blues_r")
 
 
 def main(label="sec4_ref"):
@@ -68,10 +74,24 @@ def main(label="sec4_ref"):
                 if j <= i or (i, j) not in G:
                     A.axis("off"); continue
                 d, gn = G[(i, j)]
-                # plot sqrt(Dchi2) -- i.e. distance in sigma -- so the basin is legible instead of a
-                # black field with one bright valley (Dchi2 itself spans 0..100+ across a panel).
-                A.pcolormesh(X, Y, np.ma.masked_invalid(np.sqrt(d)), cmap="Blues_r", vmin=0, vmax=4.5,
-                             shading="auto", rasterized=True)
+                # Dchi2 spans 0 -> ~4000 across a panel, so a LINEAR map saturates to one colour.
+                # CORNER_SCALE picks how to compress it:
+                #   sqrt -> sqrt(Dchi2) = distance in sigma; linear in sigma, good near the minimum
+                #   log  -> LogNorm over Dchi2; shows structure across all four decades, at the cost of
+                #           exaggerating numerically-tiny differences right at the minimum
+                if SCALE == "asinh":
+                    # linear below linear_width, logarithmic above: keeps the minimum localised (unlike
+                    # log, where everything under ~1 sigma flattens to one colour) while still filling
+                    # the panel out to Dchi2 ~ 1e3 (unlike sqrt, which leaves the tails near-white).
+                    A.pcolormesh(X, Y, np.ma.masked_invalid(d), cmap=CMAP,
+                                 norm=AsinhNorm(linear_width=1.0, vmin=0, vmax=1e3),
+                                 shading="auto", rasterized=True)
+                elif SCALE == "log":
+                    A.pcolormesh(X, Y, np.ma.masked_invalid(np.maximum(d, 1e-2)), cmap=CMAP,
+                                 norm=LogNorm(vmin=1e-2, vmax=1e3), shading="auto", rasterized=True)
+                else:
+                    A.pcolormesh(X, Y, np.ma.masked_invalid(np.sqrt(d)), cmap=CMAP, vmin=0, vmax=4.5,
+                                 shading="auto", rasterized=True)
                 A.contour(X, Y, d, levels=[1.0, 2.30, 4.61], colors=["0.15", "0.35", "0.55"],
                           linewidths=[1.0, 0.8, 0.8])
                 # GN step field (subsampled) -- the direction the algorithm takes
@@ -95,6 +115,25 @@ def main(label="sec4_ref"):
                         r0 = max(abs(tx[0]), abs(ty[0]))
                         A.text(0.03, 0.97, f"start {r0:.0f}$\\sigma$ off-panel", transform=A.transAxes,
                                fontsize=5.5, va="top", color=C_TRAJ)
+                # PHYSICAL BOUNDS: shade (do not mask) the clamped region.  The chi2 there is REAL -- the
+                # model clamps, so the likelihood is genuinely flat, which is the whole point of the E_b
+                # wall.  Hiding it would delete the evidence; shading says "not free parameter space"
+                # without pretending the values are undefined.
+                for which, (kk, cc) in (("x", (sub[pos[i]], pos[i])), ("y", (sub[pos[j]], pos[j]))):
+                    lo, hi = K.phys_lo(pn[kk]), K.phys_hi(pn[kk])
+                    for bnd, side in ((lo, "lo"), (hi, "hi")):
+                        if bnd is None:
+                            continue
+                        xb = (bnd - bfp[kk]) / spost[cc]           # bound position in sigma units
+                        if not (ax[0] < xb < ax[-1]):
+                            continue                               # bound outside the panel -> nothing to draw
+                        span = (ax[0], xb) if side == "lo" else (xb, ax[-1])
+                        if which == "x":
+                            A.axvspan(*span, facecolor="0.5", alpha=0.30, zorder=3, lw=0)
+                            A.axvline(xb, color="k", lw=1.0, ls="--", zorder=4)
+                        else:
+                            A.axhspan(*span, facecolor="0.5", alpha=0.30, zorder=3, lw=0)
+                            A.axhline(xb, color="k", lw=1.0, ls="--", zorder=4)
                 A.plot(0, 0, "*", color=C_BFP, ms=11, zorder=8, mec="white", mew=0.6)
                 A.set_xlim(ax[0], ax[-1]); A.set_ylim(ax[0], ax[-1])
                 A.tick_params(labelsize=6)
