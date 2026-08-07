@@ -41,11 +41,9 @@ from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from analysis.paper import info_content as IC
 from analysis.paper import fisher_engine as FE
-from analysis.paper.physical_fit import (NPAR, PNAMES, PRIOR, theta_nominal, knobs_of, SYST,
-                                          build_physfit_datasets)
-from analysis.paper.minerva_fit import build_minerva_datasets
-from analysis.paper.minerva_ptpz_fit import build_ptpz_datasets
-from analysis.paper.electron_fit import build_electron_datasets
+from adonis.analysis.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
+from adonis.analysis.sample import AnaSample
+from analysis.paper.physical_fit import SYST                      # env-driven error-model syst (kept)
 from analysis.paper.beams.beam_fisher import beam_model
 
 MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", "output/altgen/multisample_carbon.npz")
@@ -231,18 +229,20 @@ def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=Non
     nu_chunks = nu_chunks or int(os.environ.get("S4_NU_CHUNKS", "4"))        # ~0.79M/chunk -> ~3M
     beam_chunks = beam_chunks or int(os.environ.get("S4_BEAM_CHUNKS", "5"))  # ~0.6M/chunk  -> ~3M
     e_chunks = e_chunks or int(os.environ.get("S4_E_CHUNKS", "64"))          # ~32k/chunk   -> ~2M
-    PB = "output/paper_banks_p4"
     log(f"loading banks: nu={nu_chunks}ch minerva={nu_chunks}ch e={e_chunks}ch beams={beam_chunks}ch")
+
+    def _bank(cfg_name, max_chunks):
+        """A BankSample whose datasets come from the CENTRALIZED sample config (AnaSample.bin_datasets):
+        same signal + observables + REAL edges as sec1/sec2/sec3, so sec4 fits the SAME sample."""
+        s = AnaSample.from_config(f"configs/samples/{cfg_name}.yaml")
+        return BankSample(s.name, s.bank, [(lambda B, w, l: s.bin_datasets(B, w), None)], max_chunks, log)
+
     samples = [
-        BankSample("T2K", f"{PB}/nu_T2K_C/merged",
-                   [(lambda B, w, l: build_physfit_datasets(B, w, l, obs=list(T2K_KEEP)), T2K_KEEP)],
-                   nu_chunks, log),
-        BankSample("MINERvA", f"{PB}/nu_MINERvA_C/merged",
-                   [(build_minerva_datasets, None),
-                    (build_ptpz_datasets, ("mnv_ptmu", "mnv_pzmu"))],
-                   nu_chunks, log),
-        BankSample("electron", "output/beam_e_C_hv/merged",
-                   [(build_electron_datasets, None)], e_chunks, log),
+        _bank("t2k_cc0pi",    nu_chunks),
+        _bank("t2k_cc1pi_ch", nu_chunks),      # CH keys match multisample_carbon; carbon closure (no free-H offset)
+        _bank("minerva_stv",  nu_chunks),
+        _bank("minerva_ptpz", nu_chunks),
+        _bank("ee_omega",     e_chunks),
         BeamSample("pip", 15, SYST, beam_chunks, log),
         BeamSample("prot", 15, SYST, beam_chunks, log),
         BeamSample("neut", 15, SYST, beam_chunks, log),

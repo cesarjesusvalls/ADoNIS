@@ -110,6 +110,29 @@ class AnaSample:
             self._sel = (SG.ele_signal if self.is_electron else SG.bank_signal)(self.bank, self.cfg.signal)
         return self._sel
 
+    # ---- fit engine datasets (whole cached bank; the sec4 closure side) ----
+    def bin_datasets(self, B, w0, free_h=None):
+        """IC.bin_w-compatible per-observable dataset dicts for the FIT engine (physfit MultiEngine /
+        BankSample).  The sample's FIT observables selected + binned on the config's REAL edges; keys
+        namespaced `{name}:{obs}`; scale = 1/binwidth (cancels in the fit); sel_idx/binidx/scale_bin/offset
+        are exactly what IC.bin_w0/bin_w consume, so `model(theta)=IC.bin_w(d, weights(theta))` works.
+        `w0` = the nominal per-event weight (numpy).  `free_h`: optional {obs_key: frozen offset} added to
+        the central of matching observables (theta-independent -> zero gradient, the old build_physfit_datasets
+        free-H behaviour).  Numpy-only -- nothing here imports analysis/paper."""
+        selm, obs, _w0, _chan = SG.select_full(B, self.cfg.signal)
+        w0 = np.asarray(w0); ds = []
+        for o in self.fit_specs():
+            edges = o.bin_edges(); nb = len(edges) - 1; bw = np.diff(edges)
+            s, bidx, _ = _binidx(selm, obs[o.key], edges)
+            off = np.zeros(nb) if free_h is None else np.asarray(free_h.get(o.key, np.zeros(nb)))
+            d = dict(name=f"{self.name}:{o.key}", key=f"{self.name}:{o.key}", nbin=nb, edges=edges,
+                     sel_idx=s, binidx=bidx, scale_bin=1.0 / bw, offset=off)
+            central = d["scale_bin"] * np.bincount(bidx, weights=w0[s], minlength=nb) + off
+            mcerr = d["scale_bin"] * np.sqrt(np.bincount(bidx, weights=w0[s] ** 2, minlength=nb))
+            d.update(data=central, sigma=_bin_sigma(central, mcerr, self.syst), mcerr=mcerr)
+            ds.append(d)
+        return ds
+
     # ---- gradient (streamed; J + central + sigma from ONE pass) ----
     @staticmethod
     def _jvp_ctx():
