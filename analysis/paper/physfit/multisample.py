@@ -48,6 +48,10 @@ from analysis.paper.physical_fit import SYST                      # env-driven e
 from analysis.paper.beams.beam_fisher import beam_model
 
 MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", "output/altgen/multisample_carbon.npz")
+# Jacobian dial-batch: how many tangents go through ONE vmapped jvp.  Default = all 16 dials in one call.
+# Lower it (or set 1) if the vmap's 16x intermediates ever strain device memory -- results are identical,
+# only the number of dispatches changes.  S4_JAC_BATCH=1 is NOT the old loop; use jac_blocks_ref for that.
+JAC_BATCH = int(os.environ.get("S4_JAC_BATCH", "16"))
 T2K_KEEP = ("dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT")   # the 7 T2K obs sec2/sec3 stack
 
 
@@ -60,11 +64,11 @@ class BankSample:
     (MINERvA STV + qelike pT/p|| share the nu_MINERvA_C bank); `builders` is a list of (fn, keep)."""
     def __init__(self, name, bankdir, builders, max_chunks, log, signal=None, cap=None):
         self.name = name
-        # signal!=None -> cache only the SELECTED events (N_selected, streamed via select_bank); else the
-        # whole (subsampled) bank.  The fit re-evaluates model(theta) every iteration, so caching the signal
-        # instead of N_total is what keeps it cheap on arbitrarily large banks.  `cap` further subsamples the
-        # signal to at most that many events (fit-side; unbiased normalization) so the resident set fits in
-        # memory -- a closure/fit-test needs far fewer events than the full signal (its MC error << SYST).
+        # Cache only the SELECTED events (N_selected, streamed via select_bank).  The fit re-evaluates
+        # model(theta) every iteration, so caching the signal instead of N_total is what keeps it cheap on
+        # arbitrarily large banks.  `cap` further subsamples the signal to at most that many events
+        # (fit-side; unbiased normalization) so the resident set fits in memory -- a closure/fit-test needs
+        # far fewer events than the full signal (its MC error << SYST).
         # EVERY sample has a signal.  "No selection" is not a special case -- it is the selection that keeps
         # everything, and it must still be written down (select-all) so it goes through the SAME select_bank
         # path and therefore obeys the SAME event cap.  A None signal used to silently fall back to loading
@@ -92,6 +96,11 @@ class BankSample:
         _w = lambda th, JB: BR.bank_weight(JB, knobs_of(th, self.nom), self.grids)
         self._wf = jax.jit(_w)
         self._jvp = jax.jit(lambda th, tang, JB: jax.jvp(lambda t: _w(t, JB), (th,), (tang,))[1])
+        # Batched Jacobian: ONE vmapped jvp over a (nsub, NPAR) tangent matrix instead of nsub separate jvp
+        # calls.  A fit iteration is 1 model eval + nsub Jacobian columns, so ~16/17 of all full-bank passes
+        # happen here -- collapsing 16 dispatches into 1 is the single biggest lever on fit wall-clock.
+        self._jvpv = jax.jit(lambda th, T, JB: jax.vmap(
+            lambda t: jax.jvp(lambda x: _w(x, JB), (th,), (t,))[1])(T))
         # 2nd (diagonal) + 3rd (mixed) directional derivatives (nested jvp) for the higher-order corner
         self._jvp2 = jax.jit(lambda th, tang, JB: jax.jvp(
             lambda t: jax.jvp(lambda s: _w(s, JB), (t,), (tang,))[1], (th,), (tang,))[1])
@@ -127,6 +136,21 @@ class BankSample:
         return [IC.bin_w(d, w) for d in self.ds]
 
     def jac_blocks(self, theta, subset):
+        """Binned Jacobian columns via ONE vmapped jvp per batch of dials (see JAC_BATCH)."""
+        nb = sum(d["nbin"] for d in self.ds)
+        if not subset:
+            return np.zeros((nb, 0))
+        th = jnp.asarray(theta); cols = []
+        for lo in range(0, len(subset), JAC_BATCH):
+            ks = subset[lo:lo + JAC_BATCH]
+            T = np.zeros((len(ks), NPAR)); T[np.arange(len(ks)), ks] = 1.0
+            G = np.asarray(self._jvpv(th, jnp.asarray(T), self.JB))        # (len(ks), n_events)
+            cols += [np.concatenate([IC.bin_w0(d, g) for d in self.ds]) for g in G]
+        return np.column_stack(cols)
+
+    def jac_blocks_ref(self, theta, subset):
+        """Reference: one jvp per dial in a Python loop.  Kept ONLY so the vmapped path above can be
+        validated element-wise against it; not used by the fit."""
         th = jnp.asarray(theta); cols = []
         for k in subset:
             g = np.asarray(self._jvp(th, jnp.zeros(NPAR).at[k].set(1.0), self.JB))
@@ -184,6 +208,20 @@ class BeamSample:
         return [b[:nb], b[nb:]]
 
     def jac_blocks(self, theta, subset):
+        """Binned Jacobian columns via ONE vmapped jvp per batch of dials (see JAC_BATCH)."""
+        nb = 2 * self.m["nbins"]
+        if not subset:
+            return np.zeros((nb, 0))
+        th = jnp.asarray(theta); cols = []
+        for lo in range(0, len(subset), JAC_BATCH):
+            ks = subset[lo:lo + JAC_BATCH]
+            T = np.zeros((len(ks), NPAR)); T[np.arange(len(ks)), ks] = 1.0
+            G = np.asarray(self.m["jvpv"](th, jnp.asarray(T)))
+            cols += [self.m["binned"](g) for g in G]
+        return np.column_stack(cols)
+
+    def jac_blocks_ref(self, theta, subset):
+        """Reference (one jvp per dial) kept for element-wise validation of the vmapped path."""
         th = jnp.asarray(theta); cols = []
         for k in subset:
             g = self.m["jvp"](th, jnp.zeros(NPAR).at[k].set(1.0))
@@ -321,13 +359,16 @@ def main():
     log(f"closure data ready (nonlinear exact reweight @ {inj_desc})")
     log("  truth: " + " ".join(f"{eng.pnames[k]}={truth[k]:.3f}" for k in subset))
 
-    # optional: scale the FIT's prior width AFTER the truth is injected (so the injection always uses the
-    # real prior).  S4_PRIOR_SCALE=0 -> no prior: the BFP then -> injected truth on the data-constrained
-    # dials, isolating "is the fit unbiased" from "is the MAP estimate prior-pulled".  Default 1.0 = Gate-I.
-    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "1.0"))
+    # Scale the FIT's prior width AFTER the truth is injected (so the injection always uses the real prior).
+    # DEFAULT 0.0 = MLE (data-only): section 4's claim is about what the DATA constrain, so the estimator
+    # must not be propped up by a prior.  S4_PRIOR_SCALE=1.0 -> MAP (Gate-I prior) for the prior-pull study.
+    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
-        log(f"FIT prior width scaled x{PRIOR_SCALE} (demonstration; injection unchanged)")
+    # ALWAYS state the estimator: a figure whose caption says MLE while the run used MAP is exactly the
+    # kind of silent mismatch that survives into a paper.
+    log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
+                         else f"MAP (prior width x{PRIOR_SCALE})"))
 
     # ---- blind fit from nominal: ONE Gaussian-NLL (chi2_data + prior penalty) LM/GN fit ------------- #
     TOL = float(os.environ.get("PHYSFIT_TOL", "1e-6"))    # Newton-decrement convergence (predicted gap)

@@ -50,10 +50,11 @@ def main():
     nom0 = eng.th0.copy()                                  # true nominal = the prior centre (never mutated)
     eng.set_closure_data(truth)                            # reproduce the closure's (noiseless) data
     data = np.concatenate([d["data"] for d in eng.ds]); sigma = np.concatenate([d["sigma"] for d in eng.ds])
-    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "1.0"))   # 0 -> MLE profile (data-only, no prior)
+    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))   # DEFAULT 0.0 = MLE (data-only, no prior)
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
-        log(f"FIT/objective prior width scaled x{PRIOR_SCALE} (MLE profile)")
+    log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
+                         else f"MAP (prior width x{PRIOR_SCALE})"))
 
     def objective(th):
         """FULL negative-log-posterior = chi2_data + prior penalty (the curvature sigma_post encodes)."""

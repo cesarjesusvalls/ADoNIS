@@ -46,10 +46,11 @@ def main():
     # throws always use the REAL prior (the population of true values); the FIT's prior can be scaled --
     # S4_PRIOR_SCALE=0 -> unregularised (MLE) coverage of the data-only errors, consistent with S4A.
     real_prior = eng.prior.copy()
-    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "1.0"))
+    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))   # DEFAULT 0.0 = MLE (data-only)
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
-        log(f"FIT prior width scaled x{PRIOR_SCALE} (MLE coverage; throws use the real prior)")
+    log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
+                         else f"MAP (prior width x{PRIOR_SCALE})"))
     log(f"coverage: {NTOYS} toys from base {BASE}, {len(subset)} dials, {eng.row0[-1]} bins")
 
     th_star, th_fit, sig_fit, chi2d = [], [], [], []

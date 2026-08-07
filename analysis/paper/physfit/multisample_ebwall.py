@@ -45,12 +45,28 @@ def main():
     eng.set_closure_data(truth)
     data = np.concatenate([d["data"] for d in eng.ds]); sigma = np.concatenate([d["sigma"] for d in eng.ds])
     W = np.where(np.isfinite(sigma) & (sigma > 0), 1.0 / sigma**2, 0.0)
-    def chi2d(th):
-        m = eng.model(th); return float(np.sum(((m - data) / sigma)**2))
 
-    bfp = truth.copy()                                           # MLE minimum == injected truth
-    J = eng.jac(bfp, subset); A = J.T @ (J * W[:, None]); V = np.linalg.pinv(A, rcond=1e-12)
-    eb_sig = float(np.sqrt(abs(V[eb_pos, eb_pos])))              # Gaussian (data-only) sigma on Eb
+    # Estimator.  DEFAULT 0.0 = MLE (data-only), consistent with sec4's other drivers; S4_PRIOR_SCALE=1.0 ->
+    # MAP, which adds the Gate-I prior penalty to BOTH the scanned objective and the curvature.  For Eb the
+    # prior (centre 0.01 MeV, width 4.0) is >10x looser than the data constraint (~0.37), so MAP barely
+    # moves the interval -- the truncation this figure shows is the PHYSICAL Eb>=0 wall, not the prior.
+    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))
+    pw = np.asarray(eng.prior, float) * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
+    eng.prior = pw                      # the inner lm_fit penalises with eng.prior -- it MUST match chi2d
+    nom0 = np.asarray(eng.th0, float)
+    log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
+                         else f"MAP (prior width x{PRIOR_SCALE})"))
+
+    def chi2d(th):
+        m = eng.model(th)
+        pri = float(np.sum([(th[j] - nom0[j])**2 / pw[j]**2 for j in subset]))
+        return float(np.sum(((m - data) / sigma)**2)) + pri
+
+    bfp = truth.copy()                                           # minimum == injected truth
+    J = eng.jac(bfp, subset); A = J.T @ (J * W[:, None])
+    A = A + np.diag([1.0 / pw[k]**2 for k in subset])             # prior curvature (~0 when MLE)
+    V = np.linalg.pinv(A, rcond=1e-12)
+    eb_sig = float(np.sqrt(abs(V[eb_pos, eb_pos])))              # Gaussian sigma on Eb
     chi2_min = chi2d(bfp)
     log(f"Eb: bfp={bfp[eb_k]:.3f} MeV, Gaussian sigma={eb_sig:.3f} MeV, wall at 0; scan [{EB_LO},{EB_HI}]")
 
@@ -67,7 +83,7 @@ def main():
 
     out = "output/altgen/sec4_ebwall.npz"
     np.savez(out, eb_grid=grid, dchi2=dchi2, eb_bfp=bfp[eb_k], eb_sig=eb_sig, eb_nom=nom[eb_k],
-             chi2_min=chi2_min, inject=INJECT)
+             chi2_min=chi2_min, inject=INJECT, prior_scale=PRIOR_SCALE)   # estimator recorded for the caption
     log(f"[out] {out}")
 
 
