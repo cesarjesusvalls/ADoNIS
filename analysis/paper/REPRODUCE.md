@@ -77,6 +77,18 @@ python -u -m analysis.paper.beams.beam_bank configs/banks/beam_neut_C.yaml
 On S3DF, submit generation to the GPU via `jobs/submit.py --gpu` (turing); env.sh auto-selects the
 `adonis-cuda` venv + `JAX_PLATFORMS=cuda,cpu` there.
 
+**NOMINAL WORKFLOW: production -> rechunk.** Generation writes one chunk per seed, so chunk size varies
+wildly across banks (nu_T2K_C ~94k events/chunk vs beam_e_C_hv ~3.6k -- a narrow (e,e') acceptance yields
+few accepted events/batch).  Streaming cost is dominated by PER-CHUNK overhead (to_jax + jvp dispatch), so
+after generating a bank ALWAYS repack it into uniform ~0.5 GB chunks:
+```bash
+python -m adonis.workflow.rechunk output/<bank>/merged output/<bank>/merged_rc --target-gb 0.5
+# validate load-equivalence, then swap in place (mv merged merged_old; mv merged_rc merged)
+```
+This is exact (preserves every record + the cross-section normalization; validated element-wise to 1e-16)
+and is what every sec1/2/3/4 streaming reader expects.  The rechunked bank keeps the SAME path, so no config
+changes.  (Rule of thumb: N_chunks ~ bank_GB / 0.5.)
+
 ## 4b. Sections 4-5 (closures + unknown-unknowns)
 These render from persisted npz under `output/altgen/`. To regenerate from scratch you also need
 GENIE/NEUT fake data (a separate GENIE container, `analysis/paper/physfit/run_genie.sh`):
