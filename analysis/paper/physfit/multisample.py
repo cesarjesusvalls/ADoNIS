@@ -39,6 +39,7 @@ import jax.numpy as jnp
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
+from adonis.workflow import selection as SG
 from analysis.paper import info_content as IC
 from analysis.paper import fisher_engine as FE
 from adonis.analysis.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
@@ -57,9 +58,13 @@ T2K_KEEP = ("dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT")   # the 7 T2K obs
 class BankSample:
     """A `bank_weight` sample (T2K / MINERvA / (e,e')).  One bank can feed several dataset builders
     (MINERvA STV + qelike pT/p|| share the nu_MINERvA_C bank); `builders` is a list of (fn, keep)."""
-    def __init__(self, name, bankdir, builders, max_chunks, log):
+    def __init__(self, name, bankdir, builders, max_chunks, log, signal=None):
         self.name = name
-        B = BP.load_bank(bankdir, max_chunks=max_chunks)
+        # signal!=None -> cache only the SELECTED events (N_selected, streamed via select_bank); else the
+        # whole (subsampled) bank.  The fit re-evaluates model(theta) every iteration, so caching the signal
+        # instead of N_total is what keeps it cheap on arbitrarily large banks.
+        B = (SG.select_bank(bankdir, signal, max_chunks=max_chunks) if signal is not None
+             else BP.load_bank(bankdir, max_chunks=max_chunks))
         self.JB = BR.to_jax(B); self.grids = BR.default_grids(); self.nom = nominal_knobs()
         w0 = np.asarray(BR.weight_jit(self.JB, self.nom, self.grids))
         ds = []
@@ -233,9 +238,11 @@ def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=Non
 
     def _bank(cfg_name, max_chunks):
         """A BankSample whose datasets come from the CENTRALIZED sample config (AnaSample.bin_datasets):
-        same signal + observables + REAL edges as sec1/sec2/sec3, so sec4 fits the SAME sample."""
+        same signal + observables + REAL edges as sec1/sec2/sec3, so sec4 fits the SAME sample.  Loaded via
+        select_bank -> only the N_selected signal events are cached on device (not N_total)."""
         s = AnaSample.from_config(f"configs/samples/{cfg_name}.yaml")
-        return BankSample(s.name, s.bank, [(lambda B, w, l: s.bin_datasets(B, w), None)], max_chunks, log)
+        return BankSample(s.name, s.bank, [(lambda B, w, l: s.bin_datasets(B, w), None)], max_chunks, log,
+                          signal=s.cfg.signal)
 
     samples = [
         _bank("t2k_cc0pi",    nu_chunks),

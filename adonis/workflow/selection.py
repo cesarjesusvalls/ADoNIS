@@ -160,6 +160,52 @@ def bank_signal(bank_dir, sd):
     return _stream_select(bank_dir, BP.load_bank_chunk, _select_cc, sd)
 
 
+# --------------------------------------------------------------------------- N_selected compact bank
+_EIDX_FAM = ("f_p_eidx", "f_n_eidx", "ks_eidx")     # per-slot event indices to shift into global numbering
+
+
+def _concat_compact(parts):
+    """Concatenate per-chunk compact banks (bank_plot.filter_events output) into ONE, shifting every ragged
+    event index into the global numbering (like load_bank does for f_*_eidx, extended to ks_eidx) and
+    rebuilding fs_off/_eidx.  w0 is already per-chunk normalized, so a plain concatenation sums to the
+    (subsample) cross section."""
+    import numpy as _np
+    parts = [p for p in parts if len(p["w0"])]
+    if not parts:
+        raise ValueError("select_bank: no selected events on any chunk")
+    keys = [k for k in parts[0] if k not in ("fs_off", "_eidx", "n_chunks", "labels")]
+    acc = {k: [] for k in keys}; fs_off = [_np.array([0], _np.int64)]; ev_off = 0
+    for p in parts:
+        for k in keys:
+            v = _np.asarray(p[k])
+            acc[k].append(v.astype(_np.int64) + ev_off if k in _EIDX_FAM else v)
+        fs_off.append(fs_off[-1][-1] + _np.asarray(p["fs_off"])[1:])
+        ev_off += len(p["w0"])
+    out = {k: _np.concatenate(acc[k]) for k in keys}
+    out["fs_off"] = _np.concatenate(fs_off); out["n_chunks"] = parts[0].get("n_chunks", 1)
+    n = len(out["w0"]); out["_eidx"] = _np.repeat(_np.arange(n), _np.diff(out["fs_off"]))
+    return out
+
+
+def select_bank(bank_dir, sd, max_chunks=None):
+    """A compact full-record bank of ONLY the signal events (N_selected), built by STREAMING the full bank
+    and filter_events-ing each chunk to `sd`.  Peak memory = one chunk + the accumulated signal (never the
+    whole bank); bank_weight / the observables on the result reproduce the full bank restricted to the
+    signal.  This is what lets the fit (sec4) cache N_selected instead of N_total.  w0 is divided by the
+    number of chunks LOADED, so a subsample stays a proper cross-section estimate."""
+    import glob
+    files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
+    if max_chunks:
+        files = files[:max_chunks]
+    nch = len(files)
+    parts = []
+    for f in files:
+        B = BP.load_bank_chunk(f, nch)
+        parts.append(BP.filter_events(B, select_full(B, sd)[0]))
+        del B
+    return _concat_compact(parts)
+
+
 # --------------------------------------------------------------------------- ACHILLES fs_rich side
 def oracle_signal(oracle_npz, sd):
     d = np.load(oracle_npz, allow_pickle=True)
