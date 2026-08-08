@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper.physfit.multisample import build_multisample_engine
 from analysis.paper.physfit.physical_fit_run import lm_fit
 from analysis.paper.physical_fit import PNAMES
+from adonis.analysis import knobs as K
 
 
 def main():
@@ -65,13 +66,37 @@ def main():
     L_min, cd_min = objective(bfp)
     log(f"objective at BFP: total={L_min:.2f}  chi2_data={cd_min:.2f}")
 
-    grid = np.linspace(-3.0, 3.0, 2 * NG + 1)              # theta_k - BFP_k in units of sigma_post,k
-    prof = np.full((len(subset), len(grid)), np.nan)       # EXACT profiled Delta(total objective)
-    profd = np.full((len(subset), len(grid)), np.nan)      # (also keep Delta chi2_data)
-    for c, k in enumerate(subset):
+    # PER-DIAL grid.  A bounded dial must be scanned from its BOUNDARY upward, NOT from bfp-3sigma with
+    # the sub-boundary nodes clipped: clipping evaluates the SAME point many times and stores it against
+    # x-coordinates that do not exist, so the profile looks "flat" below the wall.  Integrating that
+    # fictitious region inflated E_b's 68% credible interval by 34% (half-width 1.366 vs 0.862 restricted,
+    # against an ensemble RMS of 1.016).  30% of E_b's old grid lay below the wall.
+    NGRID = 2 * NG + 1
+    grid = np.linspace(-3.0, 3.0, NGRID)                   # nominal axis, kept for back-compat
+    grids = np.full((len(subset), NGRID), np.nan)          # the axis ACTUALLY scanned, per dial
+    prof = np.full((len(subset), NGRID), np.nan)           # EXACT profiled Delta(total objective)
+    profd = np.full((len(subset), NGRID), np.nan)          # (also keep Delta chi2_data)
+    # SHARDING: dials are independent -- each scan re-minimises the other 15 from its own warm start, so
+    # one SLURM task per dial turns a ~1 h serial scan into ~1 wall-clock scan.  Unset -> all dials, and
+    # the output filename is unchanged, so the unsharded path behaves exactly as before.
+    PB = int(os.environ.get("S4_PROF_BASE", "-1"))
+    PN = int(os.environ.get("S4_PROF_N", "1"))
+    mine = range(len(subset)) if PB < 0 else range(PB, min(PB + PN, len(subset)))
+    if PB >= 0:
+        log(f"shard: dials {[eng.pnames[subset[c]] for c in mine]}")
+    for c in mine:
+        k = subset[c]
         free = [j for j in subset if j != k]               # re-minimise over the OTHER 15 dials
-        for gi, gv in enumerate(grid):
-            val = max(bfp[k] + gv * spost[c], 1e-2) if eng.pnames[k] == "Eb_shift" else bfp[k] + gv * spost[c]
+        lo_p, hi_p = K.phys_lo(eng.pnames[k]), K.phys_hi(eng.pnames[k])
+        g_lo = -3.0 if lo_p is None else max(-3.0, (lo_p - bfp[k]) / spost[c])
+        g_hi = 3.0 if hi_p is None else min(3.0, (hi_p - bfp[k]) / spost[c])
+        gk = np.linspace(g_lo, g_hi, NGRID)
+        grids[c] = gk
+        if g_lo > -3.0 or g_hi < 3.0:
+            log(f"  [{eng.pnames[k]}] BOUNDED -> scanning [{g_lo:+.3f}, {g_hi:+.3f}] sigma "
+                f"(physical range), not the full +-3")
+        for gi, gv in enumerate(gk):
+            val = K.clip_phys(eng.pnames[k], bfp[k] + gv * spost[c])
             th_init = bfp.copy(); th_init[k] = val          # warm-start from BFP with dial k pinned
             th, _V, _J, _m, _c, _cd = lm_fit(eng, free, f"prof[{eng.pnames[k]}]{gi}", nit=NIT, th_init=th_init)
             th[k] = val                                     # ensure the pinned value (lm_fit never moves it)
@@ -80,8 +105,10 @@ def main():
         log(f"  [{eng.pnames[k]}] profiled ({2*NG+1} nodes)  Dobj@+-3sig="
             f"[{prof[c,0]:.1f},{prof[c,-1]:.1f}] (parabola 9.0)")
 
-    out = f"output/altgen/{LABEL}_profile.npz"
-    np.savez(out, subset=subset, pnames=eng.pnames, grid_sigma=grid, prof_dobj=prof, prof_dchi2=profd,
+    out = (f"output/altgen/{LABEL}_profile.npz" if PB < 0
+           else f"output/altgen/{LABEL}_profile_sh{PB:02d}.npz")
+    np.savez(out, subset=subset, pnames=eng.pnames, grid_sigma=grid, grids_sigma=grids,
+             prof_dobj=prof, prof_dchi2=profd,
              bfp=bfp, sigma_post=spost, truth=truth, chi2_min=cd_min)
     log(f"[out] {out}")
 

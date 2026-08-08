@@ -118,11 +118,21 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     w0 = np.asarray(w_of(th0))
     assert np.abs(w0 - 1).max() < 1e-9, f"nominal identity broken on the {beam} bank: {np.abs(w0-1).max():.2e}"
 
+    # SAME binning primitive every other sample uses (IC.BinSpec): m_b = scale_b * sum_b coef_e * w_e.
+    # This used to be a second, independent np.bincount implementation; unifying it is what lets the
+    # device path -- and hence reverse-mode differentiation -- cover the WHOLE model instead of the
+    # BankSamples only.
+    from analysis.paper.info_content import BinSpec
+    _scale = PIR2 / np.maximum(n_tried, 1)
+    spec_r = BinSpec(idx, nbins, _scale, coef=react)
+    spec_s = BinSpec(idx, nbins, _scale, coef=second)
+
     def binned(w):
-        w = np.asarray(w)
-        sr = PIR2 * np.bincount(idx, weights=react * w, minlength=nbins) / np.maximum(n_tried, 1)
-        ss = PIR2 * np.bincount(idx, weights=second * w, minlength=nbins) / np.maximum(n_tried, 1)
-        return np.concatenate([sr, ss])
+        return np.concatenate([spec_r.apply(np.asarray(w)), spec_s.apply(np.asarray(w))])
+
+    def binned_dev(w):
+        import jax.numpy as jnp
+        return jnp.concatenate([spec_r.apply_dev(w), spec_s.apply_dev(w)])
 
     central = binned(w0)
     # MC error: sqrt(N) on the counts in each bin (the reweight is 1 at nominal)
@@ -143,7 +153,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
         (th,), (x,))[1])
     log(f"  [{beam}] {len(p):,} tried | {int(react.sum()):,} reacted | {int(ns.sum()):,} second-obs "
         f"| {2*nbins} bins | med MC err {np.median(mcerr[central > 0] / central[central > 0]):.1%}")
-    return dict(w_of=w_of, jvp=jvp, jvpv=jvpv, jvp2=jvp2, jvp3=jvp3, binned=binned, central=central, sigma=sig,
+    return dict(w_of=w_of, binned_dev=binned_dev, jvp=jvp, jvpv=jvpv, jvp2=jvp2, jvp3=jvp3, binned=binned, central=central, sigma=sig,
                 mcerr=mcerr, edges=edges, keys=keys, th0=th0, nbins=nbins, n_tried=n_tried,
                 n_events=len(ridx))
 

@@ -81,6 +81,8 @@ def _batched_jac(subset, call, bin_cols):
             bs = max(1, bs // 2)
             print(f"[jac] device OOM at batch {bs * 2} -> retrying at {bs} "
                   f"(identical result, more dispatches)", flush=True)
+_JAX_BIN = os.environ.get("S4_JAX_BIN", "") == "1"   # device-resident binning (see IC.bin_w0_dev)
+
 T2K_KEEP = ("dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT")   # the 7 T2K obs sec2/sec3 stack
 
 
@@ -161,6 +163,9 @@ class BankSample:
         return np.asarray(self._wf(jnp.asarray(theta), self.JB))
 
     def model_blocks(self, theta):
+        if _JAX_BIN:                       # keep the 1.9M weights on device; only ~nbin floats come back
+            wj = self._wf(jnp.asarray(theta), self.JB)
+            return [np.asarray(IC.bin_w_dev(d, wj)) for d in self.ds]
         w = self.weights(theta)
         return [IC.bin_w(d, w) for d in self.ds]
 
@@ -175,6 +180,16 @@ class BankSample:
             T = np.zeros((len(ks), NPAR)); T[np.arange(len(ks)), ks] = 1.0
             return self._jvpv(th, jnp.asarray(T), self.JB)                 # (len(ks), n_events)
 
+        if _JAX_BIN:                       # bin each dial's derivative on device too (same saving x nsub)
+            def call_dev(ks):
+                T = np.zeros((len(ks), NPAR)); T[np.arange(len(ks)), ks] = 1.0
+                G = self._jvpv(th, jnp.asarray(T), self.JB)          # (len(ks), n_events), on device
+                return np.stack([np.concatenate([np.asarray(IC.bin_w0_dev(d, g)) for d in self.ds])
+                                 for g in G])
+            cols = []
+            for lo in range(0, len(subset), max(1, JAC_BATCH)):
+                cols += list(call_dev(subset[lo:lo + max(1, JAC_BATCH)]))
+            return np.column_stack(cols)
         return np.column_stack(_batched_jac(
             subset, call, lambda g: np.concatenate([IC.bin_w0(d, g) for d in self.ds])))
 
@@ -234,7 +249,11 @@ class BeamSample:
         return np.asarray(self.m["w_of"](jnp.asarray(theta)))
 
     def model_blocks(self, theta):
-        b = self.m["binned"](self.weights(theta)); nb = self.m["nbins"]
+        nb = self.m["nbins"]
+        if _JAX_BIN:                       # same device-resident BinSpec path as BankSample
+            b = np.asarray(self.m["binned_dev"](self.m["w_of"](jnp.asarray(theta))))
+        else:
+            b = self.m["binned"](self.weights(theta))
         return [b[:nb], b[nb:]]
 
     def jac_blocks(self, theta, subset):

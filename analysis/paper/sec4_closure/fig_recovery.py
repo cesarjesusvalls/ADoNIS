@@ -56,7 +56,7 @@ def main(label="sec4_closure_random16"):
         yy = np.arange(len(order)); gid = [style.knob_group(pn[sub[c]]) for c in order]
         for i, c in enumerate(order):
             k = sub[c]; p = max(prior[k], 1e-12)
-            mode, clo, chi = _credible(grid, prof[c])                      # 68% credible (sigma units)
+            mode, clo, chi = _credible(grids[c] if grids is not None else grid, prof[c])                      # 68% credible (sigma units)
             xhat = (bfp[k] + mode * spost[c] - nom[k]) / p
             # BOTH intervals on the SAME line (no vertical offset).  They are told apart by cap geometry,
             # not by position: the Gaussian gets TALL THIN caps drawn behind, the credible interval a THICK

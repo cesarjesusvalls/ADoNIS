@@ -87,6 +87,9 @@ def main():
             " ".join(f"{eng.pnames[k]}={fixed_star[k]:.3f}" for k in subset))
 
     th_star, th_fit, sig_fit, chi2d = [], [], [], []
+    # per-toy fit QUALITY, saved alongside the results.  Without these the old ensemble could not tell a
+    # converged fit from one that hit the iteration cap, and 21.6% of it was silently on the E_b floor.
+    opt_fit, spread_fit = [], []
     out = f"output/altgen/{LABEL}_{BASE:04d}.npz"
     for t in range(NTOYS):
         seed = BASE + t
@@ -100,8 +103,11 @@ def main():
         s = np.sqrt(np.abs(np.diag(V)))
         th_star.append([star[k] for k in subset]); th_fit.append([th[k] for k in subset])
         sig_fit.append(list(s)); chi2d.append(cd)
+        opt_fit.append(float(getattr(eng, "last_gap", np.nan)))
+        spread_fit.append(float(getattr(eng, "last_chi2_spread", np.nan)))
         log(f"toy {seed}: chi2_data={cd:.1f}  max|pull|="
-            f"{max(abs(th[k]-star[k])/max(s[c],1e-12) for c,k in enumerate(subset)):.2f}")
+            f"{max(abs(th[k]-star[k])/max(s[c],1e-12) for c,k in enumerate(subset)):.2f}"
+            f"  opt={opt_fit[-1]:.1e}  start-spread={spread_fit[-1]:.3f}")
         if (t + 1) % 5 == 0 or t == NTOYS - 1:                  # incremental save (preemption-safe)
             # nbins_live = bins that actually CONSTRAIN.  Empty bins get sigma=inf (-> weight 0), so they
             # contribute nothing to chi2 and must not be counted as degrees of freedom either: using the
@@ -110,7 +116,10 @@ def main():
             np.savez(out, subset=subset, pnames=eng.pnames, nbins=int(eng.row0[-1]),
                      nbins_live=int(np.sum(np.isfinite(_sig) & (_sig > 0))),
                      th_star=np.array(th_star), th_fit=np.array(th_fit),
-                     sig_fit=np.array(sig_fit), chi2_data=np.array(chi2d))
+                     sig_fit=np.array(sig_fit), chi2_data=np.array(chi2d),
+                     opt_fit=np.array(opt_fit), chi2_spread_starts=np.array(spread_fit),
+                     fitter=os.environ.get("S4_FITTER", "lm"),
+                     nstart=int(os.environ.get("S4_NSTART", "1")))
     log(f"[out] {out} ({len(th_star)} toys)")
 
 

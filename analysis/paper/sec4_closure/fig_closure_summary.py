@@ -53,6 +53,12 @@ def main(label="sec4_ref", ens="sec4_ens"):
     zp = np.load(style.ALTGEN / f"{label}_profile.npz", allow_pickle=True)
     sub = [int(k) for k in zp["subset"]]; pn = [str(x) for x in zp["pnames"]]
     grid = np.asarray(zp["grid_sigma"]); prof = np.asarray(zp["prof_dobj"])
+    # PER-DIAL axes: a bounded dial is scanned from its boundary upward, so it does NOT share the nominal
+    # +-3 sigma axis.  Old npz lack this -- warn rather than silently integrate a fictitious region.
+    grids = np.asarray(zp["grids_sigma"]) if "grids_sigma" in zp.files else None
+    if grids is None:
+        print("[warn] profile npz predates the bounds-aware scan; credible intervals on BOUNDED dials "
+              "integrate below the wall and are inflated (E_b was +34%)")
     bfp = np.asarray(zp["bfp"]); spost = np.asarray(zp["sigma_post"]); truth = np.asarray(zp["truth"])
     nom = np.asarray(theta_nominal(nominal_knobs())); prior = np.asarray(PRIOR)
     order = sorted(range(len(sub)), key=lambda c: (style.knob_group(pn[sub[c]]), sub[c]))
@@ -83,7 +89,7 @@ def main(label="sec4_ref", ens="sec4_ens"):
         yy = np.arange(len(order)); gid = [style.knob_group(pn[sub[c]]) for c in order]
         for i, c in enumerate(order):
             k = sub[c]; p = max(prior[k], 1e-12)
-            mode, clo, chi = _credible(grid, prof[c])
+            mode, clo, chi = _credible(grids[c] if grids is not None else grid, prof[c])
             xhat = (bfp[k] + mode * spost[c] - nom[k]) / p
             axA.errorbar([xhat], [yy[i]], xerr=[[spost[c] / p], [spost[c] / p]], fmt="none",
                          ecolor=C_GAUSS, capsize=4.5, capthick=0.9, elinewidth=0.9, zorder=2)

@@ -7,6 +7,8 @@ from adonis.reweight.reweight_model.knob_specs (which drops the dead sscat / dor
 expands the tuple knobs); here we only attach the fit priors: 20% multiplicative by default, natural
 units for the non-multiplicative knobs (Eb_shift +/-4 MeV, f_NN_cex +/-0.1).
 """
+import os
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -81,8 +83,16 @@ def _base(name):
     return name.split("[", 1)[0]
 
 
+# With S4_EB_MIRROR=1 the SF response is EVEN in Eb_shift (see sf_reweight), so negative values are
+# meaningful -- they denote the same physical shift |Eb|.  Bounding the fit at zero would then re-impose
+# the very wall the mirroring exists to remove, so Eb_shift becomes unbounded in that mode.
+_MIRRORED = {"Eb_shift"} if os.environ.get("S4_EB_MIRROR", "") == "1" else set()
+
+
 def phys_lo(name):
     """Smallest value a dial may take, offset off the clamp by FLOOR_EPS.  None if unbounded below."""
+    if _base(name) in _MIRRORED:
+        return None
     b = PHYS_BOUND.get(_base(name))
     return None if b is None or b[0] is None else b[0] + FLOOR_EPS
 
