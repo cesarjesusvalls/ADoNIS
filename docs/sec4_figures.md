@@ -27,115 +27,107 @@ gap §4 fills.
 
 ---
 
-## Fig A — closure, and that the error bar is real
+## Fig A — the whole closure argument
 
-Existing: `analysis/paper/sec4_closure/fig_closure_summary.py` (+ `fig_dists.py` / `fig_dists_all.py`).
+`fig_closure_summary.py` + `fig_dists.py` / `fig_dists_all.py`. Per dial, the three interval recipes
+against the thing they all claim to describe:
 
-Panels:
+- **(a)** quadratic sigma / profile (Wilks) / **FC**, side by side, truth marked
+- **(b)** the **toy distribution** per dial -- the empirical sampling distribution
+- **(c)** chi2_data across the toys vs chi2(ndf), ndf counting only bins that constrain
+- **(d)** E_b zoom, the dial where the three separate
+- plus pre/post-fit distributions (4 representative observables, and the full sample set)
 
-- **(a)** recovery of all 16 dials on the injected truth, quadratic σ beside the profile interval;
-- **(b)** the same truth refit 500× (statistics only) — the histogram must have the width the profile
-  predicted;
-- **(c)** χ²_data across those fits vs χ²(ndf), ndf counting only bins that constrain;
-- **(d)** the boundary case, `Eb_shift` ~1.2σ from its wall;
-- **plus pre/post-fit distributions** — `fig_dists.py` for four representative observables (T2K and
-  MINERvA CC0π δp_T, an (e,e′) QE ω, a π⁺–C reaction σ) and `fig_dists_all.py` for the full sample set.
-  These make the fit concrete: nominal misses, best fit lands on the closure data.
+For the ~12 well-behaved dials all three coincide with the toys -- that IS the result, and it is why the
+expensive machinery is only needed on a few. **Non-Gaussianity needs no separate figure**: it is exactly
+where the symmetric quadratic bar and the asymmetric profile bar disagree in (a). Quote the magnitudes in
+the text (Delta chi2 at +-3 sigma against the parabola's 9.0): S_Delta 58.2/1.0, M_A_res 1.8/19.9,
+s_NN_elastic[2] 15.2/8.0, E_b 1.6/8.1, the other 12 between 8.0 and 10.5.
 
-Truth for the reference fit: **all 16 dials displaced** (0.4–1.25 σ_prior, mixed signs), with `Eb_shift`
-deliberately left near its wall at 0.50 — `scratchpad/truth16.txt`, label `sec4_all16` /
-ensemble `sec4_ens16`.
+FC costs ~2.2 h/dial, so run it on the four flagged dials only and report "= profile" for the rest.
 
-## Fig B — non-Gaussianity triage
+May split on panel count (A1 intervals vs toys, A2 pre/post-fit + chi2) -- decide at render time.
 
-Profiled Δχ² at ±3σ against the parabola's 9.0, for **all 16 dials**. Measured on `sec4_all16`:
+## Fig B — coverage vs distance from the boundary  (supporting)
 
-| dial | Δχ²(−3σ, +3σ) |
-|---|---|
-| `delta_strength` | 58.2, 1.0 |
-| `M_A_res` | 1.8, 19.9 |
-| `s_NN_elastic[2]` | 15.2, 8.0 |
-| `Eb_shift` | 1.6, 8.1 (scan bounded at the wall) |
-| other 12 | 8.0 – 10.5 |
+1-D E_b, other 15 dials fixed, exhaustive grid scan (no optimiser), 20k toys per point, interval built
+PER TOY:
 
-The point is not that four dials are non-Gaussian — it is that **we checked all 16 and it cost ~4 min per
-dial** (17 nodes × 13.4 s, one SLURM task per dial). T2K cannot afford this for 75 parameters, which is
-precisely why they need a second MCMC framework to discover the same fact.
-
-## Fig C — the boundary case done properly
-
-The wall scan: coverage of **Wilks / flat-prior Bayes / Feldman–Cousins** 68% intervals as the truth
-approaches the `Eb_shift` wall. 1-D (other 15 dials fixed at truth, exhaustive grid scan, no optimiser),
-20k toys per point, interval built **per toy**:
-
-| truth | d/σ | Wilks | Bayes flat | FC |
+| truth | d/sigma | Wilks | Bayes flat | FC |
 |---|---|---|---|---|
 | 0.01 | 0.00 | 83.8 | **0.0** | 67.7 |
 | 0.10 | 0.26 | 81.6 | 51.0 | 68.0 |
 | 0.20 | 0.56 | 71.9 | 72.8 | 68.8 |
 | 0.50 | 1.37 | 66.8 | 74.6 | 68.2 |
 
-Wilks over-covers to 84% near the wall; a flat-prior credible interval reaches **0%** coverage; FC holds
-68% everywhere. Supporting panels: the FC test statistic showing the boundary peak as an atom at
-Δχ² = 0 (43% at the wall, 0.7% at the truth), and the belt running from Chernoff's on-boundary value
-(0.226) to Wilks' 1.00.
+Generalises beyond the single truth in Fig A, and is the only place the flat-prior Bayesian failure is
+quantified. Supporting panels: the FC test statistic showing the boundary peak as an atom at Delta chi2 = 0
+(43% at the wall, 0.7% at the truth), and the belt running from Chernoff's 0.226 to Wilks' 1.00.
 
-This is the most novel result in the section and a direct, quantitative caveat on how removal-energy-type
-parameters are reported today.
+## Fig C — the cost argument (keystone)
 
-## Fig D — the cost argument, measured (the keystone)
+Same Asimov fit three ways, same start / bounds / data, warm-up before timing and counters at the engine:
 
-The same Asimov fit, three ways, same start / bounds / data:
+| method | wall s | model evals | Jacobians | chi2 | max abs err | valid |
+|---|---|---|---|---|---|---|
+| MIGRAD numerical | 183.6 | 1329 | 0 | 1.601 | 4.9e-01 | True |
+| MIGRAD autodiff | 98.2 | 571 | 26 | 1.601 | 4.9e-01 | True |
+| Gauss-Newton/TRF | **10.1** | **11** | **12** | 1.2e-24 | 8.0e-14 | True |
 
-- **A** MIGRAD, numerical derivatives — what T2K runs;
-- **B** MIGRAD, analytic autodiff gradient — isolates the value of *having* a gradient;
-- **C** Gauss-Newton / trust-region-reflective — adds the value of exploiting the least-squares
-  structure (JᵀWJ).
-
-Reported in wall time **and** model evaluations (the expensive object), plus accuracy against truth and a
-dial-by-dial comparison of HESSE's error against the Gauss-Newton one. A vs B vs C separates iteration
-count from per-iteration cost — the naive "16 extra evaluations per Jacobian" understates it, because a
-variable-metric method also needs many more iterations.
-
-Fig D is the keystone: it converts B and C from "nice extra studies" into "things that were previously
-infeasible".
-
----
+**1329 -> 11 model evaluations, 18.1x wall clock**, and both MIGRAD variants return valid=True while
+sitting 0.49 from truth with E_b pinned on its floor -- and HESSE reports its error 3.1x too large there.
+Caveat: the autodiff row still builds all 16 forward JVPs and contracts them; MIGRAD needs only the scalar
+gradient, which one reverse-mode VJP would give for ~1-2 model evals. Now possible (BinSpec unification)
+but not yet done, so that row understates the gradient-only benefit.
 
 ## Status
 
 | | |
 |---|---|
-| Fig A closure + profile (`sec4_all16`) | done |
-| Fig A ensemble (`sec4_ens16`, 500 toys) | running |
+| closure + profile (`sec4_all16`, 16/16 dials) | done |
+| Fig C cost benchmark | done |
+| Fig B 1-D wall scan | done |
+| Fig A ensembles, single start | running (see the arms below) |
 | Fig A pre/post-fit dists | scripts exist, need a run on `sec4_all16` |
-| Fig B | data in hand (profile), figure not written |
-| Fig C 1-D wall scan | done |
-| Fig C 16-dial FC | not run — needs the nuisance-throw fix below |
-| Fig D | benchmark running (job 34523089) |
+| **FC belts for the 4 flagged dials** | **not run -- the long pole for Fig A** |
+
+## What we tested and dropped
+
+Three candidate fixes for the E_b boundary were tried. Recording the negative results because they are
+what justifies the simple production configuration:
+
+1. **Mirroring (T2K's remedy) -- tested, not adopted.** Single-start fits, clamp vs mirror, identical
+   otherwise: the atom goes 7.2% -> 0.0% on the floor, but the fraction with |E_b| < 0.1 is **16.0% vs
+   15.8%** and the medians agree. It moves the point mass into a continuous spread near zero; the
+   inference is unchanged. 49.8% land on the negative branch, confirming the mechanism works -- it just
+   buys nothing. Kept in the code, env-gated (`S4_EB_MIRROR=1`), off by default.
+
+2. **TRF vs the original LM -- controlled A/B running** (`sec4_ens_lm1` vs `sec4_ens_c1`, single start,
+   clamp, same truth, only the minimiser differs). The 21.6% -> 7.2% atom drop previously attributed to
+   TRF was NOT controlled (the truth changed between those runs). What is controlled: on the 12 wall
+   toys TRF reached lower chi2 on 12/12, but by a mean of 0.50 and **10/12 landed in the same place**,
+   and LM never satisfied its own tolerance (0/12) while TRF certifies at ~1e-6.
+
+3. **Multi-start -- dropped from the production configuration.** It targets the `M_A_res`/`S_Delta` two
+   basins (the RES weight is g^T M g with g = (1,d) x (1,r,r*pp), hence QUADRATIC in delta_strength, so
+   d -> prediction is two-to-one about that parabola's vertex). It costs xN per toy (8 starts = 230-500
+   s/toy vs ~84 s single) and does nothing for E_b, which mirroring/TRF already showed is not an
+   optimiser problem.
+
+The residual -- ~16% of fits placing E_b near zero when the truth is 0.50 -- is **not** an optimiser
+artefact at all. It is genuine near-boundary statistics, and it is what Fig A's FC column and Fig B are
+for.
 
 ## Open issues
 
-1. ~~`multisample_fc.py` throws nuisances at the reference truth~~ **FIXED** — it now uses the standard
-   *profile construction*: nuisances are thrown at their conditional best fit ν̂̂(t) given θ = t on the
-   observed data, obtained with one extra fit per grid point. Not yet exercised on a real belt.
-2. **`M_A_res` / `S_Δ` multi-modality in the 16-dial fit is not explained.** Measured: identical toy data
-   from 6 dispersed starts converges to χ² differing by up to 2.9 on 3/8 toys, and the spread lives almost
-   entirely in that −0.995-correlated pair (3.9σ and 2.9σ, vs <0.42σ for 13 of the other dials).
-3. **Test T2K's mirroring** against our multi-start for the boundary. `Eb_shift`'s nominal is 0.010 —
-   exactly its physical floor — so every fit starts *on* the wall, which is the documented failure mode.
-
-   Mechanism: a response function is mirrored by defining ω(−x) := ω(+x), i.e. even about the boundary.
-   The contrast with us is the whole point — `sf_reweight` **clamps** E_b ≤ 0, so the prediction is
-   *constant* below zero, χ² is exactly flat, the gradient vanishes and the region is an absorbing trap;
-   a *mirrored* response instead has a restoring gradient that pushes the minimiser back. For us this is
-   a reweight-level change: evaluate at `|Eb_shift|` rather than `max(Eb_shift, 0)`, drop the bound, and
-   report the magnitude.
-
-   Two caveats: the mirrored likelihood is even, so it carries twin minima at ±x̂, and the boundary
-   becomes a stationary point by symmetry. Mirroring fixes the **minimisation**, not the statistics —
-   the interval still needs FC. Same structure as the `M_A` mirror minimum (M_A enters as M_A²), which
-   we currently handle with a bound instead.
+1. ~~`multisample_fc.py` throws nuisances at the reference truth~~ **FIXED** -- now the standard *profile
+   construction*: nuisances thrown at their conditional best fit given theta = t on the observed data.
+   Not yet exercised on a real belt.
+2. **Reverse-mode VJP gradient** for the Fig C autodiff row. Now possible (BinSpec unification made the
+   model differentiable end to end) but not implemented, so that row understates the gradient-only
+   benefit -- 26 gradients cost 26 x 1.05 s as full Jacobians instead of ~26 x 0.3 s as VJPs.
+3. `BeamSample.jac_blocks` still bins on the host in the `S4_JAX_BIN=1` path (model evaluation is on
+   device for all 8 samples, Jacobians for 5 of 8). Irrelevant while the flag is off.
 
 ## Cost reference (measured, turing RTX 2080 Ti, 250k events / 1.9M resident)
 
