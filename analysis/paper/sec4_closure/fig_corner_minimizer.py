@@ -53,9 +53,12 @@ def main(label="sec4_ref"):
         for i, (a, b) in enumerate(np.asarray(z["pair_idx"])):
             G[(int(a), int(b))] = (np.asarray(z["dchi2"])[i], np.asarray(z["gn_step"])[i])
 
-    # trajectory (optional -- rendered only if the closure npz is present)
+    # Trajectory.  The GRID label and the CLOSURE label can differ (a finer grid is run under its own
+    # label to keep the coarse one banked), so read the trajectory from TRAJ_LABEL rather than assuming
+    # the grid label owns a closure npz -- otherwise the path silently vanishes from the figure.
     traj = None
-    cf = style.ALTGEN / f"{label}.npz"
+    tlab = os.environ.get("CORNER_TRAJ_LABEL", label)
+    cf = style.ALTGEN / f"{tlab}.npz"
     if cf.exists():
         zc = np.load(cf, allow_pickle=True)
         if "traj_theta" in zc.files:

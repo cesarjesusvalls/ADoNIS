@@ -105,6 +105,20 @@ def main():
         hi = min(hi, K.phys_hi(pn[kk]) or np.inf)
         return np.linspace(lo, hi, N)
 
+    out = f"output/altgen/{LABEL}_corner2d_{MODE}_{PB:02d}.npz"
+
+    def _save(final=False):
+        """Checkpoint.  These runs are long and often land on PREEMPTABLE nodes; without this a
+        preemption loses the whole view (it happened once already).  Partial grids keep NaN where not yet
+        computed, so a consumer can tell what is missing instead of silently reading zeros."""
+        c = chi - np.nanmin(chi) if np.isfinite(chi).any() else chi
+        np.savez(out, mode=MODE, dials=want, pair_idx=np.array(pairs), pair_base=PB, axis_sigma=ax,
+                 dchi2=c, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
+                 subset=subset, pnames=pn, sigma_post=spost, V=V, A=A, sel_pos=np.array(idx),
+                 complete=bool(final), n_done=int(np.isfinite(chi).sum()))
+        if final:
+            log(f"[out] {out}")
+
     for pi, (a, b) in enumerate(pairs):
         ca, cb = idx[a], idx[b]                      # positions in `subset`
         ka, kb = subset[ca], subset[cb]
@@ -142,16 +156,14 @@ def main():
                 An = Jn.T @ (Jn * W[:, None])
                 stepn = -np.linalg.pinv(An, rcond=1e-12) @ gradn
                 gn[pi, ia, ib] = (stepn[ca], stepn[cb])   # full 16-D GN step, projected, PHYSICAL units
-            if MODE == "grad" and (ia * N + ib + 1) % 100 == 0:
-                log(f"    pair {pi+1}: node {ia*N+ib+1}/{N*N}")
+            done = ia * N + ib + 1
+            if done % 100 == 0:
+                log(f"    pair {pi+1}: node {done}/{N*N}")
+                _save()                               # checkpoint every 100 nodes
         log(f"  pair {pi+1}/{len(pairs)} ({pn[ka]},{pn[kb]}) done")
 
-    chi -= np.nanmin(chi)
-    out = f"output/altgen/{LABEL}_corner2d_{MODE}_{PB:02d}.npz"
-    np.savez(out, mode=MODE, dials=want, pair_idx=np.array(pairs), pair_base=PB, axis_sigma=ax,
-             dchi2=chi, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
-             subset=subset, pnames=pn, sigma_post=spost, V=V, A=A, sel_pos=np.array(idx))
-    log(f"[out] {out}")
+    _save(final=True)
+
 
 
 if __name__ == "__main__":
