@@ -22,7 +22,12 @@ from adonis.analysis import knobs as K                        # noqa: E402
 from analysis.paper.beams import beam_fisher as BF            # noqa: E402
 from analysis.paper import style                              # noqa: E402
 
-SAMPLES = ["t2k_cc0pi", "t2k_cc1pi_ch", "minerva_stv", "minerva_ptpz", "ee_omega"]
+# minerva_cc1pip_{tpi,q2} (arXiv:2605.24224) add the RES Q2 lever arm: the RES axial block enters as
+# dipole(Q2; M_A_res) * res_axial_strength, so M_A_res (Q2 SHAPE) and C5A (NORMALISATION) are only
+# separable with Q2 reach.  NOTE the two are the SAME 91,843 events binned two ways -- stacking both into
+# one Fisher double-counts them; keep that in mind when reading the combined Gate I.
+SAMPLES = ["t2k_cc0pi", "t2k_cc1pi_ch", "minerva_stv", "minerva_ptpz", "ee_omega",
+           "minerva_cc1pip_tpi", "minerva_cc1pip_q2"]
 BEAM_OBS = {"pip": ["pip_react", "pip_abs"], "prot": ["prot_react", "prot_pipro"],
             "neut": ["neut_react", "neut_pipro"]}
 

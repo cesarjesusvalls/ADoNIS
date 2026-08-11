@@ -1,0 +1,7 @@
+name: nu_MINERvA_H
+probe: CC
+beam: spectrum
+flux: minerva        # NuMI (the only change from nu_T2K_H -- same free-proton physics, different flux)
+material: H          # free proton (materials.py H: free_nucleon -> struck at rest, no cascade)
+channels: [res]      # nu_mu CC on free p -> p pi+ is RES-only; no CC-QE on a proton
+fsi: false           # free nucleon: pi+ always survives, no nuclear cascade

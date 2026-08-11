@@ -18,15 +18,20 @@ def main(label="sec4_all16"):
     prof = np.full_like(np.asarray(base["prof_dobj"]), np.nan)
     profd = np.full_like(prof, np.nan)
     grids = np.full_like(prof, np.nan)
+    ldet = np.full_like(prof, np.nan)
     for z in Z:
-        for arr, key in ((prof, "prof_dobj"), (profd, "prof_dchi2"), (grids, "grids_sigma")):
+        keys = [(prof, "prof_dobj"), (profd, "prof_dchi2"), (grids, "grids_sigma")]
+        if "logdet_Vnuis" in z.files:
+            keys.append((ldet, "logdet_Vnuis"))
+        for arr, key in keys:
             v = np.asarray(z[key]); m = np.isfinite(v).any(axis=1)
             arr[m] = v[m]
     pn = [str(x) for x in base["pnames"]]; sub = [int(k) for k in base["subset"]]
     missing = [pn[sub[c]] for c in range(len(sub)) if not np.isfinite(prof[c]).any()]
     out = style.ALTGEN / f"{label}_profile.npz"
     np.savez(out, subset=sub, pnames=base["pnames"], grid_sigma=base["grid_sigma"],
-             grids_sigma=grids, prof_dobj=prof, prof_dchi2=profd, bfp=base["bfp"],
+             grids_sigma=grids, prof_dobj=prof, prof_dchi2=profd, logdet_Vnuis=ldet,
+             bfp=base["bfp"],
              sigma_post=base["sigma_post"], truth=base["truth"], chi2_min=base["chi2_min"])
     print(f"merged {len(fs)} shards -> {out}")
     print(f"dials covered: {len(sub)-len(missing)}/{len(sub)}" + (f"   MISSING: {missing}" if missing else ""))

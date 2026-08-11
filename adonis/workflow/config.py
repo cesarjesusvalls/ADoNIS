@@ -240,6 +240,13 @@ class NuSignalDef:
     count_recoil_neutron: bool = False
     target: str = "carbon"                  # "carbon" | "hydrogen" | "CH"
     W_conv: str = "vertex"
+    # MINERvA CC1pi+ (arXiv:2605.24224) signal: W_exp < 1.4 GeV/c^2 isolating the Delta(1232), a pion
+    # KINETIC-energy window (not the momentum window pi_win), and no lead-proton requirement ("any number
+    # of baryons").  W_exp/Q2 follow the paper's nucleon-at-rest reconstruction, Eqs. (1)-(3); at truth
+    # level E_had = Enu - Emu exactly, so the true Enu reproduces them without a visible-energy convention.
+    tpi_win: tuple | None = None            # pion KINETIC energy window [MeV]; None -> use pi_win (momentum)
+    w_exp_max: float | None = None          # W_exp upper cut [MeV]
+    veto_other_mesons: bool = False         # require zero eta/K/... on top of the pion counts
     n_ejected: int | None = None            # require EXACTLY this many ejected protons (|p|>eject_thresh)
     eject_thresh: float = 250.0             # MeV; final-state proton momentum to count as "ejected"
     ref_proc: tuple | None = None           # restrict ACHILLES reference to these signal_process_id
@@ -249,6 +256,7 @@ class NuSignalDef:
         self.mu_win = tuple(_resolve_seq(self.mu_win))
         self.p_win = tuple(_resolve_seq(self.p_win))
         self.pi_win = None if self.pi_win is None else tuple(_resolve_seq(self.pi_win))
+        self.tpi_win = None if self.tpi_win is None else tuple(_resolve_seq(self.tpi_win))
         self.pz_win = None if self.pz_win is None else tuple(_resolve_seq(self.pz_win))
         self.cos_mu = _resolve_scalar(self.cos_mu)
         self.cth = _resolve_scalar(self.cth)

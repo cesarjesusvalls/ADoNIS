@@ -96,23 +96,48 @@ def main():
     g2 = np.full((len(pairs), N, N, 2), np.nan)      # RAW 2-D gradient on the shown pair (grad mode)
     axes_phys = np.full((len(pairs), 2, N), np.nan)  # the physical grid per pair (grad mode)
 
+    # Per-dial axes taken from the 1-D profile scan (S4_CORNER_FROM_PROFILE=1), so the corner covers the
+    # SAME domain the profile does.  A fixed +-3 sigma_post box does not reach along a shallow degenerate
+    # direction -- the M_A_res x S_Delta contour ran off the frame -- and reusing the profile's adaptive
+    # edges keeps the 1-D and 2-D figures consistent by construction instead of by coincidence.
+    _PROF_AX = None
+    if os.environ.get("S4_CORNER_FROM_PROFILE", "") == "1":
+        _pf = f"output/altgen/{LABEL}_profile.npz"
+        if os.path.exists(_pf):
+            _z = np.load(_pf, allow_pickle=True)
+            _gs = np.asarray(_z["grids_sigma"])
+            _PROF_AX = {int(kk): (float(np.nanmin(_gs[cc])), float(np.nanmax(_gs[cc])))
+                        for cc, kk in enumerate([int(q) for q in _z["subset"]])
+                        if np.isfinite(_gs[cc]).any()}
+            log(f"axes from {_pf}")
+        else:
+            log(f"[warn] {_pf} missing -- falling back to +-{RANGE} sigma")
+
     def _axis(kk, cc):
-        """Grid for one dial: PHYSICAL range in grad mode, bfp +- RANGE*sigma_post otherwise."""
+        """Grid for one dial: PHYSICAL range in grad mode, else the profile's adaptive span (or +-RANGE)."""
         if MODE != "grad":
+            if _PROF_AX and kk in _PROF_AX:
+                a0, a1 = _PROF_AX[kk]
+                return bfp[kk] + np.linspace(a0, a1, N) * spost[cc]
             return bfp[kk] + ax * spost[cc]
         lo, hi = PHYS_RANGE.get(pn[kk].split("[", 1)[0], (bfp[kk] - 3 * spost[cc], bfp[kk] + 3 * spost[cc]))
         lo = max(lo, K.phys_lo(pn[kk]) or -np.inf)        # never grid outside the model's validity
         hi = min(hi, K.phys_hi(pn[kk]) or np.inf)
         return np.linspace(lo, hi, N)
 
-    out = f"output/altgen/{LABEL}_corner2d_{MODE}_{PB:02d}.npz"
+    _RB = int(os.environ.get("S4_ROW_BASE", "-1"))
+    out = (f"output/altgen/{LABEL}_corner2d_{MODE}_{PB:02d}.npz" if _RB < 0
+           else f"output/altgen/{LABEL}_corner2d_{MODE}_{PB:02d}_r{_RB:03d}.npz")
 
     def _save(final=False):
         """Checkpoint.  These runs are long and often land on PREEMPTABLE nodes; without this a
         preemption loses the whole view (it happened once already).  Partial grids keep NaN where not yet
         computed, so a consumer can tell what is missing instead of silently reading zeros."""
         c = chi - np.nanmin(chi) if np.isfinite(chi).any() else chi
+        _axsig = np.stack([np.linspace(*_PROF_AX[subset[idx[a]]], N) if (_PROF_AX and subset[idx[a]] in _PROF_AX)
+                           else ax for a, _ in pairs]) if pairs else np.array([ax])
         np.savez(out, mode=MODE, dials=want, pair_idx=np.array(pairs), pair_base=PB, axis_sigma=ax,
+                 axis_sigma_pair=_axsig,
                  dchi2=c, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
                  subset=subset, pnames=pn, sigma_post=spost, V=V, A=A, sel_pos=np.array(idx),
                  complete=bool(final), n_done=int(np.isfinite(chi).sum()))
@@ -127,7 +152,13 @@ def main():
         axa, axb = _axis(ka, ca), _axis(kb, cb)
         axes_phys[pi] = np.stack([axa, axb])
         # snake order so every node starts from its neighbour's solution
-        order = [(ia, ib) for ia in range(N) for ib in (range(N) if ia % 2 == 0 else range(N - 1, -1, -1))]
+        # ROW SHARDING: a single pair at N=41 is 1681 nodes (~3-4 h serial).  Rows are independent -- the
+        # snake warm-start only chains WITHIN a row's neighbours -- so one task per row block turns that
+        # into minutes.  Unset -> all rows, filename unchanged.
+        RB = int(os.environ.get("S4_ROW_BASE", "-1"))
+        NR = int(os.environ.get("S4_NROW", "1"))
+        rows = range(N) if RB < 0 else range(RB, min(RB + NR, N))
+        order = [(ia, ib) for ia in rows for ib in (range(N) if ia % 2 == 0 else range(N - 1, -1, -1))]
         warm = bfp.copy()
         for (ia, ib) in order:
             th = (warm if MODE == "prof" else bfp).copy()

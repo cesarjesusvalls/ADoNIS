@@ -329,54 +329,6 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None):
     return th, V, J, m, c_tot, c_data
 
 
-def multistart_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, nstart=None):
-    """Best-of-K bound-constrained fits from dispersed starts.  Same contract as lm_fit.
-
-    The chi2 surface has MULTIPLE LOCAL MINIMA, measured directly: identical toy data fitted from 6
-    dispersed starts converged to chi2 values differing by up to 2.90, on 4 of 8 toys.  The spread is not
-    spread evenly over the dials -- in units of sigma_post it is
-
-        delta_strength 3.88,  M_A_res 2.93,  Eb_shift 1.48,  all other 13 dials < 0.42
-
-    which are exactly the three dials whose toy distributions failed a KS test against the profile
-    posterior.  So what looked like non-Gaussianity (a -0.25/+0.37 sigma "MLE bias" on the degenerate
-    M_A_res/S_Delta pair, an atom of E_b values on the floor) was the fitter landing in different basins,
-    not a property of the likelihood: E_b's profile is parabolic to 5%.
-
-    Neither a better local method nor a gentler one escapes this -- TRF converges cleanly (optimality
-    ~1e-6) to the wrong basin on 10/12 wall toys, and damping the step from 1.0 to 0.1 with 300 iterations
-    changes the answer by <0.005 in chi2.  Only dispersing the START does, which is what this does.
-
-    Start 0 is the caller's start (nominal, or the warm start for a profile scan) so behaviour is never
-    worse than the single-start fit; the rest are Gaussian jitters of width JIT x the REGISTRY prior
-    (not eng.prior, which is inflated by 1e6 under MLE), clipped into the physical box.
-    """
-    import zlib
-    nstart = int(os.environ.get("S4_NSTART", "8")) if nstart is None else int(nstart)
-    JIT = float(os.environ.get("S4_JITTER", "0.5"))
-    base = (eng.th0 if th_init is None else th_init).copy()
-    rng = np.random.default_rng(zlib.crc32(str(tag).encode()) & 0xFFFFFFFF)
-    best, best_c, best_s, opts, chis = None, np.inf, -1, [], []
-    for s in range(nstart):
-        th0 = base.copy()
-        if s:
-            for k in subset:
-                th0[k] = _K.clip_phys(eng.pnames[k],
-                                      base[k] + JIT * _K.PRIOR[k] * rng.standard_normal())
-        out = trf_fit(eng, subset, f"{tag}/s{s}", nit=nit, mask=mask, th_init=th0)
-        opts.append(getattr(eng, "last_gap", np.nan)); chis.append(out[5])
-        if out[5] < best_c - 1e-9:
-            best, best_c, best_s = out, out[5], s
-    # spread across starts = how multi-modal THIS fit was.  Saved per toy so the ensemble can report how
-    # often multi-start actually mattered, instead of us having to assume it did.
-    eng.last_gap = opts[best_s]
-    eng.last_nstart = nstart
-    eng.last_chi2_spread = float(np.nanmax(chis) - np.nanmin(chis))
-    log(f"  [{tag}] multistart: best chi2_data={best_c:.5f} from start {best_s}/{nstart}, "
-        f"spread over starts={eng.last_chi2_spread:.4f}, chi2 gap to minimum={opts[best_s]:.2e}")
-    return best
-
-
 def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1e-6, th_init=None):
     """LM on chi2_data(+Huber) + prior penalty over `subset` knobs, restricted to `mask` bins.
     Returns th(full), V, J(full rows), m(full), chi2s (masked).
@@ -390,10 +342,11 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
             slow smooth trajectory for a convergence demo.
     th_init: start point (default eng.th0).  The prior is ALWAYS centred at eng.th0 -- th_init only warm-
             starts the walk (e.g. profile scans re-minimising from the BFP), it does not move the prior."""
-    _F = os.environ.get("S4_FITTER", "").lower()
-    if _F in ("trf", "multistart") and not huber and record is None:
-        if _F == "multistart":
-            return multistart_fit(eng, subset, tag, nit=nit, mask=mask, th_init=th_init)
+    # S4_FITTER=trf -> bound-constrained trust-region-reflective.  Kept because it reproduces the boundary
+    # atom that LM does not: at E_b truth 0.50 (1.24 sigma from its wall) LM put 18.5% of 2000 toys ON the
+    # wall against Chernoff's Phi(-1.24) = 10.7%, while TRF gave 7.2%.  Any FC belt or coverage number for
+    # a boundary dial built with LM measures the minimiser, not the statistics.
+    if os.environ.get("S4_FITTER", "").lower() == "trf" and not huber and record is None:
         return trf_fit(eng, subset, tag, nit=nit, mask=mask, th_init=th_init)
     data, sigma = eng.data_sigma()
     if mask is None:

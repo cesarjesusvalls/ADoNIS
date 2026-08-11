@@ -81,7 +81,7 @@ def main():
         if (i + 1) % 10 == 0:
             log(f"  {i+1}/{EB_N}  Eb={val:+.2f} Dchi2={dchi2[i]:.2f}")
 
-    out = "output/altgen/sec4_ebwall.npz"
+    out = f"output/altgen/{os.environ.get('ADONIS_LABEL','sec4')}_ebwall.npz"
     np.savez(out, eb_grid=grid, dchi2=dchi2, eb_bfp=bfp[eb_k], eb_sig=eb_sig, eb_nom=nom[eb_k],
              chi2_min=chi2_min, inject=INJECT, prior_scale=PRIOR_SCALE)   # estimator recorded for the caption
     log(f"[out] {out}")

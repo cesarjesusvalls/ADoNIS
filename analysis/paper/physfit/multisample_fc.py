@@ -53,6 +53,7 @@ def main():
     NIT = int(os.environ.get("ALTGEN_NIT", "20"))
     LABEL = os.environ.get("ADONIS_LABEL", "sec4_ref")
     FIXED = os.environ["S4_FIXED_TRUTH"]
+    SEEDOFF = int(os.environ.get("S4_FC_SEEDOFF", "0"))   # toy-shard index: disjoint draws
 
     eng = build_multisample_engine(log)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
@@ -72,7 +73,7 @@ def main():
 
     dchi2 = np.full((NGRID, NTOY), np.nan)
     fit_poi = np.full((NGRID, NTOY), np.nan)
-    out = f"output/altgen/{LABEL}_fc_{DIAL.replace('[', '').replace(']', '')}_{BASE:02d}.npz"
+    out = f"output/altgen/{LABEL}_fc_{DIAL.replace('[', '').replace(']', '')}_{BASE:02d}_{SEEDOFF}.npz"
 
     def save(final=False):
         np.savez(out, dial=DIAL, grid=grid, my_points=np.array(mine, int), dchi2=dchi2, fit_poi=fit_poi,
@@ -110,7 +111,7 @@ def main():
         th_cond, *_ = lm_fit(eng, others, f"cond[{gi}]", nit=NIT, th_init=th_c)
         t_true = th_cond.copy(); t_true[k] = grid[gi]          # (t, nu-hat-hat(t))
         for it in range(NTOY):
-            rng = np.random.default_rng(7_000_000 + 10_000 * gi + it)
+            rng = np.random.default_rng(7_000_000 + 10_000 * gi + SEEDOFF * 1000 + it)
             eng.set_closure_data(t_true)                       # noiseless prediction at this candidate
             for d in eng.ds:                                   # + per-bin stat throw at the fit's sigma
                 sd = np.where(np.isfinite(d["sigma"]), d["sigma"], 0.0)
