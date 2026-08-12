@@ -31,8 +31,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from analysis.paper.physfit.multisample import build_multisample_engine, MULTISAMPLE_NPZ
-from analysis.paper.physfit.physical_fit_run import lm_fit, parse_inject
+from analysis.paper.physfit.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
+from analysis.paper.physfit.physical_fit_run import lm_fit, trf_fit, parse_inject
 from analysis.paper.physical_fit import PNAMES
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.analysis import knobs as K
@@ -61,8 +61,25 @@ def main():
 
     eng = build_multisample_engine(log)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
-    subset = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
+    # ONE definition of "the fitted dials", shared with the closure / coverage / 1-D profile drivers.
+    # This was an inline `shrink < 0.5`, which silently ignored S4_VIF_CUT / S4_ADD_DIALS / S4_FIX_DIALS
+    # -- so a run that fixed a dial everywhere else would still profile over it here.
+    subset = fit_subset(g, eng.pnames, log)
     pn = list(eng.pnames)
+    # SAME INNER MINIMISER AS THE 1-D PROFILE (multisample_profile._INNER, TRF by default).  If the two
+    # disagree, the 1-D profile is not the minimum of the 2-D surface over the other axis and the figures
+    # contradict each other; LM in particular false-converges on the box (see the sec4 commit message).
+    _INNER = trf_fit if os.environ.get("S4_PROF_FITTER", "trf") == "trf" else lm_fit
+    log(f"inner fitter: {_INNER.__name__}")
+    # SAME ESTIMATOR AS EVERY OTHER DRIVER.  This was missing: the closure, the 1-D profile and the
+    # coverage ensemble all honour S4_PRIOR_SCALE (default 0.0 = MLE, prior widened by 1e6), but the
+    # corner did not, so its inner profile fits were MAP-regularised with the Gate-I prior.  The 2-D
+    # contours then came out systematically TIGHTER than the 1-D profile they are supposed to contain.
+    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))
+    if PRIOR_SCALE != 1.0:
+        eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
+    log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
+                         else f"MAP (prior width x{PRIOR_SCALE})"))
 
     truth, _ = parse_inject(INJECT, nominal_knobs())
     eng.set_closure_data(truth)                     # Asimov: the minimum sits ON the injected truth
@@ -126,8 +143,12 @@ def main():
         return np.linspace(lo, hi, N)
 
     _RB = int(os.environ.get("S4_ROW_BASE", "-1"))
-    out = (f"output/altgen/{LABEL}_corner2d_{MODE}_{PB:02d}.npz" if _RB < 0
-           else f"output/altgen/{LABEL}_corner2d_{MODE}_{PB:02d}_r{_RB:03d}.npz")
+    # N IS IN THE FILENAME.  Two runs of the same pair at different resolutions are DISTINCT candidates
+    # (the loader keys on grid signature and prefers the finer complete one), but they used to collide on
+    # disk whenever pair base and row base matched -- so a coarse fast pass would overwrite rows of the
+    # fine one, leaving a grid that is complete-looking and half-wrong.
+    out = (f"output/altgen/{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}.npz" if _RB < 0
+           else f"output/altgen/{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}_r{_RB:03d}.npz")
 
     def _save(final=False):
         """Checkpoint.  These runs are long and often land on PREEMPTABLE nodes; without this a
@@ -136,9 +157,15 @@ def main():
         c = chi - np.nanmin(chi) if np.isfinite(chi).any() else chi
         _axsig = np.stack([np.linspace(*_PROF_AX[subset[idx[a]]], N) if (_PROF_AX and subset[idx[a]] in _PROF_AX)
                            else ax for a, _ in pairs]) if pairs else np.array([ax])
+        # `chi2_abs` = the RAW chi2, NOT offset to this shard's own minimum.  ROW SHARDS ARE ONLY
+        # MERGEABLE THROUGH THIS FIELD: `dchi2` subtracts nanmin over the rows THIS task computed, so two
+        # row shards of one pair carry different offsets and stitching them gives a patchwork surface --
+        # and re-zeroing the merged array afterwards cannot undo a per-shard offset.  `dchi2` is kept for
+        # back-compat with the pair-sharded runs (where the shard held a whole pair, so its min was the
+        # global one and the two fields agree).
         np.savez(out, mode=MODE, dials=want, pair_idx=np.array(pairs), pair_base=PB, axis_sigma=ax,
                  axis_sigma_pair=_axsig,
-                 dchi2=c, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
+                 dchi2=c, chi2_abs=chi, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
                  subset=subset, pnames=pn, sigma_post=spost, V=V, A=A, sel_pos=np.array(idx),
                  complete=bool(final), n_done=int(np.isfinite(chi).sum()))
         if final:
@@ -166,7 +193,7 @@ def main():
             for kk in (ka, kb):                      # respect hard boundaries (E_b >= 0)
                 th[kk] = K.clip_phys(pn[kk], th[kk])
             if MODE == "prof":
-                th, *_ = lm_fit(eng, ko, f"p{pi}", nit=NIT, th_init=th)
+                th, *_ = _INNER(eng, ko, f"p{pi}", nit=NIT, th_init=th)
                 th[ka], th[kb] = axa[ia], axb[ib]    # lm_fit never moves the pinned pair, re-assert
                 for kk in (ka, kb):
                     th[kk] = K.clip_phys(pn[kk], th[kk])

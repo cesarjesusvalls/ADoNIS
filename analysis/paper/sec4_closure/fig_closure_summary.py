@@ -1,32 +1,28 @@
 """Figure A -- the whole closure argument in one figure.
 
-Four panels, one claim each, all from the SAME reference fit (one truth, MLE, no prior):
+Four panels, all from the SAME reference fit (one truth, MLE, no prior).  (a), (c) and (d) state what
+uncertainty ONE dataset implies; (b) is the only panel that uses the toy ensemble, and it uses it for the
+one question toys actually answer.
 
-  (a) RECOVERY + quoted uncertainty.  Asimov fit (no statistical fluctuations): every dial comes back on
-      its injected truth, with the profile interval beside the Gaussian sigma, and beside the interval of
-      the refit ensemble.  Both are WATER-FILLED (highest-density for the profile, shortest for the toys)
-      at the SAME mass, so they are the same construction and can be read against each other directly.
-  (b) GOODNESS OF FIT.  chi2_data at the best fit across the refits, against chi2(ndf) with ndf counting
-      only bins that CONSTRAIN (empty bins carry sigma=inf and are not degrees of freedom).
-  (c) THE BOUNDARY CASE.  E_b sits a couple of sigma from its physical wall (-1.72 at the P1 truth), where
-      the model clamps and the likelihood goes flat.  The Gaussian leaks below the wall; the
-      likelihood-based interval does not, and the estimator's sampling distribution is an ATOM on the
-      boundary plus a truncated continuum.
-  (d) THE NON-GAUSSIAN CASE.  C5A (res_axial_strength) away from any boundary: its profile is visibly
-      non-parabolic, so the quadratic sigma is the wrong summary even where nothing is clamped.
-(c) and (d) share one recipe -- toy histogram, profile curve, quadratic Gaussian, water-filled bars, x in
-sigma about the best fit -- so the only difference a reader has to absorb is the physics.
+  (a) RECOVERY + quoted uncertainty.  Asimov fit: every dial returns on its injected truth, with three
+      intervals on one line as nested ribbons -- the quadratic sigma, the Laplace marginal
+      (profile x sqrt(det V_nuis)) and the exact marginal from NUTS.
+  (b) DO THE INTERVALS COVER?  Dchi2 = chi2(theta_true) - chi2(theta_hat) over the toys, against chi2(k).
+      This is the statistic whose distribution DEFINES coverage.  chi2(theta_true) costs nothing: the toy
+      data is m(theta_true)+n, so it is the sum of squared pulls, reconstructed from the seed.
+  (c) AT A BOUNDARY: E_b, a couple of sigma from its wall.  The Gaussian leaks below it; the
+      likelihood-based intervals do not.  The text box carries the boundary atom (Chernoff 1954).
+  (d) AWAY FROM ANY BOUNDARY: C5A.  Non-parabolic with nothing clamped, and the clearest case where the
+      profile alone is NOT the marginal -- the Laplace correction lands on the NUTS histogram.
 
-(a) says "here is the uncertainty"; (b) says the fit describes the data; (c) and (d) are the two ways the
-quadratic error fails -- at a boundary and at curvature -- with the profile tracking the toys in both.
-Superseding the old split of 4.1 / 4.3 / 4.1b into three disconnected figures built on different
-ensembles.
+WHY NO TOY HISTOGRAM IN (a), (c), (d).  Earlier versions overlaid the spread of best-fit values on the
+quoted interval.  Those are different objects: an interval is a coverage statement, a histogram of
+theta_hat is a sampling spread, and they coincide only in the Gaussian limit.  Comparing them made a 0.2
+sigma offset on the degenerate RES directions look like a defect when the measured coverage is correct
+(67.0 +- 1.1% at a nominal 68.27%).  The toys belong in (b).
 
-The interval MASS is one argument and moves every panel together (see MASS below).  At 68% the shortest
--interval estimator is mode-seeking and noisy: on the 13 well-behaved dials it wanders by 1.5-3 bootstrap
-sigma, which is estimator noise and not a real profile-vs-toys disagreement.  At 95% the endpoints sit in
-the smooth tails and the median endpoint discrepancy falls from 1.62 to 1.12 bootstrap sigma -- while
-M_A_res and delta_strength stay discrepant (4-6 sigma), so the wider level does not hide the real problem.
+Goodness of fit is no longer plotted -- it is a different claim (does the MODEL fit) and is printed for
+the caption instead: median chi2/ndf ~ 0.99 at the P1 point.
 
 Usage:  python -m analysis.paper.sec4_closure.fig_closure_summary [label] [ens_label] [mass]
         e.g.  ... sec4_P1 sec4_P1_ens          -> 68% (1 sigma), the default
@@ -50,6 +46,9 @@ C_FIT, C_GAUSS, C_ENS = "#1f4b9c", "0.55", "#c8842a"
 # The best-fit marker must NOT reuse the colour of any interval: it used to be C_FIT, so a reader could
 # not tell whether the diamond belonged to the profile bar or was its own statement.
 C_BFP = "#1a9e57"
+# the two objects that were missing from this figure: the Laplace (Occam) correction of the profile,
+# and the EXACT marginal from NUTS.  They should land on top of each other -- that is the check.
+C_OCC, C_NUTS = "#6a3d9a", "#e08214"
 
 # Panel (d) shows ONE dial in detail as the non-Gaussian counterpart to the boundary case in (c).
 # C5A is the right choice: it is far from every bound, so its departure from the quadratic cannot be
@@ -162,6 +161,61 @@ def _hpd_sample(x, mass=0.6827):
     return float(t[k]), float(t[k + w])
 
 
+def _chi2_at_truth(label, F):
+    """chi2 evaluated at the TRUE theta for every toy -- reconstructed from the seed, no model call.
+
+    The toy data is  m(theta_true) + n , so chi2(theta_true) = sum (n/sigma)^2 exactly, and n is
+    reproducible: rng(1e6+seed) drawn per sample block in engine order, which is what the ensemble did.
+    Returned in the SAME order as np.concatenate([z["chi2_data"] for z in Z]) over sorted F.
+    """
+    z = np.load(style.ALTGEN / f"{label}.npz", allow_pickle=True)
+    sig = np.asarray(z["sigma"]); row0 = np.asarray(z["row0"])
+    ok = np.isfinite(sig) & (sig > 0)
+    out = []
+    for f in F:
+        base = int(Path(f).stem.rsplit("_", 1)[1])
+        for t in range(len(np.load(f, allow_pickle=True)["chi2_data"])):
+            rng = np.random.default_rng(1_000_000 + base + t)
+            p = np.zeros(len(sig))
+            for i in range(len(row0) - 1):
+                a, b = row0[i], row0[i + 1]
+                sd = np.where(np.isfinite(sig[a:b]), sig[a:b], 0.0)
+                nn = rng.normal(0.0, sd)
+                p[a:b] = np.where(sd > 0, nn / np.where(sd > 0, sd, 1.0), 0.0)
+            out.append(float(np.sum(p[ok] ** 2)))
+    return np.asarray(out)
+
+
+def _load_nuts(label):
+    """NUTS samples in sigma_post units about the BFP, keyed by dial name.  Empty dict if absent."""
+    fs = sorted(glob.glob(str(style.ALTGEN / f"{label}_nutsown_*.npz")))
+    if not fs:
+        return {}, 0
+    Z = [np.load(f, allow_pickle=True) for f in fs]
+    n = min(len(np.asarray(z["u"])) for z in Z)
+    U = np.concatenate([np.asarray(z["u"])[-n:] for z in Z])
+    pnn = [str(x) for x in Z[0]["pnames"]]; sbn = [int(k) for k in Z[0]["subset"]]
+    return {pnn[k]: U[:, c] for c, k in enumerate(sbn)}, len(U)
+
+
+def _occam(grid, prof, logdet, mass):
+    """Profile x sqrt(det V_nuis): the Laplace approximation to the MARGINAL, which is what NUTS
+    computes exactly.  Profiling maximises over the nuisances, marginalising integrates over them, and
+    to leading order the two differ by exactly this volume factor."""
+    m = np.isfinite(grid) & np.isfinite(prof) & np.isfinite(logdet)
+    if m.sum() < 5:
+        return None
+    from scipy.interpolate import CubicSpline
+    xf = np.linspace(grid[m].min(), grid[m].max(), 4001)
+    d = np.exp(-0.5 * np.maximum(CubicSpline(grid[m], prof[m])(xf), 0.0))
+    lv = CubicSpline(grid[m], logdet[m])(xf)
+    d = d * np.exp(0.5 * (lv - lv.max())); d /= np.trapezoid(d, xf)
+    o = np.argsort(d)[::-1]; cum = np.cumsum(d[o]) * (xf[1] - xf[0]); cum /= cum[-1]
+    thr = d[o][min(int(np.searchsorted(cum, mass)), len(o) - 1)]
+    idx = np.where(d >= thr)[0]
+    return float(xf[idx[0]]), float(xf[idx[-1]]), xf, d
+
+
 def _hpd_boot(x, mass=0.6827, nboot=400, seed=0):
     """Bootstrap error on the two endpoints: resample the toys with replacement and re-measure.
 
@@ -191,6 +245,9 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
         print("[warn] profile npz predates the bounds-aware scan; credible intervals on BOUNDED dials "
               "integrate below the wall and are inflated (E_b was +34%)")
     bfp = np.asarray(zp["bfp"]); spost = np.asarray(zp["sigma_post"]); truth = np.asarray(zp["truth"])
+    logdet = np.asarray(zp["logdet_Vnuis"]) if "logdet_Vnuis" in zp.files else None
+    NU, n_nuts = _load_nuts(label)
+    print(f"NUTS: {n_nuts} samples, {sum(1 for k in sub if pn[k] in NU)}/{len(sub)} dials")
     nom = np.asarray(theta_nominal(nominal_knobs())); prior = np.asarray(PRIOR)
     order = sorted(range(len(sub)), key=lambda c: (style.knob_group(pn[sub[c]]), sub[c]))
     # the Gaussian bar is the +-z sigma that carries the SAME mass as the water-filled bars
@@ -198,7 +255,11 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
     MNAME = MASS_NAME.get(round(MASS, 4), f"{100*MASS:.1f}%")
     print(f"interval level: {MNAME}  (Gaussian bar = +-{ZQ:.3f} sigma)")
 
-    F = sorted(glob.glob(str(style.ALTGEN / f"{ens}_*.npz")))
+    # SHARD FILES ONLY: `<ens>_<base>.npz` with a NUMERIC suffix.  A bare `{ens}_*.npz` also matches
+    # sidecars that share the prefix -- `sec4_P1_ens_conv.npz`, the per-fit convergence record, has no
+    # `th_fit` key and made this crash.  Match the contract, not the prefix.
+    F = sorted(f for f in glob.glob(str(style.ALTGEN / f"{ens}_*.npz"))
+               if Path(f).stem[len(Path(ens).name) + 1:].isdigit())
     Z = [np.load(f, allow_pickle=True) for f in F]
     e_fit = np.concatenate([z["th_fit"] for z in Z]) if Z else None
     e_chi2 = np.concatenate([z["chi2_data"] for z in Z]) if Z else None
@@ -235,34 +296,35 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
             # not exist for the strongly one-sided RES profiles, so that construction was clipping.
             hlo, hhi, hdj, hcl = _hpd_density(_g[_ok], prof[c][_ok], MASS)
             xhat = (bfp[k] - nom[k]) / p
-            axA.errorbar([xhat], [yy[i]], xerr=[[ZQ * spost[c] / p], [ZQ * spost[c] / p]],
-                         fmt="none", ecolor=C_GAUSS, capsize=4.5, capthick=0.9, elinewidth=0.9,
-                         zorder=2)
-            # drawn as an explicit segment, not xerr about xhat: a water-filled interval is asymmetric
-            # about the best fit and, on a bimodal profile, need not be centred on it at all.
-            axA.plot([xhat + hlo * spost[c] / p, xhat + hhi * spost[c] / p], [yy[i]] * 2,
-                     color=C_FIT, lw=2.2, solid_capstyle="butt", zorder=4)
-            for xe in (xhat + hlo * spost[c] / p, xhat + hhi * spost[c] / p):
-                axA.plot([xe] * 2, [yy[i] - 0.13, yy[i] + 0.13], color=C_FIT, lw=1.5, zorder=4)
+            sc = spost[c] / p
+            # FOUR PREDICTIONS, all from the SAME single dataset, stacked so they can be read against
+            # each other: the quadratic sigma, the profile, the profile corrected by the nuisance
+            # volume (Laplace marginal), and the exact marginal from NUTS.  No toys -- a histogram of
+            # best fits is a spread, not an interval, and belongs with the coverage test in (b).
+            # PROFILE-ONLY is deliberately not drawn here: that it needs the volume factor is
+            # the point of (c) and (d).  The three intervals share ONE line per dial, drawn as nested
+            # ribbons -- widest/faintest behind, narrowest/solid in front -- so a dial occupies a single
+            # row and the relative widths are read directly instead of across three stacked rows.
+            rows = [(C_GAUSS, -ZQ, ZQ, 7.0, 0.45, 2)]
+            oc = _occam(_g, prof[c], logdet[c], MASS) if logdet is not None else None
+            if oc is not None:
+                rows.append((C_OCC, oc[0], oc[1], 3.6, 0.95, 3))
+            nu = NU.get(pn[k])
+            a_ = b_ = None
+            if nu is not None:
+                a_, b_ = _hpd_sample(nu, MASS)
+                rows.append((C_NUTS, a_, b_, 1.5, 1.0, 4))
+            for col, lo_, hi_, lw, al, zo in rows:
+                axA.plot([xhat + lo_ * sc, xhat + hi_ * sc], [yy[i]] * 2, color=col, lw=lw,
+                         alpha=al, solid_capstyle="butt", zorder=zo)
+            for xe in (xhat - ZQ * sc, xhat + ZQ * sc):      # Gaussian extent, readable when overlaid
+                axA.plot([xe] * 2, [yy[i] - 0.22, yy[i] + 0.22], color=C_GAUSS, lw=0.9, zorder=2)
             if hdj or hcl:
-                # v = the water-filled region is DISCONNECTED; x = it ran into the end of the scan, so
-                # that endpoint is where the scan stopped and is a lower bound on the true one.
-                axA.plot(xhat, yy[i] - 0.30, marker=("v" if hdj else "x"), ms=2.6, color=C_FIT, zorder=4)
-            if e_fit is not None:
-                # LIKE FOR LIKE: the toys' SHORTEST 68% interval, at its own position.  This used to be
-                # +-1 RMS about xhat, which forced a skewed toy distribution to share a centre with the
-                # object it is compared against and hid its asymmetry; the intermediate "34.1% each side
-                # of the BFP" fixed the anchor but does not exist on one-sided profiles.
-                t_lo, t_hi = _hpd_sample(e_fit[:, c], MASS)
-                axA.plot([(t_lo - nom[k]) / p, (t_hi - nom[k]) / p], [yy[i]] * 2,
-                         color=C_ENS, lw=5.5, alpha=0.35, solid_capstyle="butt", zorder=1)
-                # bootstrap error on the endpoints is NOT drawn (it was ~0.05-0.13 sigma at 2000 toys,
-                # small enough that the ticks only added ink); still printed so it can be quoted.
-                b_lo, b_hi = _hpd_boot(e_fit[:, c], MASS)
-                print(f"  {pn[k]:>20}  profile [{hlo:+6.3f},{hhi:+6.3f}]  toys "
-                      f"[{(t_lo-bfp[k])/spost[c]:+6.3f},{(t_hi-bfp[k])/spost[c]:+6.3f}]"
-                      f"  (sigma_post units, +-{b_lo/spost[c]:.3f}/{b_hi/spost[c]:.3f} boot)"
-                      + ("   DISJOINT" if hdj else "") + ("   CLIPPED-BY-SCAN" if hcl else ""))
+                axA.plot(xhat, yy[i] - 0.34, marker=("v" if hdj else "x"), ms=2.4, color=C_FIT, zorder=4)
+            print(f"  {pn[k]:>20}  prof [{hlo:+6.3f},{hhi:+6.3f}]"
+                  + (f"  occam [{oc[0]:+6.3f},{oc[1]:+6.3f}]" if oc else "")
+                  + (f"  nuts [{a_:+6.3f},{b_:+6.3f}]" if nu is not None else "")
+                  + ("   DISJOINT" if hdj else "") + ("   CLIPPED" if hcl else ""))
             axA.plot(xhat, yy[i], "D", ms=4.5, color=C_BFP, mec="white", mew=0.5, zorder=6)
             axA.plot((truth[k] - nom[k]) / p, yy[i], marker="*", ms=11, color="k", zorder=5, ls="none")
         axA.axvline(0, color="0.8", lw=0.8, zorder=0)
@@ -282,152 +344,113 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
         axA.tick_params(which="both", top=False, right=False, labelsize=7)
         h = [plt.Line2D([], [], color="k", marker="*", ls="", ms=10),
              plt.Line2D([], [], color=C_BFP, marker="D", ls="", ms=4.5, mec="white", mew=0.5),
-             plt.Line2D([], [], color=C_FIT, lw=2.2),
              plt.Line2D([], [], color=C_GAUSS, lw=0.9),
-             plt.Line2D([], [], color=C_ENS, lw=5, alpha=0.35)]
-        axA.legend(h, ["injected truth", "BFP", "Profile", "Gaussian", "Toys"],
-                   fontsize=6, loc="lower left", framealpha=0.92, borderpad=0.3, labelspacing=0.3)
+             plt.Line2D([], [], color=C_OCC, lw=2.2),
+             plt.Line2D([], [], color=C_NUTS, lw=2.2)]
+        axA.legend(h, ["Injected truth", "BFP", "Gaussian",
+                       "Marginal (Laplace)", "Marginal (NUTS)"],
+                   fontsize=5.6, loc="lower left", framealpha=0.92, borderpad=0.3, labelspacing=0.25)
         axA.set_title(f"(a)  recovery + quoted uncertainty  ({MNAME} intervals)",
                       fontsize=9.5, loc="left")
 
-        # ---- (b) goodness of fit ------------------------------------------------------------------- #
-        # (the old "ensemble RMS / quoted sigma" panel is gone: a single RMS ratio compresses the whole
-        # interval comparison to one number and cannot show ASYMMETRY, which is the entire point on the
-        # dials that fail.  Panel (a) already carries that comparison interval-to-interval.)
+        # ---- (b) do the intervals COVER? ---------------------------------------------------------
+        # The likelihood ratio at the TRUE point, Dchi2 = chi2(theta_true) - chi2(theta_hat), is the
+        # statistic whose distribution defines coverage: Wilks says chi2(k) for k fitted dials, so the
+        # region {Dchi2 < q_cl} is a cl-confidence region.  This is NOT the goodness-of-fit chi2 that
+        # used to live here -- that one (chi2 at the best fit vs chi2(ndf-k)) asks whether the MODEL
+        # fits, which is a different claim and is quoted in the caption instead.
         if e_chi2 is not None:
-            axB.hist(e_chi2, bins=30, density=True, color=C_FIT, alpha=0.75, edgecolor="white", lw=0.4)
-            xx = np.linspace(max(0, e_chi2.min() * 0.85), e_chi2.max() * 1.1, 300)
-            axB.plot(xx, stats.chi2.pdf(xx, ndf), "k-", lw=1.3, label=f"$\\chi^2$(ndf={ndf})")
-            axB.legend(fontsize=7); axB.set_xlabel(r"$\chi^2_{\rm data}$ at the best fit", fontsize=8)
+            c2t = _chi2_at_truth(label, F)
+            dch = c2t - e_chi2
+            kk_ = len(sub)
+            axB.hist(dch, bins=40, density=True, color=C_FIT, alpha=0.75, edgecolor="white", lw=0.4)
+            xx = np.linspace(0, max(dch.max(), stats.chi2.ppf(0.999, kk_)) * 1.02, 400)
+            axB.plot(xx, stats.chi2.pdf(xx, kk_), "k-", lw=1.3, label=f"$\\chi^2$({kk_})")
+            txt = []
+            for cl in (0.6827, 0.90, 0.95):
+                q = stats.chi2.ppf(cl, kk_); cov = float(np.mean(dch < q))
+                se = np.sqrt(cov * (1 - cov) / len(dch))
+                axB.axvline(q, color="0.5", lw=0.7, ls=":")
+                txt.append(f"{100*cl:.1f}%: {100*cov:.1f}$\\pm${100*se:.1f}%")
+                print(f"  coverage nominal {100*cl:5.2f}% -> observed {100*cov:5.2f}+-{100*se:.2f}%")
+            axB.text(0.97, 0.62, "coverage\n" + "\n".join(txt), transform=axB.transAxes,
+                     ha="right", va="top", fontsize=6.2, color="0.15",
+                     bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.75", lw=0.5, alpha=0.95))
+            axB.legend(fontsize=7, loc="upper left")
+            axB.set_xlabel(r"$\Delta\chi^2 = \chi^2(\theta_{\rm true})-\chi^2(\hat\theta)$", fontsize=8)
             axB.set_ylabel("density", fontsize=8)
-            axB.set_title(f"(b)  goodness of fit  ({len(e_chi2)} refits)", fontsize=9.5, loc="left")
+            axB.set_title(f"(b)  do the intervals cover?  ({len(dch)} toys)", fontsize=9.5, loc="left")
+            print(f"  GOF (for the caption): median chi2/ndf = {np.median(e_chi2):.1f}/{ndf} "
+                  f"= {np.median(e_chi2)/ndf:.3f}")
         axB.tick_params(which="both", top=False, right=False, labelsize=7)
 
-        # ---- (c) the boundary case: the toys are a MIXTURE, and both parts are predictable ---------- #
-        # Built from the SAME profile scan as panel (a) -- zp's per-dial axis for E_b -- so (a) and (c)
-        # cannot disagree.  This used to read a separate `ebwall` scan with its own range, resolution and
-        # script, whose only justification was showing the region below the wall; but the likelihood there
-        # is meaningless (the model clamps, chi2 is flat) and the Gaussian is analytic, so the second scan
-        # bought nothing and silently went stale against a different truth.
-        #
-        # A bounded MLE has no density: its sampling distribution is an ATOM at the wall plus a truncated
-        # continuum (Chernoff 1954; Self & Liang 1987), with atom weight
-        #        P(on wall) = Phi( -(theta* - b) / sigma )
-        # -- the probability the UNCONSTRAINED estimator would have fallen below it.  Both pieces are
-        # tested against the toys here.
-        #
-        # SAME RECIPE AS (d) -- toy histogram, profile curve, quadratic Gaussian, 68% water-fill bars,
-        # x in units of sigma about the best fit -- so the two failure modes are read off identically and
-        # the only difference between the panels is the physics.  The boundary adds two things: the
-        # unphysical strip is shaded and the wall is marked, and the toys' point mass ON the wall is
-        # excluded from the histogram (a MASS drawn as a density would tower over every curve) and
-        # reported as text instead.  Nothing is rescaled by hand: the histogram is a density over ALL
-        # toys, so its area is (1 - f_wall) by construction, and the Gaussian is normalised over the whole
-        # line, so its area above the wall is (1 - p_atom).  The two are then directly comparable.
-        cE = [c for c, k in enumerate(sub) if pn[k] == "Eb_shift"]
-        if cE and e_fit is not None:
+        # ---- (c) and (d): the four PREDICTIONS as curves, no toys -------------------------------
+        # Same recipe for both, so the only difference a reader absorbs is the physics: (c) is E_b,
+        # a couple of sigma from a hard wall; (d) is C5A, far from every bound.  Toys are deliberately
+        # absent -- the histogram of best fits is a spread, not an interval, and the question "is the
+        # interval right" is answered by the coverage panel (b), not by overlaying the two.
+        def _panel(A, nm, tag, title, note=None):
             from scipy.interpolate import CubicSpline
-            c0 = cE[0]; k0 = sub[c0]
-            lo = K.phys_lo("Eb_shift") or 0.0
-            sig = float(spost[c0]); ebt = float(truth[k0])
-            wall = (lo - bfp[k0]) / sig                                # the wall, in sigma about the BFP
-            eb = e_fit[:, c0]; on = np.abs(eb - lo) < 1e-6
-            f_on = float(on.mean()); n_on = int(on.sum())
-            v = (eb - bfp[k0]) / sig
+            cc = [c for c, k in enumerate(sub) if pn[k] == nm]
+            if not cc:
+                A.axis("off"); return
+            c0 = cc[0]; k0 = sub[c0]; sig = float(spost[c0])
             g0 = (grids[c0] if grids is not None else grid); dch = prof[c0]
             ok = np.isfinite(g0) & np.isfinite(dch)
-            xf = np.linspace(max(g0[ok].min(), wall), g0[ok].max(), 800)
-            d = np.exp(-0.5 * np.maximum(CubicSpline(g0[ok], dch[ok])(xf), 0.0))
-            d /= np.trapezoid(d, xf)                                   # physical region only
-            p_atom = float(stats.norm.cdf((lo - ebt) / sig))
-
-            axC.axvspan(wall - 1.6, wall, facecolor="0.5", alpha=0.25, lw=0, zorder=0)
-            axC.hist(v[~on], bins=np.linspace(wall, max(v.max(), 3.2), 41), density=False,
-                     weights=np.full(int((~on).sum()),
-                                     1.0 / (len(v) * (max(v.max(), 3.2) - wall) / 40.0)),
-                     histtype="stepfilled", color=C_ENS, alpha=0.40, label=f"toys (n={len(v)})")
-            axC.hist(v[~on], bins=np.linspace(wall, max(v.max(), 3.2), 41), density=False,
-                     weights=np.full(int((~on).sum()),
-                                     1.0 / (len(v) * (max(v.max(), 3.2) - wall) / 40.0)),
-                     histtype="step", lw=1.1, color="#8a5a12")
-            axC.plot(xf, d * (1.0 - f_on), color=C_FIT, lw=1.7,
-                     label=r"profile $\propto e^{-\Delta\chi^2/2}$")
-            gx = np.linspace(wall - 1.6, max(v.max(), 3.2), 400)       # crosses the wall on purpose
-            axC.plot(gx, np.exp(-0.5 * gx ** 2) / np.sqrt(2 * np.pi), color=C_GAUSS, lw=1.3, ls="--",
-                     label=r"quadratic $N(0,\sigma)$")
-            tl, tu = _hpd_sample(v, MASS)
-            pl, pu, _, _ = _hpd_density(g0[ok][g0[ok] >= wall], dch[ok][g0[ok] >= wall], MASS)
-            yt_ = max(axC.get_ylim()[1], d.max())
-            axC.plot([tl, tu], [0.90 * yt_] * 2, color="#8a5a12", lw=2.4, solid_capstyle="butt", zorder=6)
-            axC.plot([pl, pu], [0.80 * yt_] * 2, color=C_FIT, lw=2.4, solid_capstyle="butt", zorder=6)
-            for xe, yv, cc in ((tl, 0.90, "#8a5a12"), (tu, 0.90, "#8a5a12"),
-                               (pl, 0.80, C_FIT), (pu, 0.80, C_FIT)):
-                axC.plot([xe] * 2, [(yv - 0.03) * yt_, (yv + 0.03) * yt_], color=cc, lw=1.4, zorder=6)
-            axC.axvline(wall, color="k", lw=1.0, ls="--", zorder=5)
-            axC.axvline(0.0, color="k", lw=0.8, ls=":")
-
-            # THE ATOM, as text INSIDE the shaded strip -- a probability MASS and a probability DENSITY do
-            # not share a y-scale, so it cannot be drawn as a bar among the curves.  Kept to three short
-            # lines so it fits the 1.6-sigma strip without a box of its own.
-            err = np.sqrt(max(f_on, 1e-9) * (1 - f_on) / len(eb))
-            axC.text(wall - 0.8, 0.62 * yt_,
-                     f"on boundary\n{100*f_on:.1f}$\\pm${100*err:.1f}%\npred {100*p_atom:.1f}%",
-                     ha="center", va="center", fontsize=5.8, color="0.15", linespacing=1.25, zorder=7)
-            axC.set_xlabel(r"$(E_b-\hat\theta)\,/\,\sigma$", fontsize=8)
-            axC.set_ylabel("density", fontsize=8)
-            axC.set_xlim(wall - 1.6, max(v.max(), 3.2)); axC.set_ylim(bottom=0)
-            axC.legend(fontsize=5.8, loc="upper right", framealpha=0.92, borderpad=0.3,
-                       handlelength=1.6, labelspacing=0.25)
-            axC.set_title(r"(c)  at a boundary: $E_b$", fontsize=9.5, loc="left")
-            print(f"  panel (c) Eb_shift: on the boundary {100*f_on:.1f}+-{100*err:.1f}%  "
-                  f"Chernoff {100*p_atom:.1f}%  (n={len(eb)}, n_on={n_on})  boundary at {wall:+.2f} sigma\n"
-                  f"                      toys 68% [{tl:+.3f},{tu:+.3f}]  profile 68% [{pl:+.3f},{pu:+.3f}]")
-        axC.tick_params(which="both", top=False, right=False, labelsize=7)
-
-        # ---- (d) the OTHER way the quadratic fails: curvature, with no boundary in sight ------------ #
-        # C5A is the control for panel (c).  Nothing is clamped here -- it sits far from every bound --
-        # yet exp(-Dchi2/2) is visibly narrower than the quadratic N(0,1) that the same fit's covariance
-        # reports, because the RES axial block enters the weight quadratically.  So "the error bar is
-        # wrong" is not a boundary artefact: the Hessian at the minimum only knows the curvature THERE,
-        # and the profile is what carries the rest.  The toys are the arbiter and they follow the profile.
-        cP = [c for c, k in enumerate(sub) if pn[k] == NONGAUSS_DIAL]
-        if cP and e_fit is not None:
-            from scipy.interpolate import CubicSpline
-            c0 = cP[0]; k0 = sub[c0]; sig = float(spost[c0])
-            v = (e_fit[:, c0] - bfp[k0]) / sig                 # toy MLE about the Asimov fit, in sigma
-            g0 = (grids[c0] if grids is not None else grid); dch = prof[c0]
-            ok = np.isfinite(g0) & np.isfinite(dch)
+            wall = None
+            _lo = K.phys_lo(nm)
+            if _lo is not None:
+                xb = (_lo - bfp[k0]) / sig
+                if g0[ok].min() - 1e-9 <= xb <= g0[ok].max() + 1e-9:
+                    wall = xb
             xf = np.linspace(g0[ok].min(), g0[ok].max(), 800)
             d = np.exp(-0.5 * np.maximum(CubicSpline(g0[ok], dch[ok])(xf), 0.0))
             d /= np.trapezoid(d, xf)
-            axD.hist(v, bins=40, density=True, histtype="stepfilled", color=C_ENS, alpha=0.40,
-                     label=f"toys (n={len(v)})")
-            axD.hist(v, bins=40, density=True, histtype="step", lw=1.1, color="#8a5a12")
-            axD.plot(xf, d, color=C_FIT, lw=1.7, label=r"profile $\propto e^{-\Delta\chi^2/2}$")
-            gx = np.linspace(-4, 4, 400)
-            axD.plot(gx, np.exp(-0.5 * gx ** 2) / np.sqrt(2 * np.pi), color=C_GAUSS, lw=1.3, ls="--",
-                     label=r"quadratic $N(0,\sigma)$")
-            tl, tu = _hpd_sample(v, MASS); pl, pu, _, _ = _hpd_density(g0[ok], dch[ok], MASS)
-            yt_ = max(axD.get_ylim()[1], d.max())
-            axD.plot([tl, tu], [0.90 * yt_] * 2, color="#8a5a12", lw=2.4, solid_capstyle="butt", zorder=6)
-            axD.plot([pl, pu], [0.80 * yt_] * 2, color=C_FIT, lw=2.4, solid_capstyle="butt", zorder=6)
-            for xe, yv, cc in ((tl, 0.90, "#8a5a12"), (tu, 0.90, "#8a5a12"),
-                               (pl, 0.80, C_FIT), (pu, 0.80, C_FIT)):
-                axD.plot([xe] * 2, [(yv - 0.03) * yt_, (yv + 0.03) * yt_], color=cc, lw=1.4, zorder=6)
-            axD.axvline(0.0, color="k", lw=0.8, ls=":")
-            lo_, hi_ = np.percentile(v, [0.2, 99.8]); m_ = d > 1e-3 * d.max()
-            if m_.any():
-                lo_ = min(lo_, xf[m_].min()); hi_ = max(hi_, xf[m_].max())
-            pad = 0.06 * (hi_ - lo_); axD.set_xlim(lo_ - pad, hi_ + pad); axD.set_ylim(bottom=0)
-            axD.set_xlabel(r"$(\theta-\hat\theta)\,/\,\sigma$", fontsize=8)
-            axD.set_ylabel("density", fontsize=8)
-            axD.legend(fontsize=5.8, loc="upper right", framealpha=0.92, borderpad=0.3,
-                       handlelength=1.6, labelspacing=0.25)
-            axD.set_title(f"(d)  away from any boundary: {style.plab(NONGAUSS_DIAL)}",
-                          fontsize=9.5, loc="left")
-            print(f"  panel (d) {NONGAUSS_DIAL}: toys 68% [{tl:+.3f},{tu:+.3f}]  "
-                  f"profile 68% [{pl:+.3f},{pu:+.3f}]  quadratic [-1.000,+1.000]")
-        axD.tick_params(which="both", top=False, right=False, labelsize=7)
+            gx = np.linspace(min(xf[0], (wall - 1.6) if wall is not None else xf[0]), xf[-1], 500)
+            A.plot(gx, np.exp(-0.5 * gx ** 2) / np.sqrt(2 * np.pi), color=C_GAUSS, lw=1.3, ls="--",
+                   label="Gaussian")
+            A.plot(xf, d, color=C_FIT, lw=1.7, label="Profile")
+            if logdet is not None:
+                oc = _occam(g0, prof[c0], logdet[c0], MASS)
+                if oc is not None:
+                    A.plot(oc[2], oc[3], color=C_OCC, lw=1.5, ls=(0, (5, 1.6)),
+                           label="Marginal (Laplace)")
+            nu = NU.get(nm)
+            if nu is not None:
+                h_, e_ = np.histogram(nu, bins=40, range=(xf[0], xf[-1]), density=True)
+                A.step(0.5 * (e_[1:] + e_[:-1]), h_, where="mid", color=C_NUTS, lw=1.3,
+                       label="Marginal (NUTS)")
+            # FIXED -3..3 WINDOW for both panels.  The scanned span is adaptive (E_b runs to +5.4
+            # sigma, C5A to +5.4) and letting it set the axis squeezed all the structure into the left
+            # third.  Everything that matters at 68/90% lives well inside +-3.
+            A.set_xlim(-3.0, 3.0)
+            if wall is not None:
+                # the ENTIRE region below the wall is unphysical, not a token strip
+                A.axvspan(-3.0, wall, facecolor="0.5", alpha=0.30, lw=0, zorder=3)
+                A.axvline(wall, color="k", lw=0.9, ls="--", zorder=4)
+            A.set_ylim(bottom=0)
+            A.set_xlabel(r"$(\theta-\hat\theta)\,/\,\sigma$", fontsize=8)
+            A.set_ylabel("density", fontsize=8)
+            A.legend(fontsize=5.8, loc="upper right", framealpha=0.92, borderpad=0.3,
+                     handlelength=1.6, labelspacing=0.25)
+            if note and wall is not None:
+                A.text(0.5 * (-3.0 + wall), 0.62 * A.get_ylim()[1], note, ha="center",
+                       va="center", fontsize=5.8, color="0.15", linespacing=1.25, zorder=7)
+            A.set_title(f"({tag})  {title}", fontsize=9.5, loc="left")
+            A.tick_params(which="both", top=False, right=False, labelsize=7)
+
+        _note = None
+        cE = [c for c, k in enumerate(sub) if pn[k] == "Eb_shift"]
+        if cE and e_fit is not None:
+            _c0 = cE[0]; _k0 = sub[_c0]; _w = K.phys_lo("Eb_shift") or 0.0
+            _on = np.abs(e_fit[:, _c0] - _w) < 1e-6
+            _f = float(_on.mean()); _e = np.sqrt(max(_f, 1e-9) * (1 - _f) / len(e_fit))
+            _pa = float(stats.norm.cdf((_w - float(truth[_k0])) / float(spost[_c0])))
+            _note = f"on boundary\n{100*_f:.1f}$\\pm${100*_e:.1f}%\npred {100*_pa:.1f}%"
+            print(f"  panel (c) E_b atom: {100*_f:.1f}+-{100*_e:.1f}%  Chernoff {100*_pa:.1f}%")
+        _panel(axC, "Eb_shift", "c", r"at a boundary: $E_b$", note=_note)
+        _panel(axD, NONGAUSS_DIAL, "d", f"away from any boundary: {style.plab(NONGAUSS_DIAL)}")
+
         for a_ in (axB, axC, axD):
             for sp in ("top", "right"):
                 a_.spines[sp].set_visible(False)

@@ -297,9 +297,17 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None):
     # while the projected gradient is still 1e-1 -- it reports a "solution" that is not a stationary
     # point.  Rescaling by the Jacobian columns makes the trust region isotropic in the variables that
     # actually matter.  tr_solver='exact' is the right choice at 16 parameters (dense, tiny).
+    # GTOL is the only tolerance that is allowed to stop this fit early, and it is loose ON PURPOSE.
+    # least_squares stops when ANY criterion is met, so leaving all three at 1e-14 meant TRF essentially
+    # never exited before max_nfev: every warm-started node in the corner scan paid the full 8 function
+    # + 7 Jacobian evaluations even when the starting point was already stationary.  Stopping on the
+    # PROJECTED GRADIENT is the criterion that actually means "this is a minimum"; xtol/ftol stay tight
+    # so a small step or a small chi2 change can still never be mistaken for convergence on the
+    # degenerate M_A_res/S_Delta direction, which is exactly how the old LM false-converged.
+    GTOL = float(os.environ.get("S4_TRF_GTOL", "1e-8"))
     r = least_squares(_resid, x0, jac=_jac, bounds=(lo, hi), method="trf",
                       x_scale="jac", tr_solver="exact",
-                      max_nfev=max(nit, 8), xtol=1e-14, ftol=1e-14, gtol=1e-14)
+                      max_nfev=max(nit, 8), xtol=1e-14, ftol=1e-14, gtol=GTOL)
     th[idx] = r.x
     # Convergence is RECORDED, not assumed.  The LM it replaces never once satisfied its own tolerance
     # (0/12 on the wall toys, every fit hitting the iteration cap) and nothing downstream noticed -- that

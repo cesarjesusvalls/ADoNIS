@@ -65,7 +65,11 @@ def load_views(label):
         _ap = np.asarray(z["axes_phys"]) if "axes_phys" in z.files else None
         for t, (ii, jj) in enumerate(np.asarray(z["pair_idx"])):
             key = (dl[int(ii)], dl[int(jj)])
-            v = np.asarray(z["dchi2"])[t]
+            # RAW chi2 when the shard carries it: row shards each subtract their OWN nanmin, so merging
+            # `dchi2` across them stitches surfaces that sit at different offsets.  `chi2_abs` has no
+            # offset, and the global minimum is taken once, after the merge, below.
+            _raw = "chi2_abs" in z.files
+            v = np.asarray(z["chi2_abs" if _raw else "dchi2"])[t]
             if _ap is not None and np.isfinite(_ap[t]).all():
                 axi, axj = ((_ap[t, e] - _bf[_sb[pos[int(a)]]]) / _sp[pos[int(a)]]
                             for e, a in ((0, ii), (1, jj)))
@@ -78,10 +82,17 @@ def load_views(label):
                    round(float(axj[0]), 6), round(float(axj[-1]), 6))
             c = cands.setdefault(key, {}).get(sig)
             if c is None:
-                cands[key][sig] = dict(axi=axi, axj=axj, d=v.copy(),
+                cands[key][sig] = dict(axi=axi, axj=axj, d=v.copy(), raw=_raw,
                                        ci=pos[int(ii)], cj=pos[int(jj)])
             else:
-                m = np.isfinite(v); c["d"][m] = v[m]
+                m = np.isfinite(v); c["d"][m] = v[m]; c["raw"] = c["raw"] and _raw
+
+    # Re-zero AFTER merging every shard of a candidate.  Only legal on raw-chi2 candidates; a mixed set
+    # (some shards pre-dating chi2_abs) is left alone rather than silently mis-stitched.
+    for by_sig in cands.values():
+        for w in by_sig.values():
+            if w["raw"] and np.isfinite(w["d"]).any():
+                w["d"] = w["d"] - np.nanmin(w["d"])
 
     drop = []
     for key, by_sig in cands.items():
@@ -113,7 +124,10 @@ def load_views(label):
         for nm in k:
             if nm not in dials:
                 dials.append(nm)
-    order = ["M_A_res", "delta_strength", "Eb_shift", "sabs", "f_NN_cex", "kF_sf"]
+    # RES trio adjacent, bounded dial last: the three that share the axial block read together,
+    # and E_b -- the only one with a wall -- does not sit between them.
+    order = ["M_A_res", "delta_strength", "res_axial_strength", "sabs", "f_NN_cex", "kF_sf",
+             "Eb_shift"]
     dials = [d for d in order if d in dials] + [d for d in dials if d not in order]
     print(f"[ok]   {len(views)} view(s) complete; grids "
           f"{sorted({len(w['axi']) for w in views.values()})}; "
@@ -121,6 +135,24 @@ def load_views(label):
                                  f"[{w['axj'][0]:+.1f},{w['axj'][-1]:+.1f}]"
                                  for k, w in list(views.items())[:3]))
     return views, dict(pn=pn, sub=sub, bfp=bfp, spost=spost, V0=V0, dials=dials)
+
+
+def view_for(views, ni, nj):
+    """The view for the ORDERED pair (x=ni, y=nj), transposing the stored one if it was keyed the
+    other way round.
+
+    Views are keyed in the order the CORNER RUN listed its dials (S4_CORNER_DIALS); the figures index
+    them in DISPLAY order, and the two need not agree -- with S4_CORNER_DIALS=...,res_axial_strength,
+    Eb_shift but res_axial_strength sorting last for display, the C5A x E_b panel was looked up as
+    ("Eb_shift","res_axial_strength"), missed, and silently rendered blank.  Returns None if neither
+    orientation is present, which is a genuinely absent pair.
+    """
+    if (ni, nj) in views:
+        return views[(ni, nj)]
+    w = views.get((nj, ni))
+    if w is None:
+        return None
+    return dict(axi=w["axj"], axj=w["axi"], d=np.asarray(w["d"]).T, ci=w["cj"], cj=w["ci"])
 
 
 def snap_axis(aa, kk, cc, pn, bfp, spost):
@@ -155,10 +187,10 @@ def main(label="sec4_ref"):
             for b in range(nd - 1):
                 A = axes[a, b]
                 i, j = b, a + 1
-                key = (dials[i], dials[j])
-                if j <= i or key not in views:
+                w = None if j <= i else view_for(views, dials[i], dials[j])
+                if w is None:
                     A.axis("off"); continue
-                w = views[key]; axi, axj = w["axi"], w["axj"]; ci, cj = w["ci"], w["cj"]
+                axi, axj = w["axi"], w["axj"]; ci, cj = w["ci"], w["cj"]
                 ki, kj = sub[ci], sub[cj]
 
                 def _snap(aa, kk, cc):
