@@ -1,7 +1,7 @@
 """Assemble the Sec 4 & Sec 5 draft figures into ONE PDF (one figure per page, with captions) for review.
 
 Pulls the rendered PNGs from output/paper/ and lays them out with a title + caption per page.  Regenerate
-the figures first (see docs/sec4_sec5_figures.md) if any are stale.
+the figures first (see analysis/paper/REGENERATE.md) if any are stale.
 
     python -m analysis.paper.figure_draft            # -> output/paper/sec4_sec5_figure_draft.pdf
 """
