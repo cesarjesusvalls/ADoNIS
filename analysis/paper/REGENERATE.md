@@ -121,34 +121,27 @@ $P -m analysis.paper.sec3_gradients.make
 
 ### §4 — closure, uncertainty, gradient flow, rates
 
-The run parameters are recorded in `configs/fits/sec4_P1.yaml`. **That file is documentation, not yet an
-input** — the stages are still driven by `S4_*` environment variables (P2 of
-`docs/consolidation_plan.md`). Until then, source the environment from the config by hand.
+Everything is in `configs/fits/sec4_P1.yaml`, which **is** the input — one config, one entry point.
 
-Stages, in dependency order (all on GPU; `PHYSFIT_INJECT` = the `data.inject` block):
+Stages, in dependency order.  One command each; the config supplies everything else, and `--shard k/N`
+resolves to the right pair/row/seed/chain for that stage:
 
 ```bash
-export S4_SIG_CAP=250000 S4_NU_CHUNKS=120 S4_E_CHUNKS=40 S4_BEAM_CHUNKS=10
-export S4_SIGMA_SYST_ONLY=1 S4_MIN_MCFRAC=0.05 S4_PRIOR_SCALE=0.0
-export PHYSFIT_INJECT="M_A_qe=1.12,M_A_res=0.85,...,src_tail=0.92"   # see configs/fits/sec4_P1.yaml
-export ADONIS_LABEL=sec4_P1
-
-$PCU -u -m analysis.paper.physfit.multisample                 # closure fit  -> sec4_P1.npz
-ALTGEN_NIT=60  $PCU -u -m analysis.paper.physfit.multisample_profile        # 1-D profile (shard: S4_PROF_BASE)
-$P             -m analysis.paper.physfit.multisample_profile_merge sec4_P1
-
-MODE=prof S4_CORNER_N=41 S4_CORNER_FROM_PROFILE=1 \
-  S4_CORNER_DIALS="M_A_res,delta_strength,res_axial_strength,Eb_shift" \
-  $PCU -u -m analysis.paper.physfit.multisample_corner2d      # figure B  (shard: S4_PAIR_BASE/S4_ROW_BASE)
-
-MODE=grad S4_CORNER_N=25 S4_CORNER_FROM_PROFILE=0 \
-  $PCU -u -m analysis.paper.physfit.multisample_corner2d      # figure C
-
-S4_FIXED_TRUTH="$PHYSFIT_INJECT" S4_FITTER=trf ALTGEN_NIT=200 \
-  S4_TOY_BASE=0 S4_NTOYS=50 $PCU -u -m analysis.paper.physfit.multisample_coverage   # 2000 toys, 40 shards
-
-NUTS_CHAIN=0 NUTS_SAMPLES=1500 NUTS_WARMUP=150 $PCU -u -m adonis.fit.nuts            # 16 chains
+F=configs/fits/sec4_P1.yaml
+$PCU -u -m adonis.fit $F --stage closure                   # -> output/altgen/sec4_P1.npz
+$PCU -u -m adonis.fit $F --stage profile    --shard k/17   # 1-D profile, one dial per shard
+$P       -m adonis.fit.stages.multisample_profile_merge sec4_P1
+$PCU -u -m adonis.fit $F --stage profile2d  --shard k/36   # figure B
+$PCU -u -m adonis.fit $F --stage gradient2d --shard k/6    # figure C
+$PCU -u -m adonis.fit $F --stage toys       --shard k/40   # 2000 toys
+$PCU -u -m adonis.fit $F --stage nuts       --shard k/16   # 24,000 samples
 ```
+
+Every invocation writes `output/altgen/<name>_<stage>[_kofN].manifest.json` with the config digest and
+git SHA.  A stale `S4_*`/`PHYSFIT_*`/`NUTS_*` in the environment is a hard error, not a silent override --
+that is the specific failure this replaces.  `--dry-run` resolves the config and the shard and prints
+them without running; note it does not import the stage, so it validates the run definition, not the
+stage body.
 
 Then the figures, which only read persisted npz and never refit:
 

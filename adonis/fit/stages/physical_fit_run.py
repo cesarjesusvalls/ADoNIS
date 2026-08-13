@@ -124,7 +124,7 @@ def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0, q2mod=
         # physically-motivated OUTSIDE-MANIFOLD unknown-unknown (ADoNIS has no 2p2h channel;
         # only the missing channel is foreign, QE/RES stay ADoNIS). GENIE absolute normalization.
         import awkward as ak
-        from analysis.paper.physfit.build_fakedata import extract_cc0pi, extract_cc1pi
+        from adonis.fit.stages.build_fakedata import extract_cc0pi, extract_cc1pi
         if mode == "closure_mecmix":
             truth_spec, _inj = parse_inject(inject or INJECT, eng.nom)
             truth = eng.th0.copy(); truth[:NPAR] = truth_spec
@@ -169,7 +169,7 @@ def apply_mode(ds, eng, mode, inject=None, inj2x=None, gst=None, fluct=0, q2mod=
     elif mode == "genie":
         # GENIE 3M as data on the physfit binning: same extraction as build_fakedata (single source
         # of truth), identical overflow clipping; data sigma additionally carries GENIE Poisson stat.
-        from analysis.paper.physfit.build_fakedata import extract_cc0pi, extract_cc1pi
+        from adonis.fit.stages.build_fakedata import extract_cc0pi, extract_cc1pi
         gst = gst or os.environ.get("ADONIS_GST", "output/altgen/genie_t2k_12C_ar23_CCQERES_3M.gst.root")
         E = extract_cc0pi(gst); E1 = extract_cc1pi(E)
         gvals = {"dpt": E["dpt"][E["sel"]], "dat": E["dat"][E["sel"]],

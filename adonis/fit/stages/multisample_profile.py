@@ -25,8 +25,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from analysis.paper.physfit.multisample import build_multisample_engine
-from analysis.paper.physfit.physical_fit_run import lm_fit, trf_fit
+from adonis.fit.stages.multisample import build_multisample_engine
+from adonis.fit.stages.physical_fit_run import lm_fit, trf_fit
 from analysis.paper.physical_fit import PNAMES
 from adonis.analysis import knobs as K
 

@@ -27,14 +27,13 @@ from pathlib import Path
 
 from adonis.fit.config import FitConfig
 
-# Which module implements each stage.  The stages still live under analysis/paper/physfit; moving them
-# into adonis/fit is P2's last step and does not change this table.
+# Which module implements each stage.  All of them live in adonis.fit.stages.
 STAGE_MODULE = {
-    "closure":    "analysis.paper.physfit.multisample",
-    "profile":    "analysis.paper.physfit.multisample_profile",
-    "profile2d":  "analysis.paper.physfit.multisample_corner2d",
-    "gradient2d": "analysis.paper.physfit.multisample_corner2d",
-    "toys":       "analysis.paper.physfit.multisample_coverage",
+    "closure":    "adonis.fit.stages.multisample",
+    "profile":    "adonis.fit.stages.multisample_profile",
+    "profile2d":  "adonis.fit.stages.multisample_corner2d",
+    "gradient2d": "adonis.fit.stages.multisample_corner2d",
+    "toys":       "adonis.fit.stages.multisample_coverage",
     "nuts":       "adonis.fit.nuts",
 }
 

@@ -116,8 +116,8 @@ def selftest():
 def run_real():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
-    from analysis.paper.physfit.multisample import build_multisample_engine, MULTISAMPLE_NPZ
-    from analysis.paper.physfit.physical_fit_run import parse_inject
+    from adonis.fit.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ
+    from adonis.fit.stages.physical_fit_run import parse_inject
     from adonis.reweight.reweight_model import nominal_knobs
     CH = int(os.environ.get("NUTS_CHAIN", "0"))      # which chain -- per-job, set by the runner
     from adonis.fit.config import FitConfig

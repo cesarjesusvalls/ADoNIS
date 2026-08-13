@@ -20,7 +20,7 @@ Every sample shares the one 28-knob `physical_fit` basis (`theta_nominal`/`knobs
 `bank_reweight.bank_weight` for the nu/electron banks and `cascade.pool_fsi_reweight` for the beams (via
 `beams.beam_fisher.beam_model`) -- both pure-JAX and differentiable, so the per-knob Jacobian is exact.
 
-    python -m analysis.paper.physfit.multisample            # closure at the default injection
+    python -m adonis.fit.stages.multisample            # closure at the default injection
 Env: ADONIS_LABEL (default sec4_closure_multisample), PHYSFIT_INJECT, ALTGEN_NIT (default 12),
      S4_NU_CHUNKS / S4_BEAM_CHUNKS / S4_E_CHUNKS (bank subsample sizes; the full banks are ~40M events,
      far more MC precision than a closure needs).
@@ -514,7 +514,7 @@ def main():
     NIT = cfg.fit.minimizer.max_nfev
     log(f"config {cfg.path}  digest {cfg.digest()}")
 
-    from analysis.paper.physfit.physical_fit_run import lm_fit, gate2_Q, gate2_split, flags, parse_inject
+    from adonis.fit.stages.physical_fit_run import lm_fit, gate2_Q, gate2_split, flags, parse_inject
 
     eng = build_multisample_engine(log, cfg)
 
@@ -565,7 +565,7 @@ def main():
     # which trf_fit does not produce -- the convergence figure needs that path).
     traj = []
     if cfg.fit.minimizer.method == "trf":
-        from analysis.paper.physfit.physical_fit_run import trf_fit
+        from adonis.fit.stages.physical_fit_run import trf_fit
         th, V, J, m, chi2, chi2_data = trf_fit(eng, subset, "fit", nit=NIT)
     else:
         th, V, J, m, chi2, chi2_data = lm_fit(eng, subset, "fit", huber=False, nit=NIT, record=traj, tol=TOL)

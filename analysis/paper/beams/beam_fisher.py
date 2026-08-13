@@ -48,7 +48,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
 
     So model(theta) = binned(w_of(theta)) for ANY theta, using the SAME 28-knob physical_fit basis every
     other sample uses.  beam_jacobian (below) is a thin wrapper over this; the multisample closure engine
-    (analysis.paper.physfit.multisample) is the other consumer.  max_chunks caps the loaded statistics."""
+    (adonis.fit.stages.multisample) is the other consumer.  max_chunks caps the loaded statistics."""
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp

@@ -1,5 +1,11 @@
-"""Fit and uncertainty machinery.
+"""Fit and uncertainty machinery: one config, one entry point.
 
-Currently holds the exact NUTS sampler (`nuts.py`).  The rest of the fit layer still lives in
-analysis/paper/physfit and is driven by S4_* environment variables; see docs/consolidation_plan.md.
+    python -m adonis.fit configs/fits/sec4_P1.yaml --stage profile2d --shard 3/36
+
+  config   FitConfig -- the typed run definition (configs/fits/*.yaml)
+  stages   the closure fit and the uncertainty estimators
+  nuts     the exact NUTS sampler (it is a stage, but predates the package layout)
+
+analysis/paper is for FIGURES, which read persisted npz and never fit.  Nothing in this package should
+import from there.
 """
