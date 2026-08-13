@@ -81,6 +81,7 @@ uncertainty:
     stores: [chi2_abs, logdet_Vnuis]
 
   - method: gradient2d        # figure C
+    range: 3.0                # unused when axes: physical, but read by the shared grid walk
     dials: [M_A_res, delta_strength, res_axial_strength, Eb_shift]
     n: 25
     axes: physical            # each dial's FULL allowed range, not a sigma window
@@ -96,6 +97,7 @@ uncertainty:
 
   - method: toys              # figure A panel (b)
     n: 2000
+    shard_size: 50            # toys per shard -> 40 shards; the runner turns --shard k/40 into S4_TOY_BASE
     fixed_truth: true         # S4_FIXED_TRUTH == inject: statistics-only ensemble
     seed: {base: 0, stride: 50, formula: "default_rng(1_000_000 + seed)"}
     noise: per_bin_gaussian   # at the fit's own sigma

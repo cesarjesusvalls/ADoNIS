@@ -119,17 +119,16 @@ def run_real():
     from analysis.paper.physfit.multisample import build_multisample_engine, MULTISAMPLE_NPZ
     from analysis.paper.physfit.physical_fit_run import parse_inject
     from adonis.reweight.reweight_model import nominal_knobs
-    LABEL = os.environ.get("ADONIS_LABEL", "sec4_A")
-    NS = int(os.environ.get("NUTS_SAMPLES", "1500"))
-    NW = int(os.environ.get("NUTS_WARMUP", "150"))
-    CH = int(os.environ.get("NUTS_CHAIN", "0"))
+    CH = int(os.environ.get("NUTS_CHAIN", "0"))      # which chain -- per-job, set by the runner
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
     eng = build_multisample_engine(log, cfg)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     sub = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
     # TRUTH: taken from PHYSFIT_INJECT.
-    _inj = os.environ.get("PHYSFIT_INJECT", "").strip()
+    st = cfg.stage("nuts")
+    LABEL, NS, NW = cfg.name, int(st["samples"]), int(st["warmup"])
+    _inj = cfg.inject_string()
     if not _inj:
         # No silent fallback.  This used to read a truth16.txt in a session scratchpad, which (a) is not
         # reproducible outside that session and (b) held the OLD 16-dial truth, so once
@@ -192,7 +191,7 @@ def run_real():
     log(f"gradient cost {(time.time()-t)/3*1000:.0f} ms   (pure_callback route was 14000 ms)")
 
     rng = np.random.default_rng(20260809 + CH)
-    eps = float(os.environ.get("NUTS_EPS", "0.35"))
+    eps = float(st.get("eps", 0.35))
 
     # RESUME (NUTS_RESUME=<npz>): continue an existing chain instead of starting a new one.  A Markov
     # chain's future depends only on its current state, so appending to it is exact -- PROVIDED the kernel

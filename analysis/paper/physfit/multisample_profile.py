@@ -37,7 +37,7 @@ from adonis.analysis import knobs as K
 # leaves every node's chi2 too high near the truth and DISPLACES the profile minimum -- measured -0.32
 # sigma for res_axial_strength on an Asimov fit whose global minimum is the truth to 1e-15.  TRF puts the
 # bounds inside the trust-region subproblem and certifies its own optimality.
-_INNER = trf_fit if os.environ.get("S4_PROF_FITTER", "trf") == "trf" else lm_fit
+_INNER = None      # bound from cfg.fit.minimizer.method in main()
 
 
 def _inner(eng, free, tag, nit, th_init):
@@ -49,9 +49,12 @@ def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 
-    LABEL = os.environ.get("ADONIS_LABEL", "sec4_closure_random16")
-    NG = int(os.environ.get("S4_PROFILE_N", "6"))          # nodes per side (2*NG+1 total)
-    NIT = int(os.environ.get("ALTGEN_NIT", "20"))
+    st = cfg.stage("profile")
+    LABEL = cfg.name
+    NG = (int(st["n"]) - 1) // 2                # config gives TOTAL nodes; the scan wants per side
+    NIT = int(st.get("max_nfev", cfg.fit.minimizer.max_nfev))
+    global _INNER
+    _INNER = trf_fit if cfg.fit.minimizer.method == "trf" else lm_fit
 
     z = np.load(f"output/altgen/{LABEL}.npz", allow_pickle=True)
     subset = [int(k) for k in z["subset"]]
@@ -67,7 +70,7 @@ def main():
     nom0 = eng.th0.copy()                                  # true nominal = the prior centre (never mutated)
     eng.set_closure_data(truth)                            # reproduce the closure's (noiseless) data
     data = np.concatenate([d["data"] for d in eng.ds]); sigma = np.concatenate([d["sigma"] for d in eng.ds])
-    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))   # DEFAULT 0.0 = MLE (data-only, no prior)
+    PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
     log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
@@ -120,8 +123,8 @@ def main():
         # invalidates every mass-based interval (HPD, percentiles) for exactly the two dials of interest.
         # Extend outward in steps until Dchi2 > REACH or a physical bound stops us, then report how far
         # each side actually got so a truncated scan can never again pass silently.
-        REACH = float(os.environ.get("S4_PROFILE_REACH", "25.0"))
-        SPAN = float(os.environ.get("S4_PROFILE_SPAN", "3.0"))
+        REACH = float(st.get("reach_dchi2", 25.0))
+        SPAN = float(st.get("span", 3.0))
         def _edge(sign):
             """Walk outward from the BFP until Dchi2 > REACH or the physical bound."""
             bound = (lo_p if sign < 0 else hi_p)

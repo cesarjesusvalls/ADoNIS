@@ -52,13 +52,11 @@ def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 
-    MODE = os.environ.get("MODE", "cond").lower()
-    LABEL = os.environ.get("ADONIS_LABEL", "sec4_ref")
-    N = int(os.environ.get("S4_CORNER_N", "17"))
-    RANGE = float(os.environ.get("S4_CORNER_RANGE", "3.0"))
-    NIT = int(os.environ.get("ALTGEN_NIT", "3"))
-    INJECT = os.environ["PHYSFIT_INJECT"]
-    want = [s.strip() for s in os.environ.get("S4_CORNER_DIALS", DEFAULT_DIALS).split(",") if s.strip()]
+    # WHICH STAGE: profile2d -> MODE=prof, gradient2d -> MODE=grad.  One module still serves both
+    # because they share the grid walk; the config decides, not an unrelated env var named MODE.
+    STAGE = os.environ.get("ADONIS_FIT_STAGE", "profile2d")
+    MODE = {"profile2d": "prof", "gradient2d": "grad"}[STAGE]
+    pass
 
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
@@ -72,13 +70,20 @@ def main():
     # SAME INNER MINIMISER AS THE 1-D PROFILE (multisample_profile._INNER, TRF by default).  If the two
     # disagree, the 1-D profile is not the minimum of the 2-D surface over the other axis and the figures
     # contradict each other; LM in particular false-converges on the box (see the sec4 commit message).
-    _INNER = trf_fit if os.environ.get("S4_PROF_FITTER", "trf") == "trf" else lm_fit
+    st = cfg.stage(STAGE)
+    LABEL = cfg.name
+    N = int(st["n"])
+    RANGE = float(st.get("range", 3.0))
+    NIT = int(st.get("max_nfev", 8))
+    INJECT = cfg.inject_string()
+    want = list(st["dials"])
+    _INNER = trf_fit if cfg.fit.minimizer.method == "trf" else lm_fit
     log(f"inner fitter: {_INNER.__name__}")
     # SAME ESTIMATOR AS EVERY OTHER DRIVER.  This was missing: the closure, the 1-D profile and the
     # coverage ensemble all honour S4_PRIOR_SCALE (default 0.0 = MLE, prior widened by 1e6), but the
     # corner did not, so its inner profile fits were MAP-regularised with the Gate-I prior.  The 2-D
     # contours then came out systematically TIGHTER than the 1-D profile they are supposed to contain.
-    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))
+    PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
     log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
@@ -127,7 +132,7 @@ def main():
     # direction -- the M_A_res x S_Delta contour ran off the frame -- and reusing the profile's adaptive
     # edges keeps the 1-D and 2-D figures consistent by construction instead of by coincidence.
     _PROF_AX = None
-    if os.environ.get("S4_CORNER_FROM_PROFILE", "") == "1":
+    if st.get("axes_from") == "profile":
         _pf = f"output/altgen/{LABEL}_profile.npz"
         if os.path.exists(_pf):
             _z = np.load(_pf, allow_pickle=True)

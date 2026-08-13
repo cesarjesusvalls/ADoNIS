@@ -69,10 +69,7 @@ def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 
-    NTOYS = int(os.environ.get("S4_NTOYS", "40"))
-    BASE = int(os.environ.get("S4_TOY_BASE", "0"))
-    NIT = int(os.environ.get("ALTGEN_NIT", "30"))
-    LABEL = os.environ.get("ADONIS_LABEL", "sec4_coverage")
+    BASE = int(os.environ.get("S4_TOY_BASE", "0"))     # shard offset -- per-job, set by the runner
 
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
@@ -83,7 +80,11 @@ def main():
     # throws always use the REAL prior (the population of true values); the FIT's prior can be scaled --
     # S4_PRIOR_SCALE=0 -> unregularised (MLE) coverage of the data-only errors, consistent with S4A.
     real_prior = eng.prior.copy()
-    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))   # DEFAULT 0.0 = MLE (data-only)
+    st = cfg.stage("toys")
+    NTOYS = int(st.get("shard_size", 50))
+    NIT = int(st.get("max_nfev", cfg.fit.minimizer.max_nfev))
+    LABEL = f"{cfg.name}_ens"
+    PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
     log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
@@ -95,7 +96,7 @@ def main():
     # reference fit is a statement about scatter AT THAT TRUTH.  Throwing a new truth per toy instead mixes
     # in the variation of sigma across parameter space (the model is nonlinear), which muddles "is my error
     # bar right" with "how does my error bar move".  Empty -> legacy prior-thrown truths.
-    FIXED = os.environ.get("S4_FIXED_TRUTH", "").strip()
+    FIXED = cfg.inject_string() if st.get("fixed_truth") else ""
     fixed_star = None
     if FIXED:
         from analysis.paper.physfit.physical_fit_run import parse_inject
@@ -119,7 +120,7 @@ def main():
         # decrement still at ~1e-3.  Measured on 48 toys it parks E_b exactly on its floor where TRF, whose
         # bounds are inside the subproblem, pulls it off and reaches a LOWER chi2.  That inflates the
         # boundary atom this ensemble exists to measure, so TRF is the default here.
-        _fit = trf_fit if os.environ.get("S4_FITTER", "trf") == "trf" else lm_fit
+        _fit = trf_fit if cfg.fit.minimizer.method == "trf" else lm_fit
         th, V, J, m, c, cd = _fit(eng, subset, f"toy{seed}", nit=NIT)
         s = np.sqrt(np.abs(np.diag(V)))
         th_star.append([star[k] for k in subset]); th_fit.append([th[k] for k in subset])
