@@ -32,11 +32,11 @@ PI = float(np.pi)
 # The last bin of each delta-p_T axis is OPEN.  Smearing pushes the reco tail out to ~4.9 GeV, and an
 # event outside the grid is not binned at all: a closed axis would silently drop ~1% of the reco sample
 # from the fit, and any true signal above the top edge would be reclassified as background.
-TRUE_DPT = [0.0, 85.0, 125.0, 175.0, 270.0, np.inf]
+TRUE_DPT = [0.0, 150.0, 350.0, np.inf]
 RECO_DPT = [0.0, 80.0, 120.0, 150.0, 185.0, 220.0, 260.0, 310.0, 380.0, 520.0, np.inf]
 
 # delta-alpha_T [rad], likewise equal-occupancy.  pi is a hard kinematic bound, so these axes are closed.
-TRUE_DAT = [0.0, 1.75, PI]
+TRUE_DAT = [0.0, 1.2, 2.2, PI]
 RECO_DAT = [0.0, 0.68, 1.34, 1.91, 2.38, 2.78, PI]
 
 

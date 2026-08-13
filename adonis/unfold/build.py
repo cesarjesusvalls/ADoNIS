@@ -44,7 +44,8 @@ def _obs2(obs):
     return np.asarray(obs["dpt"], dtype=float), np.asarray(obs["dalphat"], dtype=float)
 
 
-def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks=None, log=print):
+def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks=None, log=print,
+          TG=None, RG=None):
     """Stream `bank_dir` and return the unfolding inputs.
 
     `norm_events`: scale every weight so the TOTAL PRE-SELECTION rate equals this (50 000 for section 5).
@@ -53,7 +54,8 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
     count-based normalisation would silently include them and shift the scale.
     """
     spec = spec or SmearSpec()
-    TG, RG = truth_grid(), reco_grid()
+    TG = TG or truth_grid()
+    RG = RG or reco_grid()
     files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
     if max_chunks:
         files = files[:max_chunks]
