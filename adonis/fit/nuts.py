@@ -14,8 +14,9 @@ M_A_res/S_Delta geometry) where mean and covariance are known analytically, and 
 Env: NUTS_SAMPLES, NUTS_WARMUP, NUTS_CHAIN, NUTS_MAXDEPTH, ADONIS_LABEL.
 """
 import os, sys, time
+import pathlib
 import numpy as np
-sys.path.insert(0, "/sdf/home/c/cjesus/DIFFGEN/ADoNIS")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 MAXDEPTH = int(os.environ.get("NUTS_MAXDEPTH", "8"))
 
@@ -125,14 +126,15 @@ def run_real():
     eng = build_multisample_engine(log)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     sub = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
-    # TRUTH: PHYSFIT_INJECT if set, else the legacy truth16.txt.  It used to be the file unconditionally,
-    # which silently sampled the OLD 16-dial truth once res_axial_strength joined the fitted set -- the
-    # sampler would then be exploring a posterior whose data was generated at a different point than the
-    # closure/profile it is compared against.
+    # TRUTH: taken from PHYSFIT_INJECT.
     _inj = os.environ.get("PHYSFIT_INJECT", "").strip()
     if not _inj:
-        _inj = open("/sdf/data/neutrino/cjesus/scratch/tmp/claude-46229/-sdf-home-c-cjesus-DIFFGEN/30a3ae7e-fad7-4aa0-af0a-1f77e8007ffe/scratchpad/truth16.txt").read().strip()
-        log("truth: legacy truth16.txt (PHYSFIT_INJECT unset)")
+        # No silent fallback.  This used to read a truth16.txt in a session scratchpad, which (a) is not
+        # reproducible outside that session and (b) held the OLD 16-dial truth, so once
+        # res_axial_strength joined the fitted set the sampler would explore a posterior whose data was
+        # generated at a different point than the closure it is compared against.
+        raise SystemExit("PHYSFIT_INJECT is required: the truth the Asimov data is built at, e.g.\n"
+                         "  PHYSFIT_INJECT='M_A_qe=1.12,M_A_res=0.85,...'")
     star, _ = parse_inject(_inj, nominal_knobs())
     log(f"truth: {_inj[:90]}...")
     eng.set_closure_data(star)
