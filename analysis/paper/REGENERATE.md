@@ -2,6 +2,7 @@
 
 The single runbook. It replaces `analysis/paper/REPRODUCE.md`, `docs/S3DF_REPRODUCE.md`,
 `docs/RUNNING.md`, `docs/sec4_figures.md`, `docs/sec2_sec3_figures.md` and `docs/sec4_sec5_figures.md`,
+and covers sections 1-4 (section 5 was removed),
 which described overlapping and partly-stale versions of the same pipeline.
 
 ```
