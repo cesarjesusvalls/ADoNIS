@@ -30,6 +30,13 @@ from dataclasses import dataclass, field
 from adonis.fit import provenance
 
 
+# Every degradation knowingly accepted in this process, as (what, reason).  A figure is a PNG and has
+# nowhere to keep a `prov_partial` field, so the fact has to live somewhere the renderer can find it --
+# and it must be found without every figure function agreeing to pass a flag along, because forgetting to
+# pass it is the same failure as not having the check.  See `analysis.paper.style.save`.
+DEGRADED = []
+
+
 @dataclass
 class Report:
     what: str
@@ -101,6 +108,7 @@ class Report:
                   "that is knowingly partial.")
         if self.errors:
             print(f"[warn] {self.what}: --allow-partial given; merging anyway")
+            DEGRADED.append((self.what, "; ".join(self.errors)))
         return self
 
     def stamp(self) -> dict:

@@ -175,14 +175,41 @@ def use():
     mpl.rcParams.update(RC)
 
 
+def _degraded():
+    """Degradations accepted in this process (--allow-partial).  Imported lazily so `style` stays usable
+    without the fit layer."""
+    try:
+        from adonis.fit.merge import DEGRADED
+        return list(DEGRADED)
+    except Exception:
+        return []
+
+
 def save(fig, name):
-    """Write <name>.png + <name>.pdf into OUTDIR and return the png path."""
+    """Write <name>.png + <name>.pdf into OUTDIR and return the png path.
+
+    A figure built from a knowingly incomplete shard set is MARKED, in two ways that survive leaving the
+    terminal: a banner on the image, and the reason in the file's metadata.  The failure this guards is
+    that a downgraded panel -- a coarser grid substituted for a missing fine one -- looks exactly as
+    healthy as a correct one, so a warning on stdout is gone the moment the scrollback is.
+    """
     OUTDIR.mkdir(parents=True, exist_ok=True)
     png = OUTDIR / f"{name}.png"
-    fig.savefig(png)
-    fig.savefig(OUTDIR / f"{name}.pdf")
+    bad = _degraded()
+    if bad:
+        txt = "; ".join(f"{w}: {r}" for w, r in bad)
+        # BELOW the axes (bbox="tight" keeps it), boxed, so it reads as a stamp on the figure rather
+        # than as a stray label colliding with one.
+        fig.text(0.5, -0.012, "PARTIAL DATA -- " + (txt[:150] + "..." if len(txt) > 150 else txt),
+                 ha="center", va="top", color="#c00", fontsize=6.5, zorder=1e6,
+                 bbox=dict(facecolor="white", edgecolor="#c00", lw=0.8, pad=3.0))
+    meta = {"Title": name, "Software": "ADoNIS", "Comment": "; ".join(r for _w, r in bad) or "complete"}
+    fig.savefig(png, metadata=meta)
+    # The PDF writer accepts only its own key set, so the same note goes in Subject.
+    fig.savefig(OUTDIR / f"{name}.pdf",
+                metadata={"Title": name, "Creator": "ADoNIS", "Subject": meta["Comment"]})
     plt.close(fig)
-    print(f"[out] {png}")
+    print(f"[out] {png}" + ("   *** PARTIAL ***" if bad else ""))
     return png
 
 

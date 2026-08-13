@@ -145,3 +145,54 @@ def test_emit_does_not_repeat_itself(tmp_path, capsys):
     rep = MG.check(fs, _load(fs))
     rep.emit(); rep.emit()
     assert capsys.readouterr().out.count("no provenance") == 1
+
+
+# ---- the mark a knowingly-partial run leaves on a FIGURE -------------------------------------------- #
+
+def test_allow_partial_registers_a_degradation(tmp_path):
+    """A figure is a PNG with nowhere to keep prov_partial, so the fact is registered process-wide for
+    the renderer to find -- without every figure function having to remember to pass a flag."""
+    MG.DEGRADED.clear()
+    fs = [_shard(tmp_path, "a", rows=(0, 7), complete=False)]
+    MG.check(fs, _load(fs), what="thing").raise_if_bad(allow_partial=True)
+    assert len(MG.DEGRADED) == 1 and MG.DEGRADED[0][0] == "thing"
+    MG.DEGRADED.clear()
+
+
+def test_clean_run_registers_nothing(tmp_path):
+    MG.DEGRADED.clear()
+    fs = [_shard(tmp_path, f"s{i}", rows=(7 * i, 7)) for i in range(3)]
+    MG.check(fs, _load(fs)).raise_if_bad()
+    assert MG.DEGRADED == []
+
+
+def test_figure_is_stamped_when_partial(tmp_path, monkeypatch):
+    """End to end: the banner is drawn and the reason lands in the PNG metadata."""
+    mpl = pytest.importorskip("matplotlib")
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+    from PIL import Image
+    from analysis.paper import style
+
+    monkeypatch.setattr(style, "OUTDIR", tmp_path)
+    MG.DEGRADED.clear()
+    MG.DEGRADED.append(("sec4_P1 corner2d", "falling back to N=21"))
+    try:
+        style.save(plt.figure(), "figtest")
+        img = Image.open(tmp_path / "figtest.png")
+        assert "falling back to N=21" in img.text["Comment"]
+    finally:
+        MG.DEGRADED.clear()
+
+
+def test_figure_is_not_stamped_when_clean(tmp_path, monkeypatch):
+    mpl = pytest.importorskip("matplotlib")
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+    from PIL import Image
+    from analysis.paper import style
+
+    monkeypatch.setattr(style, "OUTDIR", tmp_path)
+    MG.DEGRADED.clear()
+    style.save(plt.figure(), "figclean")
+    assert Image.open(tmp_path / "figclean.png").text["Comment"] == "complete"
