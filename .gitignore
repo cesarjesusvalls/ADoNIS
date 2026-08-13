@@ -30,3 +30,6 @@ output
 output/
 _paper_release/
 output/event_bank/
+
+# LaTeX/build logs (docs/paper_skeleton.log was committed by an `add -A`)
+*.log
