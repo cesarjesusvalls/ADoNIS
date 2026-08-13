@@ -27,6 +27,7 @@ Env: ADONIS_LABEL (default sec4_closure_multisample), PHYSFIT_INJECT, ALTGEN_NIT
 """
 import os
 import sys
+import sys
 import time
 from pathlib import Path
 
@@ -376,8 +377,12 @@ class MultiEngine:
         huge weight -- measured up to x401 for a bin holding ~1 effective MC event, which would dominate
         the fit.  A bin the MC cannot predict is not made trustworthy by removing its error bar.
         """
-        syst_only = os.environ.get("S4_SIGMA_SYST_ONLY", "") == "1"
-        cut = float(os.environ.get("S4_MIN_MCFRAC", str(SYST))) if syst_only else None
+        # From the config (engine.cfg), never the environment: sigma and the mask define the sample, and
+        # a stage that read them independently is how the corner ended up minimising a different
+        # objective than the closure it was supposed to contain.
+        sig = self.cfg.data.sigma
+        syst_only = not sig.mc_term
+        cut = sig.mask_mcfrac if syst_only else None
         for s in self.samples:
             # NOMINAL blocks, computed once: the sparse-bin mask is frozen against THESE, never against
             # the toy's own theta*.  Recomputing it per toy let the bin set -- and hence ndf -- follow the
@@ -390,7 +395,7 @@ class MultiEngine:
             for i, (d, b) in enumerate(zip(s.ds, s.model_blocks(truth))):
                 d["data"] = np.asarray(b)
                 if not syst_only:
-                    d["sigma"] = FE.bin_sigma(d["data"], d["mcerr"], SYST)
+                    d["sigma"] = FE.bin_sigma(d["data"], d["mcerr"], sig.syst)
                     continue
                 # SIGMA IS FROZEN AT NOMINAL, not recomputed at each toy's theta*.  A measurement's
                 # error is a property of the measurement; letting sigma_b = SYST*|model_b(theta*)|
@@ -402,18 +407,21 @@ class MultiEngine:
                 if "_sigma0" not in d:
                     c0 = s._nom_blocks[i]
                     bad = (c0 <= 0) | (d["mcerr"] > cut * np.where(c0 > 0, c0, 1.0))
-                    d["_sigma0"] = np.where(bad, np.inf, np.where(c0 > 0, SYST * c0, np.inf))
+                    d["_sigma0"] = np.where(bad, np.inf, np.where(c0 > 0, sig.syst * c0, np.inf))
                 d["sigma"] = d["_sigma0"]
 
 
-def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=None):
-    """Assemble the 20-block engine in the multisample_carbon order and assert it matches that npz."""
-    nu_chunks = nu_chunks or int(os.environ.get("S4_NU_CHUNKS", "4"))        # ~0.79M/chunk -> ~3M
-    beam_chunks = beam_chunks or int(os.environ.get("S4_BEAM_CHUNKS", "5"))  # ~0.6M/chunk  -> ~3M
-    e_chunks = e_chunks or int(os.environ.get("S4_E_CHUNKS", "64"))          # ~32k/chunk   -> ~2M
+def build_multisample_engine(log, cfg):
+    """Assemble the engine described by `cfg` (adonis.fit.config.FitConfig).
+
+    The sample LIST and the chunk caps come from the config -- they used to be a hardcoded list of
+    _bank() calls plus four environment variables, which meant adding a sample required editing this
+    file and gate1_multisample.py in step, and a chunk cap could differ between two stages of one run.
+    """
+    nu_chunks, beam_chunks, e_chunks = cfg.banks.nu_chunks, cfg.banks.beam_chunks, cfg.banks.e_chunks
     log(f"loading banks: nu={nu_chunks}ch minerva={nu_chunks}ch e={e_chunks}ch beams={beam_chunks}ch")
 
-    sig_cap = int(os.environ.get("S4_SIG_CAP", "1000000"))   # per-sample event cap for the FIT (0 -> no cap)
+    sig_cap = cfg.banks.sig_cap                              # per-sample event cap (0 -> no cap)
 
     def _bank(cfg_name, max_chunks):
         """A BankSample whose datasets come from the CENTRALIZED sample config (AnaSample.bin_datasets):
@@ -424,38 +432,32 @@ def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=Non
         return BankSample(s.name, s.bank, [(lambda B, w, l: s.bin_datasets(B, w), None)], max_chunks, log,
                           signal=s.cfg.signal, cap=(sig_cap or None))
 
-    samples = [
-        _bank("t2k_cc0pi",    nu_chunks),
-        _bank("t2k_cc1pi_ch", nu_chunks),      # CH keys match multisample_carbon; carbon closure (no free-H offset)
-        _bank("minerva_stv",  nu_chunks),
-        _bank("minerva_ptpz", nu_chunks),
-        _bank("ee_omega",     e_chunks),
-        # MINERvA CC1pi+ (arXiv:2605.24224) -- the RES Q2 lever arm.  ORDER MATTERS: it must match the
-        # dskeys order in multisample_carbon.npz (the assertion below), i.e. after ee_omega, before beams.
-        # NOTE carbon-only here: BankSample calls bin_datasets(B, w0) with free_h=None, so the sec4 engine
-        # omits the free-H (CH) contribution -- the SAME pre-existing behaviour as t2k_cc1pi_ch, which has
-        # always been carbon-only in sec4 while Gate I adds free-H.  Self-consistent within sec4 (Asimov
-        # data comes from this same model), but the two do not fit identical models for CH samples.
-        _bank("minerva_cc1pip_tpi", nu_chunks),
-        _bank("minerva_cc1pip_q2",  nu_chunks),
-        BeamSample("pip", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
-        BeamSample("prot", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
-        BeamSample("neut", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
-    ]
+    # SAMPLES AND BEAMS FROM THE CONFIG, in config order.  This was a literal list of _bank() calls
+    # that had to be kept in step by hand with SAMPLES in gate1_multisample.py -- adding MINERvA CC1pi+
+    # meant editing both.  ORDER STILL MATTERS: it must match the dskeys order in multisample_carbon.npz,
+    # which the assertion below enforces, so the config lists experiment samples first and beams last.
+    # Electron samples take the (much smaller) e_chunks cap; the rest take nu_chunks.
+    samples = [_bank(nm, e_chunks if AnaSample.from_config(f"configs/samples/{nm}.yaml").is_electron
+                     else nu_chunks) for nm in cfg.samples]
+    samples += [BeamSample(b, 15, cfg.data.sigma.syst, beam_chunks, log, cap=(sig_cap or None))
+                for b in cfg.beams]
+
     tot = sum(s.n_events for s in samples if getattr(s, "n_events", None))
     log(f"[events] TOTAL RESIDENT = {tot:,} events across {len(samples)} samples "
-        f"(S4_SIG_CAP={sig_cap:,}) -- this is what the fit holds on device EVERY iteration")
+        f"(cap={sig_cap:,}) -- this is what the fit holds on device EVERY iteration")
     eng = MultiEngine(samples)
+    eng.cfg = cfg                       # the run definition travels WITH the engine, so every stage that
+                                        # touches it sees the same sigma, mask and estimator by
+                                        # construction rather than by each reading the environment
     want = [str(x) for x in np.load(MULTISAMPLE_NPZ, allow_pickle=True)["dskeys"]]
     got = [d["key"] for d in eng.ds]
     assert got == want, f"sample composition != multisample_carbon:\n  got  {got}\n  want {want}"
     log(f"engine: {len(eng.samples)} samples, {len(eng.ds)} observables, {eng.row0[-1]} bins")
-    _apply_sec4_setup(eng, log)
     return eng
 
 
-def fit_subset(g, pnames, log=None):
-    """The fitted dials: shrink<0.5, minus anything named in S4_FIX_DIALS.
+def fit_subset(g, pnames, cfg, log=None):
+    """The fitted dials: Gate-I shrink<0.5, plus anything `fit.dials` names explicitly.
 
     Fixing a dial removes it from the FIT and from the toy TRUTH THROW alike (multisample_coverage
     iterates the same subset), so it is held at nominal everywhere -- i.e. "assumed known".  Used to test
@@ -465,7 +467,7 @@ def fit_subset(g, pnames, log=None):
     sub = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
     # GATE-I DEGENERACY CUT.  shrink<0.5 is a per-knob marginal and passes knobs that are only
     # constrained through a fragile cancellation against the others.  S4_VIF_CUT drops those.
-    cut = float(os.environ.get("S4_VIF_CUT", "0") or 0)
+    cut = float(getattr(cfg.fit, "vif_cut", 0) or 0)
     if cut > 0 and "F" in g.files:
         vif, rmul = FE.vif_from_fisher(np.asarray(g["F"]), np.asarray(g["prior"]))
         drop = [k for k in sub if vif[k] > cut]
@@ -479,7 +481,7 @@ def fit_subset(g, pnames, log=None):
     # Swapping C5A in for delta_strength tests whether the pull tails come from the DEGENERACY (both
     # pairs sit at |r| ~ 0.98) or from delta_strength's MULTI-MODALITY (the RES weight g^T M g is
     # quadratic in it; C5A enters the axial block linearly).
-    add = [s.strip() for s in os.environ.get("S4_ADD_DIALS", "").split(",") if s.strip()]
+    add = [] if cfg.fit.dials == "gate1" else list(cfg.fit.dials)
     if add:
         bad = [a for a in add if a not in list(pnames)]
         if bad:
@@ -490,7 +492,7 @@ def fit_subset(g, pnames, log=None):
                 sub = sorted(sub + [k])
                 if log:
                     log(f"  ADDED (failed Gate I, forced in): {a} (shrink {float(g['shrink'][k]):.3f})")
-    fix = [s.strip() for s in os.environ.get("S4_FIX_DIALS", "").split(",") if s.strip()]
+    fix = []
     if fix:
         bad = [f for f in fix if f not in list(pnames)]
         if bad:
@@ -502,64 +504,24 @@ def fit_subset(g, pnames, log=None):
     return sub
 
 
-def _apply_sec4_setup(eng, log):
-    """Section 4 study point: redefine the nominal and install flat priors, in ONE place.
-
-    S4_NOMINAL_SET="Eb_shift=0.5"   moves eng.th0 -- which is BOTH the reference model and the prior
-                                    centre.  E_b's nominal is otherwise its own floor (0.01), so every
-                                    fit starts on a wall; 0.5 puts it 1.24 sigma clear of it.
-    S4_PRIOR_FLAT=0.20              prior[k] = 0.20 * |th0[k]| on every dial (fractional, not absolute).
-    S4_PRIOR_FREE="Eb_shift,..."    those dials stay UNCONSTRAINED (prior x1e6), so the boundary case is
-                                    still driven by the data alone.
-
-    Applied at engine construction so the closure fit, the profile scan, the toy ensemble, the corner and
-    the samplers all inherit the SAME nominal and the SAME prior.  Previously each driver scaled
-    eng.prior itself from S4_PRIOR_SCALE, which is how a profile and an ensemble could silently end up
-    minimising different objectives.
-    """
-    setspec = os.environ.get("S4_NOMINAL_SET", "").strip()
-    if setspec:
-        for tok in setspec.split(","):
-            k, v = tok.split("="); k = k.strip()
-            if k not in eng.pnames:
-                raise SystemExit(f"S4_NOMINAL_SET: unknown dial {k!r}")
-            i = eng.pnames.index(k)
-            log(f"  nominal: {k} {eng.th0[i]:g} -> {float(v):g}  (reference model AND prior centre)")
-            eng.th0[i] = float(v)
-
-    flat = os.environ.get("S4_PRIOR_FLAT", "").strip()
-    if flat:
-        f = float(flat)
-        free = [s.strip() for s in os.environ.get("S4_PRIOR_FREE", "").split(",") if s.strip()]
-        for i, nm in enumerate(eng.pnames):
-            if nm in free:
-                eng.prior[i] = abs(eng.prior[i]) * 1e6
-                continue
-            if eng.th0[i] == 0.0:
-                log(f"  [warn] {nm} has nominal 0 -- a fractional prior is undefined, left at "
-                    f"{eng.prior[i]:g}")
-                continue
-            eng.prior[i] = f * abs(eng.th0[i])
-        log(f"  priors: flat {100*f:.0f}% of nominal" + (f"; UNCONSTRAINED: {free}" if free else ""))
-
-
 def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 
-    LABEL = os.environ.get("ADONIS_LABEL", "sec4_closure_multisample")
-    INJECT = os.environ.get("PHYSFIT_INJECT",
-                            "M_A_res=0.85,kF_sf=1.10,Eb_shift=3.0,s_NN_elastic[1]=1.25,f_NN_cex=0.40")
-    NIT = int(os.environ.get("ALTGEN_NIT", "12"))
+    from adonis.fit.config import FitConfig
+    cfg = FitConfig.load(sys.argv[1] if len(sys.argv) > 1 else "configs/fits/sec4_P1.yaml")
+    LABEL, INJECT = cfg.name, cfg.inject_string()
+    NIT = cfg.fit.minimizer.max_nfev
+    log(f"config {cfg.path}  digest {cfg.digest()}")
 
     from analysis.paper.physfit.physical_fit_run import lm_fit, gate2_Q, gate2_split, flags, parse_inject
 
-    eng = build_multisample_engine(log)
+    eng = build_multisample_engine(log, cfg)
 
     # ---- the 16 dials: SAME Gate-I selection sec3 uses (combined marginalized shrinkage < 0.5) ------ #
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     assert [str(x) for x in g["pnames"]] == list(PNAMES), "multisample_carbon knob order != physical_fit"
-    subset = fit_subset(g, eng.pnames, log)
+    subset = fit_subset(g, eng.pnames, cfg, log)
     log(f"fit subset ({len(subset)} dials): " + " ".join(eng.pnames[k] for k in subset))
 
     # ---- inject truth, build the nonlinear closure data across ALL samples ------------------------- #
@@ -584,7 +546,7 @@ def main():
     # Scale the FIT's prior width AFTER the truth is injected (so the injection always uses the real prior).
     # DEFAULT 0.0 = MLE (data-only): section 4's claim is about what the DATA constrain, so the estimator
     # must not be propped up by a prior.  S4_PRIOR_SCALE=1.0 -> MAP (Gate-I prior) for the prior-pull study.
-    PRIOR_SCALE = float(os.environ.get("S4_PRIOR_SCALE", "0.0"))
+    PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
     # ALWAYS state the estimator: a figure whose caption says MLE while the run used MAP is exactly the
@@ -601,7 +563,7 @@ def main():
     # the three stages to use different minimisers.  S4_FITTER=lm restores LM (and the trajectory record,
     # which trf_fit does not produce -- the convergence figure needs that path).
     traj = []
-    if os.environ.get("S4_FITTER", "trf") == "trf":
+    if cfg.fit.minimizer.method == "trf":
         from analysis.paper.physfit.physical_fit_run import trf_fit
         th, V, J, m, chi2, chi2_data = trf_fit(eng, subset, "fit", nit=NIT)
     else:

@@ -123,7 +123,9 @@ def run_real():
     NS = int(os.environ.get("NUTS_SAMPLES", "1500"))
     NW = int(os.environ.get("NUTS_WARMUP", "150"))
     CH = int(os.environ.get("NUTS_CHAIN", "0"))
-    eng = build_multisample_engine(log)
+    from adonis.fit.config import FitConfig
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+    eng = build_multisample_engine(log, cfg)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     sub = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
     # TRUTH: taken from PHYSFIT_INJECT.

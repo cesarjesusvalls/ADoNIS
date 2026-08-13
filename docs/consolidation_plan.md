@@ -115,7 +115,14 @@ interface.
 
 ## Explicitly out of scope
 
-- Re-running any sec4 result. The consolidation must reproduce `sec4_P1` bit-for-bit; that is the
-  acceptance test, not an opportunity to change physics.
+- Re-running any sec4 result. The consolidation must reproduce `sec4_P1`; that is the acceptance test,
+  not an opportunity to change physics.
+
+  **Correction to the standard.** "Bit-for-bit" is not achievable and was the wrong bar: the model
+  evaluation is not deterministic on GPU. Measured, the engine fails to reproduce *itself* — the same
+  code, twice, in one process, gives max|Δ| = 5.7e-14 on `data`, which is exactly the discrepancy against
+  the committed npz. The achievable and verified standard is **equality to float64 round-off** (max
+  relative error 3.6e-16, median 0), with the integer/structural quantities — `subset`, `dskeys`, `row0`,
+  `sigma`, `truth` — exact.
 - The `jobs/` SLURM submitters, which live outside the repo. Worth a separate decision: either vendor
   them or generate them from the fit config.

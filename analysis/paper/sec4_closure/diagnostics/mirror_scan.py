@@ -22,7 +22,9 @@ from analysis.paper.physfit.multisample import build_multisample_engine
 from analysis.paper.physfit.physical_fit_run import parse_inject
 from adonis.reweight.reweight_model import nominal_knobs
 
-eng = build_multisample_engine(log)
+from adonis.fit.config import FitConfig
+cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+eng = build_multisample_engine(log, cfg)
 truth, _ = parse_inject(os.environ["PHYSFIT_INJECT"], nominal_knobs())
 eng.set_closure_data(truth)
 data, sigma = eng.data_sigma()

@@ -26,9 +26,11 @@ from adonis.reweight.reweight_model import nominal_knobs
 BASE = int(os.environ.get("S4_TOY_BASE", "0")); NT = int(os.environ.get("S4_NTOYS", "125"))
 NIT = int(os.environ.get("ALTGEN_NIT", "200"))
 VERT = os.environ.get("MIRROR_VERTEX", "").strip()
-eng = build_multisample_engine(log)
+from adonis.fit.config import FitConfig
+cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+eng = build_multisample_engine(log, cfg)
 g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
-subset = fit_subset(g, eng.pnames, log)
+subset = fit_subset(g, eng.pnames, cfg, log)
 eng.prior = eng.prior * 1e6                       # MLE, same as the ensemble (S4_PRIOR_SCALE=0)
 star, _ = parse_inject(os.environ["S4_FIXED_TRUTH"], nominal_knobs())
 kd = list(eng.pnames).index("delta_strength")

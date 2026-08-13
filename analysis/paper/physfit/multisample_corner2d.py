@@ -60,12 +60,14 @@ def main():
     INJECT = os.environ["PHYSFIT_INJECT"]
     want = [s.strip() for s in os.environ.get("S4_CORNER_DIALS", DEFAULT_DIALS).split(",") if s.strip()]
 
-    eng = build_multisample_engine(log)
+    from adonis.fit.config import FitConfig
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+    eng = build_multisample_engine(log, cfg)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     # ONE definition of "the fitted dials", shared with the closure / coverage / 1-D profile drivers.
     # This was an inline `shrink < 0.5`, which silently ignored S4_VIF_CUT / S4_ADD_DIALS / S4_FIX_DIALS
     # -- so a run that fixed a dial everywhere else would still profile over it here.
-    subset = fit_subset(g, eng.pnames, log)
+    subset = fit_subset(g, eng.pnames, cfg, log)
     pn = list(eng.pnames)
     # SAME INNER MINIMISER AS THE 1-D PROFILE (multisample_profile._INNER, TRF by default).  If the two
     # disagree, the 1-D profile is not the minimum of the 2-D surface over the other axis and the figures

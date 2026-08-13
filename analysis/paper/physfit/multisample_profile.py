@@ -61,7 +61,9 @@ def main():
     truth = np.asarray(z["truth"])
     log(f"profiling {LABEL}: {len(subset)} dials, BFP loaded")
 
-    eng = build_multisample_engine(log)
+    from adonis.fit.config import FitConfig
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+    eng = build_multisample_engine(log, cfg)
     nom0 = eng.th0.copy()                                  # true nominal = the prior centre (never mutated)
     eng.set_closure_data(truth)                            # reproduce the closure's (noiseless) data
     data = np.concatenate([d["data"] for d in eng.ds]); sigma = np.concatenate([d["sigma"] for d in eng.ds])

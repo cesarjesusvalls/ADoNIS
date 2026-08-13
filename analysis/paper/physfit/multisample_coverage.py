@@ -74,10 +74,12 @@ def main():
     NIT = int(os.environ.get("ALTGEN_NIT", "30"))
     LABEL = os.environ.get("ADONIS_LABEL", "sec4_coverage")
 
-    eng = build_multisample_engine(log)
+    from adonis.fit.config import FitConfig
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+    eng = build_multisample_engine(log, cfg)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     assert [str(x) for x in g["pnames"]] == list(PNAMES)
-    subset = fit_subset(g, eng.pnames, log)
+    subset = fit_subset(g, eng.pnames, cfg, log)
     # throws always use the REAL prior (the population of true values); the FIT's prior can be scaled --
     # S4_PRIOR_SCALE=0 -> unregularised (MLE) coverage of the data-only errors, consistent with S4A.
     real_prior = eng.prior.copy()
