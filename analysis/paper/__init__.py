@@ -8,8 +8,6 @@ binning, or reweighting:
   sec2_fisher      Fisher info per observable   (which knobs the data constrains)
   sec3_gradients   per-bin gradients of the fittable knobs
   sec4_closure     fitting & statistical interpretability (closure, coverage, errors, corner)
-  sec5_methods     computational performance & novel methodologies (differentiable-engine methods)
-  sec6_unknowns    fitting data the model cannot describe (unknown-unknown taxonomy)
 
 Figures land in output/paper/ (gitignored); every one is regenerable from committed code.
 """
