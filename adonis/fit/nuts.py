@@ -18,7 +18,7 @@ import pathlib
 import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-MAXDEPTH = int(os.environ.get("NUTS_MAXDEPTH", "8"))
+MAXDEPTH = 8      # rebound from cfg.stage("nuts")["max_depth"] in run_real()
 
 
 def leapfrog(q, p, g, eps, Minv, gradf):
@@ -128,6 +128,8 @@ def run_real():
     # TRUTH: taken from PHYSFIT_INJECT.
     st = cfg.stage("nuts")
     LABEL, NS, NW = cfg.name, int(st["samples"]), int(st["warmup"])
+    global MAXDEPTH
+    MAXDEPTH = int(st.get("max_depth", 8))
     _inj = cfg.inject_string()
     if not _inj:
         # No silent fallback.  This used to read a truth16.txt in a session scratchpad, which (a) is not

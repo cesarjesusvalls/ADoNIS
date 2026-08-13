@@ -19,8 +19,14 @@ __pycache__/
 *.hepmc
 # all inputs/data live locally, not in the repo (experiment releases via nuisance, ACHILLES
 # inputs fetched, densities/oracle regenerable) -- see data/README or docs
+# BOTH the directory form and the bare name.  `data/` and `output/` with a trailing slash match a
+# DIRECTORY only -- in this checkout they are SYMLINKS into /sdf/data/neutrino/cjesus/ADoNIS, which the
+# trailing-slash form does not match.  They therefore showed as untracked forever, and a `git add -A`
+# committed them (f96a9e3): a machine-specific absolute path, baked into the repo.
+data
 data/
 # run products (regenerable): output/achilles = ACHILLES, output/adonis = ADoNIS banks + caches
+output
 output/
 _paper_release/
 output/event_bank/

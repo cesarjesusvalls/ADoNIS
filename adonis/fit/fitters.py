@@ -108,10 +108,16 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None):
     # PROJECTED GRADIENT is the criterion that actually means "this is a minimum"; xtol/ftol stay tight
     # so a small step or a small chi2 change can still never be mistaken for convergence on the
     # degenerate M_A_res/S_Delta direction, which is exactly how the old LM false-converged.
-    GTOL = float(os.environ.get("S4_TRF_GTOL", "1e-8"))
+    # Tolerances come from the config the engine carries, so the fit that runs is the fit the config
+    # describes.  The literals are the fallback for a direct call with no config attached.
+    _mz = getattr(getattr(eng, "cfg", None), "fit", None)
+    _mz = getattr(_mz, "minimizer", None)
+    GTOL = float(getattr(_mz, "gtol", 1e-8))
+    XTOL = float(getattr(_mz, "xtol", 1e-14))
+    FTOL = float(getattr(_mz, "ftol", 1e-14))
     r = least_squares(_resid, x0, jac=_jac, bounds=(lo, hi), method="trf",
                       x_scale="jac", tr_solver="exact",
-                      max_nfev=max(nit, 8), xtol=1e-14, ftol=1e-14, gtol=GTOL)
+                      max_nfev=max(nit, 8), xtol=XTOL, ftol=FTOL, gtol=GTOL)
     th[idx] = r.x
     # Convergence is RECORDED, not assumed.  The LM it replaces never once satisfied its own tolerance
     # (0/12 on the wall toys, every fit hitting the iteration cap) and nothing downstream noticed -- that
@@ -155,12 +161,12 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
             slow smooth trajectory for a convergence demo.
     th_init: start point (default eng.th0).  The prior is ALWAYS centred at eng.th0 -- th_init only warm-
             starts the walk (e.g. profile scans re-minimising from the BFP), it does not move the prior."""
-    # S4_FITTER=trf -> bound-constrained trust-region-reflective.  Kept because it reproduces the boundary
-    # atom that LM does not: at E_b truth 0.50 (1.24 sigma from its wall) LM put 18.5% of 2000 toys ON the
-    # wall against Chernoff's Phi(-1.24) = 10.7%, while TRF gave 7.2%.  Any FC belt or coverage number for
-    # a boundary dial built with LM measures the minimiser, not the statistics.
-    if os.environ.get("S4_FITTER", "").lower() == "trf" and not huber and record is None:
-        return trf_fit(eng, subset, tag, nit=nit, mask=mask, th_init=th_init)
+    # NO HIDDEN DISPATCH.  This used to return trf_fit(...) when S4_FITTER=trf was set in the
+    # environment, so a call to lm_fit could silently be a call to something else.  Which minimiser runs
+    # is now cfg.fit.minimizer.method, decided by the caller.  (The reason to prefer TRF stands and is
+    # recorded in its docstring: at E_b truth 0.50, LM put 18.5% of 2000 toys on the wall against
+    # Chernoff's 10.7%, while TRF gave 7.2%.  A boundary coverage number built with LM measures the
+    # minimiser, not the statistics.)
     data, sigma = eng.data_sigma()
     if mask is None:
         mask = np.ones(len(data), bool)

@@ -525,20 +525,10 @@ def main():
     log(f"fit subset ({len(subset)} dials): " + " ".join(eng.pnames[k] for k in subset))
 
     # ---- inject truth, build the nonlinear closure data across ALL samples ------------------------- #
-    # "random": displace EVERY fitted dial by U(0.5,2)*prior with a random sign (Eb_shift positive-only --
-    # its physical floor at 0 makes a negative draw unrecoverable), so the full 16-D space is exercised.
-    if INJECT.strip().lower() == "random":
-        seed = int(os.environ.get("S4_INJECT_SEED", "0"))
-        rng = np.random.default_rng(seed)
-        truth = eng.th0.copy()
-        for k in subset:
-            mag = rng.uniform(0.5, 2.0) * eng.prior[k]
-            sign = 1.0 if eng.pnames[k] == "Eb_shift" else float(rng.choice([-1.0, 1.0]))
-            truth[k] = eng.th0[k] + sign * mag
-        inj_desc = f"random(seed={seed}; 0.5-2 sigma, all {len(subset)} dials)"
-    else:
-        truth, _inj = parse_inject(INJECT, nominal_knobs())
-        inj_desc = INJECT
+    # The truth is always explicit: cfg.data.inject.  A "random" mode used to displace every dial by
+    # U(0.5,2)*prior from S4_INJECT_SEED, which made the run definition depend on a seed that lived
+    # nowhere but the environment -- unreproducible from the config alone.
+    truth, _ = parse_inject(INJECT, nominal_knobs())
     eng.set_closure_data(truth)
     log(f"closure data ready (nonlinear exact reweight @ {inj_desc})")
     log("  truth: " + " ".join(f"{eng.pnames[k]}={truth[k]:.3f}" for k in subset))
@@ -556,7 +546,7 @@ def main():
            else f" (prior width x{PRIOR_SCALE:g})"))
 
     # ---- blind fit from nominal: ONE Gaussian-NLL (chi2_data + prior penalty) LM/GN fit ------------- #
-    TOL = float(os.environ.get("PHYSFIT_TOL", "1e-6"))    # Newton-decrement convergence (predicted gap)
+    TOL = float(cfg.fit.minimizer.newton_tol)   # Newton-decrement convergence (predicted chi2 gap)
     log(f"==== fit (Gaussian NLL = chi2_data + prior)  step_scale x tol={TOL:g}, nit<={NIT} ====")
     # FITTER.  TRF by default, matching the toys and the profile scan: LM clips its step onto the box and
     # then inflates lambda until the step underflows, exiting via `norm(dth) < 1e-12` reported as

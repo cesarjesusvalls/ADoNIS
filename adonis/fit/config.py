@@ -86,10 +86,12 @@ class Minimizer:
     ftol: float = 1e-14     # degenerate direction
     x_scale: str = "jac"
     start: str = "nominal"  # nominal | truth  (blind fits start at nominal)
+    newton_tol: float = 1e-6   # Newton-decrement stop: the predicted remaining chi2 gap  # nominal | truth  (blind fits start at nominal)
 
     @classmethod
     def parse(cls, d):
-        d = _only(d or {}, {"method", "max_nfev", "gtol", "xtol", "ftol", "x_scale", "start"},
+        d = _only(d or {}, {"method", "max_nfev", "gtol", "xtol", "ftol", "x_scale", "start",
+                            "newton_tol"},
                   "fit.minimizer")
         m = cls(**d)
         if m.method not in ("trf", "lm"):
