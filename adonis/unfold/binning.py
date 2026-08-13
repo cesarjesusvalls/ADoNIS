@@ -6,11 +6,17 @@ here so the two can never drift apart, and so the flattening convention (row-maj
 stated exactly once: a truth index that means something different in the response builder than in the
 figure is the kind of bug that produces a plausible, wrong unfolded spectrum.
 
-The truth grid is 10 cells and the reco grid is 30, as agreed.  Within those counts the factorisation is
-chosen so the delta-p_T axis nests exactly (each truth bin splits into two reco bins), which keeps the
-response matrix strongly diagonal in the variable that carries most of the structure.  delta-alpha_T does
-not nest (2 -> 3); it does not need to, because the projections quoted in the paper are taken in TRUTH
-space, where nesting is trivial.
+The truth grid is 10 cells and the reco grid is 60.  Six reco bins per truth bin leaves the system
+comfortably over-determined once the 28 physics knobs are floating too: 60 constraints against 38 free
+parameters, rather than 30 against 38, which data alone could not close.
+
+The factorisation was measured, not guessed.  Of the ways to split 60 cells, 10 x 6 is the only one that
+keeps at least 10 SIGNAL events in every reco bin (min 11.5; 20 x 3 falls to 2.0 and 12 x 5 to 8.1) while
+also giving the best-conditioned response.  6 x 10 has more occupancy margin but conditions worse and
+leaves only 6 delta-p_T bins against 5 truth delta-p_T bins -- too weak a ratio in the variable carrying
+most of the structure.  delta-p_T nests exactly (each truth bin splits into two reco bins); delta-alpha_T
+does not (2 -> 6 is a clean 3x, but its edges are quantiles rather than subdivisions), and it does not
+need to, because the projections quoted in the paper are taken in TRUTH space.
 """
 from __future__ import annotations
 
@@ -31,7 +37,7 @@ RECO_DPT = [0.0, 80.0, 120.0, 150.0, 185.0, 220.0, 260.0, 310.0, 380.0, 520.0, n
 
 # delta-alpha_T [rad], likewise equal-occupancy.  pi is a hard kinematic bound, so these axes are closed.
 TRUE_DAT = [0.0, 1.75, PI]
-RECO_DAT = [0.0, 1.34, 2.38, PI]
+RECO_DAT = [0.0, 0.68, 1.34, 1.91, 2.38, 2.78, PI]
 
 
 class Grid2D:

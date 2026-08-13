@@ -109,7 +109,7 @@ def test_projection_matches_the_flattening():
 def test_the_shipped_grids_have_the_agreed_shape():
     T, R = truth_grid(), reco_grid()
     assert (T.ndpt, T.ndat, T.n) == (5, 2, 10)
-    assert (R.ndpt, R.ndat, R.n) == (10, 3, 30)
+    assert (R.ndpt, R.ndat, R.n) == (10, 6, 60)
     assert R.n > T.n, "unfolding needs more reco bins than truth bins"
 
 
