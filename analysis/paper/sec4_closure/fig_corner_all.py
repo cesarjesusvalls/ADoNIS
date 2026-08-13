@@ -161,9 +161,9 @@ def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
     A.set_ylim(0, 1.18 * max(top, 1e-9))
 
 
-def main(label="sec4_A", nuts_label="sec4_B"):
+def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
     style.use()
-    views, meta = load_views(label)
+    views, meta = load_views(label, allow_partial)
     pn, sub, bfp, spost, V0, dials = (meta["pn"], meta["sub"], meta["bfp"], meta["spost"],
                                       meta["V0"], meta["dials"])
 
@@ -351,4 +351,6 @@ def main(label="sec4_A", nuts_label="sec4_B"):
 
 if __name__ == "__main__":
     p = [a for a in sys.argv[1:] if not a.startswith("--")]
-    main(*(p[:2] or ["sec4_A"]))
+    # --allow-partial: draw from a shard set the merge has judged incomplete.  Marked in the log, and
+    # never the default: a downgraded panel is indistinguishable from a healthy one by eye.
+    main(*(p[:2] or ["sec4_A"]), allow_partial="--allow-partial" in sys.argv)

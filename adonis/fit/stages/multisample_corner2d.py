@@ -33,6 +33,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from adonis.fit.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
 from adonis.fit.fitters import lm_fit, trf_fit, parse_inject
+from adonis.fit import provenance
 from analysis.paper.physical_fit import PNAMES
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.analysis import knobs as K
@@ -56,7 +57,6 @@ def main():
     # because they share the grid walk; the config decides, not an unrelated env var named MODE.
     STAGE = os.environ.get("ADONIS_FIT_STAGE", "profile2d")
     MODE = {"profile2d": "prof", "gradient2d": "grad"}[STAGE]
-    pass
 
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
@@ -157,7 +157,11 @@ def main():
         hi = min(hi, K.phys_hi(pn[kk]) or np.inf)
         return np.linspace(lo, hi, N)
 
+    # The row block this task owns.  Resolved ONCE, here, because it names the output file, bounds the
+    # scan loop below and is stamped into the npz -- three uses that must agree.
     _RB = int(os.environ.get("S4_ROW_BASE", "-1"))
+    _NR = int(os.environ.get("S4_NROW", "1"))
+    _ROWS = range(N) if _RB < 0 else range(_RB, min(_RB + _NR, N))
     # N IS IN THE FILENAME.  Two runs of the same pair at different resolutions are DISTINCT candidates
     # (the loader keys on grid signature and prefers the finer complete one), but they used to collide on
     # disk whenever pair base and row base matched -- so a coarse fast pass would overwrite rows of the
@@ -178,7 +182,10 @@ def main():
         # and re-zeroing the merged array afterwards cannot undo a per-shard offset.  `dchi2` is kept for
         # back-compat with the pair-sharded runs (where the shard held a whole pair, so its min was the
         # global one and the two fields agree).
-        np.savez(out, mode=MODE, dials=want, pair_idx=np.array(pairs), pair_base=PB, axis_sigma=ax,
+        # ROW BLOCK + GRID as stamped fields: the merge needs to know which rows this shard was ASSIGNED,
+        # not merely which cells came back finite, or "complete" can only ever be a NaN-fraction guess.
+        np.savez(out, **provenance.stamp(row_base=max(_RB, 0), n_row=len(_ROWS), n_grid=N),
+                 mode=MODE, dials=want, pair_idx=np.array(pairs), pair_base=PB, axis_sigma=ax,
                  axis_sigma_pair=_axsig,
                  dchi2=c, chi2_abs=chi, logdet_Vnuis=ldv, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
                  subset=subset, pnames=pn, sigma_post=spost, V=V, A=A, sel_pos=np.array(idx),
@@ -197,10 +204,7 @@ def main():
         # ROW SHARDING: a single pair at N=41 is 1681 nodes (~3-4 h serial).  Rows are independent -- the
         # snake warm-start only chains WITHIN a row's neighbours -- so one task per row block turns that
         # into minutes.  Unset -> all rows, filename unchanged.
-        RB = int(os.environ.get("S4_ROW_BASE", "-1"))
-        NR = int(os.environ.get("S4_NROW", "1"))
-        rows = range(N) if RB < 0 else range(RB, min(RB + NR, N))
-        order = [(ia, ib) for ia in rows for ib in (range(N) if ia % 2 == 0 else range(N - 1, -1, -1))]
+        order = [(ia, ib) for ia in _ROWS for ib in (range(N) if ia % 2 == 0 else range(N - 1, -1, -1))]
         warm = bfp.copy()
         for (ia, ib) in order:
             th = (warm if MODE == "prof" else bfp).copy()

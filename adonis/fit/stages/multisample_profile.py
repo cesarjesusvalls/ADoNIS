@@ -27,6 +27,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from adonis.fit.stages.multisample import build_multisample_engine
 from adonis.fit.fitters import lm_fit, trf_fit
+from adonis.fit import provenance
 from analysis.paper.physical_fit import PNAMES
 from adonis.analysis import knobs as K
 
@@ -189,7 +190,11 @@ def main():
 
     out = (f"output/altgen/{LABEL}_profile.npz" if PB < 0
            else f"output/altgen/{LABEL}_profile_sh{PB:02d}.npz")
-    np.savez(out, subset=subset, pnames=eng.pnames, grid_sigma=grid, grids_sigma=grids,
+    # WHICH DIALS this shard was assigned, stamped: the merge then states which are missing from the
+    # assignment, instead of inferring it from an all-NaN row (indistinguishable from a scan that ran and
+    # produced nothing).
+    np.savez(out, **provenance.stamp(dial_base=max(PB, 0), n_dial=len(mine), n_subset=len(subset)),
+             subset=subset, pnames=eng.pnames, grid_sigma=grid, grids_sigma=grids,
              prof_dobj=prof, prof_dchi2=profd, logdet_Vnuis=logdetV,
              bfp=bfp, sigma_post=spost, truth=truth, chi2_min=cd_min)
     log(f"[out] {out}")

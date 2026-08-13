@@ -31,12 +31,13 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
 from adonis.analysis import knobs as K
+from adonis.fit import merge as MG
 
 L68, L90 = 2.30, 4.61          # 2-D Delta-chi2 levels
 C68, C90, C_BFP = "#1f4b9c", "#7aa7dd", "#d24"
 
 
-def load_views(label):
+def load_views(label, allow_partial=False):
     """Assemble the per-pair profiled chi2 surfaces for `label`.
 
     Shared with fig_corner_all so the axis / merge / wall-snap conventions live in ONE place -- each of
@@ -50,6 +51,11 @@ def load_views(label):
     if not fs:
         raise SystemExit(f"no prof shards for {label}")
     Z = [np.load(f, allow_pickle=True) for f in fs]
+    # ONE RUN DEFINITION for all shards, and none of them preempted mid-grid.  The axes agreeing is not
+    # evidence of this: two campaigns with different injected truth, sigma or estimator produce identical
+    # axes and merge without a murmur.
+    rep = MG.check(fs, Z, what=f"{label} corner2d")
+    rep.raise_if_bad(allow_partial)
     # Views are keyed by DIAL NAMES, not by pair index, so several corner RUNS can contribute to one
     # figure: the 6-dial N=21 sweep plus the dedicated N=41 scan of M_A_res x S_Delta, whose degeneracy is
     # so tight (corr -0.995) that at N=21 the 68% region breaks into disconnected diamonds.  Where a pair
@@ -93,13 +99,21 @@ def load_views(label):
             # finer scan shadow a complete coarser one, and the panel then vanished as "incomplete".
             sig = (len(axi), round(float(axi[0]), 6), round(float(axi[-1]), 6),
                    round(float(axj[0]), 6), round(float(axj[-1]), 6))
+            # Which ROWS this shard was assigned, from its own stamp.  Completeness is then a statement
+            # about the work rather than about NaNs, and a gap can be NAMED.
+            _p = MG.provenance.read(z)
+            _blk = (int(_p["row_base"]), int(_p["n_row"])) if _p and "n_row" in _p else None
             c = cands.setdefault(key, {}).get(sig)
             if c is None:
                 cands[key][sig] = dict(axi=axi, axj=axj, d=v.copy(), raw=_raw,
                                        ld=(None if _ld is None else _ld.copy()),
-                                       ci=pos[int(ii)], cj=pos[int(jj)])
+                                       ci=pos[int(ii)], cj=pos[int(jj)],
+                                       blocks=([_blk] if _blk else []), nshard=1)
             else:
                 m = np.isfinite(v); c["d"][m] = v[m]; c["raw"] = c["raw"] and _raw
+                c["nshard"] += 1
+                if _blk:
+                    c["blocks"].append(_blk)
                 if c["ld"] is not None and _ld is not None:
                     m2 = np.isfinite(_ld); c["ld"][m2] = _ld[m2]
                 else:
@@ -112,23 +126,54 @@ def load_views(label):
             if w["raw"] and np.isfinite(w["d"]).any():
                 w["d"] = w["d"] - np.nanmin(w["d"])
 
+    # PREFERENCE, independent of completeness: the WIDER span (the adaptive scan), then the finer grid.
+    # ROUND the span before comparing.  Two runs over the SAME window reconstruct it from linspace grids
+    # of different length, so the spans differ in the last ulp (151.69462533697404 vs 151.694625336974) --
+    # enough for max() to settle it on the span and never reach the node-count tie-break, silently
+    # preferring N=21 over the complete N=81 scan.
+    def _rank(w):
+        return (round((w["axi"][-1] - w["axi"][0]) * (w["axj"][-1] - w["axj"][0]), 6), len(w["axi"]))
+
+    def _complete(w, key):
+        """Did this candidate compute everything it was asked to?
+
+        With stamps, that is an exact statement: the assigned row blocks must tile range(N).  Without
+        them (every shard of the sec4_P1 campaign), fall back to the old NaN-fraction proxy -- which is
+        why the proxy survives here at all.
+        """
+        if w["blocks"]:
+            sub = MG.Report(what="")
+            sub.rows(w["blocks"], grid=len(w["axi"]), what=f"{key[0]} x {key[1]} (N={len(w['axi'])})")
+            return (not sub.errors), (sub.errors + sub.warnings)
+        frac = float(np.isfinite(w["d"]).mean())
+        return frac >= 0.999, ([] if frac >= 0.999 else
+                               [f"{key[0]} x {key[1]} (N={len(w['axi'])}): {100*frac:.1f}% of nodes "
+                                f"finite, and the shards carry no row assignment to check against"])
+
     drop = []
     for key, by_sig in cands.items():
-        # only COMPLETE candidates may be drawn; among them prefer the WIDER span (the adaptive scan),
-        # then the finer grid.  Node count alone once reverted M_A_res x S_Delta to the old +-3 sigma run.
-        ok = [w for w in by_sig.values() if np.isfinite(w["d"]).mean() >= 0.999]
+        ranked = sorted(by_sig.values(), key=_rank, reverse=True)
+        ok, why = [], []
+        for w in ranked:
+            good, msg = _complete(w, key)
+            if good:
+                ok.append(w)
+            why += msg
         if not ok:
             drop.append((key, [f"{len(w['axi'])}^2 {100*np.isfinite(w['d']).mean():.0f}%"
                                for w in by_sig.values()]))
+            rep.error(f"{key[0]} x {key[1]}: no complete grid; " + " | ".join(why))
             continue
-        # ROUND the span before comparing.  Two runs over the SAME window reconstruct it from linspace
-        # grids of different length, so the spans differ in the last ulp (151.69462533697404 vs
-        # 151.694625336974) -- enough for max() to settle it on the span and never reach the node-count
-        # tie-break, silently preferring N=21 over the complete N=81 scan.
-        views[key] = max(ok, key=lambda w: (round((w["axi"][-1] - w["axi"][0])
-                                                  * (w["axj"][-1] - w["axj"][0]), 6), len(w["axi"])))
+        views[key] = ok[0]
+        # THE SILENT DOWNGRADE.  If a better candidate exists but was rejected as incomplete, the figure
+        # renders happily at the lower resolution and nothing about it looks wrong.  That is the failure
+        # this check exists for, so it is an error and not the `[note]` it used to be.
+        if _rank(ok[0]) < _rank(ranked[0]):
+            rep.error(f"{key[0]} x {key[1]}: falling back to N={len(ok[0]['axi'])} because the "
+                      f"preferred N={len(ranked[0]['axi'])} scan is incomplete -- " + " | ".join(why))
     if drop:
         print(f"[warn] {len(drop)} view(s) DROPPED, no complete grid: {drop}")
+    rep.raise_if_bad(allow_partial)
     for key, w in views.items():
         n_part = len(cands[key]) - 1
         if n_part:
@@ -187,9 +232,9 @@ def snap_axis(aa, kk, cc, pn, bfp, spost):
     return aa
 
 
-def main(label="sec4_ref"):
+def main(label="sec4_ref", allow_partial=False):
     style.use()
-    views, meta = load_views(label)
+    views, meta = load_views(label, allow_partial)
     pn, sub, bfp, spost, V0, dials = (meta["pn"], meta["sub"], meta["bfp"], meta["spost"],
                                       meta["V0"], meta["dials"])
 
@@ -292,4 +337,4 @@ def main(label="sec4_ref"):
 
 if __name__ == "__main__":
     p = [a for a in sys.argv[1:] if not a.startswith("--")]
-    main(*(p[:1] or []))
+    main(*(p[:1] or []), allow_partial="--allow-partial" in sys.argv)

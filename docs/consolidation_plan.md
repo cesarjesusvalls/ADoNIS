@@ -88,13 +88,26 @@ uncertainty:
 11. Retire the `S4_*` surface. Keep a thin env override for genuinely per-job things only
     (`--shard`, chunk caps), and fail loudly on any unrecognised `S4_*` still set in the environment.
 
-## P3 — sharding and merging (~half day)
+## P3 — sharding and merging (~half day) — **done**
 
 12. Move sharding into the runner: `--shard k/N` decides pair/row/seed ranges from the config, rather
-    than `S4_PAIR_BASE` × `S4_ROW_BASE` × filename conventions.
+    than `S4_PAIR_BASE` × `S4_ROW_BASE` × filename conventions. ✔
 13. One merge function per stage that validates the manifest set is complete and self-consistent before
-    writing the merged product — no more "98% complete so it silently fell back to the coarse grid".
-14. Store raw quantities, never per-shard-normalised ones (the `chi2_abs` lesson).
+    writing the merged product — no more "98% complete so it silently fell back to the coarse grid". ✔
+    `adonis/fit/merge.py`, used by the corner and profile merges.
+14. Store raw quantities, never per-shard-normalised ones (the `chi2_abs` lesson). ✔ (predates P3)
+
+**Correction to item 13: not the manifests.** The runner's `.manifest.json` cannot be what a merge
+validates against, because a manifest and its shard are associated only by filename convention — copy,
+rename or hand-merge a shard and its claims are silently gone, which is precisely the situation the check
+exists to detect. The provenance is therefore stamped INSIDE the npz (`adonis/fit/provenance.py`,
+`prov_*` keys); manifests remain a run log. Shards also stamp *which slice of the work they were
+assigned* (row block, dial block), which turns "is this complete?" from a NaN-fraction proxy into an
+exact statement that can name the missing rows.
+
+Grandfathered on purpose: every sec4_P1 product predates stamping, and re-running the campaign is out of
+scope, so an unstamped shard warns and falls back to the NaN proxy. A shard that *carries* provenance and
+disagrees with its siblings is a hard error.
 
 ## P4 — plotting relocation (~half day)
 

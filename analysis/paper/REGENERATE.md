@@ -160,6 +160,13 @@ that is the specific failure this replaces.  `--dry-run` resolves the config and
 them without running; note it does not import the stage, so it validates the run definition, not the
 stage body.
 
+**Merging is validated, not assumed.** Any driver that assembles shards (the corner loader, the profile
+merge) first checks that they came from one run definition and that the work they were assigned is
+covered; a gap is named by row, and the merge refuses rather than quietly producing a lower-resolution or
+mixed-campaign product. Shards written before this existed carry no provenance, so they warn and fall
+back to the older NaN-coverage test. `--allow-partial` accepts a knowingly incomplete set and marks the
+result `prov_partial`.
+
 Then the figures, which only read persisted npz and never refit:
 
 ```bash
