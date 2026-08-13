@@ -119,6 +119,23 @@ $P -m analysis.paper.sec2_fisher.make        # column set declared in configs/pa
 $P -m analysis.paper.sec3_gradients.make
 ```
 
+Every subset is a **row slice** of the one Jacobian, so the subset study costs no bank pass.
+
+Reading the §2 output: a knob is **FIT** when its shrinkage `σ_post/σ_prior < 0.5` — the data, not the
+prior, determines it. Because `σ_post` is *marginalized*, failing has two physically opposite causes, and
+the figures separate them:
+
+- **DEGENERATE** — low raw shrinkage (the data sees it clearly with the other knobs fixed) but high
+  marginalized shrinkage: another knob mimics it, and a better observable can recover it. *e.g.*
+  `qe_norm`, raw 0.034 → marginalized 0.86, because `axial_strength`/`vector_strength`/`sf_norm` can all
+  spell "scale the QE rate".
+- **INVISIBLE** — raw shrinkage > 1: the sample carries no information at this precision, and no
+  re-parameterization helps. *e.g.* `s_conv` (raw 13.8), `pion_pole`, `gen`.
+
+Gate I is **precision-relative** by construction: the fractional systematic in `configs/samples/*.yaml`
+(0.05) is what defines "resolvable". At 15 % only 4 knobs pass instead of 7 — measurability is a property
+of the knob *and* of the dataset's precision, which is the paper's thesis in miniature.
+
 ### §4 — closure, uncertainty, gradient flow, rates
 
 Everything is in `configs/fits/sec4_P1.yaml`, which **is** the input — one config, one entry point.
