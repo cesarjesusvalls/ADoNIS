@@ -11,7 +11,10 @@ The CH T2K CC1pi+ sample (t2k_cc1pi_ch) is used -- the non-pure-target demonstra
 """
 import os
 import sys
+import pathlib
 import time
+
+import yaml
 from pathlib import Path
 
 import numpy as np
@@ -26,16 +29,32 @@ from analysis.paper import style                              # noqa: E402
 # dipole(Q2; M_A_res) * res_axial_strength, so M_A_res (Q2 SHAPE) and C5A (NORMALISATION) are only
 # separable with Q2 reach.  NOTE the two are the SAME 91,843 events binned two ways -- stacking both into
 # one Fisher double-counts them; keep that in mind when reading the combined Gate I.
-SAMPLES = ["t2k_cc0pi", "t2k_cc1pi_ch", "minerva_stv", "minerva_ptpz", "ee_omega",
-           "minerva_cc1pip_tpi", "minerva_cc1pip_q2"]
-BEAM_OBS = {"pip": ["pip_react", "pip_abs"], "prot": ["prot_react", "prot_pipro"],
-            "neut": ["neut_react", "neut_pipro"]}
+# The sample list and the beam observable keys are NOT declared here.  They come from the fit config
+# (configs/fits/*.yaml) and configs/samples/beams.yaml respectively, because this Jacobian and the sec4
+# engine must describe the SAME stack -- multisample.py asserts its dskeys against this npz, and when the
+# two lists lived in two files, adding MINERvA CC1pi+ meant editing both in step or getting an assertion
+# hours into a run.  BEAM_OBS was additionally duplicated in sec3_gradients/build_multisample.py.
+_BEAMS_CFG = "configs/samples/beams.yaml"
 
 
-def build(samples=SAMPLES, beams=("pip", "prot", "neut"), nbins=15, syst=0.05, max_chunks=None,
-          out_label="multisample_carbon"):
+def _beam_spec():
+    d = yaml.safe_load(pathlib.Path(_BEAMS_CFG).read_text())
+    return d["beams"], int(d["nbins"]), float(d["syst"])
+
+
+def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbins=None, syst=None,
+          max_chunks=None, out_label="multisample_carbon"):
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+
+    from adonis.fit.config import FitConfig
+    cfg = FitConfig.load(fit_config)
+    bspec, nb_cfg, syst_cfg = _beam_spec()
+    samples = list(samples if samples is not None else cfg.samples)
+    beams = list(beams if beams is not None else cfg.beams)
+    nbins = nb_cfg if nbins is None else nbins
+    syst = syst_cfg if syst is None else syst
+    log(f"from {fit_config}: {len(samples)} samples + {len(beams)} beams; beams from {_BEAMS_CFG}")
 
     ss = SampleSet.from_configs([f"configs/samples/{s}.yaml" for s in samples])
     r = ss.gate1(max_chunks=max_chunks, log=log)                         # the 5 experiment samples
@@ -46,7 +65,7 @@ def build(samples=SAMPLES, beams=("pip", "prot", "neut"), nbins=15, syst=0.05, m
     for beam in beams:                                                   # FSI-only beam Jacobians (cached)
         Jb, sb, _c, e_beam, _n = BF.beam_jacobian(beam, nbins=nbins, syst=syst)
         J.append(np.asarray(Jb)); sigma.append(np.asarray(sb))
-        for key in BEAM_OBS[beam]:
+        for key in bspec[beam]["observables"]:
             dskeys.append(key); row0.append(row0[-1] + nbins); edges[f"{key}_edges"] = np.asarray(e_beam)
         log(f"  + beam {beam} ({np.asarray(Jb).shape[0]} bins)")
 
