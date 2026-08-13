@@ -28,6 +28,29 @@ def _axis(groups, name="ax"):
     return dict(yaml.safe_load(groups), _name=name)
 
 
+def _declared_dskeys():
+    """The real observable stack, read from the SAME declarations the Jacobian builder reads.
+
+    Hardcoding it is what broke this test: the keys became namespaced `sample:obs` (commit a41b9b1) and
+    the literal list here stayed on the old bare names, so `t2k_*`/`ee_*` matched nothing and two probe
+    groups silently vanished from an assertion that was still checking group NAMES.  Deriving them means
+    a change of sample composition -- exactly what the resolver exists to survive -- updates this test
+    instead of breaking it.
+    """
+    import pathlib
+
+    from adonis.fit.config import FitConfig
+    cfg = FitConfig.load("configs/fits/sec4_P1.yaml")
+    beams = yaml.safe_load(pathlib.Path("configs/samples/beams.yaml").read_text())
+    out = []
+    for nm in cfg.samples:
+        s = yaml.safe_load(pathlib.Path(f"configs/samples/{nm}.yaml").read_text())
+        out += [f"{s['name']}:{o['key']}" for o in s["observables"] if o.get("fit", True)]
+    for b in cfg.beams:
+        out += list(beams["beams"][b]["observables"])
+    return out
+
+
 # ---- schema contract ---------------------------------------------------------------------------- #
 
 def test_check_schema_accepts_and_returns(tmp_path):
@@ -122,21 +145,25 @@ def test_rows_for_a_rebinned_npz_follows_the_new_edges(tmp_path):
 
 
 def test_config_file_resolves_against_the_multisample_datasets():
-    """The committed YAML parses and produces the probe / ladder / per-sample columns for a multi-sample
-    npz (T2K's 7 STV+muon obs + MINERvA + (e,e') + the pi+/p/n beams)."""
+    """The committed YAML parses and groups the real observable stack by probe -- T2K + MINERvA, the
+    (e,e') sample, and the pi+/p/n beams -- with every dataset claimed exactly once."""
     cfg = SS.load_config()
-    dskeys = (["dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT"]                 # T2K (sec2's 7)
-              + ["mnv_dat", "mnv_pn", "mnv_dpt", "mnv_ptmu", "mnv_pzmu"]          # MINERvA
-              + ["e_qe", "e_res"]                                                 # (e,e')
-              + ["pip_react", "pip_abs", "prot_react", "prot_pipro", "neut_react", "neut_pipro"])  # beams
+    dskeys = _declared_dskeys()
     axes = {a: SS.resolve_axis(dict(spec, _name=a), dskeys, log=lambda *_: None)
             for a, spec in cfg["axes"].items()}
+    # ONE axis survives the sec2 prune: sec2_shrinkage_subsets.  The sample_ladder and samples_alone
+    # figures were dropped from the paper, and their assertions went with them.
+    assert list(cfg["axes"]) == ["by_probe"]
     assert [n for n, _l, _k in axes["by_probe"]] == ["nu", "ebeam", "hadr", "all"]
-    assert [n for n, _l, _k in axes["sample_ladder"]] == ["T2K", "p_mnv", "p_ee", "p_had"]
-    assert [n for n, _l, _k in axes["samples_alone"]] == ["T2K", "MINERvA", "ee", "pip", "prot", "neut"]
     keys = {n: k for n, _l, k in axes["by_probe"]}
-    assert len(keys["nu"]) == 12                                  # 7 T2K + 5 MINERvA
-    assert len(keys["all"]) == len(dskeys)                        # ALL = every sample combined
+    # The three probe groups PARTITION the stack: every dataset claimed exactly once, nothing left over.
+    # Asserted as a partition rather than as three magic counts, so adding a sample cannot make this test
+    # wrong -- only a mis-grouped one can.
+    assert set(keys["nu"]) | set(keys["ebeam"]) | set(keys["hadr"]) == set(dskeys)
+    assert len(keys["nu"]) + len(keys["ebeam"]) + len(keys["hadr"]) == len(dskeys)
+    assert set(keys["all"]) == set(dskeys)                        # ALL = every sample combined
+    assert all(k.startswith(("t2k_", "minerva_")) for k in keys["nu"])
+    assert all(k.startswith("ee_") for k in keys["ebeam"])
 
 
 def test_all_axes_read_the_shared_multisample_npz():
