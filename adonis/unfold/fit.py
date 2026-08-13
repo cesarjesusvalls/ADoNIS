@@ -25,6 +25,7 @@ from scipy.optimize import least_squares
 from adonis.analysis import knobs as K
 from adonis.reweight import bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
+from adonis.unfold import flux as FX
 
 
 class UnfoldEngine:
@@ -34,10 +35,14 @@ class UnfoldEngine:
         self.A = np.asarray(inp["A"], float)
         self.n_true_mc = np.asarray(inp["n_true"], float)     # generator truth per bin, the c = 1 reference
         self.bkg_bin = np.asarray(inp["bkg_bin"], np.int64)
+        self.nflux = int(inp.get("nflux", FX.n_flux()))
+        self.bkg_fbin = np.asarray(inp["bkg_fbin"], np.int64)
+        self.bkg_flat = self.bkg_bin * self.nflux + self.bkg_fbin      # (reco, flux) -> one bincount
+        self.flux_L = FX.prior_chol()                                  # correlated prior, whitened below
         self.JB = BR.to_jax(inp["bkg_bank"])
         self.grids = BR.default_grids()
         self.nom = nominal_knobs()
-        self.nreco, self.ntrue = self.A.shape
+        self.nreco, self.ntrue, _nf = self.A.shape
         self.th0 = np.asarray(K.theta_nominal(self.nom), float)
         self.prior = np.asarray(K.PRIOR, float) * float(prior_scale)
         self.npar = self.ntrue + K.NPAR
@@ -45,142 +50,151 @@ class UnfoldEngine:
 
     # ---- forward ------------------------------------------------------------------------------------ #
     def background(self, th):
+        """B_ib(theta): background rate per (reco bin, flux bin).  Kept resolved in the flux index
+        because a flux parameter scales background too."""
         w = np.asarray(BR.bank_weight(self.JB, K.knobs_of(np.asarray(th), self.nom), self.grids))
-        return np.bincount(self.bkg_bin, weights=w, minlength=self.nreco)
+        return np.bincount(self.bkg_flat, weights=w,
+                           minlength=self.nreco * self.nflux).reshape(self.nreco, self.nflux)
 
-    def model(self, x):
-        c, th = self.split(x)
-        return self.A @ c + self.background(th)
-
-    def split(self, x):
-        x = np.asarray(x, float)
-        return x[:self.ntrue], x[self.ntrue:]
-
-    def join(self, c, th):
-        return np.concatenate([np.asarray(c, float), np.asarray(th, float)])
+    def model(self, c, f, th):
+        """mu_i = sum_jb A_ijb c_j f_b + sum_b B_ib(theta) f_b -- bilinear in (c, f)."""
+        return np.einsum("ijb,j,b->i", self.A, c, f) + self.background(th) @ f
 
     def x0(self):
-        """Start at the generator's own prediction: templates at 1, knobs at nominal."""
-        return self.join(np.ones(self.ntrue), self.th0)
+        """Start at the generator's own prediction: templates and flux at 1, knobs at nominal."""
+        return np.ones(self.ntrue), np.ones(self.nflux), self.th0.copy()
 
     # ---- jacobian ----------------------------------------------------------------------------------- #
     def _bkg_jac(self, th):
-        """d B_i / d theta_k, one jvp per knob over the background bank."""
+        """d B_ib / d theta_k -- (nreco, nflux, nknob), one jvp per knob over the background bank."""
         import jax
         import jax.numpy as jnp
         if self._jvp is None:
             self._jvp = jax.jit(lambda t, tang, JB: jax.jvp(
                 lambda u: BR.bank_weight(JB, K.knobs_of(u, self.nom), self.grids), (t,), (tang,))[1])
-        th = jnp.asarray(th)
-        out = np.zeros((self.nreco, K.NPAR))
+        thj = jnp.asarray(th)
+        out = np.zeros((self.nreco, self.nflux, K.NPAR))
         for k in range(K.NPAR):
-            g = np.asarray(self._jvp(th, jnp.zeros(K.NPAR).at[k].set(1.0), self.JB))
-            out[:, k] = np.bincount(self.bkg_bin, weights=g, minlength=self.nreco)
+            g = np.asarray(self._jvp(thj, jnp.zeros(K.NPAR).at[k].set(1.0), self.JB))
+            out[:, :, k] = np.bincount(self.bkg_flat, weights=g,
+                                       minlength=self.nreco * self.nflux).reshape(self.nreco, self.nflux)
         return out
 
-    def jac(self, x):
-        _c, th = self.split(x)
-        return np.hstack([self.A, self._bkg_jac(th)])          # exact in c, jvp in theta
+    def jac_blocks(self, c, f, th, knob_idx):
+        """(d mu/d c, d mu/d f, d mu/d theta).  The first two are EXACT -- the model is bilinear in
+        (c, f), so no autodiff is involved on either; only the background's theta dependence needs it."""
+        Af = np.einsum("ijb,b->ij", self.A, f)                 # d mu_i / d c_j
+        B = self.background(th)
+        dF = np.einsum("ijb,j->ib", self.A, c) + B             # d mu_i / d f_b
+        dT = (np.einsum("ibk,b->ik", self._bkg_jac(th), f)[:, knob_idx]
+              if len(knob_idx) else np.zeros((self.nreco, 0)))
+        return Af, dF, dT
 
     # ---- data --------------------------------------------------------------------------------------- #
-    def asimov(self, c_true=None, th_true=None):
+    def asimov(self, c_true=None, f_true=None, th_true=None):
         """Expected reco spectrum at a stated truth, plus its Poisson sigma."""
         c = np.ones(self.ntrue) if c_true is None else np.asarray(c_true, float)
+        f = np.ones(self.nflux) if f_true is None else np.asarray(f_true, float)
         th = self.th0 if th_true is None else np.asarray(th_true, float)
-        d = self.A @ c + self.background(th)
+        d = self.model(c, f, th)
         return d, np.sqrt(np.maximum(d, 1e-9))
 
-    # ---- fit ---------------------------------------------------------------------------------------- #
-    # ---- which knobs are worth floating ------------------------------------------------------------- #
+    # ---- which dials are worth floating --------------------------------------------------------------- #
     def dial_impact(self, sigma, th=None):
-        """Per-knob impact on the reco prediction, in units of the data error.
+        """Per-knob impact on the prediction in units of the data error:
 
             impact_k = || (dB/dtheta_k) * prior_k / sigma ||_2
 
-        i.e. how far a ONE-SIGMA-PRIOR move of knob k pushes the prediction, measured against the
-        uncertainty that would notice.  Prior-weighted because the knobs are not commensurable: a 20%
-        move of a rate normalisation and a 4 MeV move of E_b are only comparable once each is expressed
-        in its own allowed range.  A knob with impact << 1 cannot be seen by this data set and cannot
-        affect the templates either; floating it only adds a direction the fit has to explore.
+        how far a ONE-SIGMA-PRIOR move of knob k pushes the prediction, measured against the uncertainty
+        that would notice.  Prior-weighted because the knobs are not commensurable: a 20% move of a rate
+        normalisation and a 4 MeV move of E_b only compare once each is in units of its own range.
         """
-        J = self._bkg_jac(self.th0 if th is None else th)
+        J = self._bkg_jac(self.th0 if th is None else th).sum(axis=1)      # flux at nominal = 1
         return np.linalg.norm(J * self.prior[None, :] / np.asarray(sigma)[:, None], axis=0)
 
-    def select_dials(self, sigma, threshold=0.1, th=None, log=print):
+    def select_dials(self, sigma, threshold=1.0, th=None, log=print):
         """The knobs worth floating: those whose prior-sized move shifts the prediction by at least
-        `threshold` sigma somewhere.
+        `threshold` sigma.  Measured here, the 28 span four orders of magnitude -- kF_sf at 11.1 down to
+        s_conv at 0.000 -- because they reweight only the background, and most describe physics this
+        selection never sees.
 
-        Measured on this data set, the 28 knobs span FOUR ORDERS OF MAGNITUDE of impact -- kF_sf at 11.1
-        down to s_conv at 0.000 -- because they reweight only the 17% background, and most of them
-        describe physics this selection never sees.  At threshold 0.1 the surviving 20 reproduce the
-        full 28-knob template errors to 0.00%.
-
-        The threshold is deliberately loose.  Dropping a knob can only SHRINK the template errors, which
-        is the wrong direction for a systematic: it claims precision that was not earned.  So the cut is
-        set where it costs nothing, not where it starts to hurt -- cutting to 14 already shaves 0.2% off
-        the quoted errors and cutting to 10 shaves 1.2%.
+        Note which way the error moves: dropping a knob can only SHRINK the template errors, so a cut is
+        never conservative.  threshold=0.1 keeps 20 and costs nothing; threshold=1.0 keeps ~11 (a
+        prior-sized move must be worth at least one sigma) and costs about 1% of the quoted error.
         """
         imp = self.dial_impact(sigma, th)
         idx = np.flatnonzero(imp >= threshold)
         if log:
-            dropped = [K.PNAMES[k] for k in np.flatnonzero(imp < threshold)]
-            log(f"  dials: {len(idx)}/{K.NPAR} float (impact >= {threshold}); "
-                f"dropped {len(dropped)}: {dropped}")
+            log(f"  dials: {len(idx)}/{K.NPAR} float (impact >= {threshold}): "
+                f"{[K.PNAMES[k] for k in idx]}")
         return idx, imp
 
-    def fit(self, data, sigma, free_knobs=True, knob_idx=None, max_nfev=200, log=print):
-        """Minimise chi2_data + prior.  Returns theta-hat, the covariance, and diagnostics.
+    # ---- fit ---------------------------------------------------------------------------------------- #
+    def fit(self, data, sigma, knob_idx=None, free_flux=True, max_nfev=200, log=print):
+        """Minimise chi2_data + priors over [c | f | theta_subset].
 
-        `knob_idx`: which of the 28 knobs float.  None + free_knobs=True means all of them; an explicit
-        index list floats only those, holding the rest at nominal.  Residuals are stacked [data ; prior]
-        so a linear least-squares solver sees the MAP problem directly, and the prior block has a
-        constant Jacobian, which is why the covariance below is exact rather than an estimate.
+        The parameter vector is three blocks with three different prior treatments, which is the whole
+        point of the section:
+
+            c        templates, NO prior.  An unfolded spectrum pulled toward the generator is not a
+                     measurement.
+            f        flux, CORRELATED 20% prior.  Whitened by the Cholesky factor of the covariance, so
+                     the residual block is solve(L, f - 1) and the solver still sees a sum of squares.
+                     Without the off-diagonal terms the fit carves a sawtooth out of the flux to absorb
+                     statistical fluctuations; the flux is smooth in energy and the prior must say so.
+            theta    cross-section knobs, independent Gate-I priors (20%, 4 MeV on E_b).
         """
-        if knob_idx is None:
-            knob_idx = np.arange(K.NPAR) if free_knobs else np.zeros(0, int)
-        knob_idx = np.asarray(knob_idx, int)
-        nk = len(knob_idx)
-        npar = self.ntrue + nk
+        knob_idx = np.arange(K.NPAR) if knob_idx is None else np.asarray(knob_idx, int)
+        nk, nf = len(knob_idx), (self.nflux if free_flux else 0)
+        nt = self.ntrue
         pri = self.prior[knob_idx]
-        th_fix = self.th0.copy()
+        Linv = np.linalg.inv(self.flux_L) if free_flux else None
 
-        def theta_of(p):
-            th = th_fix.copy()
+        def unpack(p):
+            c = p[:nt]
+            f = p[nt:nt + nf] if free_flux else np.ones(self.nflux)
+            th = self.th0.copy()
             if nk:
-                th[knob_idx] = p[self.ntrue:]
-            return th
+                th[knob_idx] = p[nt + nf:]
+            return c, f, th
 
         def resid(p):
-            r = (self.model(self.join(p[:self.ntrue], theta_of(p))) - data) / sigma
-            if not nk:
-                return r
-            return np.concatenate([r, (p[self.ntrue:] - self.th0[knob_idx]) / pri])
+            c, f, th = unpack(p)
+            r = [(self.model(c, f, th) - data) / sigma]
+            if free_flux:
+                r.append(Linv @ (f - 1.0))                     # whitened correlated flux prior
+            if nk:
+                r.append((p[nt + nf:] - self.th0[knob_idx]) / pri)
+            return np.concatenate(r)
 
         def jacf(p):
-            full = self.jac(self.join(p[:self.ntrue], theta_of(p)))
-            J = np.hstack([full[:, :self.ntrue], full[:, self.ntrue + knob_idx]]) / sigma[:, None]
-            if not nk:
-                return J
-            P = np.hstack([np.zeros((nk, self.ntrue)), np.diag(1.0 / pri)])
-            return np.vstack([J, P])
+            c, f, th = unpack(p)
+            Ac, Af, At = self.jac_blocks(c, f, th, knob_idx)
+            top = np.hstack([Ac] + ([Af] if free_flux else []) + [At]) / sigma[:, None]
+            rows = [top]
+            if free_flux:
+                rows.append(np.hstack([np.zeros((self.nflux, nt)), Linv, np.zeros((self.nflux, nk))]))
+            if nk:
+                rows.append(np.hstack([np.zeros((nk, nt + nf)), np.diag(1.0 / pri)]))
+            return np.vstack(rows)
 
-        # Templates are scale factors on a rate: negative is unphysical, and the boundary is real.
-        lo = np.concatenate([np.zeros(self.ntrue),
+        lo = np.concatenate([np.zeros(nt), np.zeros(nf),
                              [K.phys_lo(K.PNAMES[k]) if K.phys_lo(K.PNAMES[k]) is not None else -np.inf
                               for k in knob_idx]])
-        hi = np.concatenate([np.full(self.ntrue, np.inf),
+        hi = np.concatenate([np.full(nt + nf, np.inf),
                              [K.phys_hi(K.PNAMES[k]) if K.phys_hi(K.PNAMES[k]) is not None else np.inf
                               for k in knob_idx]])
-        p0 = np.clip(np.concatenate([np.ones(self.ntrue), self.th0[knob_idx]]), lo + 1e-12, hi - 1e-12)
+        p0 = np.clip(np.concatenate([np.ones(nt + nf), self.th0[knob_idx]]), lo + 1e-12, hi - 1e-12)
 
         r = least_squares(resid, p0, jac=jacf, bounds=(lo, hi), method="trf",
                           xtol=1e-14, ftol=1e-14, gtol=1e-10, max_nfev=max_nfev)
         J = jacf(r.x)
         cov = np.linalg.pinv(J.T @ J, rcond=1e-12)             # GN covariance; exact at an Asimov minimum
-        chi2 = float(np.sum(((self.model(self.join(r.x[:self.ntrue], theta_of(r.x))) - data) / sigma) ** 2))
+        c, f, th = unpack(r.x)
+        chi2 = float(np.sum(((self.model(c, f, th) - data) / sigma) ** 2))
+        err = np.sqrt(np.abs(np.diag(cov)))
         if log:
-            log(f"  nfev={r.nfev} status={r.status} chi2_data={chi2:.4g} "
-                f"ndof={self.nreco - npar} |grad|={np.max(np.abs(r.grad)):.2e}")
-        return dict(x=r.x, c=r.x[:self.ntrue], th=theta_of(r.x), knob_idx=knob_idx,
-                    cov=cov, c_err=np.sqrt(np.diag(cov)[:self.ntrue]), chi2=chi2,
-                    ndof=self.nreco - npar, nfev=r.nfev, success=bool(r.success))
+            log(f"  nfev={r.nfev} chi2_data={chi2:.3e} ndof={self.nreco - nt - nf - nk}")
+        return dict(x=r.x, c=c, f=f, th=th, knob_idx=knob_idx, cov=cov,
+                    c_err=err[:nt], f_err=(err[nt:nt + nf] if free_flux else np.zeros(0)),
+                    chi2=chi2, ndof=self.nreco - nt - nf - nk, nfev=r.nfev, success=bool(r.success))

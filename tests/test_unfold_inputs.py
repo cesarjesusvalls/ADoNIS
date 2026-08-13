@@ -118,3 +118,33 @@ def test_the_dpt_axis_is_open_at_the_top(g):
     """Smearing pushes the reco tail past 4 GeV; a closed axis silently drops those events from the fit."""
     assert g.dpt[-1] == np.inf
     assert g.index([9e9], [1.0])[0] >= 0
+
+
+# ---- flux parameters -------------------------------------------------------------------------------- #
+
+def test_flux_grid_is_ten_bins_open_at_the_top():
+    from adonis.unfold import flux as FX
+    assert FX.n_flux() == 10
+    assert FX.FLUX_EDGES[-1] == np.inf
+    assert FX.flux_index([1e6])[0] == 9 and FX.flux_index([0.0])[0] == 0
+
+
+def test_flux_prior_is_correlated_and_invertible():
+    """Correlated on purpose: with a diagonal prior the fit carves a sawtooth out of the flux to absorb
+    a fluctuation in one reco bin.  It must also stay positive definite -- a prior that cannot be
+    factorised cannot be used, which is why the kernel is exponential and not squared-exponential."""
+    from adonis.unfold import flux as FX
+    C = FX.prior_cov()
+    assert np.allclose(np.sqrt(np.diag(C)), FX.SIGMA)
+    assert np.all(np.linalg.eigvalsh(C) > 0)
+    r = C / np.outer(np.sqrt(np.diag(C)), np.sqrt(np.diag(C)))
+    assert r[1, 2] > 0.7, "adjacent peak bins must be strongly correlated"
+    assert r[0, -1] < 0.1, "bins far apart in energy must not be"
+    L = FX.prior_chol()
+    assert np.allclose(L @ L.T, C)
+
+
+def test_flux_correlation_falls_off_monotonically():
+    from adonis.unfold import flux as FX
+    r = FX.prior_cov()[0] / FX.SIGMA ** 2
+    assert np.all(np.diff(r) < 0), "correlation with bin 0 must decrease with energy separation"
