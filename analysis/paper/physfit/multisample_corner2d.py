@@ -86,8 +86,9 @@ def main():
     PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
-    log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
-                         else f"MAP (prior width x{PRIOR_SCALE})"))
+    log(f"estimator: {cfg.fit.estimator.upper()}"
+        + (" (data-only, no prior)" if cfg.fit.estimator == "mle"
+           else f" (prior width x{PRIOR_SCALE:g})"))
 
     truth, _ = parse_inject(INJECT, nominal_knobs())
     eng.set_closure_data(truth)                     # Asimov: the minimum sits ON the injected truth

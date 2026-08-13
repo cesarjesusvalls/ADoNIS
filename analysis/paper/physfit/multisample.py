@@ -551,8 +551,9 @@ def main():
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
     # ALWAYS state the estimator: a figure whose caption says MLE while the run used MAP is exactly the
     # kind of silent mismatch that survives into a paper.
-    log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
-                         else f"MAP (prior width x{PRIOR_SCALE})"))
+    log(f"estimator: {cfg.fit.estimator.upper()}"
+        + (" (data-only, no prior)" if cfg.fit.estimator == "mle"
+           else f" (prior width x{PRIOR_SCALE:g})"))
 
     # ---- blind fit from nominal: ONE Gaussian-NLL (chi2_data + prior penalty) LM/GN fit ------------- #
     TOL = float(os.environ.get("PHYSFIT_TOL", "1e-6"))    # Newton-decrement convergence (predicted gap)

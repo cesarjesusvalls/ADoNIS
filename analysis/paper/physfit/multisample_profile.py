@@ -49,6 +49,8 @@ def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 
+    from adonis.fit.config import FitConfig
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
     st = cfg.stage("profile")
     LABEL = cfg.name
     NG = (int(st["n"]) - 1) // 2                # config gives TOTAL nodes; the scan wants per side
@@ -64,8 +66,6 @@ def main():
     truth = np.asarray(z["truth"])
     log(f"profiling {LABEL}: {len(subset)} dials, BFP loaded")
 
-    from adonis.fit.config import FitConfig
-    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
     eng = build_multisample_engine(log, cfg)
     nom0 = eng.th0.copy()                                  # true nominal = the prior centre (never mutated)
     eng.set_closure_data(truth)                            # reproduce the closure's (noiseless) data
@@ -73,8 +73,9 @@ def main():
     PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
         eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
-    log("estimator: " + ("MLE (data-only, no prior)" if PRIOR_SCALE == 0.0
-                         else f"MAP (prior width x{PRIOR_SCALE})"))
+    log(f"estimator: {cfg.fit.estimator.upper()}"
+        + (" (data-only, no prior)" if cfg.fit.estimator == "mle"
+           else f" (prior width x{PRIOR_SCALE:g})"))
 
     def objective(th):
         """FULL negative-log-posterior = chi2_data + prior penalty (the curvature sigma_post encodes)."""
