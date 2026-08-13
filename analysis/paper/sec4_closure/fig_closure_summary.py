@@ -1,4 +1,4 @@
-"""Figure A -- the whole closure argument in one figure.
+"""FIGURE A -- the whole closure argument in one figure.
 
 Four panels, all from the SAME reference fit (one truth, MLE, no prior).  (a), (c) and (d) state what
 uncertainty ONE dataset implies; (b) is the only panel that uses the toy ensemble, and it uses it for the
@@ -457,7 +457,7 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
 
         # LABEL-tagged: the study points (P1 = all dials off nominal, P2 = nominal but E_b) are separate
         # figures and must not overwrite each other.  `sec4_ref` keeps the historical filename.
-        base = "sec4_closure_summary" if label == "sec4_ref" else f"{label}_closure_summary"
+        base = f"{label}_figA"
         # a non-default interval level gets its own file, so the 1-sigma and 2-sigma versions can be
         # compared side by side instead of one silently replacing the other
         style.save(fig, base if abs(MASS - 0.6827) < 1e-6 else f"{base}_{round(100*MASS)}")

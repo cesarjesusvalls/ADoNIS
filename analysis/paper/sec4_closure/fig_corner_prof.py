@@ -1,4 +1,13 @@
-"""Figure D -- 2-D PROFILED confidence contours.
+"""2-D PROFILED confidence contours -- NO LONGER A PAPER FIGURE.
+
+Superseded by fig_corner_all (figure B), which shows the Gaussian, the Laplace marginal and
+the NUTS marginal on one set of axes; the raw profile is not drawn there because figure A
+(c)/(d) already make the point that it needs the nuisance-volume factor.  This module is kept
+because load_views / snap_axis / view_for live here and figure B imports them -- the shard
+merge, axis and wall conventions must exist in exactly one place.  Still runnable as a
+diagnostic.
+
+Original description:
 
 For every dial pair: chi2 minimised over the other 14 dials at each grid node, so the levels really are
 2-D confidence regions:  Dchi2 = 2.30 (68%) and 4.61 (90%).
@@ -70,6 +79,10 @@ def load_views(label):
             # offset, and the global minimum is taken once, after the merge, below.
             _raw = "chi2_abs" in z.files
             v = np.asarray(z["chi2_abs" if _raw else "dchi2"])[t]
+            # LOG-DET of the nuisance covariance at each node -- the ingredient the MARGINAL needs.
+            # Absent from shards written before it was stored; those panels simply get no Laplace
+            # contour rather than a wrong one.
+            _ld = np.asarray(z["logdet_Vnuis"])[t] if "logdet_Vnuis" in z.files else None
             if _ap is not None and np.isfinite(_ap[t]).all():
                 axi, axj = ((_ap[t, e] - _bf[_sb[pos[int(a)]]]) / _sp[pos[int(a)]]
                             for e, a in ((0, ii), (1, jj)))
@@ -83,9 +96,14 @@ def load_views(label):
             c = cands.setdefault(key, {}).get(sig)
             if c is None:
                 cands[key][sig] = dict(axi=axi, axj=axj, d=v.copy(), raw=_raw,
+                                       ld=(None if _ld is None else _ld.copy()),
                                        ci=pos[int(ii)], cj=pos[int(jj)])
             else:
                 m = np.isfinite(v); c["d"][m] = v[m]; c["raw"] = c["raw"] and _raw
+                if c["ld"] is not None and _ld is not None:
+                    m2 = np.isfinite(_ld); c["ld"][m2] = _ld[m2]
+                else:
+                    c["ld"] = None
 
     # Re-zero AFTER merging every shard of a candidate.  Only legal on raw-chi2 candidates; a mixed set
     # (some shards pre-dating chi2_abs) is left alone rather than silently mis-stitched.

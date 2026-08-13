@@ -42,6 +42,7 @@ DEFAULT_DIALS = "M_A_res,delta_strength,Eb_shift,sabs,f_NN_cex,kF_sf"
 # PHYSICAL ranges for MODE=grad (the "we have gradient information everywhere" figure).  Not sigma_post
 # windows: the claim is about the whole physically allowed region, so the grid must span it.
 PHYS_RANGE = {"M_A_res": (0.05, 2.0), "delta_strength": (0.05, 2.0), "Eb_shift": (0.01, 5.0),
+              "res_axial_strength": (0.05, 2.0),
               "sabs": (0.05, 2.0), "f_NN_cex": (0.01, 0.99), "kF_sf": (0.05, 2.0),
               "M_A_qe": (0.05, 2.0), "s_piN_elastic": (0.05, 2.0), "s_conv": (0.05, 2.0),
               "src_tail": (0.05, 2.0), "axial_strength": (0.05, 2.0)}
@@ -111,6 +112,12 @@ def main():
     chi = np.full((len(pairs), N, N), np.nan)
     gn = np.full((len(pairs), N, N, 2), np.nan)      # projected full-16D GN step
     g2 = np.full((len(pairs), N, N, 2), np.nan)      # RAW 2-D gradient on the shown pair (grad mode)
+    # LOG-DET of the NUISANCE covariance at every node.  Profiling MAXIMISES over the other dials,
+    # marginalising INTEGRATES over them; to Laplace order the marginal is
+    #     p(theta_i,theta_j) ~ exp(-Dchi2_prof/2) * sqrt(det V_nuis(theta_i,theta_j)) ,
+    # so without this the corner can only draw the profile, never the marginal.  The inner fit already
+    # returns V -- it was being discarded.  Same quantity multisample_profile stores in 1-D.
+    ldv = np.full((len(pairs), N, N), np.nan)
     axes_phys = np.full((len(pairs), 2, N), np.nan)  # the physical grid per pair (grad mode)
 
     # Per-dial axes taken from the 1-D profile scan (S4_CORNER_FROM_PROFILE=1), so the corner covers the
@@ -165,7 +172,7 @@ def main():
         # global one and the two fields agree).
         np.savez(out, mode=MODE, dials=want, pair_idx=np.array(pairs), pair_base=PB, axis_sigma=ax,
                  axis_sigma_pair=_axsig,
-                 dchi2=c, chi2_abs=chi, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
+                 dchi2=c, chi2_abs=chi, logdet_Vnuis=ldv, gn_step=gn, grad2d=g2, axes_phys=axes_phys, bfp=bfp, truth=truth,
                  subset=subset, pnames=pn, sigma_post=spost, V=V, A=A, sel_pos=np.array(idx),
                  complete=bool(final), n_done=int(np.isfinite(chi).sum()))
         if final:
@@ -193,7 +200,9 @@ def main():
             for kk in (ka, kb):                      # respect hard boundaries (E_b >= 0)
                 th[kk] = K.clip_phys(pn[kk], th[kk])
             if MODE == "prof":
-                th, *_ = _INNER(eng, ko, f"p{pi}", nit=NIT, th_init=th)
+                th, Vn, *_ = _INNER(eng, ko, f"p{pi}", nit=NIT, th_init=th)
+                _sg, _ld = np.linalg.slogdet(np.asarray(Vn))
+                ldv[pi, ia, ib] = _ld if _sg > 0 else np.nan
                 th[ka], th[kb] = axa[ia], axb[ib]    # lm_fit never moves the pinned pair, re-assert
                 for kk in (ka, kb):
                     th[kk] = K.clip_phys(pn[kk], th[kk])
