@@ -12,9 +12,9 @@ closure (not a Fisher toy): each sample's REAL event bank is loaded and reweight
 is the exact-reweighted binned prediction at an injected truth; the blind fit then has to walk the 16
 dials back from nominal through the true nonlinear model, across every sample jointly.
 
-`MultiEngine` deliberately duck-types the single-bank `physical_fit_run.Engine` (same `model`, `jac`,
+`MultiEngine` deliberately duck-types the single-bank `fitters.Engine` (same `model`, `jac`,
 `data_sigma`, `th0`, `prior`, `pnames`, `npar`, `row0`, `ds`), so the already-tested LM fit
-(`physical_fit_run.lm_fit`) and the Gate-II / flag machinery run over it UNCHANGED.
+(`fitters.lm_fit`) and the Gate-II / flag machinery run over it UNCHANGED.
 
 Every sample shares the one 28-knob `physical_fit` basis (`theta_nominal`/`knobs_of`); the reweight is
 `bank_reweight.bank_weight` for the nu/electron banks and `cascade.pool_fsi_reweight` for the beams (via
@@ -302,7 +302,7 @@ class BeamSample:
 
 
 class MultiEngine:
-    """Duck-types physical_fit_run.Engine over a list of sub-engines (samples concatenated in order)."""
+    """Duck-types fitters.Engine over a list of sub-engines (samples concatenated in order)."""
     def __init__(self, samples):
         self.samples = samples
         self.ds = [d for s in samples for d in s.ds]
@@ -514,7 +514,7 @@ def main():
     NIT = cfg.fit.minimizer.max_nfev
     log(f"config {cfg.path}  digest {cfg.digest()}")
 
-    from adonis.fit.stages.physical_fit_run import lm_fit, gate2_Q, gate2_split, flags, parse_inject
+    from adonis.fit.fitters import lm_fit, gate2_Q, gate2_split, flags, parse_inject
 
     eng = build_multisample_engine(log, cfg)
 
@@ -565,7 +565,7 @@ def main():
     # which trf_fit does not produce -- the convergence figure needs that path).
     traj = []
     if cfg.fit.minimizer.method == "trf":
-        from adonis.fit.stages.physical_fit_run import trf_fit
+        from adonis.fit.fitters import trf_fit
         th, V, J, m, chi2, chi2_data = trf_fit(eng, subset, "fit", nit=NIT)
     else:
         th, V, J, m, chi2, chi2_data = lm_fit(eng, subset, "fit", huber=False, nit=NIT, record=traj, tol=TOL)

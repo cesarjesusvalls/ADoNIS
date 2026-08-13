@@ -26,7 +26,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from adonis.fit.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
-from adonis.fit.stages.physical_fit_run import lm_fit, trf_fit
+from adonis.fit.fitters import lm_fit, trf_fit
 from analysis.paper.physical_fit import PNAMES
 from adonis.analysis import knobs as K   # PHYS_BOUND / phys_lo: one source of truth for hard boundaries
 
@@ -100,7 +100,7 @@ def main():
     FIXED = cfg.inject_string() if st.get("fixed_truth") else ""
     fixed_star = None
     if FIXED:
-        from adonis.fit.stages.physical_fit_run import parse_inject
+        from adonis.fit.fitters import parse_inject
         from adonis.reweight.reweight_model import nominal_knobs
         fixed_star, _ = parse_inject(FIXED, nominal_knobs())
         log("truth: FIXED for every toy (statistics-only ensemble) -> " +

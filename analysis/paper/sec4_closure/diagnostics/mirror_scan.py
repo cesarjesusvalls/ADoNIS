@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 t0 = time.time()
 def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 from adonis.fit.stages.multisample import build_multisample_engine
-from adonis.fit.stages.physical_fit_run import parse_inject
+from adonis.fit.fitters import parse_inject
 from adonis.reweight.reweight_model import nominal_knobs
 
 from adonis.fit.config import FitConfig
