@@ -39,6 +39,7 @@ class UnfoldEngine:
         self.bkg_fbin = np.asarray(inp["bkg_fbin"], np.int64)
         self.bkg_flat = self.bkg_bin * self.nflux + self.bkg_fbin      # (reco, flux) -> one bincount
         self.flux_L = FX.prior_chol()                                  # correlated prior, whitened below
+        self.det_prior = 0.05          # per-reco-bin detector normalisation, uncorrelated
         self.JB = BR.to_jax(inp["bkg_bank"])
         self.grids = BR.default_grids()
         self.nom = nominal_knobs()
@@ -56,13 +57,19 @@ class UnfoldEngine:
         return np.bincount(self.bkg_flat, weights=w,
                            minlength=self.nreco * self.nflux).reshape(self.nreco, self.nflux)
 
-    def model(self, c, f, th):
-        """mu_i = sum_jb A_ijb c_j f_b + sum_b B_ib(theta) f_b -- bilinear in (c, f)."""
-        return np.einsum("ijb,j,b->i", self.A, c, f) + self.background(th) @ f
+    def model(self, c, f, th, det=None):
+        """mu_i = d_i * [ sum_jb A_ijb c_j f_b + sum_b B_ib(theta) f_b ].
+
+        The detector dial d_i scales the whole content of reco bin i -- signal and background together --
+        because a detector normalisation uncertainty does not know what produced the event.  That makes
+        it the only block that acts in RECO space; templates act in truth space and flux in true energy.
+        """
+        base = np.einsum("ijb,j,b->i", self.A, c, f) + self.background(th) @ f
+        return base if det is None else det * base
 
     def x0(self):
-        """Start at the generator's own prediction: templates and flux at 1, knobs at nominal."""
-        return np.ones(self.ntrue), np.ones(self.nflux), self.th0.copy()
+        """Start at the generator's own prediction: everything at 1, knobs at nominal."""
+        return np.ones(self.ntrue), np.ones(self.nflux), self.th0.copy(), np.ones(self.nreco)
 
     # ---- jacobian ----------------------------------------------------------------------------------- #
     def _bkg_jac(self, th):
@@ -91,12 +98,13 @@ class UnfoldEngine:
         return Af, dF, dT
 
     # ---- data --------------------------------------------------------------------------------------- #
-    def asimov(self, c_true=None, f_true=None, th_true=None):
+    def asimov(self, c_true=None, f_true=None, th_true=None, det_true=None):
         """Expected reco spectrum at a stated truth, plus its Poisson sigma."""
         c = np.ones(self.ntrue) if c_true is None else np.asarray(c_true, float)
         f = np.ones(self.nflux) if f_true is None else np.asarray(f_true, float)
         th = self.th0 if th_true is None else np.asarray(th_true, float)
-        d = self.model(c, f, th)
+        det = None if det_true is None else np.asarray(det_true, float)
+        d = self.model(c, f, th, det)
         return d, np.sqrt(np.maximum(d, 1e-9))
 
     # ---- which dials are worth floating --------------------------------------------------------------- #
@@ -130,71 +138,88 @@ class UnfoldEngine:
         return idx, imp
 
     # ---- fit ---------------------------------------------------------------------------------------- #
-    def fit(self, data, sigma, knob_idx=None, free_flux=True, max_nfev=200, log=print):
-        """Minimise chi2_data + priors over [c | f | theta_subset].
+    def fit(self, data, sigma, knob_idx=None, free_flux=True, free_det=True, max_nfev=200, log=print):
+        """Minimise chi2_data + priors over [c | f | theta_subset | d].
 
-        The parameter vector is three blocks with three different prior treatments, which is the whole
-        point of the section:
+        FOUR blocks, four prior treatments -- which is the section in one function:
 
-            c        templates, NO prior.  An unfolded spectrum pulled toward the generator is not a
-                     measurement.
-            f        flux, CORRELATED 20% prior.  Whitened by the Cholesky factor of the covariance, so
-                     the residual block is solve(L, f - 1) and the solver still sees a sum of squares.
-                     Without the off-diagonal terms the fit carves a sawtooth out of the flux to absorb
-                     statistical fluctuations; the flux is smooth in energy and the prior must say so.
-            theta    cross-section knobs, independent Gate-I priors (20%, 4 MeV on E_b).
+            c      templates, in TRUTH space, NO prior.  An unfolded spectrum pulled toward the
+                   generator is not a measurement.
+            f      flux, in TRUE ENERGY, CORRELATED 20% prior (whitened by its Cholesky factor).
+            theta  cross-section knobs, independent Gate-I priors (20%, 4 MeV on E_b).
+            d      detector, in RECO space, independent 5% priors -- one per reco bin.
+
+        The detector block adds 60 parameters to a 60-bin fit, which looks under-determined and is not:
+        every one of them carries its own prior, so each contributes a constraint alongside its
+        parameter.  What it does do is inflate the template errors, because a per-bin normalisation
+        freedom is exactly what the templates are trying to measure through.
         """
         knob_idx = np.arange(K.NPAR) if knob_idx is None else np.asarray(knob_idx, int)
-        nk, nf = len(knob_idx), (self.nflux if free_flux else 0)
+        nk = len(knob_idx)
+        nf = self.nflux if free_flux else 0
+        nd = self.nreco if free_det else 0
         nt = self.ntrue
         pri = self.prior[knob_idx]
         Linv = np.linalg.inv(self.flux_L) if free_flux else None
+        o_f, o_k, o_d = nt, nt + nf, nt + nf + nk
 
         def unpack(p):
             c = p[:nt]
-            f = p[nt:nt + nf] if free_flux else np.ones(self.nflux)
+            f = p[o_f:o_f + nf] if free_flux else np.ones(self.nflux)
             th = self.th0.copy()
             if nk:
-                th[knob_idx] = p[nt + nf:]
-            return c, f, th
+                th[knob_idx] = p[o_k:o_k + nk]
+            det = p[o_d:o_d + nd] if free_det else None
+            return c, f, th, det
 
         def resid(p):
-            c, f, th = unpack(p)
-            r = [(self.model(c, f, th) - data) / sigma]
+            c, f, th, det = unpack(p)
+            r = [(self.model(c, f, th, det) - data) / sigma]
             if free_flux:
-                r.append(Linv @ (f - 1.0))                     # whitened correlated flux prior
+                r.append(Linv @ (f - 1.0))
             if nk:
-                r.append((p[nt + nf:] - self.th0[knob_idx]) / pri)
+                r.append((p[o_k:o_k + nk] - self.th0[knob_idx]) / pri)
+            if free_det:
+                r.append((p[o_d:o_d + nd] - 1.0) / self.det_prior)
             return np.concatenate(r)
 
         def jacf(p):
-            c, f, th = unpack(p)
+            c, f, th, det = unpack(p)
             Ac, Af, At = self.jac_blocks(c, f, th, knob_idx)
-            top = np.hstack([Ac] + ([Af] if free_flux else []) + [At]) / sigma[:, None]
-            rows = [top]
+            base = np.einsum("ijb,j,b->i", self.A, c, f) + self.background(th) @ f
+            sc = np.ones(self.nreco) if det is None else det
+            top = [Ac * sc[:, None]] + ([Af * sc[:, None]] if free_flux else []) + [At * sc[:, None]]
+            if free_det:
+                top.append(np.diag(base))                       # d mu_i / d d_i = base_i
+            rows = [np.hstack(top) / sigma[:, None]]
+            npar = nt + nf + nk + nd
             if free_flux:
-                rows.append(np.hstack([np.zeros((self.nflux, nt)), Linv, np.zeros((self.nflux, nk))]))
+                B = np.zeros((self.nflux, npar)); B[:, o_f:o_f + nf] = Linv; rows.append(B)
             if nk:
-                rows.append(np.hstack([np.zeros((nk, nt + nf)), np.diag(1.0 / pri)]))
+                B = np.zeros((nk, npar)); B[:, o_k:o_k + nk] = np.diag(1.0 / pri); rows.append(B)
+            if free_det:
+                B = np.zeros((nd, npar)); B[:, o_d:o_d + nd] = np.eye(nd) / self.det_prior; rows.append(B)
             return np.vstack(rows)
 
         lo = np.concatenate([np.zeros(nt), np.zeros(nf),
                              [K.phys_lo(K.PNAMES[k]) if K.phys_lo(K.PNAMES[k]) is not None else -np.inf
-                              for k in knob_idx]])
+                              for k in knob_idx], np.zeros(nd)])
         hi = np.concatenate([np.full(nt + nf, np.inf),
                              [K.phys_hi(K.PNAMES[k]) if K.phys_hi(K.PNAMES[k]) is not None else np.inf
-                              for k in knob_idx]])
-        p0 = np.clip(np.concatenate([np.ones(nt + nf), self.th0[knob_idx]]), lo + 1e-12, hi - 1e-12)
+                              for k in knob_idx], np.full(nd, np.inf)])
+        p0 = np.clip(np.concatenate([np.ones(nt + nf), self.th0[knob_idx], np.ones(nd)]),
+                     lo + 1e-12, hi - 1e-12)
 
         r = least_squares(resid, p0, jac=jacf, bounds=(lo, hi), method="trf",
                           xtol=1e-14, ftol=1e-14, gtol=1e-10, max_nfev=max_nfev)
         J = jacf(r.x)
         cov = np.linalg.pinv(J.T @ J, rcond=1e-12)             # GN covariance; exact at an Asimov minimum
-        c, f, th = unpack(r.x)
-        chi2 = float(np.sum(((self.model(c, f, th) - data) / sigma) ** 2))
+        c, f, th, det = unpack(r.x)
+        chi2 = float(np.sum(((self.model(c, f, th, det) - data) / sigma) ** 2))
         err = np.sqrt(np.abs(np.diag(cov)))
         if log:
-            log(f"  nfev={r.nfev} chi2_data={chi2:.3e} ndof={self.nreco - nt - nf - nk}")
-        return dict(x=r.x, c=c, f=f, th=th, knob_idx=knob_idx, cov=cov,
-                    c_err=err[:nt], f_err=(err[nt:nt + nf] if free_flux else np.zeros(0)),
+            log(f"  nfev={r.nfev} chi2_data={chi2:.3e} npar={len(r.x)}")
+        return dict(x=r.x, c=c, f=f, th=th, det=det, knob_idx=knob_idx, cov=cov,
+                    c_err=err[:nt], f_err=(err[o_f:o_f + nf] if free_flux else np.zeros(0)),
+                    det_err=(err[o_d:o_d + nd] if free_det else np.zeros(0)),
                     chi2=chi2, ndof=self.nreco - nt - nf - nk, nfev=r.nfev, success=bool(r.success))

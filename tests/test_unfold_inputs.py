@@ -148,3 +148,16 @@ def test_flux_correlation_falls_off_monotonically():
     from adonis.unfold import flux as FX
     r = FX.prior_cov()[0] / FX.SIGMA ** 2
     assert np.all(np.diff(r) < 0), "correlation with bin 0 must decrease with energy separation"
+
+
+def test_detector_dials_scale_the_whole_reco_bin():
+    """The detector block acts in RECO space and does not know what produced the event, so it must scale
+    signal and background together -- unlike the templates (truth space) and the flux (true energy)."""
+    from adonis.unfold.fit import UnfoldEngine
+    eng = UnfoldEngine.__new__(UnfoldEngine)
+    eng.A = np.ones((3, 2, 2)); eng.nreco, eng.ntrue, eng.nflux = 3, 2, 2
+    eng.background = lambda th: np.full((3, 2), 0.5)
+    c, f = np.ones(2), np.ones(2)
+    base = eng.model(c, f, None)
+    scaled = eng.model(c, f, None, det=np.array([2.0, 1.0, 0.5]))
+    assert np.allclose(scaled, base * np.array([2.0, 1.0, 0.5]))
