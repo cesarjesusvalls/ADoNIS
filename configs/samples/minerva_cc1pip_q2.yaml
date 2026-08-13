@@ -1,0 +1,33 @@
+# MINERvA nu_mu CC 1pi+ on scintillator (CH), arXiv:2605.24224 -- dsigma/dQ2.
+#
+# IDENTICAL signal to minerva_cc1pip_tpi.yaml (same paper, same selection); only the binned observable
+# differs.  The paper reports 2-D T_pi x Q2; we take the two published 1-D projections as separate
+# samples, so they must NOT be stacked into one fit without accounting for their correlation -- they are
+# the same 91,843 events binned two ways.
+#
+# Q2 is the paper's reconstructed four-momentum transfer (nucleon at rest, Eq. 2), evaluated with the
+# true Enu -- see selection._q2_wexp.  This is the sample that carries the Q2 lever arm needed to
+# separate M_A_res (Q2 SHAPE of the RES axial block) from res_axial_strength / C5A (its NORMALISATION);
+# they multiply the same block, which is why they sit at |corr| ~ 0.98 with the current sample set.
+render: multiobs
+name: minerva_cc1pip_q2
+inputs:
+  adonis_bank: [output/paper_banks_p4/nu_MINERvA_C/merged]
+  h_bank:      [output/paper_banks_p4/nu_MINERvA_H/merged]   # free-H (CH); NuMI flux, RES-only, no FSI
+signal:
+  mu_win: [1500.0, 20000.0]        # 1.5 < p_mu < 20 GeV/c
+  cth: 0.9396926208                # theta_mu < 20 deg
+  cos_mu: null
+  pion_id: pip                     # exactly one pi+, no pi0/pi-
+  veto_other_mesons: true          # "no other mesons"
+  require_proton: false            # "any number of baryons"
+  p_win: [0.0, 100000.0]           # unused for selection (require_proton false); needed for lead-proton obs
+  pi_win: null
+  tpi_win: [0.0, 350.0]            # T_pi < 350 MeV (same signal as the T_pi sample)
+  w_exp_max: 1400.0                # W_exp < 1.4 GeV/c^2
+  target: CH
+observables:
+  - {key: q2, label: '$Q^2$ [GeV$^2$/c$^2$]',
+     edges: [0.0, 0.025, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 1.0, 1.3, 2.0, 3.0]}
+out_path: output/paper/minerva_cc1pip_q2.png
+title: 'MINERvA CC1$\pi^+$ on CH: $d\sigma/dQ^2$'

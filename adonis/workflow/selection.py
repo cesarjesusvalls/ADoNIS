@@ -18,7 +18,8 @@ import json
 import numpy as np
 
 from adonis.reweight import bank_plot as BP
-from adonis.constants import PDG_MESONS, mp as _MP, mN as _MN, me as _ME
+from adonis.constants import (PDG_MESONS, mp as _MP, mN as _MN, me as _ME, mpip as _MPIP,
+                              MASS_PDG_MUON as _MMU)
 
 _MESONS = list(PDG_MESONS)   # np.isin needs a list/tuple -- a frozenset silently matches NOTHING
 
@@ -27,7 +28,7 @@ def _cos(p4, mom):
     return np.where(mom > 0, p4[:, 3] / np.maximum(mom, 1e-9), -2.0)
 
 
-def _obs(mu, lead, pip):
+def _obs(mu, lead, pip, knu=None):
     """TKI/STV observable dict from raw (mu, lead, pip) lab 4-vectors (pip = zeros for CC0pi).
     Reuses the validated bank_plot raw formulas; CC0pi is exactly CC1pi with the pion set to zero."""
     pmu = np.linalg.norm(mu[:, 1:], axis=1)
@@ -44,7 +45,26 @@ def _obs(mu, lead, pip):
 
             "pt": np.sqrt(mu[:, 1] ** 2 + mu[:, 2] ** 2), "pz": mu[:, 3],   # MINERvA qelike muon pT/p||
             "lp_p": pl, "cos_lp": clp, "th_lp": np.degrees(np.arccos(np.clip(clp, -1.0, 1.0))),
-            "ppi": ppi, "cos_pi": cpi}
+            "ppi": ppi, "cos_pi": cpi,
+            # MINERvA CC1pi+ variables.  T_pi is the pion KINETIC energy; Q2 and W_exp follow the paper's
+            # nucleon-at-rest reconstruction (arXiv:2605.24224 Eqs. 1-3) evaluated with the TRUE Enu --
+            # equivalent to their E_had = Enu - Emu, and free of any visible-energy convention.
+            "tpi": np.maximum(pip[:, 0] - _MPIP, 0.0),
+            **_q2_wexp(mu, pmu, cmu, knu)}
+
+
+def _q2_wexp(mu, pmu, cmu, knu):
+    """Q2 [GeV^2] and W_exp [MeV], nucleon at rest (arXiv:2605.24224):
+         Q2     = 2 Enu (Emu - |pmu| cos_mu) - mmu^2
+         W_exp^2 = mN^2 - Q2 + 2 mN (Enu - Emu)
+    knu = true neutrino 4-vector; None -> NaN (keys always present so every path returns one schema)."""
+    if knu is None:
+        nan = np.full(len(mu), np.nan)
+        return {"q2": nan, "w_exp": nan}
+    Enu = np.asarray(knu)[:, 0].astype(np.float64); Emu = mu[:, 0]
+    q2 = 2.0 * Enu * (Emu - pmu * cmu) - _MMU ** 2                      # MeV^2
+    w2 = _MN ** 2 - q2 + 2.0 * _MN * (Enu - Emu)
+    return {"q2": q2 * 1e-6, "w_exp": np.sqrt(np.maximum(w2, 0.0))}
 
 
 def _mu_pass(pmu, cmu, sd):
@@ -123,9 +143,22 @@ def _cc_full(B, sd):
         npi_tot = npip + npi0 + npim
         one_pion = (npi_tot == 1) if sd.pion_id == "anypi" else \
                    ((npip == 1) & (npi0 == 0) & (npim == 0))
-        sel = (one_pion & hasp & _mu_pass(pmu, cmu, sd)
-               & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth))
-    return sel, _obs(mu, lead, pip), np.asarray(B["w0"]), np.asarray(B["channel"])   # chan: 0 QE, 1 RES
+        sel = one_pion & _mu_pass(pmu, cmu, sd)
+        if sd.require_proton:                                  # T2K CC1pi+Np: leading proton in window
+            sel = sel & hasp
+        if sd.tpi_win is not None:                             # MINERvA: pion KINETIC-energy window
+            tpi = np.maximum(pip[:, 0] - _MPIP, 0.0)
+            sel = sel & (tpi >= sd.tpi_win[0]) & (tpi < sd.tpi_win[1])
+        else:                                                  # T2K: pion momentum window + forward cut
+            sel = sel & (ppi >= sd.pi_win[0]) & (ppi < sd.pi_win[1]) & (cpi > sd.cth)
+        if sd.veto_other_mesons:                               # "no other mesons" (eta, K, ...)
+            n_heavy = BP._event_sum(B, (np.isin(B["fs_pid"], _MESONS)
+                                        & ~np.isin(B["fs_pid"], [211, -211, 111])).astype(float))
+            sel = sel & (n_heavy == 0)
+        if sd.w_exp_max is not None:                           # W_exp < 1.4 GeV (Delta region)
+            sel = sel & (_q2_wexp(mu, pmu, cmu, B["k_nu"])["w_exp"] < sd.w_exp_max)
+    return (sel, _obs(mu, lead, pip, B["k_nu"] if "k_nu" in B else None),
+            np.asarray(B["w0"]), np.asarray(B["channel"]))     # chan: 0 QE, 1 RES
 
 
 def _select_cc(B, sd):

@@ -28,6 +28,7 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
@@ -66,7 +67,7 @@ def main(label="sec4_ref"):
     nd = len(dials)
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
-        fig, axes = plt.subplots(nd - 1, nd - 1, figsize=(2.25 * (nd - 1), 2.25 * (nd - 1)))
+        fig, axes = plt.subplots(nd - 1, nd - 1, figsize=(1.65 * (nd - 1), 1.65 * (nd - 1)))
         for a in range(nd - 1):
             for b in range(nd - 1):
                 A = axes[a, b]
@@ -77,8 +78,24 @@ def main(label="sec4_ref"):
                 X, Y = np.meshgrid(axa, axb, indexing="ij")
                 # colour: log10 chi2 as faint context.  chi2 spans ~6 decades over a full physical range,
                 # so this is orientation only -- the arrows carry the message.
-                A.pcolormesh(X, Y, np.ma.masked_invalid(np.log10(np.maximum(d, 1e-3))),
-                             cmap="Greys", shading="auto", rasterized=True, alpha=0.75)
+                # SMOOTHED colour.  The surface is sampled on a 25x25 grid and drawn with flat shading,
+                # so the raw map shows blocky stair-steps along the curved chi2 valleys -- an artefact of
+                # the sampling, not structure.  Smooth log10 chi2 with a Gaussian kernel (GRAD_SMOOTH, in
+                # grid cells) and use gouraud interpolation.  ONLY the colour is smoothed: the arrows are
+                # the measured field and are left untouched, so nothing quantitative is filtered.
+                _c = np.log10(np.maximum(d, 1e-3))
+                _sm = float(os.environ.get("GRAD_SMOOTH", "1.0"))
+                if _sm > 0 and np.isfinite(_c).all():
+                    from scipy.ndimage import gaussian_filter
+                    _c = gaussian_filter(_c, _sm, mode="nearest")
+                # imshow, NOT pcolormesh(shading="gouraud").  Gouraud splits every quad into two
+                # TRIANGLES drawn as separate semi-transparent patches, so at alpha<1 their shared edges
+                # double-blend and a diagonal mesh appears over the whole panel -- a rendering artefact
+                # with nothing behind it.  The grid here is a regular linspace, so a single interpolated
+                # image is both correct and seam-free.
+                A.imshow(np.ma.masked_invalid(_c).T, cmap="Greys", origin="lower", aspect="auto",
+                         extent=(float(axa[0]), float(axa[-1]), float(axb[0]), float(axb[-1])),
+                         interpolation="bicubic", rasterized=True, alpha=0.75, zorder=0)
                 U, V = F[..., 0], F[..., 1]
                 n = np.hypot(U, V); n = np.where(n > 0, n, 1.0)
                 s = max(1, len(axa) // 11)                     # subsample so arrows stay legible
@@ -87,7 +104,11 @@ def main(label="sec4_ref"):
                 ka, kb = sub[pos[i]], sub[pos[j]]
                 A.plot(bfp[ka], bfp[kb], "*", color=C_BFP, ms=13, mec="white", mew=0.7, zorder=8)
                 A.set_xlim(axa[0], axa[-1]); A.set_ylim(axb[0], axb[-1])
-                A.tick_params(labelsize=6, top=False, right=False)
+                A.tick_params(labelsize=7, top=False, right=False)
+                # 4 ticks is plenty -- this figure is about the DIRECTION of the field,
+                # and a dense axis competes with the arrows for attention.
+                A.xaxis.set_major_locator(MaxNLocator(4, prune='both'))
+                A.yaxis.set_major_locator(MaxNLocator(4, prune='both'))
                 if a == nd - 2:
                     A.set_xlabel(style.plab(pn[ka]), fontsize=8)
                 if b == 0:
@@ -96,11 +117,11 @@ def main(label="sec4_ref"):
                else "raw gradient  $\\nabla\\chi^2$")
         h = [plt.Line2D([], [], color=C_ARR, marker=r"$\rightarrow$", ls="", ms=10),
              plt.Line2D([], [], color=C_BFP, marker="*", ls="", ms=11)]
-        fig.legend(h, [f"{lab}  (downhill, unit-normalised)", "best fit"],
-                   loc="upper right", fontsize=9, frameon=False, bbox_to_anchor=(0.99, 0.99))
-        fig.suptitle("gradient information across the full physical range of every dial",
-                     fontsize=11, x=0.02, ha="left")
-        fig.tight_layout(rect=(0, 0, 1, 0.97))
+        # legend goes INSIDE the empty upper-right block of the triangle rather than over the panels,
+        # and the title is dropped -- the caption carries it.
+        fig.legend(h, ["Gradient", "BFP"], loc="upper right", fontsize=10, frameon=False,
+                   bbox_to_anchor=(0.99, 0.97), handletextpad=0.4, labelspacing=0.5)
+        fig.tight_layout()
         style.save(fig, f"sec4_corner_grad_{FIELD}")
 
 

@@ -23,6 +23,8 @@ prediction is untouched.
 from __future__ import annotations
 
 import numpy as np
+import os
+
 import jax.numpy as jnp
 from scipy.ndimage import spline_filter1d
 
@@ -79,15 +81,30 @@ def _bspline2d(g, p, E):
 
 
 
+_EB_MIRROR = os.environ.get("S4_EB_MIRROR", "") == "1"   # see the note inside sf_reweight()
+
+
 def sf_reweight(grids, p_mag, E_removal, *, kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0, src_tail=1.0,
                 p_src=300.0, w_src=80.0):
     """Per-event spectral-function reweight w = sf_norm * tail * S(p/kF, E-Eb)/S(p,E).
     grids = sf_grids(SpectralFunction).  p_mag,E_removal (N,) the recorded sampled struck (|p|, removal).
     tail = 1 + (src_tail-1)*sigmoid((|p|-p_src)/w_src) enhances the high-|p| (SRC) region.  == 1 at nominal
     (kF=1,Eb=0,norm=1,src_tail=1).  Differentiable in every knob; C2 in (kF_sf,Eb_shift) -> valid D2/D3."""
-    Eb_shift = jnp.maximum(Eb_shift, 0.0)        # one-sided knob: negative shifts clamp to 0 (no shift).
-    # The nominal is a small positive epsilon (_EB_EPS, full_knobs); the kink at Eb=0 is never the
-    # evaluation point, so the gradient is taken on the smooth Eb>0 branch.
+    # ONE-SIDED KNOB, two ways of enforcing it:
+    #   clamp  (default)   S(., E - max(Eb,0)) -- the prediction is CONSTANT for Eb<0, so chi2 is exactly
+    #                      flat there and the gradient vanishes: an absorbing region a minimiser cannot
+    #                      climb out of.  Since Eb_shift's nominal IS its floor (_EB_EPS = 0.01), every
+    #                      fit starts on that edge, which is the documented failure mode.
+    #   mirror (S4_EB_MIRROR=1)  S(., E - |Eb|) -- the response is EVEN about zero, so below the boundary
+    #                      the gradient points back toward it with the right magnitude and the minimiser
+    #                      is pushed out instead of stalling.  This is what T2K does for parameters whose
+    #                      prior central value sits on a physical boundary (arXiv:2606.14015): "the
+    #                      response functions ... were mirrored across the boundary".  The fit then runs
+    #                      UNBOUNDED in Eb and the physical quantity is |Eb|; note the likelihood is even,
+    #                      so it carries twin minima at +-Eb, and Eb=0 is a stationary point by symmetry.
+    #                      Mirroring fixes the MINIMISATION, not the statistics -- the interval near the
+    #                      boundary still needs an FC-style construction.
+    Eb_shift = jnp.abs(Eb_shift) if _EB_MIRROR else jnp.maximum(Eb_shift, 0.0)
     s0 = _bspline2d(grids, p_mag, E_removal)
     sθ = _bspline2d(grids, p_mag / kF_sf, E_removal - Eb_shift)
     ratio = jnp.where(s0 > 0, sθ / jnp.where(s0 > 0, s0, 1.0), 1.0)    # 0/0 -> 1 (no-op for off-grid)

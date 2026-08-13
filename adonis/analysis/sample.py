@@ -35,7 +35,24 @@ from adonis.analysis import knobs as K
 
 ALTGEN = Path("output/altgen")
 T2K_H_BANK = os.environ.get("ADONIS_T2K_H_BANK", "output/paper_banks_p4/nu_T2K_H/merged")
-FREEH_KEYS = ("pn", "dptt", "dalphat")      # CC1pi+ observables free-H (nu_mu p -> mu- p pi+) contributes to
+
+
+def _cfg_h_bank(cfg):
+    """The free-H bank for a CH sample: `inputs.h_bank` if the config names one, else the T2K default.
+
+    The hydrogen bank is FLUX-SPECIFIC (nu_mu p -> mu- p pi+ folded with that beam), so a MINERvA CH
+    sample cannot borrow the T2K one -- it needs nu_MINERvA_H (NuMI).  This used to be a module-level
+    constant, which silently gave every CH sample the T2K flux."""
+    hb = getattr(getattr(cfg, "inputs", None), "h_bank", None)
+    if hb is None:
+        return T2K_H_BANK
+    return hb[0] if isinstance(hb, (list, tuple)) else hb
+# Observables the free-H (nu_mu p -> mu- p pi+) contribution is added to for a CH target.  EVERY key a CH
+# sample fits must appear here: `_gradient` intersects its observables with this tuple, so a key that is
+# missing makes target: CH silently produce a CARBON-ONLY prediction -- no error, just a wrong sample.
+# tpi/q2 are well defined on a free proton (a pi+ and a proton in the final state; Q2 from the muon and the
+# true Enu), unlike dalphat, which is undefined there and gets the NUISANCE uniform prescription below.
+FREEH_KEYS = ("pn", "dptt", "dalphat", "tpi", "q2")
 
 
 # --------------------------------------------------------------------------- small self-contained helpers
@@ -111,6 +128,9 @@ class AnaSample:
         return self._sel
 
     # ---- fit engine datasets (whole cached bank; the sec4 closure side) ----
+    def _h_bank(self):
+        return _cfg_h_bank(self.cfg)
+
     def bin_datasets(self, B, w0, free_h=None):
         """IC.bin_w-compatible per-observable dataset dicts for the FIT engine (physfit MultiEngine /
         BankSample).  The sample's FIT observables selected + binned on the config's REAL edges; keys
@@ -190,7 +210,7 @@ class AnaSample:
                 def _rand_daT(obs, n):
                     if "dalphat" in obs:
                         obs["dalphat"] = np.random.default_rng(0).uniform(0.0, np.pi, len(obs["dalphat"]))
-                JH, rH, swH, sw2H = self._stream_grad(T2K_H_BANK, self.cfg.signal, fk, {k: edges_by[k] for k in fk},
+                JH, rH, swH, sw2H = self._stream_grad(self._h_bank(), self.cfg.signal, fk, {k: edges_by[k] for k in fk},
                                                       ctx, override=_rand_daT, max_chunks=max_chunks, log=log,
                                                       tag=":freeH")
                 for jf, k in enumerate(fk):

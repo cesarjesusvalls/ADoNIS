@@ -25,27 +25,43 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from analysis.paper.physfit.multisample import build_multisample_engine, MULTISAMPLE_NPZ
-from analysis.paper.physfit.physical_fit_run import lm_fit
+from analysis.paper.physfit.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
+from analysis.paper.physfit.physical_fit_run import lm_fit, trf_fit
 from analysis.paper.physical_fit import PNAMES
 from adonis.analysis import knobs as K   # PHYS_BOUND / phys_lo: one source of truth for hard boundaries
 
 
 def _throw_truth(eng, subset, real_prior, rng):
-    """One toy truth drawn from the REAL prior (legacy ensemble; see S4_FIXED_TRUTH for the other mode)."""
+    """One toy truth drawn from the REAL prior (legacy ensemble; see S4_FIXED_TRUTH for the other mode).
+
+    Throwing the truth from the prior -- not holding it fixed -- is what makes the toy spread comparable
+    to a MAP/posterior width.  At a FIXED truth sitting at the prior centre the estimator is shrunk toward
+    the right answer, so Var(theta_hat) = (F+P)^-1 F (F+P)^-1 < (F+P)^-1 and the pull comes out at
+    sqrt(F/(F+P)) < 1 by construction -- narrowest exactly on the prior-dominated dials.  Averaged over
+    truths drawn from the prior it is (F+P)^-1 and the pull is 1.
+    """
     star = eng.th0.copy()
     for k in subset:
-        lo = K.phys_lo(eng.pnames[k])                   # None unless the dial has a hard boundary
-        if lo is not None:
-            # A bounded dial (E_b >= 0) whose Gaussian prior straddles its boundary: sigma 4.0 MeV about a
-            # nominal of 0.01 puts HALF the draws below zero.  Clamping those to the floor made 255/500 toys
-            # share the identical truth E_b = 0.01 -- half the ensemble sitting exactly ON the boundary,
-            # where the Gaussian pull is not a meaningful diagnostic and the pull width is inflated by an
-            # artefact of the throw rather than by the fit.  Draw FLAT on [boundary, 2 sigma] instead; the
-            # lower edge comes from the PHYS_BOUND registry, not a literal.
-            star[k] = rng.uniform(lo, 2.0 * real_prior[k])
+        lo, hi = K.phys_lo(eng.pnames[k]), K.phys_hi(eng.pnames[k])
+        # UNCONSTRAINED dials (S4_PRIOR_FREE widens the prior by 1e6) have no prior to draw from -- held
+        # at nominal.  Without this the widened width feeds straight into the draw: E_b would be thrown
+        # uniformly out to ~1e6.
+        if real_prior[k] > 100.0 * max(abs(eng.th0[k]), 1e-12):
+            continue
+        # FLAT draw only when the Gaussian actually STRADDLES a boundary (the old E_b case: sigma 4.0 about
+        # a nominal of 0.01 put half the draws below zero, and clamping them piled 255/500 toys on the
+        # identical truth).  With a 20% prior the bound is many sigma away for every dial, and applying the
+        # flat draw unconditionally would replace N(1.0, 0.2) by U(0.05, 0.4) -- a different ensemble.
+        if lo is not None and eng.th0[k] - 2.0 * real_prior[k] < lo:
+            star[k] = rng.uniform(lo, eng.th0[k] + 2.0 * real_prior[k])
+            continue
+        for _ in range(100):                            # Gaussian, resampled back inside the box
+            v = eng.th0[k] + real_prior[k] * rng.standard_normal()
+            if (lo is None or v > lo) and (hi is None or v < hi):
+                star[k] = v; break
         else:
-            star[k] = eng.th0[k] + real_prior[k] * rng.standard_normal()
+            star[k] = float(np.clip(eng.th0[k], lo if lo is not None else -np.inf,
+                                    hi if hi is not None else np.inf))
     return star
 
 
@@ -61,7 +77,7 @@ def main():
     eng = build_multisample_engine(log)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     assert [str(x) for x in g["pnames"]] == list(PNAMES)
-    subset = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
+    subset = fit_subset(g, eng.pnames, log)
     # throws always use the REAL prior (the population of true values); the FIT's prior can be scaled --
     # S4_PRIOR_SCALE=0 -> unregularised (MLE) coverage of the data-only errors, consistent with S4A.
     real_prior = eng.prior.copy()
@@ -96,12 +112,19 @@ def main():
         for d in eng.ds:                                        # + per-bin STAT throw at the fit's sigma
             sd = np.where(np.isfinite(d["sigma"]), d["sigma"], 0.0)   # empty bins have sigma=inf -> no throw
             d["data"] = d["data"] + rng.normal(0.0, sd)
-        th, V, J, m, c, cd = lm_fit(eng, subset, f"toy{seed}", huber=False, nit=NIT)
+        # FITTER.  LM clips its step onto the box and, when that stops improving, inflates lambda until
+        # the step underflows and exits via `norm(dth) < 1e-12` -- reported as convergence with the Newton
+        # decrement still at ~1e-3.  Measured on 48 toys it parks E_b exactly on its floor where TRF, whose
+        # bounds are inside the subproblem, pulls it off and reaches a LOWER chi2.  That inflates the
+        # boundary atom this ensemble exists to measure, so TRF is the default here.
+        _fit = trf_fit if os.environ.get("S4_FITTER", "trf") == "trf" else lm_fit
+        th, V, J, m, c, cd = _fit(eng, subset, f"toy{seed}", nit=NIT)
         s = np.sqrt(np.abs(np.diag(V)))
         th_star.append([star[k] for k in subset]); th_fit.append([th[k] for k in subset])
         sig_fit.append(list(s)); chi2d.append(cd)
         log(f"toy {seed}: chi2_data={cd:.1f}  max|pull|="
-            f"{max(abs(th[k]-star[k])/max(s[c],1e-12) for c,k in enumerate(subset)):.2f}")
+            f"{max(abs(th[k]-star[k])/max(s[c],1e-12) for c,k in enumerate(subset)):.2f}"
+            f"")
         if (t + 1) % 5 == 0 or t == NTOYS - 1:                  # incremental save (preemption-safe)
             # nbins_live = bins that actually CONSTRAIN.  Empty bins get sigma=inf (-> weight 0), so they
             # contribute nothing to chi2 and must not be counted as degrees of freedom either: using the

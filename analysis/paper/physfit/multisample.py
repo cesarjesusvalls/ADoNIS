@@ -81,6 +81,8 @@ def _batched_jac(subset, call, bin_cols):
             bs = max(1, bs // 2)
             print(f"[jac] device OOM at batch {bs * 2} -> retrying at {bs} "
                   f"(identical result, more dispatches)", flush=True)
+_JAX_BIN = os.environ.get("S4_JAX_BIN", "") == "1"   # device-resident binning (see IC.bin_w0_dev)
+
 T2K_KEEP = ("dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT")   # the 7 T2K obs sec2/sec3 stack
 
 
@@ -161,8 +163,16 @@ class BankSample:
         return np.asarray(self._wf(jnp.asarray(theta), self.JB))
 
     def model_blocks(self, theta):
+        if _JAX_BIN:                       # keep the 1.9M weights on device; only ~nbin floats come back
+            wj = self._wf(jnp.asarray(theta), self.JB)
+            return [np.asarray(IC.bin_w_dev(d, wj)) for d in self.ds]
         w = self.weights(theta)
         return [IC.bin_w(d, w) for d in self.ds]
+
+    def model_blocks_jax(self, theta):
+        """Binned model as JAX arrays, differentiable end to end (needs the BinSpec device path)."""
+        wj = self._wf(theta, self.JB)
+        return [IC.bin_w_dev(d, wj) for d in self.ds]
 
     def jac_blocks(self, theta, subset):
         """Binned Jacobian columns via ONE vmapped jvp per batch of dials (see JAC_BATCH)."""
@@ -175,6 +185,16 @@ class BankSample:
             T = np.zeros((len(ks), NPAR)); T[np.arange(len(ks)), ks] = 1.0
             return self._jvpv(th, jnp.asarray(T), self.JB)                 # (len(ks), n_events)
 
+        if _JAX_BIN:                       # bin each dial's derivative on device too (same saving x nsub)
+            def call_dev(ks):
+                T = np.zeros((len(ks), NPAR)); T[np.arange(len(ks)), ks] = 1.0
+                G = self._jvpv(th, jnp.asarray(T), self.JB)          # (len(ks), n_events), on device
+                return np.stack([np.concatenate([np.asarray(IC.bin_w0_dev(d, g)) for d in self.ds])
+                                 for g in G])
+            cols = []
+            for lo in range(0, len(subset), max(1, JAC_BATCH)):
+                cols += list(call_dev(subset[lo:lo + max(1, JAC_BATCH)]))
+            return np.column_stack(cols)
         return np.column_stack(_batched_jac(
             subset, call, lambda g: np.concatenate([IC.bin_w0(d, g) for d in self.ds])))
 
@@ -234,7 +254,16 @@ class BeamSample:
         return np.asarray(self.m["w_of"](jnp.asarray(theta)))
 
     def model_blocks(self, theta):
-        b = self.m["binned"](self.weights(theta)); nb = self.m["nbins"]
+        nb = self.m["nbins"]
+        if _JAX_BIN:                       # same device-resident BinSpec path as BankSample
+            b = np.asarray(self.m["binned_dev"](self.m["w_of"](jnp.asarray(theta))))
+        else:
+            b = self.m["binned"](self.weights(theta))
+        return [b[:nb], b[nb:]]
+
+    def model_blocks_jax(self, theta):
+        nb = self.m["nbins"]
+        b = self.m["binned_dev"](self.m["w_of"](theta))
         return [b[:nb], b[nb:]]
 
     def jac_blocks(self, theta, subset):
@@ -300,16 +329,81 @@ class MultiEngine:
         """Binned MIXED k-th directional derivative (k = len(tangents)) of the FULL stacked model."""
         return np.concatenate([s.ddn_binned(theta, tangents) for s in self.samples])
 
+    def model_jax(self, theta):
+        """Full stacked model as ONE JAX array -- the differentiable counterpart of .model()."""
+        return jnp.concatenate([b for s in self.samples for b in s.model_blocks_jax(theta)])
+
+    def chi2_grad_fn(self, subset):
+        """(chi2, grad) over `subset` by REVERSE mode.
+
+        MIGRAD and HMC need only the SCALAR gradient, which one VJP delivers for ~2-3 model evaluations
+        regardless of how many dials there are -- against a full forward Jacobian at 16 JVPs (measured
+        1.05 s vs 0.16 s for a model evaluation).  Only possible because the binning is now a single
+        differentiable BinSpec primitive shared by every sample type; while half the model binned on the
+        host this could not be written.
+        """
+        data, sigma = self.data_sigma()
+        ok = np.isfinite(sigma) & (sigma > 0)
+        W = jnp.asarray(np.where(ok, 1.0 / np.where(ok, sigma, 1.0) ** 2, 0.0))
+        D = jnp.asarray(data)
+        idx = jnp.asarray(np.asarray(subset, int))
+        th0 = jnp.asarray(self.th0)
+
+        def chi2_of_x(x):
+            th = th0.at[idx].set(x)
+            r = self.model_jax(th) - D
+            return jnp.sum(W * r * r)
+
+        return jax.jit(jax.value_and_grad(chi2_of_x))
+
     def data_sigma(self):
         return (np.concatenate([d["data"] for d in self.ds]),
                 np.concatenate([d["sigma"] for d in self.ds]))
 
     def set_closure_data(self, truth):
-        """Fake data = exact nonlinear reweight at `truth`, per sample; refresh syst+MC sigma on it."""
+        """Fake data = exact nonlinear reweight at `truth`, per sample; refresh sigma on it.
+
+        S4_SIGMA_SYST_ONLY=1 drops the MC term: sigma = SYST*data.  In a CLOSURE the data IS the MC,
+        reweighted, so the MC statistical fluctuation is common-mode between data and prediction and
+        cancels in the residual -- it is not an uncertainty on the comparison, and folding it in inflates
+        sigma with no matching fluctuation in the numerator.  The historical justification for keeping it
+        (physical_fit.py:11, "0.5-0.9% at 3M scale, negligible vs SYST=5%") does not survive S4_SIG_CAP:
+        at 250k/sample the implied mcerr/central is 1.58% median, 5.25% at the 90th percentile, and
+        EXCEEDS the 5% syst in 11% of bins.
+
+        S4_MIN_MCFRAC (default = SYST) then masks bins whose MC error alone would have exceeded that
+        fraction.  Without it, dropping mcerr hands the sparsest bins a tiny absolute sigma and hence a
+        huge weight -- measured up to x401 for a bin holding ~1 effective MC event, which would dominate
+        the fit.  A bin the MC cannot predict is not made trustworthy by removing its error bar.
+        """
+        syst_only = os.environ.get("S4_SIGMA_SYST_ONLY", "") == "1"
+        cut = float(os.environ.get("S4_MIN_MCFRAC", str(SYST))) if syst_only else None
         for s in self.samples:
-            for d, b in zip(s.ds, s.model_blocks(truth)):
+            # NOMINAL blocks, computed once: the sparse-bin mask is frozen against THESE, never against
+            # the toy's own theta*.  Recomputing it per toy let the bin set -- and hence ndf -- follow the
+            # thrown truth (measured nbins_live 170..270 across shards), which alone widened the toy chi2
+            # to 230 +- 45 against chi2(244) = 244 +- 22.  The sample definition must not depend on the
+            # truth being thrown.  sigma itself still tracks the toy's own data; only the MASK is frozen,
+            # which is what keeps chi2 ~ chi2(ndf) with a fixed ndf.
+            if syst_only and not hasattr(s, "_nom_blocks"):
+                s._nom_blocks = [np.abs(np.asarray(b)) for b in s.model_blocks(self.th0)]
+            for i, (d, b) in enumerate(zip(s.ds, s.model_blocks(truth))):
                 d["data"] = np.asarray(b)
-                d["sigma"] = FE.bin_sigma(d["data"], d["mcerr"], SYST)
+                if not syst_only:
+                    d["sigma"] = FE.bin_sigma(d["data"], d["mcerr"], SYST)
+                    continue
+                # SIGMA IS FROZEN AT NOMINAL, not recomputed at each toy's theta*.  A measurement's
+                # error is a property of the measurement; letting sigma_b = SYST*|model_b(theta*)|
+                # track the thrown truth gives a bin whose content DROPS at theta* a tiny absolute
+                # error and hence enormous weight, while its model value is the least reliable (large
+                # mcerr).  Measured: pull sd 1.96 / 2.16 / 2.67 on M_A_res / S_Delta / E_b.  Freezing
+                # both sigma and the sparse-bin mask against the nominal model makes chi2 a sum of
+                # ndf unit normals with fixed weights.
+                if "_sigma0" not in d:
+                    c0 = s._nom_blocks[i]
+                    bad = (c0 <= 0) | (d["mcerr"] > cut * np.where(c0 > 0, c0, 1.0))
+                    d["_sigma0"] = np.where(bad, np.inf, np.where(c0 > 0, SYST * c0, np.inf))
+                d["sigma"] = d["_sigma0"]
 
 
 def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=None):
@@ -336,6 +430,14 @@ def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=Non
         _bank("minerva_stv",  nu_chunks),
         _bank("minerva_ptpz", nu_chunks),
         _bank("ee_omega",     e_chunks),
+        # MINERvA CC1pi+ (arXiv:2605.24224) -- the RES Q2 lever arm.  ORDER MATTERS: it must match the
+        # dskeys order in multisample_carbon.npz (the assertion below), i.e. after ee_omega, before beams.
+        # NOTE carbon-only here: BankSample calls bin_datasets(B, w0) with free_h=None, so the sec4 engine
+        # omits the free-H (CH) contribution -- the SAME pre-existing behaviour as t2k_cc1pi_ch, which has
+        # always been carbon-only in sec4 while Gate I adds free-H.  Self-consistent within sec4 (Asimov
+        # data comes from this same model), but the two do not fit identical models for CH samples.
+        _bank("minerva_cc1pip_tpi", nu_chunks),
+        _bank("minerva_cc1pip_q2",  nu_chunks),
         BeamSample("pip", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
         BeamSample("prot", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
         BeamSample("neut", 15, SYST, beam_chunks, log, cap=(sig_cap or None)),
@@ -348,7 +450,97 @@ def build_multisample_engine(log, nu_chunks=None, beam_chunks=None, e_chunks=Non
     got = [d["key"] for d in eng.ds]
     assert got == want, f"sample composition != multisample_carbon:\n  got  {got}\n  want {want}"
     log(f"engine: {len(eng.samples)} samples, {len(eng.ds)} observables, {eng.row0[-1]} bins")
+    _apply_sec4_setup(eng, log)
     return eng
+
+
+def fit_subset(g, pnames, log=None):
+    """The fitted dials: shrink<0.5, minus anything named in S4_FIX_DIALS.
+
+    Fixing a dial removes it from the FIT and from the toy TRUTH THROW alike (multisample_coverage
+    iterates the same subset), so it is held at nominal everywhere -- i.e. "assumed known".  Used to test
+    whether the M_A_res/S_Delta multi-modality is driven by delta_strength: the RES weight is quadratic
+    in it, so the parameter -> prediction map is two-to-one and mirror basins exist.
+    """
+    sub = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
+    # GATE-I DEGENERACY CUT.  shrink<0.5 is a per-knob marginal and passes knobs that are only
+    # constrained through a fragile cancellation against the others.  S4_VIF_CUT drops those.
+    cut = float(os.environ.get("S4_VIF_CUT", "0") or 0)
+    if cut > 0 and "F" in g.files:
+        vif, rmul = FE.vif_from_fisher(np.asarray(g["F"]), np.asarray(g["prior"]))
+        drop = [k for k in sub if vif[k] > cut]
+        if drop and log:
+            for k in drop:
+                log(f"  GATE-I VIF: dropping {pnames[k]} (shrink {float(g['shrink'][k]):.3f} passes, but "
+                    f"VIF={vif[k]:.0f}, R_multi={rmul[k]:.4f} > cut {cut:g})")
+        sub = [k for k in sub if vif[k] <= cut]
+    # S4_ADD_DIALS: force-include a knob that FAILED Gate I.  res_axial_strength (C5A) is frozen at
+    # shrink 0.743, and that freezing is what dumps the RES axial freedom onto M_A_res/delta_strength.
+    # Swapping C5A in for delta_strength tests whether the pull tails come from the DEGENERACY (both
+    # pairs sit at |r| ~ 0.98) or from delta_strength's MULTI-MODALITY (the RES weight g^T M g is
+    # quadratic in it; C5A enters the axial block linearly).
+    add = [s.strip() for s in os.environ.get("S4_ADD_DIALS", "").split(",") if s.strip()]
+    if add:
+        bad = [a for a in add if a not in list(pnames)]
+        if bad:
+            raise SystemExit(f"S4_ADD_DIALS: unknown dial(s) {bad}")
+        for a in add:
+            k = list(pnames).index(a)
+            if k not in sub:
+                sub = sorted(sub + [k])
+                if log:
+                    log(f"  ADDED (failed Gate I, forced in): {a} (shrink {float(g['shrink'][k]):.3f})")
+    fix = [s.strip() for s in os.environ.get("S4_FIX_DIALS", "").split(",") if s.strip()]
+    if fix:
+        bad = [f for f in fix if f not in list(pnames)]
+        if bad:
+            raise SystemExit(f"S4_FIX_DIALS: unknown dial(s) {bad}")
+        keep = [k for k in sub if pnames[k] not in fix]
+        if log:
+            log(f"  FIXED (held at nominal, not fitted, not thrown): {fix} -> {len(keep)} dials fitted")
+        return keep
+    return sub
+
+
+def _apply_sec4_setup(eng, log):
+    """Section 4 study point: redefine the nominal and install flat priors, in ONE place.
+
+    S4_NOMINAL_SET="Eb_shift=0.5"   moves eng.th0 -- which is BOTH the reference model and the prior
+                                    centre.  E_b's nominal is otherwise its own floor (0.01), so every
+                                    fit starts on a wall; 0.5 puts it 1.24 sigma clear of it.
+    S4_PRIOR_FLAT=0.20              prior[k] = 0.20 * |th0[k]| on every dial (fractional, not absolute).
+    S4_PRIOR_FREE="Eb_shift,..."    those dials stay UNCONSTRAINED (prior x1e6), so the boundary case is
+                                    still driven by the data alone.
+
+    Applied at engine construction so the closure fit, the profile scan, the toy ensemble, the corner and
+    the samplers all inherit the SAME nominal and the SAME prior.  Previously each driver scaled
+    eng.prior itself from S4_PRIOR_SCALE, which is how a profile and an ensemble could silently end up
+    minimising different objectives.
+    """
+    setspec = os.environ.get("S4_NOMINAL_SET", "").strip()
+    if setspec:
+        for tok in setspec.split(","):
+            k, v = tok.split("="); k = k.strip()
+            if k not in eng.pnames:
+                raise SystemExit(f"S4_NOMINAL_SET: unknown dial {k!r}")
+            i = eng.pnames.index(k)
+            log(f"  nominal: {k} {eng.th0[i]:g} -> {float(v):g}  (reference model AND prior centre)")
+            eng.th0[i] = float(v)
+
+    flat = os.environ.get("S4_PRIOR_FLAT", "").strip()
+    if flat:
+        f = float(flat)
+        free = [s.strip() for s in os.environ.get("S4_PRIOR_FREE", "").split(",") if s.strip()]
+        for i, nm in enumerate(eng.pnames):
+            if nm in free:
+                eng.prior[i] = abs(eng.prior[i]) * 1e6
+                continue
+            if eng.th0[i] == 0.0:
+                log(f"  [warn] {nm} has nominal 0 -- a fractional prior is undefined, left at "
+                    f"{eng.prior[i]:g}")
+                continue
+            eng.prior[i] = f * abs(eng.th0[i])
+        log(f"  priors: flat {100*f:.0f}% of nominal" + (f"; UNCONSTRAINED: {free}" if free else ""))
 
 
 def main():
@@ -367,7 +559,7 @@ def main():
     # ---- the 16 dials: SAME Gate-I selection sec3 uses (combined marginalized shrinkage < 0.5) ------ #
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     assert [str(x) for x in g["pnames"]] == list(PNAMES), "multisample_carbon knob order != physical_fit"
-    subset = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
+    subset = fit_subset(g, eng.pnames, log)
     log(f"fit subset ({len(subset)} dials): " + " ".join(eng.pnames[k] for k in subset))
 
     # ---- inject truth, build the nonlinear closure data across ALL samples ------------------------- #
@@ -403,10 +595,19 @@ def main():
     # ---- blind fit from nominal: ONE Gaussian-NLL (chi2_data + prior penalty) LM/GN fit ------------- #
     TOL = float(os.environ.get("PHYSFIT_TOL", "1e-6"))    # Newton-decrement convergence (predicted gap)
     log(f"==== fit (Gaussian NLL = chi2_data + prior)  step_scale x tol={TOL:g}, nit<={NIT} ====")
+    # FITTER.  TRF by default, matching the toys and the profile scan: LM clips its step onto the box and
+    # then inflates lambda until the step underflows, exiting via `norm(dth) < 1e-12` reported as
+    # convergence -- harmless here (the Asimov fit reaches the truth to 1e-15) but there is no reason for
+    # the three stages to use different minimisers.  S4_FITTER=lm restores LM (and the trajectory record,
+    # which trf_fit does not produce -- the convergence figure needs that path).
     traj = []
-    th, V, J, m, chi2, chi2_data = lm_fit(eng, subset, "fit", huber=False, nit=NIT, record=traj, tol=TOL)
-    traj_theta = np.array([t[0] for t in traj]); traj_chi2 = np.array([t[1] for t in traj])
-    traj_chi2data = np.array([t[2] for t in traj])
+    if os.environ.get("S4_FITTER", "trf") == "trf":
+        from analysis.paper.physfit.physical_fit_run import trf_fit
+        th, V, J, m, chi2, chi2_data = trf_fit(eng, subset, "fit", nit=NIT)
+    else:
+        th, V, J, m, chi2, chi2_data = lm_fit(eng, subset, "fit", huber=False, nit=NIT, record=traj, tol=TOL)
+    traj_theta = np.array([t[0] for t in traj]) if traj else np.zeros((0, len(eng.th0)))
+    traj_chi2 = np.array([t[1] for t in traj]); traj_chi2data = np.array([t[2] for t in traj])
     log(f"trajectory: {len(traj)} points recorded")
 
     # ---- report ------------------------------------------------------------------------------------ #

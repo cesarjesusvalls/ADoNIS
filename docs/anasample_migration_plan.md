@@ -34,7 +34,7 @@ built from an `adonis.workflow.config.AnalysisConfig`; samples live in `configs/
 4. **Full sec1 migration:** move `fig01/fig03/fig0456/fig10/fig11` configs into `configs/samples/`, make
    `sec1_validation/make.py` a thin `AnaSample.plot()` loop over `configs/samples/`, delete the duplicate
    `sec1_validation/*.yaml`. (The 3 nu STV figs already live in `configs/samples/`.)
-5. **Thin CLIs + SLURM launcher** + update `docs/REPRODUCE.md` to the one-command flow (cache beams on CPU
+5. **Thin CLIs + SLURM launcher** + update `analysis/paper/REGENERATE.md` to the one-command flow (cache beams on CPU
    → `gate1_multisample` on turing GPU → render sec2/sec3). Delete the old `sec3_gradients/regenerate.sh`
    idea (never committed).
 

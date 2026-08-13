@@ -212,15 +212,106 @@ def knobs_of(theta, nominal):
     return nominal._replace(**upd)
 
 
+# ---------------------------------------------------------------------------------------------------
+# ONE binning primitive for every sample type.
+#
+# Both sample families reduce per-event weights to per-bin observables with the SAME linear map,
+#
+#     m_b = scale_b * sum_{e : binidx_e = b} coef_e * w_[sel_e]   (+ offset_b)
+#
+# and used to implement it twice with np.bincount:
+#     BankSample : scale_bin * bincount(binidx, w[sel_idx])          + free-H offset
+#     BeamSample : (piR^2/n_tried) * bincount(idx, coef*w)           coef = 1 (reaction) or `second`
+# The only differences are an event selection in one and a per-event coefficient in the other -- neither
+# is exclusive, and neither is physics.  Duplicating it meant a device-resident/JAX binning could only
+# ever cover part of the model, which in turn made the whole model NOT reverse-mode differentiable: a
+# scalar gradient still cost one forward JVP per dial instead of a single VJP.
+#
+# `apply_dev` keeps the reduction on device, so a model evaluation returns ~nbin floats instead of
+# pulling ~1.9M per-event weights back to the host, AND is differentiable end to end.  Events are sorted
+# by bin ONCE at construction so segment_sum uses a segmented reduction rather than contended atomics
+# (~6000 events/bin here).
+# ---------------------------------------------------------------------------------------------------
+class BinSpec:
+    """The fixed sparse map w -> per-bin observable, shared by every sample type.
+
+    Two index orderings are kept deliberately:
+      HOST   events in BANK order.  np.bincount does not care about order, but the gather w[sel] does --
+             bin-sorting it scatters the reads and measured 2.06x slower (~52 ms per model evaluation
+             across the 19 datasets).  So the host path keeps the natural order.
+      DEVICE events sorted by bin, so segment_sum uses a segmented reduction instead of contended
+             atomics (~6000 events/bin here).  Built lazily; nothing pays for it unless S4_JAX_BIN=1.
+    """
+
+    __slots__ = ("sel", "coef", "binidx", "nbin", "scale", "offset", "_dev")
+
+    def __init__(self, binidx, nbin, scale, sel=None, coef=None, offset=None):
+        n = len(np.asarray(binidx))
+        self.binidx = np.asarray(binidx, np.int64)
+        self.sel = np.arange(n, dtype=np.int64) if sel is None else np.asarray(sel, np.int64)
+        self.coef = None if coef is None else np.asarray(coef, float)
+        self.nbin = int(nbin)
+        self.scale = np.asarray(scale, float)
+        self.offset = None if offset is None else np.asarray(offset, float)
+        self._dev = None
+
+    def apply(self, w):
+        """Host (numpy) reference path -- bank-ordered gather."""
+        v = np.asarray(w)[self.sel]
+        if self.coef is not None:
+            v = self.coef * v
+        out = self.scale * np.bincount(self.binidx, weights=v, minlength=self.nbin)
+        return out if self.offset is None else out + self.offset
+
+    def _device(self):
+        if self._dev is None:
+            import jax.numpy as jnp
+            o = np.argsort(self.binidx, kind="stable")      # bin-sorted ONLY for the device reduction
+            self._dev = dict(binidx=jnp.asarray(self.binidx[o]), sel=jnp.asarray(self.sel[o]),
+                             coef=None if self.coef is None else jnp.asarray(self.coef[o]),
+                             scale=jnp.asarray(self.scale),
+                             offset=None if self.offset is None else jnp.asarray(self.offset))
+        return self._dev
+
+    def apply_dev(self, w):
+        """Device path: identical arithmetic, stays on the GPU, reverse-mode differentiable."""
+        import jax
+        d = self._device()
+        v = w[d["sel"]]
+        if d["coef"] is not None:
+            v = d["coef"] * v
+        out = d["scale"] * jax.ops.segment_sum(v, d["binidx"], num_segments=self.nbin,
+                                               indices_are_sorted=True)
+        return out if d["offset"] is None else out + d["offset"]
+
+
+def spec_of(d):
+    """BinSpec for a BankSample-style dataset dict (cached on the dict)."""
+    sp = d.get("_spec")
+    if sp is None:
+        sp = BinSpec(d["binidx"], d["nbin"], d["scale_bin"], sel=d["sel_idx"])
+        d["_spec"] = sp
+    return sp
+
+
 def bin_w0(d, w):
-    """Per-bin sum of a per-event quantity w (numpy) for dataset d, scaled -- NO free-H offset (for the
+    """Per-bin sum of a per-event quantity w for dataset d, scaled -- NO free-H offset (for the
     Jacobian: the frozen free-H offset is theta-independent so its derivative is zero)."""
-    return d["scale_bin"] * np.bincount(d["binidx"], weights=np.asarray(w)[d["sel_idx"]], minlength=d["nbin"])
+    return spec_of(d).apply(w)
 
 
 def bin_w(d, w):
-    """Per-bin dsigma/dx for dataset d from a full per-event weight vector w (numpy) (+ frozen free-H)."""
+    """Per-bin dsigma/dx for dataset d from a full per-event weight vector w (+ frozen free-H)."""
     return bin_w0(d, w) + d["offset"]
+
+
+def bin_w0_dev(d, w):
+    return spec_of(d).apply_dev(w)
+
+
+def bin_w_dev(d, w):
+    import jax.numpy as jnp
+    return bin_w0_dev(d, w) + jnp.asarray(d["offset"])
 
 
 # ------------------------------------------------------------------ main --------------------------------- #
