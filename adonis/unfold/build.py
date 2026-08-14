@@ -37,6 +37,7 @@ from adonis.detector import SmearSpec, smear_chunk
 from adonis.reweight import bank_plot as BP
 from adonis.unfold.binning import reco_grid, truth_grid
 from adonis.unfold.flux import flux_index, n_flux
+from scipy.special import erf
 from adonis.workflow import selection as SG
 
 
@@ -45,9 +46,33 @@ def _obs2(obs):
     return np.asarray(obs["dpt"], dtype=float), np.asarray(obs["dalphat"], dtype=float)
 
 
+def _soft_membership(vals, edges, sigma):
+    """Fraction of a Gaussian of width `sigma` centred on each value that falls in each bin.
+
+    Separable in the two observables, so the 2-D cell membership is an outer product of two 1-D ones.
+    An infinite top edge integrates to the tail, which is why the open delta-p_T bin still receives its
+    share instead of silently losing it.
+    """
+    v = np.asarray(vals, float)[:, None]
+    e = np.asarray(edges, float)[None, :]
+    with np.errstate(invalid="ignore"):
+        cdf = 0.5 * (1.0 + erf((e - v) / (sigma * np.sqrt(2.0))))
+    cdf = np.where(np.isinf(e), np.where(e > 0, 1.0, 0.0), cdf)
+    m = np.diff(cdf, axis=1)
+    tot = m.sum(axis=1, keepdims=True)
+    return np.divide(m, tot, out=np.zeros_like(m), where=tot > 0)
+
+
 def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks=None, log=print,
-          TG=None, RG=None):
+          TG=None, RG=None, soft_sigma=None):
     """Stream `bank_dir` and return the unfolding inputs.
+
+    `soft_sigma`: (sigma_dpt, sigma_dat).  When given, a signal event does not go into ONE truth cell --
+    its weight is spread over cells by a Gaussian of the detector's own resolution, so the templates
+    become overlapping basis functions rather than disjoint indicators.  The motivation is that a basis
+    finer than the resolution is not measurable, so matching the basis to what the detector can localise
+    should condition better.  Note what it costs: c_j is then the coefficient of an overlapping basis
+    function, NOT the rate in cell j, and the two are only comparable through a derived quantity.
 
     `norm_events`: scale every weight so the TOTAL PRE-SELECTION rate equals this (50 000 for section 5).
     Normalising by summed WEIGHT, never by row count -- the bank retains rejected events as dead rows
@@ -93,11 +118,26 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         # the grid has no template to scale it, so it is background by construction; calling it signal
         # would attach it to whichever c_j the clipping happened to choose.
         is_sig = tsel & (tbin >= 0)
-        np.add.at(n_true, tbin[is_sig], w0[is_sig])
+        if soft_sigma is None:
+            np.add.at(n_true, tbin[is_sig], w0[is_sig])
+        else:
+            mi = _soft_membership(tdpt[is_sig], TG.dpt, soft_sigma[0])
+            mj = _soft_membership(tdat[is_sig], TG.dat, soft_sigma[1])
+            n_true += ((mi[:, :, None] * mj[:, None, :]).reshape(int(is_sig.sum()), TG.n)
+                       * w0[is_sig][:, None]).sum(axis=0)
 
         keep = rsel & (rbin >= 0)
         sig_r = keep & is_sig
-        np.add.at(A, (rbin[sig_r], tbin[sig_r], fbin[sig_r]), w0[sig_r])
+        if soft_sigma is None:
+            np.add.at(A, (rbin[sig_r], tbin[sig_r], fbin[sig_r]), w0[sig_r])
+        else:
+            # SOFT: one event lands on several truth cells, weighted by the resolution kernel.
+            mi = _soft_membership(tdpt[sig_r], TG.dpt, soft_sigma[0])
+            mj = _soft_membership(tdat[sig_r], TG.dat, soft_sigma[1])
+            cell = (mi[:, :, None] * mj[:, None, :]).reshape(int(sig_r.sum()), TG.n)
+            wcell = cell * w0[sig_r][:, None]
+            for jj in range(TG.n):
+                np.add.at(A[:, jj, :], (rbin[sig_r], fbin[sig_r]), wcell[:, jj])
         np.add.at(n_sig_reco, rbin[sig_r], w0[sig_r])
 
         bkg_r = keep & ~is_sig

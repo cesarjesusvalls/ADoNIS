@@ -161,3 +161,20 @@ def test_detector_dials_scale_the_whole_reco_bin():
     base = eng.model(c, f, None)
     scaled = eng.model(c, f, None, det=np.array([2.0, 1.0, 0.5]))
     assert np.allclose(scaled, base * np.array([2.0, 1.0, 0.5]))
+
+
+def test_soft_membership_is_a_normalised_partition():
+    """Soft assignment spreads one event over truth cells; the weights must still sum to exactly 1, or
+    the response quietly gains or loses rate."""
+    from adonis.unfold.build import _soft_membership
+    edges = [0.0, 85.0, 125.0, np.inf]
+    m = _soft_membership([50.0, 100.0, 400.0], edges, 110.0)
+    assert m.shape == (3, 3)
+    assert np.allclose(m.sum(axis=1), 1.0)
+    assert (m > 0).all(), "a wide kernel must reach every bin, including the open one"
+
+
+def test_soft_membership_collapses_to_hard_for_a_narrow_kernel():
+    from adonis.unfold.build import _soft_membership
+    m = _soft_membership([50.0], [0.0, 85.0, 125.0, np.inf], 1e-3)
+    assert np.allclose(m[0], [1.0, 0.0, 0.0], atol=1e-9)
