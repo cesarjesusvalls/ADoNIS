@@ -34,7 +34,10 @@ from analysis.paper.sec4_closure.fig_corner_prof import load_views, snap_axis, v
 from adonis.analysis import knobs as K
 
 L68, L90 = 2.30, 4.61                  # 2-D Delta-chi2 levels (68% / 90% of a 2-D Gaussian)
-C_ARROW = "#186"                       # gradient field (was figure C's colour)
+# The arrows were "#186", a teal-green sitting almost exactly on the Gaussian's teal -- two unrelated
+# objects in one colour.  Freed by moving the Gaussian to grey; the arrows take the section-2 constraint
+# blue, which is distinct from all four contour colours and reads on the grey chi2 background.
+C_ARROW = "#1f4b9c"
 VIEW_SIG = 3.2                         # display window, in sigma_post, for the contour half
 # The corner quotes every dial in PHYSICAL units, so the E_b axis is the binding energy itself and the
 # "Delta" that style.plab carries (correct wherever the dial is shown as an offset) would misname it
@@ -42,7 +45,12 @@ VIEW_SIG = 3.2                         # display window, in sigma_post, for the 
 _LBL = {"Eb_shift": r"$E_b$"}
 def _lab(nm):
     return _LBL.get(nm, style.plab(nm))
-C_LAP, C_NUTS, C_GAUS, C_BFP = "#1f4b9c", "#e08214", "#0b8f8f", "#d24"
+# HARMONISED WITH FIGURE A (fig_closure_summary): the same four objects appear in both figures and
+# had drifted to different colours -- Laplace blue here / purple there, BFP red here / green there.
+# Figure A is the reference because it is the one that names them in words.
+#   Laplace  #6a3d9a purple      NUTS  #e08214 orange
+#   Gaussian 0.55 grey           BFP   #1a9e57 green
+C_LAP, C_NUTS, C_GAUS, C_BFP = "#6a3d9a", "#e08214", "0.45", "#1a9e57"
 # ONE style everywhere: the Laplace marginal is the filled blue SURFACE (68% dark, 90% light),
 # NUTS is orange LINES (solid 68 / dashed 90) laid over it, and the Gaussian is teal lines in
 # the same two styles.  The raw profile is not drawn in the corner -- (c)/(d) of figure A make
@@ -350,7 +358,7 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                     # the dial NAME lives on the diagonal, so neither triangle has to carry it twice
                     _side = "left" if a < nd // 2 else "right"
                     A.text(0.04 if _side == "left" else 0.96, 0.94, _lab(dials[a]),
-                           transform=A.transAxes, ha=_side, va="top", fontsize=13)
+                           transform=A.transAxes, ha=_side, va="top", fontsize=11.5)
                     A.tick_params(labelsize=8, top=False, right=False, left=False, labelleft=False)
                     # no x ticks or label on ANY diagonal: the name is in the corner, and the bottom
                     # row's scale belongs to the gradient panels beside it, which are a different range
@@ -488,7 +496,7 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
         # ABOVE the grid, horizontal.  The upper-right corner used to be empty in a corner plot and
         # held this legend; the gradient panels now live there, so it has to come out.
         fig.legend(h, ["Laplace", "NUTS", "Gaussian", "BFP"],
-                   loc="upper center", ncol=4, fontsize=8.5, frameon=False,
+                   loc="upper center", ncol=4, fontsize=10, frameon=False,
                    bbox_to_anchor=(0.5, 1.0), handletextpad=0.4, columnspacing=1.6)
         # what each half of the figure is
         fig.tight_layout(rect=(0, 0, 1, 0.968))
