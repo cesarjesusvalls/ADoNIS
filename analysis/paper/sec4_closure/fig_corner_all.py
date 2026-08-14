@@ -34,10 +34,10 @@ from analysis.paper.sec4_closure.fig_corner_prof import load_views, snap_axis, v
 from adonis.analysis import knobs as K
 
 L68, L90 = 2.30, 4.61                  # 2-D Delta-chi2 levels (68% / 90% of a 2-D Gaussian)
-# The arrows were "#186", a teal-green sitting almost exactly on the Gaussian's teal -- two unrelated
-# objects in one colour.  Freed by moving the Gaussian to grey; the arrows take the section-2 constraint
-# blue, which is distinct from all four contour colours and reads on the grey chi2 background.
-C_ARROW = "#1f4b9c"
+# Deep pink: the arrows sit on a grey chi2 surface in panels that carry nothing else, so they only have
+# to stay clear of the four contour colours -- and of the blue family in particular.
+C_ARROW = "#d81b60"
+C_CROP = "k"                           # the crop rectangle is an annotation, not one of the objects
 VIEW_SIG = 3.2                         # display window, in sigma_post, for the contour half
 # The corner quotes every dial in PHYSICAL units, so the E_b axis is the binding energy itself and the
 # "Delta" that style.plab carries (correct wherever the dial is shown as an offset) would misname it
@@ -45,12 +45,12 @@ VIEW_SIG = 3.2                         # display window, in sigma_post, for the 
 _LBL = {"Eb_shift": r"$E_b$"}
 def _lab(nm):
     return _LBL.get(nm, style.plab(nm))
-# HARMONISED WITH FIGURE A (fig_closure_summary): the same four objects appear in both figures and
-# had drifted to different colours -- Laplace blue here / purple there, BFP red here / green there.
-# Figure A is the reference because it is the one that names them in words.
-#   Laplace  #6a3d9a purple      NUTS  #e08214 orange
-#   Gaussian 0.55 grey           BFP   #1a9e57 green
-C_LAP, C_NUTS, C_GAUS, C_BFP = "#6a3d9a", "#e08214", "0.45", "#1a9e57"
+# Laplace and NUTS agree closely, so they take two shades of ONE family -- mid blue and navy -- and
+# their agreement reads as a family resemblance rather than as a coincidence of two unrelated hues.
+# The Gaussian is the one that disagrees, so it gets the high-contrast colour.
+#   Laplace  #1f4b9c blue (filled, two alphas)   NUTS  #07204d navy (lines)
+#   Gaussian #cc5500 dark orange                 BFP   #d62728 red
+C_LAP, C_NUTS, C_GAUS, C_BFP = "#1f4b9c", "#07204d", "#cc5500", "#d62728"
 # ONE style everywhere: the Laplace marginal is the filled blue SURFACE (68% dark, 90% light),
 # NUTS is orange LINES (solid 68 / dashed 90) laid over it, and the Gaussian is teal lines in
 # the same two styles.  The raw profile is not drawn in the corner -- (c)/(d) of figure A make
@@ -225,7 +225,7 @@ def _grad_panel(A, G, i, j, sub, pos, pn, bfp, crop=None, xbot=True, yleft=True)
              angles="xy", scale=17, width=0.008, color=C_ARROW, alpha=0.9, zorder=2)
     if crop is not None:
         x0, x1, y0, y1 = crop
-        A.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, ec=C_LAP, lw=1.2,
+        A.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, ec=C_CROP, lw=1.2,
                                   zorder=6))
     A.plot(bfp[sub[pos[i]]], bfp[sub[pos[j]]], "*", color=C_BFP, ms=10, mec="white", mew=0.6, zorder=8)
     A.set_xlim(axa[0], axa[-1]); A.set_ylim(axb[0], axb[-1])
