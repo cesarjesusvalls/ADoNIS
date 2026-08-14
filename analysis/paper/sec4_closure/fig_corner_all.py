@@ -157,7 +157,7 @@ def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
         if y.max() > 0 and np.trapezoid(y, xf) > 0:
             y = y / np.trapezoid(y, xf); top = max(top, y.max())
             o = np.argsort(y)[::-1]; cum = np.cumsum(y[o]) * (xf[1] - xf[0]); cum /= cum[-1]
-            for frac, al in ((0.90, 0.22), (0.6827, 0.45)):
+            for frac, al in ((0.90, 0.32), (0.6827, 0.68)):
                 thr = y[o][min(int(np.searchsorted(cum, frac)), len(o) - 1)]
                 A.fill_between(xf, 0, y, where=(y >= thr), color=C_LAP, alpha=al, lw=0)
             A.plot(xf, y, color=C_LAP, lw=1.2)
@@ -416,8 +416,8 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                     dm = np.where(np.isfinite(dm), dm, 0.0)
                     l68, l90 = hpd_levels(dm)
                     if dm.max() > 0 and l90 < l68:
-                        A.contourf(X, Y, dm, levels=[l90, l68], colors=[C_LAP], alpha=0.22)
-                        A.contourf(X, Y, dm, levels=[l68, dm.max()], colors=[C_LAP], alpha=0.45)
+                        A.contourf(X, Y, dm, levels=[l90, l68], colors=[C_LAP], alpha=0.32)
+                        A.contourf(X, Y, dm, levels=[l68, dm.max()], colors=[C_LAP], alpha=0.68)
 
                 # ---- NUTS: orange lines over it ----------------------------------------------------
                 if dials[i] in ncol and dials[j] in ncol:
@@ -489,7 +489,7 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
 
         # SHORT labels, placed inside the empty upper-right block.  What each object IS belongs in
         # the caption; the legend only has to let a reader tell the three apart on the panel.
-        h = [plt.Rectangle((0, 0), 1, 1, fc=C_LAP, alpha=0.45),
+        h = [plt.Rectangle((0, 0), 1, 1, fc=C_LAP, alpha=0.68),
              plt.Line2D([], [], color=C_NUTS, lw=1.6),
              plt.Line2D([], [], color=C_GAUS, lw=1.4),
              plt.Line2D([], [], color=C_BFP, marker="*", ls="", ms=11)]
