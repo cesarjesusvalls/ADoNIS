@@ -36,6 +36,12 @@ from adonis.analysis import knobs as K
 L68, L90 = 2.30, 4.61                  # 2-D Delta-chi2 levels (68% / 90% of a 2-D Gaussian)
 C_ARROW = "#186"                       # gradient field (was figure C's colour)
 VIEW_SIG = 3.2                         # display window, in sigma_post, for the contour half
+# The corner quotes every dial in PHYSICAL units, so the E_b axis is the binding energy itself and the
+# "Delta" that style.plab carries (correct wherever the dial is shown as an offset) would misname it
+# here.  Local to this figure: style.plab stays as it is for the sections that do show the shift.
+_LBL = {"Eb_shift": r"$E_b$"}
+def _lab(nm):
+    return _LBL.get(nm, style.plab(nm))
 C_LAP, C_NUTS, C_GAUS, C_BFP = "#1f4b9c", "#e08214", "#0b8f8f", "#d24"
 # ONE style everywhere: the Laplace marginal is the filled blue SURFACE (68% dark, 90% light),
 # NUTS is orange LINES (solid 68 / dashed 90) laid over it, and the Gaussian is teal lines in
@@ -215,14 +221,14 @@ def _grad_panel(A, G, i, j, sub, pos, pn, bfp, crop=None, xbot=True, yleft=True)
                                   zorder=6))
     A.plot(bfp[sub[pos[i]]], bfp[sub[pos[j]]], "*", color=C_BFP, ms=10, mec="white", mew=0.6, zorder=8)
     A.set_xlim(axa[0], axa[-1]); A.set_ylim(axb[0], axb[-1])
-    A.tick_params(labelsize=6, top=False, right=False, labelbottom=xbot, labelleft=yleft, length=2)
+    A.tick_params(labelsize=8, top=False, right=False, labelbottom=xbot, labelleft=yleft, length=2)
     from matplotlib.ticker import MaxNLocator
     A.xaxis.set_major_locator(MaxNLocator(3, prune="both"))
     A.yaxis.set_major_locator(MaxNLocator(3, prune="both"))
     if xbot:
-        A.set_xlabel(style.plab(pn[sub[pos[i]]]), fontsize=8)
+        A.set_xlabel(_lab(pn[sub[pos[i]]]), fontsize=11)
     if yleft:
-        A.set_ylabel(style.plab(pn[sub[pos[j]]]), fontsize=8)
+        A.set_ylabel(_lab(pn[sub[pos[j]]]), fontsize=11)
 
 
 def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
@@ -342,11 +348,13 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                     _diag(A, dials[a], dax, dcol, sub, pn, bfp, spost, prof1, U, ncol)
                     A.set_xlim(*_lim(dials[a]))
                     # the dial NAME lives on the diagonal, so neither triangle has to carry it twice
-                    A.text(0.5, 0.86, style.plab(dials[a]), transform=A.transAxes, ha="center",
-                           va="center", fontsize=11)
-                    A.tick_params(labelsize=6, top=False, right=False, left=False, labelleft=False)
-                    if a == nd - 1: A.set_xlabel(style.plab(dials[a]), fontsize=8)
-                    else: A.tick_params(labelbottom=False)
+                    _side = "left" if a < nd // 2 else "right"
+                    A.text(0.04 if _side == "left" else 0.96, 0.94, _lab(dials[a]),
+                           transform=A.transAxes, ha=_side, va="top", fontsize=13)
+                    A.tick_params(labelsize=8, top=False, right=False, left=False, labelleft=False)
+                    # no x ticks or label on ANY diagonal: the name is in the corner, and the bottom
+                    # row's scale belongs to the gradient panels beside it, which are a different range
+                    A.tick_params(labelbottom=False)
                     continue
                 def _phys_ticks(axis, k_, c_, lo_s, hi_s, n=3):
                     """Ticks at ROUND PHYSICAL values, placed at their sigma positions.
@@ -463,13 +471,13 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                 _phys_ticks(A.xaxis, ki, ci, *_xl)
                 _phys_ticks(A.yaxis, kj, cj, *_yl)
                 # this half sits ABOVE the diagonal, so its outer edge is the top row / right column
-                A.tick_params(labelsize=6, top=True, right=True, bottom=False, left=False,
+                A.tick_params(labelsize=8, top=True, right=True, bottom=False, left=False,
                               labelbottom=False, labelleft=False,
                               labeltop=(a == 0), labelright=(b == nd - 1), length=2)
                 if a == 0:
-                    A.set_xlabel(style.plab(dials[i]), fontsize=8); A.xaxis.set_label_position("top")
+                    A.set_xlabel(_lab(dials[i]), fontsize=11); A.xaxis.set_label_position("top")
                 if b == nd - 1:
-                    A.set_ylabel(style.plab(dials[j]), fontsize=8); A.yaxis.set_label_position("right")
+                    A.set_ylabel(_lab(dials[j]), fontsize=11); A.yaxis.set_label_position("right")
 
         # SHORT labels, placed inside the empty upper-right block.  What each object IS belongs in
         # the caption; the legend only has to let a reader tell the three apart on the panel.
@@ -483,7 +491,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                    loc="upper center", ncol=4, fontsize=8.5, frameon=False,
                    bbox_to_anchor=(0.5, 1.0), handletextpad=0.4, columnspacing=1.6)
         # what each half of the figure is
-        fig.supxlabel("physical dial values", fontsize=9)
         fig.tight_layout(rect=(0, 0, 1, 0.968))
         fig.subplots_adjust(hspace=0.10, wspace=0.10)
         style.save(fig, f"{label}_figB")
