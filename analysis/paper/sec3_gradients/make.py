@@ -97,15 +97,34 @@ def main(label="multisample_carbon"):
     # central value (or the central is non-positive).  Drawing bins the fit discards overstates where the
     # information is -- the discarded ones are precisely the sparse tails, which look striking here and
     # contribute nothing there.
+    # THE MASK COMES FROM THE FIT, not from this Jacobian.  The two do not see the same statistics: the
+    # sec4 engine caps selected events per sample (banks.sig_cap = 250k) while the Jacobian streams the
+    # whole bank, so recomputing the 5% cut here drops 4 bins where the fit drops 43.  A figure captioned
+    # "the bins the fit uses" has to use the fit's own mask, so the engine dumps it
+    # (output/altgen/sec4_live_mask.npz) and this reads it.  The recovery below is the fallback.
+    keep = None
+    _mp = style.ALTGEN / "sec4_live_mask.npz"
+    if _mp.exists():
+        _m = np.load(_mp, allow_pickle=True)
+        parts = []
+        for j, k in enumerate(dskeys):
+            nb_j = row0[j + 1] - row0[j]
+            parts.append(np.asarray(_m[f"{k}_keep"], bool) if f"{k}_keep" in _m.files
+                         else np.ones(nb_j, bool))
+        keep = np.concatenate(parts)
+        print(f"[sec3] sec4 live-bin mask: {int(keep.sum())}/{len(keep)} bins kept "
+              f"(from {_mp.name}, the fit's own statistics)")
+
     # mcerr is RECOVERED from what the npz already stores rather than requiring a rebuild:
     #     sigma = sqrt((syst*central)^2 + mcerr^2)   =>   mcerr = sqrt(sigma^2 - (syst*central)^2)
     # (adonis.analysis.sample._bin_sigma / fisher_engine.bin_sigma).  Exact, not an approximation.  An
     # observable with no stored central -- the beam blocks -- keeps all its bins: it has no MC error to
     # test, and inventing one would silently drop bins for the wrong reason.
-    keep = np.ones(J.shape[0], bool)
     sig_all = np.asarray(sigma, float)
     nomc = []
-    for j, k in enumerate(dskeys):
+    if keep is None:
+      keep = np.ones(J.shape[0], bool)
+      for j, k in enumerate(dskeys):
         sl = slice(row0[j], row0[j + 1])
         if f"{k}_central" not in d.files:
             nomc.append(k)
@@ -114,9 +133,9 @@ def main(label="multisample_carbon"):
         var = sig_all[sl] ** 2 - (SYST * c0) ** 2
         mc = np.sqrt(np.clip(var, 0.0, None))                  # clip: rounding can make this -1e-30
         keep[sl] = np.isfinite(sig_all[sl]) & (c0 > 0) & (mc <= MC_CUT * np.where(c0 > 0, c0, 1.0))
-    print(f"[sec3] sparse-bin mask: {int(keep.sum())}/{len(keep)} bins kept "
-          f"(MC error <= {100*MC_CUT:.0f}% of central, the sec4 fit's cut)"
-          + (f"; no central for {nomc} -> all bins kept" if nomc else ""))
+      print(f"[sec3] FALLBACK mask on this Jacobian's own statistics: {int(keep.sum())}/{len(keep)} "
+            f"bins kept -- NOT the fit's mask; run the engine mask dump for that"
+            + (f"; no central for {nomc}" if nomc else ""))
 
     idx = [k for k in range(len(pnames)) if marg[k] < FIT_CUT]     # the fittable subset (Gate I)
     idx = sorted(idx, key=lambda k: (style.knob_group(pnames[k]), k))
