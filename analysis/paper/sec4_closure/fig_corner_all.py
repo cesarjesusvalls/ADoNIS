@@ -34,9 +34,9 @@ from analysis.paper.sec4_closure.fig_corner_prof import load_views, snap_axis, v
 from adonis.analysis import knobs as K
 
 L68, L90 = 2.30, 4.61                  # 2-D Delta-chi2 levels (68% / 90% of a 2-D Gaussian)
-# Deep pink: the arrows sit on a grey chi2 surface in panels that carry nothing else, so they only have
-# to stay clear of the four contour colours -- and of the blue family in particular.
-C_ARROW = "#d81b60"
+# Cyan: the arrows sit on a grey chi2 surface in panels that carry nothing else, so they only have to
+# stay legible there and clear of the four contour colours.
+C_ARROW = "#00b3c8"
 C_CROP = "k"                           # the crop rectangle is an annotation, not one of the objects
 VIEW_SIG = 3.2                         # display window, in sigma_post, for the contour half
 # The corner quotes every dial in PHYSICAL units, so the E_b axis is the binding energy itself and the
@@ -49,8 +49,8 @@ def _lab(nm):
 # their agreement reads as a family resemblance rather than as a coincidence of two unrelated hues.
 # The Gaussian is the one that disagrees, so it gets the high-contrast colour.
 #   Laplace  #1f4b9c blue (filled, two alphas)   NUTS  #07204d navy (lines)
-#   Gaussian #cc5500 dark orange                 BFP   #d62728 red
-C_LAP, C_NUTS, C_GAUS, C_BFP = "#1f4b9c", "#07204d", "#cc5500", "#d62728"
+#   Gaussian #e8871a orange                      BFP   #1a9e57 green (as in figure A)
+C_LAP, C_NUTS, C_GAUS, C_BFP = "#1f4b9c", "#07204d", "#e8871a", "#1a9e57"
 # ONE style everywhere: the Laplace marginal is the filled blue SURFACE (68% dark, 90% light),
 # NUTS is orange LINES (solid 68 / dashed 90) laid over it, and the Gaussian is teal lines in
 # the same two styles.  The raw profile is not drawn in the corner -- (c)/(d) of figure A make
