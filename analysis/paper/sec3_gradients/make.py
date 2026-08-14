@@ -160,7 +160,7 @@ def main(label="multisample_carbon"):
         tr = ax.get_xaxis_transform()
         for gi, a, b in runs:
             nm, _pref, col = SAMPLE_GROUP[gi]
-            ax.plot([a - 0.4, b - 0.6], [BAR_Y, BAR_Y], transform=tr, color=col, lw=5.0,
+            ax.plot([a - 0.4, b - 0.6], [BAR_Y, BAR_Y], transform=tr, color=col, lw=2.6,
                     solid_capstyle="butt", clip_on=False, zorder=5)
             ax.text((a + b) / 2 - 0.5, LBL_Y, nm, transform=tr, ha="center", va="bottom",
                     fontsize=9.5, color=col, clip_on=False)
@@ -173,12 +173,13 @@ def main(label="multisample_carbon"):
         inv = ax.transAxes.inverted()
         lefts = [inv.transform(t.get_window_extent().corners())[:, 0].min()
                  for t in ax.get_yticklabels() if t.get_text()]
-        _tabx = (min(lefts) if lefts else 0.0) - 0.012
-        style.knob_group_tabs(ax, gid, tabx=_tabx, tabw=0.008, labx=_tabx - 0.016)
+        _tabx = (min(lefts) if lefts else 0.0) - 0.024
+        style.knob_group_tabs(ax, gid, tabx=_tabx, tabw=0.007, labx=_tabx - 0.018)
         for s in ax.spines.values():
             s.set_visible(False)
-        cb = fig.colorbar(im, ax=ax, fraction=0.020, pad=0.015, ticks=[-1, 0, 1])
-        cb.set_label("per-bin gradient (normalized per knob)", fontsize=8.5)
+        # No colourbar label: the quantity is stated in the caption, and at this width the text was
+        # taller than the bar it annotated.
+        cb = fig.colorbar(im, ax=ax, fraction=0.011, pad=0.012, ticks=[-1, 0, 1])
         cb.ax.tick_params(labelsize=7.5)
         style.save(fig, "multisample_grad_per_bin")   # renamed 2026-08-14 (was multisample_carbon_shape)
 
