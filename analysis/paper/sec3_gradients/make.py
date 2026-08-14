@@ -69,6 +69,7 @@ def _group_of(key):
 
 FIT_CUT = 0.5     # a knob is shown when the COMBINED fit's marginalized shrinkage < this (Gate I)
 MC_CUT = 0.05     # the sec4 sparse-bin mask: drop bins whose MC error exceeds this fraction of central
+SYST = 0.05       # the fractional systematic sigma was built with (configs/samples/*.yaml)
 
 
 def main(label="multisample_carbon"):
@@ -96,18 +97,26 @@ def main(label="multisample_carbon"):
     # central value (or the central is non-positive).  Drawing bins the fit discards overstates where the
     # information is -- the discarded ones are precisely the sparse tails, which look striking here and
     # contribute nothing there.
+    # mcerr is RECOVERED from what the npz already stores rather than requiring a rebuild:
+    #     sigma = sqrt((syst*central)^2 + mcerr^2)   =>   mcerr = sqrt(sigma^2 - (syst*central)^2)
+    # (adonis.analysis.sample._bin_sigma / fisher_engine.bin_sigma).  Exact, not an approximation.  An
+    # observable with no stored central -- the beam blocks -- keeps all its bins: it has no MC error to
+    # test, and inventing one would silently drop bins for the wrong reason.
     keep = np.ones(J.shape[0], bool)
-    have_mc = all(f"{k}_mcerr" in d.files for k in dskeys)
-    if have_mc:
-        for j, k in enumerate(dskeys):
-            c0 = np.abs(np.asarray(d[f"{k}_central"], float))
-            mc = np.asarray(d[f"{k}_mcerr"], float)
-            keep[row0[j]:row0[j + 1]] = (c0 > 0) & (mc <= MC_CUT * np.where(c0 > 0, c0, 1.0))
-        print(f"[sec3] sparse-bin mask: {int(keep.sum())}/{len(keep)} bins kept "
-              f"(MC error <= {100*MC_CUT:.0f}% of central)")
-    else:
-        print("[sec3] WARNING: npz carries no *_mcerr -- drawing ALL bins, including ones the fit masks. "
-              "Rebuild the Jacobian (analysis.paper.gate1_multisample) to enable the mask.")
+    sig_all = np.asarray(sigma, float)
+    nomc = []
+    for j, k in enumerate(dskeys):
+        sl = slice(row0[j], row0[j + 1])
+        if f"{k}_central" not in d.files:
+            nomc.append(k)
+            continue
+        c0 = np.abs(np.asarray(d[f"{k}_central"], float))
+        var = sig_all[sl] ** 2 - (SYST * c0) ** 2
+        mc = np.sqrt(np.clip(var, 0.0, None))                  # clip: rounding can make this -1e-30
+        keep[sl] = np.isfinite(sig_all[sl]) & (c0 > 0) & (mc <= MC_CUT * np.where(c0 > 0, c0, 1.0))
+    print(f"[sec3] sparse-bin mask: {int(keep.sum())}/{len(keep)} bins kept "
+          f"(MC error <= {100*MC_CUT:.0f}% of central, the sec4 fit's cut)"
+          + (f"; no central for {nomc} -> all bins kept" if nomc else ""))
 
     idx = [k for k in range(len(pnames)) if marg[k] < FIT_CUT]     # the fittable subset (Gate I)
     idx = sorted(idx, key=lambda k: (style.knob_group(pnames[k]), k))
@@ -158,6 +167,11 @@ def main(label="multisample_carbon"):
         BAR_Y = (max(tops) if tops else 1.0) + 0.012
         LBL_Y = BAR_Y + 0.010
         tr = ax.get_xaxis_transform()
+        # EXPERIMENT separators, heavier than the per-observable ones -- same weight and colour as the
+        # physics-block separators across the rows, so the two groupings read as the same kind of
+        # structure in each direction.
+        for _gi, a, _b in runs[1:]:
+            ax.axvline(a - 0.5, color="0.22", lw=1.6)
         for gi, a, b in runs:
             nm, _pref, col = SAMPLE_GROUP[gi]
             ax.plot([a - 0.4, b - 0.6], [BAR_Y, BAR_Y], transform=tr, color=col, lw=2.6,
