@@ -45,6 +45,20 @@ def main(sample="configs/samples/t2k_cc0pi.yaml", label="sec5", norm=50_000, max
                flux_edges=np.array(FX.FLUX_EDGES), flux_cov=FX.prior_cov(),
                det_prior=eng.det_prior, nflux=eng.nflux)
 
+    # PARAMETER LAYOUT of the fitted vector, so the covariance can be read without re-deriving it:
+    # [ c (templates) | f (flux) | theta (cross section) | d (detector) ].  Template priors are infinite
+    # by construction -- that is what "unconstrained" means, and it is why the flux, which IS penalised,
+    # cannot move: the templates absorb the variation for free.
+    pri = np.concatenate([np.full(TG.n, np.inf), np.full(eng.nflux, FX.SIGMA),
+                          eng.prior[idx], np.full(eng.nreco, eng.det_prior)])
+    out["param_prior"] = pri
+    out["param_block"] = np.array(["template"] * TG.n + ["flux"] * eng.nflux
+                                  + ["xsec"] * len(idx) + ["detector"] * eng.nreco)
+    out["param_name"] = np.array([f"c[{j}]" for j in range(TG.n)]
+                                 + [f"f[{b}]" for b in range(eng.nflux)]
+                                 + [K.PNAMES[k] for k in idx]
+                                 + [f"d[{i}]" for i in range(eng.nreco)])
+
     # FLUX INJECTIONS.  Flux and templates both scale the signal, so these are the tests that decide
     # whether the two blocks are separable at all: a fit that cannot tell them apart will report a
     # signal excess that is not there, or absorb a real one into the flux.
@@ -63,6 +77,7 @@ def main(sample="configs/samples/t2k_cc0pi.yaml", label="sec5", norm=50_000, max
         out[f"{name}_c"] = r["c"]; out[f"{name}_c_err"] = r["c_err"]
         out[f"{name}_f"] = r["f"]; out[f"{name}_f_err"] = r["f_err"]
         out[f"{name}_det"] = r["det"]; out[f"{name}_det_err"] = r["det_err"]
+        out[f"{name}_th"] = r["th"]
         out[f"{name}_c_true"] = ct
         out[f"{name}_f_true"] = np.ones(eng.nflux) if ft is None else ft
         out[f"{name}_cov"] = r["cov"]; out[f"{name}_chi2"] = r["chi2"]

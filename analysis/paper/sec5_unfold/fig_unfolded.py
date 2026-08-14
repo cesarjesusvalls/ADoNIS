@@ -24,6 +24,19 @@ C_A, C_S = "#1f4b9c", "#e08214"
 STUDIES = [("asimov", "closure ($c=1$)", C_A, "o"), ("sig120", r"signal $\times1.20$", C_S, "s")]
 
 
+def _boxes(ax, lo, hi, x0, x1, color, alpha=0.55, lw=0.9, zorder=3, label=None):
+    """Uncertainty as a BOX spanning the bin, not a capped bar.
+
+    A bar marks a point with whiskers; a box says "this bin, this interval", which is what a binned
+    measurement actually claims.  It also stops the eye reading the marker as more precise than the
+    interval, which matters here because several intervals are wider than the spacing between bins.
+    """
+    for l, h, a, b in zip(np.atleast_1d(lo), np.atleast_1d(hi), np.atleast_1d(x0), np.atleast_1d(x1)):
+        ax.add_patch(plt.Rectangle((a, l), b - a, max(h - l, 1e-12), facecolor=color, alpha=alpha,
+                                   edgecolor=color, lw=lw, zorder=zorder, label=label))
+        label = None
+
+
 def _project(v, ndpt, ndat, axis):
     M = np.asarray(v).reshape(ndpt, ndat)
     return M.sum(axis=1) if axis == "dpt" else M.sum(axis=0)
@@ -42,13 +55,15 @@ def main(label="sec5"):
 
     ax = fig.add_subplot(gs[0, 0])
     x = np.arange(nt)
-    for st, lab, col, mk in STUDIES:
+    for i, (st, lab, col, mk) in enumerate(STUDIES):
         c, e, ct = z[f"{st}_c"], z[f"{st}_c_err"], z[f"{st}_c_true"]
-        off = -0.13 if st == "asimov" else 0.13
-        ax.errorbar(x + off, c, yerr=e, fmt=mk, ms=4, color=col, lw=1.2, capsize=2, label=lab)
-        ax.axhline(ct[0], color=col, ls=":", lw=1.0)
+        off = -0.21 + 0.42 * i
+        _boxes(ax, c - e, c + e, x + off - 0.19, x + off + 0.19, col, label=lab)
+        ax.plot(x + off, c, "_", color="k", ms=7, mew=1.1, zorder=5)
+        ax.axhline(ct[0], color=col, ls=":", lw=1.0, zorder=1)
     ax.set_xlabel("truth cell"); ax.set_ylabel(r"template $c_j$")
     ax.set_xticks(x); ax.legend(frameon=False, fontsize=8, loc="upper left")
+    ax.set_xlim(-0.6, nt - 0.4)
     ax.set_title("(a) unfolded templates", fontsize=9, loc="left")
 
     for k, (axis, edges, xlab, ttl) in enumerate(
@@ -67,10 +82,10 @@ def main(label="sec5"):
                     where="post", color=col, lw=1.0, alpha=0.55, zorder=1)
             val = _project(c * N, ndpt, ndat, axis) / w
             # errors added in quadrature within the projection -- the correlations between cells of the
-            # same projected bin are shown in figure H, not smuggled in here
+            # same projected bin are in figure I, not smuggled in here
             ev = np.sqrt(_project((err * N) ** 2, ndpt, ndat, axis)) / w
-            ax.errorbar(ctr, val, yerr=ev, fmt=mk, ms=4, color=col, lw=1.2, capsize=2, label=lab,
-                        zorder=3)
+            _boxes(ax, val - ev, val + ev, e[:-1], e[1:], col, alpha=0.4, label=lab)
+            ax.plot(ctr, val, "_", color="k", ms=8, mew=1.1, zorder=5)
         ax.set_xlabel(xlab); ax.set_ylabel("rate / bin width")
         ax.set_title(f"{ttl} projection  (lines = truth)", fontsize=8.5, loc="left")
         if k == 0:
