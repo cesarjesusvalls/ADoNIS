@@ -501,7 +501,8 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
         # what each half of the figure is
         fig.tight_layout(rect=(0, 0, 1, 0.968))
         fig.subplots_adjust(hspace=0.10, wspace=0.10)
-        style.save(fig, f"{label}_figB")
+        # Named, not label-tagged, to match closure_demo.  A second study point would overwrite it.
+        style.save(fig, "corner_plots")
 
 
 if __name__ == "__main__":

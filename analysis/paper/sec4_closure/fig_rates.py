@@ -163,7 +163,8 @@ def main(label="sec4_P1"):
         # explicit padding: the per-panel titles carry two lines (name + chi2), and at the
         # default pad they collided with the axis above.
         fig.tight_layout(pad=0.9, h_pad=1.0, w_pad=1.1, rect=(0.012, 0, 1, 0.976))
-        style.save(fig, f"{label}_figD")
+        # Named, not label-tagged, to match closure_demo.  A second study point would overwrite it.
+        style.save(fig, "Asimov_xsec_samples")
 
 
 if __name__ == "__main__":

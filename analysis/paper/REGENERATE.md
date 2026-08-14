@@ -178,10 +178,10 @@ $P -m analysis.paper.sec4_closure.fig_rates           sec4_P1               # D
 
 | figure | script | output |
 |---|---|---|
-| A | `fig_closure_summary` | `sec4_P1_figA.png` |
-| B | `fig_corner_all` | `sec4_P1_figB.png` |
-| C | `fig_corner_grad` | `sec4_corner_grad_gn.png` |
-| D | `fig_rates` | `sec4_P1_figD.png` |
+| A | `fig_closure_summary` | `closure_demo.png` |
+| B | `fig_corner_all` | `corner_plots.png`  (B and C merged) |
+| C | *(merged into B)* | — |
+| D | `fig_rates` | `Asimov_xsec_samples.png` |
 
 `fig_corner_prof.py` is **not** a figure; it owns `load_views`/`snap_axis`/`view_for`, which B imports.
 
