@@ -271,13 +271,14 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
-        fig = plt.figure(figsize=(11.5, 6.6))
-        gs = fig.add_gridspec(3, 2, width_ratios=[1.0, 1.15], height_ratios=[1.0, 1.0, 1.0],
-                              hspace=0.55, wspace=0.28, left=0.09, right=0.98, top=0.95, bottom=0.08)
-        axA = fig.add_subplot(gs[:, 0])          # recovery spans all three rows
-        axB = fig.add_subplot(gs[0, 1])
-        axC = fig.add_subplot(gs[1, 1])
-        axD = fig.add_subplot(gs[2, 1])
+        # TWO stacked full-width panels.  (c)/(d) are gone: the corner figure makes the same point
+        # about non-Gaussian shape with more information, so keeping them was duplication.  A single
+        # column each also lets (a) use the full width for 17 dials, which is what it was short of.
+        fig = plt.figure(figsize=(7.2, 6.4))
+        gs = fig.add_gridspec(2, 1, height_ratios=[1.62, 1.0], hspace=0.26,
+                              left=0.10, right=0.985, top=0.985, bottom=0.075)
+        axA = fig.add_subplot(gs[0, 0])
+        axB = fig.add_subplot(gs[1, 0])
 
         # ---- (a) recovery ------------------------------------------------------------------------ #
         yy = np.arange(len(order)); gid = [style.knob_group(pn[sub[c]]) for c in order]
@@ -350,8 +351,8 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
         axA.legend(h, ["Injected truth", "BFP", "Gaussian",
                        "Marginal (Laplace)", "Marginal (NUTS)"],
                    fontsize=5.6, loc="lower left", framealpha=0.92, borderpad=0.3, labelspacing=0.25)
-        axA.set_title(f"(a)  recovery + quoted uncertainty  ({MNAME} intervals)",
-                      fontsize=9.5, loc="left")
+        axA.text(0.011, 0.985, "a)", transform=axA.transAxes, ha="left", va="top",
+                 fontsize=11, fontweight="bold", zorder=9)
 
         # ---- (b) do the intervals COVER? ---------------------------------------------------------
         # The likelihood ratio at the TRUE point, Dchi2 = chi2(theta_true) - chi2(theta_hat), is the
@@ -376,88 +377,24 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
             axB.text(0.97, 0.62, "coverage\n" + "\n".join(txt), transform=axB.transAxes,
                      ha="right", va="top", fontsize=6.2, color="0.15",
                      bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.75", lw=0.5, alpha=0.95))
-            axB.legend(fontsize=7, loc="upper left")
+            axB.legend(fontsize=7.5, loc="upper right", bbox_to_anchor=(1.0, 1.0))
             axB.set_xlabel(r"$\Delta\chi^2 = \chi^2(\theta_{\rm true})-\chi^2(\hat\theta)$", fontsize=8)
             axB.set_ylabel("density", fontsize=8)
-            axB.set_title(f"(b)  do the intervals cover?  ({len(dch)} toys)", fontsize=9.5, loc="left")
+            axB.text(0.011, 0.985, "b)", transform=axB.transAxes, ha="left", va="top",
+                     fontsize=11, fontweight="bold", zorder=9)
             print(f"  GOF (for the caption): median chi2/ndf = {np.median(e_chi2):.1f}/{ndf} "
                   f"= {np.median(e_chi2)/ndf:.3f}")
         axB.tick_params(which="both", top=False, right=False, labelsize=7)
 
-        # ---- (c) and (d): the four PREDICTIONS as curves, no toys -------------------------------
-        # Same recipe for both, so the only difference a reader absorbs is the physics: (c) is E_b,
-        # a couple of sigma from a hard wall; (d) is C5A, far from every bound.  Toys are deliberately
-        # absent -- the histogram of best fits is a spread, not an interval, and the question "is the
-        # interval right" is answered by the coverage panel (b), not by overlaying the two.
-        def _panel(A, nm, tag, title, note=None):
-            from scipy.interpolate import CubicSpline
-            cc = [c for c, k in enumerate(sub) if pn[k] == nm]
-            if not cc:
-                A.axis("off"); return
-            c0 = cc[0]; k0 = sub[c0]; sig = float(spost[c0])
-            g0 = (grids[c0] if grids is not None else grid); dch = prof[c0]
-            ok = np.isfinite(g0) & np.isfinite(dch)
-            wall = None
-            _lo = K.phys_lo(nm)
-            if _lo is not None:
-                xb = (_lo - bfp[k0]) / sig
-                if g0[ok].min() - 1e-9 <= xb <= g0[ok].max() + 1e-9:
-                    wall = xb
-            xf = np.linspace(g0[ok].min(), g0[ok].max(), 800)
-            d = np.exp(-0.5 * np.maximum(CubicSpline(g0[ok], dch[ok])(xf), 0.0))
-            d /= np.trapezoid(d, xf)
-            gx = np.linspace(min(xf[0], (wall - 1.6) if wall is not None else xf[0]), xf[-1], 500)
-            A.plot(gx, np.exp(-0.5 * gx ** 2) / np.sqrt(2 * np.pi), color=C_GAUSS, lw=1.3, ls="--",
-                   label="Gaussian")
-            A.plot(xf, d, color=C_FIT, lw=1.7, label="Profile")
-            if logdet is not None:
-                oc = _occam(g0, prof[c0], logdet[c0], MASS)
-                if oc is not None:
-                    A.plot(oc[2], oc[3], color=C_OCC, lw=1.5, ls=(0, (5, 1.6)),
-                           label="Marginal (Laplace)")
-            nu = NU.get(nm)
-            if nu is not None:
-                h_, e_ = np.histogram(nu, bins=40, range=(xf[0], xf[-1]), density=True)
-                A.step(0.5 * (e_[1:] + e_[:-1]), h_, where="mid", color=C_NUTS, lw=1.3,
-                       label="Marginal (NUTS)")
-            # FIXED -3..3 WINDOW for both panels.  The scanned span is adaptive (E_b runs to +5.4
-            # sigma, C5A to +5.4) and letting it set the axis squeezed all the structure into the left
-            # third.  Everything that matters at 68/90% lives well inside +-3.
-            A.set_xlim(-3.0, 3.0)
-            if wall is not None:
-                # the ENTIRE region below the wall is unphysical, not a token strip
-                A.axvspan(-3.0, wall, facecolor="0.5", alpha=0.30, lw=0, zorder=3)
-                A.axvline(wall, color="k", lw=0.9, ls="--", zorder=4)
-            A.set_ylim(bottom=0)
-            A.set_xlabel(r"$(\theta-\hat\theta)\,/\,\sigma$", fontsize=8)
-            A.set_ylabel("density", fontsize=8)
-            A.legend(fontsize=5.8, loc="upper right", framealpha=0.92, borderpad=0.3,
-                     handlelength=1.6, labelspacing=0.25)
-            if note and wall is not None:
-                A.text(0.5 * (-3.0 + wall), 0.62 * A.get_ylim()[1], note, ha="center",
-                       va="center", fontsize=5.8, color="0.15", linespacing=1.25, zorder=7)
-            A.set_title(f"({tag})  {title}", fontsize=9.5, loc="left")
-            A.tick_params(which="both", top=False, right=False, labelsize=7)
-
-        _note = None
-        cE = [c for c, k in enumerate(sub) if pn[k] == "Eb_shift"]
-        if cE and e_fit is not None:
-            _c0 = cE[0]; _k0 = sub[_c0]; _w = K.phys_lo("Eb_shift") or 0.0
-            _on = np.abs(e_fit[:, _c0] - _w) < 1e-6
-            _f = float(_on.mean()); _e = np.sqrt(max(_f, 1e-9) * (1 - _f) / len(e_fit))
-            _pa = float(stats.norm.cdf((_w - float(truth[_k0])) / float(spost[_c0])))
-            _note = f"on boundary\n{100*_f:.1f}$\\pm${100*_e:.1f}%\npred {100*_pa:.1f}%"
-            print(f"  panel (c) E_b atom: {100*_f:.1f}+-{100*_e:.1f}%  Chernoff {100*_pa:.1f}%")
-        _panel(axC, "Eb_shift", "c", r"at a boundary: $E_b$", note=_note)
-        _panel(axD, NONGAUSS_DIAL, "d", f"away from any boundary: {style.plab(NONGAUSS_DIAL)}")
-
-        for a_ in (axB, axC, axD):
+        for a_ in (axA, axB):
             for sp in ("top", "right"):
                 a_.spines[sp].set_visible(False)
 
         # LABEL-tagged: the study points (P1 = all dials off nominal, P2 = nominal but E_b) are separate
         # figures and must not overwrite each other.  `sec4_ref` keeps the historical filename.
-        base = f"{label}_figA"
+        # Named as asked.  NOTE: no longer label-tagged, so a second study point (P2) rendered from
+        # this script overwrites the first instead of sitting beside it.
+        base = "closure_demo"
         # a non-default interval level gets its own file, so the 1-sigma and 2-sigma versions can be
         # compared side by side instead of one silently replacing the other
         style.save(fig, base if abs(MASS - 0.6827) < 1e-6 else f"{base}_{round(100*MASS)}")
