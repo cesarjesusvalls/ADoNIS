@@ -274,9 +274,9 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
         # TWO stacked full-width panels.  (c)/(d) are gone: the corner figure makes the same point
         # about non-Gaussian shape with more information, so keeping them was duplication.  A single
         # column each also lets (a) use the full width for 17 dials, which is what it was short of.
-        fig = plt.figure(figsize=(7.2, 6.4))
-        gs = fig.add_gridspec(2, 1, height_ratios=[1.62, 1.0], hspace=0.26,
-                              left=0.10, right=0.985, top=0.985, bottom=0.075)
+        fig = plt.figure(figsize=(4.7, 7.6))
+        gs = fig.add_gridspec(2, 1, height_ratios=[1.85, 1.0], hspace=0.22,
+                              left=0.155, right=0.98, top=0.99, bottom=0.065)
         axA = fig.add_subplot(gs[0, 0])
         axB = fig.add_subplot(gs[1, 0])
 
@@ -351,7 +351,7 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
         axA.legend(h, ["Injected truth", "BFP", "Gaussian",
                        "Marginal (Laplace)", "Marginal (NUTS)"],
                    fontsize=5.6, loc="lower left", framealpha=0.92, borderpad=0.3, labelspacing=0.25)
-        axA.text(0.011, 0.985, "a)", transform=axA.transAxes, ha="left", va="top",
+        axA.text(0.035, 0.978, "a)", transform=axA.transAxes, ha="left", va="top",
                  fontsize=11, fontweight="bold", zorder=9)
 
         # ---- (b) do the intervals COVER? ---------------------------------------------------------
@@ -380,7 +380,7 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
             axB.legend(fontsize=7.5, loc="upper right", bbox_to_anchor=(1.0, 1.0))
             axB.set_xlabel(r"$\Delta\chi^2 = \chi^2(\theta_{\rm true})-\chi^2(\hat\theta)$", fontsize=8)
             axB.set_ylabel("density", fontsize=8)
-            axB.text(0.011, 0.985, "b)", transform=axB.transAxes, ha="left", va="top",
+            axB.text(0.035, 0.978, "b)", transform=axB.transAxes, ha="left", va="top",
                      fontsize=11, fontweight="bold", zorder=9)
             print(f"  GOF (for the caption): median chi2/ndf = {np.median(e_chi2):.1f}/{ndf} "
                   f"= {np.median(e_chi2)/ndf:.3f}")
