@@ -49,6 +49,10 @@ C_BFP = "#1a9e57"
 # the two objects that were missing from this figure: the Laplace (Occam) correction of the profile,
 # and the EXACT marginal from NUTS.  They should land on top of each other -- that is the check.
 C_OCC, C_NUTS = "#6a3d9a", "#e08214"
+# Panel (b) is drawn from the SAME ramp as the section-2 constraint heatmap
+# (style.CMAP_CONSTRAINT = #07204d -> #1f4b9c -> #4f7fe0 -> #8fb2f5 -> ...): the toys take its mid tone
+# and the chi2 reference its darkest, so the two sections read as one palette instead of one blue each.
+C_TOYS_FILL, C_TOYS_EDGE, C_CHI2 = "#8fb2f5", "#4f7fe0", "#07204d"
 
 # Panel (d) shows ONE dial in detail as the non-Gaussian counterpart to the boundary case in (c).
 # C5A is the right choice: it is far from every bound, so its departure from the quadratic cannot be
@@ -274,9 +278,9 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
         # TWO stacked full-width panels.  (c)/(d) are gone: the corner figure makes the same point
         # about non-Gaussian shape with more information, so keeping them was duplication.  A single
         # column each also lets (a) use the full width for 17 dials, which is what it was short of.
-        fig = plt.figure(figsize=(4.7, 7.6))
-        gs = fig.add_gridspec(2, 1, height_ratios=[1.85, 1.0], hspace=0.22,
-                              left=0.155, right=0.98, top=0.99, bottom=0.065)
+        fig = plt.figure(figsize=(4.2, 6.8))
+        gs = fig.add_gridspec(2, 1, height_ratios=[3.70, 1.0], hspace=0.20,
+                              left=0.155, right=0.98, top=0.905, bottom=0.065)
         axA = fig.add_subplot(gs[0, 0])
         axB = fig.add_subplot(gs[1, 0])
 
@@ -329,7 +333,7 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
             axA.plot(xhat, yy[i], "D", ms=4.5, color=C_BFP, mec="white", mew=0.5, zorder=6)
             axA.plot((truth[k] - nom[k]) / p, yy[i], marker="*", ms=11, color="k", zorder=5, ls="none")
         axA.axvline(0, color="0.8", lw=0.8, zorder=0)
-        axA.set_yticks(yy); axA.set_yticklabels([style.plab(pn[sub[c]]) for c in order], fontsize=7)
+        axA.set_yticks(yy); axA.set_yticklabels([style.plab(pn[sub[c]]) for c in order], fontsize=9.5)
         axA.set_ylim(len(order) - 0.5, -0.5)
         axA.set_xlabel(r"$(\theta-\theta_{\rm nom})\,/\,\sigma_{\rm ref}$", fontsize=9)
         bounds = [i for i in range(1, len(gid)) if gid[i] != gid[i - 1]]
@@ -350,7 +354,11 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
              plt.Line2D([], [], color=C_NUTS, lw=2.2)]
         axA.legend(h, ["Injected truth", "BFP", "Gaussian",
                        "Marginal (Laplace)", "Marginal (NUTS)"],
-                   fontsize=5.6, loc="lower left", framealpha=0.92, borderpad=0.3, labelspacing=0.25)
+                   # OUTSIDE the axes, above.  At a legible size there is no empty region left inside:
+                   # every candidate spot collides with a dial's interval (lower-left ran into N_SRC).
+                   fontsize=7.8, loc="lower center", bbox_to_anchor=(0.5, 1.005), ncol=3,
+                   frameon=False, borderpad=0.2, labelspacing=0.35, handlelength=1.8,
+                   columnspacing=1.3)
         axA.text(0.035, 0.978, "a)", transform=axA.transAxes, ha="left", va="top",
                  fontsize=11, fontweight="bold", zorder=9)
 
@@ -364,9 +372,11 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
             c2t = _chi2_at_truth(label, F)
             dch = c2t - e_chi2
             kk_ = len(sub)
-            axB.hist(dch, bins=40, density=True, color=C_FIT, alpha=0.75, edgecolor="white", lw=0.4)
+            axB.hist(dch, bins=40, density=True, facecolor=C_TOYS_FILL, alpha=0.95,
+                     edgecolor=C_TOYS_EDGE, lw=0.5)
             xx = np.linspace(0, max(dch.max(), stats.chi2.ppf(0.999, kk_)) * 1.02, 400)
-            axB.plot(xx, stats.chi2.pdf(xx, kk_), "k-", lw=1.3, label=f"$\\chi^2$({kk_})")
+            axB.plot(xx, stats.chi2.pdf(xx, kk_), color=C_CHI2, lw=1.5,
+                     label=f"$\\chi^2$({kk_})")
             txt = []
             for cl in (0.6827, 0.90, 0.95):
                 q = stats.chi2.ppf(cl, kk_); cov = float(np.mean(dch < q))
@@ -374,10 +384,11 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
                 axB.axvline(q, color="0.5", lw=0.7, ls=":")
                 txt.append(f"{100*cl:.1f}%: {100*cov:.1f}$\\pm${100*se:.1f}%")
                 print(f"  coverage nominal {100*cl:5.2f}% -> observed {100*cov:5.2f}+-{100*se:.2f}%")
-            axB.text(0.97, 0.62, "coverage\n" + "\n".join(txt), transform=axB.transAxes,
-                     ha="right", va="top", fontsize=6.2, color="0.15",
-                     bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.75", lw=0.5, alpha=0.95))
-            axB.legend(fontsize=7.5, loc="upper right", bbox_to_anchor=(1.0, 1.0))
+            axB.text(0.97, 0.80, "coverage\n" + "\n".join(txt), transform=axB.transAxes,
+                     ha="right", va="top", fontsize=8, color="0.15",
+                     bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="0.75", lw=0.5, alpha=0.95))
+            axB.legend(fontsize=7.8, loc="upper right", bbox_to_anchor=(1.0, 1.0),
+                       frameon=False, handlelength=1.8)
             axB.set_xlabel(r"$\Delta\chi^2 = \chi^2(\theta_{\rm true})-\chi^2(\hat\theta)$", fontsize=8)
             axB.set_ylabel("density", fontsize=8)
             axB.text(0.035, 0.978, "b)", transform=axB.transAxes, ha="left", va="top",
