@@ -384,7 +384,7 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
                 axB.axvline(q, color="0.5", lw=0.7, ls=":")
                 txt.append(f"{100*cl:.1f}%: {100*cov:.1f}$\\pm${100*se:.1f}%")
                 print(f"  coverage nominal {100*cl:5.2f}% -> observed {100*cov:5.2f}+-{100*se:.2f}%")
-            axB.text(0.97, 0.80, "coverage\n" + "\n".join(txt), transform=axB.transAxes,
+            axB.text(0.97, 0.695, "coverage\n" + "\n".join(txt), transform=axB.transAxes,
                      ha="right", va="top", fontsize=8, color="0.15",
                      bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="0.75", lw=0.5, alpha=0.95))
             axB.legend(fontsize=7.8, loc="upper right", bbox_to_anchor=(1.0, 1.0),

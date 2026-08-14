@@ -215,7 +215,13 @@ def view_for(views, ni, nj):
     w = views.get((nj, ni))
     if w is None:
         return None
-    return dict(axi=w["axj"], axj=w["axi"], d=np.asarray(w["d"]).T, ci=w["cj"], cj=w["ci"])
+    # `ld` (log-det of the nuisance covariance, the Laplace ingredient) must transpose WITH `d`.
+    # It was dropped here, so a transposed lookup silently returned a view with no Laplace surface --
+    # invisible while the contours were only ever looked up in the stored order, and total once the
+    # merged corner moved them to the upper triangle, where every lookup is transposed.
+    _ld = w.get("ld")
+    return dict(axi=w["axj"], axj=w["axi"], d=np.asarray(w["d"]).T, ci=w["cj"], cj=w["ci"],
+                ld=(None if _ld is None else np.asarray(_ld).T))
 
 
 def snap_axis(aa, kk, cc, pn, bfp, spost):

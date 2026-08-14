@@ -34,6 +34,8 @@ from analysis.paper.sec4_closure.fig_corner_prof import load_views, snap_axis, v
 from adonis.analysis import knobs as K
 
 L68, L90 = 2.30, 4.61                  # 2-D Delta-chi2 levels (68% / 90% of a 2-D Gaussian)
+C_ARROW = "#186"                       # gradient field (was figure C's colour)
+VIEW_SIG = 3.2                         # display window, in sigma_post, for the contour half
 C_LAP, C_NUTS, C_GAUS, C_BFP = "#1f4b9c", "#e08214", "#0b8f8f", "#d24"
 # ONE style everywhere: the Laplace marginal is the filled blue SURFACE (68% dark, 90% light),
 # NUTS is orange LINES (solid 68 / dashed 90) laid over it, and the Gaussian is teal lines in
@@ -147,10 +149,17 @@ def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
             A.plot(xf, y, color=C_LAP, lw=1.2)
     if nm in ncol:                                    # NUTS marginal, orange
         s_ = U[:, ncol[nm]]
-        h, e = np.histogram(s_, bins=40, range=(aa[0], aa[-1]), density=True)
+        # SMOOTHED, like the 2-D panels.  A 40-bin step histogram of 24k samples is mostly sampling
+        # noise at this panel size, and it read as structure next to the smooth Laplace curve it is
+        # meant to be compared with.  Finer bins + a narrow Gaussian: the same information, without the
+        # staircase.  The kernel is small (1.5 cells of a 120-bin grid = 1/80 of the range), so the
+        # 68% mass moves by well under a percent -- this smooths the noise, not the distribution.
+        h, e = np.histogram(s_, bins=120, range=(aa[0], aa[-1]), density=True)
         if h.max() > 0:
+            from scipy.ndimage import gaussian_filter1d
             c_ = 0.5 * (e[1:] + e[:-1])
-            A.step(c_, h, where="mid", color=C_NUTS, lw=1.4); top = max(top, h.max())
+            hs = gaussian_filter1d(h, 1.5, mode="nearest")
+            A.plot(c_, hs, color=C_NUTS, lw=1.5); top = max(top, hs.max())
     gx = np.linspace(aa[0], aa[-1], 300)              # Gaussian, teal
     gy = np.exp(-0.5 * gx ** 2) / np.sqrt(2 * np.pi)
     A.plot(gx, gy, color=C_GAUS, lw=1.3, ls="--"); top = max(top, gy.max())
@@ -161,11 +170,85 @@ def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
     A.set_ylim(0, 1.18 * max(top, 1e-9))
 
 
+def _load_grad(label):
+    """The gradient2d shards, keyed by dial-index pair.  Returns {} when the run has none, so the
+    figure degrades to the plain lower-triangle corner rather than failing."""
+    fs = sorted(glob.glob(str(style.ALTGEN / f"{label}_corner2d_grad_*.npz")))
+    if not fs:
+        return {}, None
+    Z = [np.load(f, allow_pickle=True) for f in fs]
+    G = {}
+    for z in Z:
+        for i, (a, b) in enumerate(np.asarray(z["pair_idx"])):
+            G[(int(a), int(b))] = (np.asarray(z["axes_phys"])[i], np.asarray(z["dchi2"])[i],
+                                   np.asarray(z["gn_step"])[i])
+    return G, Z[0]
+
+
+def _grad_panel(A, G, i, j, sub, pos, pn, bfp, crop=None, xbot=True, yleft=True):
+    """Gauss-Newton field for pair (i, j): x = dial i, y = dial j, PHYSICAL units, full allowed range.
+
+    A copy of fig_corner_grad's methodology -- same key, same smoothing, same normalisation, same
+    subsampling -- because this half of the figure is that figure.
+
+    `crop` = (x0, x1, y0, y1) in physical units: the window the contour panel opposite it shows.  Drawn
+    as a rectangle, it is the point of putting the two halves together -- it says how small the region
+    the data constrains is inside the range the dial is allowed to take.
+    """
+    (axa, axb), d, F = G[(i, j)]
+    _c = np.log10(np.maximum(d, 1e-3))
+    if np.isfinite(_c).all():
+        from scipy.ndimage import gaussian_filter
+        _c = gaussian_filter(_c, 1.0, mode="nearest")      # colour only; the arrows are untouched
+    A.imshow(np.ma.masked_invalid(_c).T, cmap="Greys", origin="lower", aspect="auto",
+             extent=(float(axa[0]), float(axa[-1]), float(axb[0]), float(axb[-1])),
+             interpolation="bicubic", rasterized=True, alpha=0.75, zorder=0)
+    X, Y = np.meshgrid(axa, axb, indexing="ij")
+    U, V = F[..., 0], F[..., 1]
+    n = np.hypot(U, V); n = np.where(n > 0, n, 1.0)
+    s_ = max(1, len(axa) // 9)
+    A.quiver(X[::s_, ::s_], Y[::s_, ::s_], (U / n)[::s_, ::s_], (V / n)[::s_, ::s_],
+             angles="xy", scale=17, width=0.008, color=C_ARROW, alpha=0.9, zorder=2)
+    if crop is not None:
+        x0, x1, y0, y1 = crop
+        A.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, ec=C_LAP, lw=1.2,
+                                  zorder=6))
+    A.plot(bfp[sub[pos[i]]], bfp[sub[pos[j]]], "*", color=C_BFP, ms=10, mec="white", mew=0.6, zorder=8)
+    A.set_xlim(axa[0], axa[-1]); A.set_ylim(axb[0], axb[-1])
+    A.tick_params(labelsize=6, top=False, right=False, labelbottom=xbot, labelleft=yleft, length=2)
+    from matplotlib.ticker import MaxNLocator
+    A.xaxis.set_major_locator(MaxNLocator(3, prune="both"))
+    A.yaxis.set_major_locator(MaxNLocator(3, prune="both"))
+    if xbot:
+        A.set_xlabel(style.plab(pn[sub[pos[i]]]), fontsize=8)
+    if yleft:
+        A.set_ylabel(style.plab(pn[sub[pos[j]]]), fontsize=8)
+
+
 def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
     style.use()
     views, meta = load_views(label, allow_partial)
     pn, sub, bfp, spost, V0, dials = (meta["pn"], meta["sub"], meta["bfp"], meta["spost"],
                                       meta["V0"], meta["dials"])
+
+    CROP = {}
+    GRAD, gz = _load_grad(label)
+    gpos = None
+    if GRAD:
+        gd = [str(x) for x in gz["dials"]]
+        gsel = [int(q) for q in gz["sel_pos"]]
+        # the grad run's dial ORDER need not match the corner's; index by NAME, never by position
+        try:
+            gidx = [gd.index(d_) for d_ in dials]
+            GRAD = {(gidx.index(i), gidx.index(j)) if False else (ii, jj): GRAD[(gidx[ii], gidx[jj])]
+                    for ii in range(len(dials)) for jj in range(len(dials))
+                    if (gidx[ii], gidx[jj]) in GRAD for (ii, jj) in [(ii, jj)]}
+            gpos = [gsel[k] for k in gidx]
+        except ValueError:
+            print("[warn] gradient run covers different dials; upper triangle left empty")
+            GRAD = {}
+    if GRAD:
+        print(f"[grad] upper triangle: {len(GRAD)} panel(s)")
 
     fs = sorted(glob.glob(str(style.ALTGEN / f"{nuts_label}_nutsown_*.npz")))
     if not fs:
@@ -197,7 +280,11 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
     def _lim(nm):
         """x/y limits for a dial: its scanned span, widened to show the wall band when there is one."""
         aa = dax[nm]; cc = dcol[nm]; kk = sub[cc]; span = aa[-1] - aa[0]
-        lo_, hi_ = aa[0], aa[-1]
+        # CLAMP to +-VIEW_SIG.  The 1-D profile scan is adaptive and reaches until the density decays,
+        # which for M_A_res is -6.5 sigma; letting that set the axis pushes every contour into a corner
+        # and drags the physical tick labels far below anything the fit supports.  The data is unchanged
+        # -- this is the window we look through.
+        lo_, hi_ = max(aa[0], -VIEW_SIG), min(aa[-1], VIEW_SIG)
         for _b, side in ((K.phys_lo(pn[kk]), -1), (K.phys_hi(pn[kk]), +1)):
             if _b is None: continue
             xb = (_b - bfp[kk]) / spost[cc]
@@ -229,20 +316,51 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
         # nd x nd, NOT sharey: the diagonal's y is a density, the off-diagonal's y is a dial, so a shared
         # row axis would force one onto the other.  Columns are aligned by explicit set_xlim instead.
-        fig, axes = plt.subplots(nd, nd, figsize=(max(5.2, 2.25 * nd), max(5.0, 2.25 * nd)),
+        fig, axes = plt.subplots(nd, nd, figsize=(max(4.0, 1.74 * nd), max(3.9, 1.74 * nd)),
                                  squeeze=False)
         for a in range(nd):
             for b in range(nd):
                 A = axes[a, b]
-                if b > a:
-                    A.axis("off"); continue
+                if b < a:
+                    # LOWER TRIANGLE: the gradient field over the FULL physical range, in figure C's
+                    # own orientation (x = dial b, y = dial a) so the drawing code is a copy rather
+                    # than a transposition.  Mirroring a vector field means swapping its components as
+                    # well as its axes, and getting that half-right silently rotates every arrow.
+                    # CROP is keyed by the CONTOUR panel's orientation, which is this panel's
+                    # transpose: the contour at (row b, col a) stores (x=dial a, y=dial b) while this
+                    # panel is (x=dial b, y=dial a).  Swap the pairs, or the rectangle comes out
+                    # rotated -- and being a rectangle it would look perfectly plausible.
+                    _cr = CROP.get((a, b))
+                    _cr = (_cr[2], _cr[3], _cr[0], _cr[1]) if _cr else None
+                    if (b, a) in GRAD:
+                        _grad_panel(A, GRAD, b, a, sub, gpos, pn, bfp, crop=_cr,
+                                    xbot=(a == nd - 1), yleft=(b == 0))
+                    else:
+                        A.axis("off")
+                    continue
                 if b == a:
                     _diag(A, dials[a], dax, dcol, sub, pn, bfp, spost, prof1, U, ncol)
                     A.set_xlim(*_lim(dials[a]))
+                    # the dial NAME lives on the diagonal, so neither triangle has to carry it twice
+                    A.text(0.5, 0.86, style.plab(dials[a]), transform=A.transAxes, ha="center",
+                           va="center", fontsize=11)
                     A.tick_params(labelsize=6, top=False, right=False, left=False, labelleft=False)
                     if a == nd - 1: A.set_xlabel(style.plab(dials[a]), fontsize=8)
                     else: A.tick_params(labelbottom=False)
                     continue
+                def _phys_ticks(axis, k_, c_, lo_s, hi_s, n=3):
+                    """Ticks at ROUND PHYSICAL values, placed at their sigma positions.
+
+                    Locating on the sigma axis and relabelling gave round sigma values and therefore
+                    arbitrary physical ones (0.53, 1.27, 1.92).  Choosing the numbers in physical space
+                    first and mapping them back puts them where a reader expects.
+                    """
+                    from matplotlib.ticker import MaxNLocator, FixedLocator, FixedFormatter
+                    p0, p1 = bfp[k_] + lo_s * spost[c_], bfp[k_] + hi_s * spost[c_]
+                    vals = [v for v in MaxNLocator(n).tick_values(p0, p1) if p0 <= v <= p1]
+                    axis.set_major_locator(FixedLocator([(v - bfp[k_]) / spost[c_] for v in vals]))
+                    axis.set_major_formatter(FixedFormatter([f"{v:g}" for v in vals]))
+
                 i, j = b, a
                 w = view_for(views, dials[i], dials[j])
                 if w is None:
@@ -251,6 +369,18 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                 ki, kj = sub[ci], sub[cj]
                 axi = snap_axis(w["axi"], ki, ci, pn, bfp, spost)
                 axj = snap_axis(w["axj"], kj, cj, pn, bfp, spost)
+                # THE DRAWING STAYS IN SIGMA.  Everything that lands on these axes -- the NUTS 2-D
+                # histogram, the Laplace surface, the Gaussian ellipse -- is built in sigma about the
+                # BFP, so converting the axis arrays alone left the data at sigma coordinates on
+                # physical axes and threw most of it off the panel.  Physical units are applied as a
+                # tick FORMATTER instead: the numbers read physical, the recipe is untouched.
+                # from the DISPLAYED limits, not the scanned span: the axes are clamped to +-VIEW_SIG,
+                # so a rectangle built from aa[0]/aa[-1] would outline a window the panel never shows.
+                _cx, _cy = _lim(dials[i]), _lim(dials[j])
+                CROP[(i, j)] = (float(bfp[ki] + _cx[0] * spost[ci]),
+                                float(bfp[ki] + _cx[1] * spost[ci]),
+                                float(bfp[kj] + _cy[0] * spost[cj]),
+                                float(bfp[kj] + _cy[1] * spost[cj]))
                 X, Y = np.meshgrid(axi, axj, indexing="ij")
                 d = np.array(w["d"], float)
                 for which, (kk, cc, aa) in (("x", (ki, ci, axi)), ("y", (kj, cj, axj))):
@@ -327,24 +457,34 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                 # limits come from the shared per-dial spans, so every panel in a column has one x-axis
                 # and every panel in a row has one y-axis -- the property that makes a corner readable
                 A.set_xlim(*_lim(dials[i])); A.set_ylim(*_lim(dials[j]))
-                A.tick_params(labelsize=6, top=False, right=False)
-                if a == nd - 1: A.set_xlabel(style.plab(dials[i]), fontsize=8)
-                else: A.tick_params(labelbottom=False)
-                if b == 0: A.set_ylabel(style.plab(dials[j]), fontsize=8)
-                else: A.tick_params(labelleft=False)
+                # PHYSICAL numbers on sigma axes: the formatter converts at draw time, so the data and
+                # every contour recipe stay in the units they were built in.
+                _xl, _yl = _lim(dials[i]), _lim(dials[j])
+                _phys_ticks(A.xaxis, ki, ci, *_xl)
+                _phys_ticks(A.yaxis, kj, cj, *_yl)
+                # this half sits ABOVE the diagonal, so its outer edge is the top row / right column
+                A.tick_params(labelsize=6, top=True, right=True, bottom=False, left=False,
+                              labelbottom=False, labelleft=False,
+                              labeltop=(a == 0), labelright=(b == nd - 1), length=2)
+                if a == 0:
+                    A.set_xlabel(style.plab(dials[i]), fontsize=8); A.xaxis.set_label_position("top")
+                if b == nd - 1:
+                    A.set_ylabel(style.plab(dials[j]), fontsize=8); A.yaxis.set_label_position("right")
 
         # SHORT labels, placed inside the empty upper-right block.  What each object IS belongs in
         # the caption; the legend only has to let a reader tell the three apart on the panel.
         h = [plt.Rectangle((0, 0), 1, 1, fc=C_LAP, alpha=0.45),
              plt.Line2D([], [], color=C_NUTS, lw=1.6),
              plt.Line2D([], [], color=C_GAUS, lw=1.4),
-             plt.Line2D([], [], color=C_BFP, marker="*", ls="", ms=11),
-             plt.Line2D([], [], color="0.35", lw=1.2, ls="--")]
-        fig.legend(h, ["Laplace", "NUTS", "Gaussian", "BFP", "90% (solid = 68%)"],
-                   loc="upper right", fontsize=11, frameon=False, bbox_to_anchor=(0.97, 0.95),
-                   handletextpad=0.5, labelspacing=0.55)
-        fig.supxlabel(r"$(\theta-\hat\theta)/\sigma_{\rm post}$", fontsize=9)
-        fig.tight_layout(rect=(0, 0, 1, 0.945))
+             plt.Line2D([], [], color=C_BFP, marker="*", ls="", ms=11)]
+        # ABOVE the grid, horizontal.  The upper-right corner used to be empty in a corner plot and
+        # held this legend; the gradient panels now live there, so it has to come out.
+        fig.legend(h, ["Laplace", "NUTS", "Gaussian", "BFP"],
+                   loc="upper center", ncol=4, fontsize=8.5, frameon=False,
+                   bbox_to_anchor=(0.5, 1.0), handletextpad=0.4, columnspacing=1.6)
+        # what each half of the figure is
+        fig.supxlabel("physical dial values", fontsize=9)
+        fig.tight_layout(rect=(0, 0, 1, 0.968))
         fig.subplots_adjust(hspace=0.10, wspace=0.10)
         style.save(fig, f"{label}_figB")
 
