@@ -64,7 +64,7 @@ def _soft_membership(vals, edges, sigma):
 
 
 def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks=None, log=print,
-          TG=None, RG=None, soft_sigma=None):
+          TG=None, RG=None, soft_sigma=None, soft_reco=0):
     """Stream `bank_dir` and return the unfolding inputs.
 
     `soft_sigma`: (sigma_dpt, sigma_dat).  When given, a signal event does not go into ONE truth cell --
@@ -73,6 +73,16 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
     finer than the resolution is not measurable, so matching the basis to what the detector can localise
     should condition better.  Note what it costs: c_j is then the coefficient of an overlapping basis
     function, NOT the rate in cell j, and the two are only comparable through a derived quantity.
+
+    `soft_reco`: number of DETECTOR REPLICAS per event.  Instead of smearing once and putting the event
+    in one reco bin, smear it `soft_reco` times and give each replica 1/N of the weight, so one event
+    contributes to several reco bins in the proportion the detector actually produces.
+
+    This resamples the REAL kernel rather than assuming one, which matters because the smearing is
+    MULTIPLICATIVE: |p| -> |p|(1 + 0.2 g).  A +20% move and a -20% move are not mirror images (1/1.2 =
+    0.833, not 0.8), the width scales with the value rather than being a constant, and the induced
+    kernel in delta-p_T is skewed.  Any symmetric fixed-width approximation -- including the Gaussian
+    used by `soft_sigma` -- gets that wrong; resampling cannot, because it never writes the kernel down.
 
     `norm_events`: scale every weight so the TOTAL PRE-SELECTION rate equals this (50 000 for section 5).
     Normalising by summed WEIGHT, never by row count -- the bank retains rejected events as dead rows
@@ -107,11 +117,19 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         w_total += w0.sum()
 
         tsel, tobs, _, _ = SG.select_full(B, signal)
-        rsel, robs, _, _ = SG.select_full(R, signal)
         tdpt, tdat = _obs2(tobs)
-        rdpt, rdat = _obs2(robs)
         tbin = TG.index(tdpt, tdat)
-        rbin = RG.index(rdpt, rdat)
+        # RECO REPLICAS: replica r of chunk ci uses seed offset r, so each is an independent draw of the
+        # same detector and the set is still a pure function of (seed, chunk).
+        nrep = max(int(soft_reco), 1)
+        reps = []
+        for rep in range(nrep):
+            Rr = smear_chunk(B, spec, ci * 1000 + rep) if soft_reco else R
+            rsel_r, robs_r, _, _ = SG.select_full(Rr, signal)
+            rdpt_r, rdat_r = _obs2(robs_r)
+            reps.append((rsel_r, RG.index(rdpt_r, rdat_r)))
+            del Rr
+        rsel, rbin = reps[0]
         fbin = flux_index(np.asarray(B["k_nu"], dtype=float)[:, 0])   # TRUE E_nu, never the reco proxy
 
         # TRUE signal = passes the true selection AND lands inside the truth grid.  True signal outside
@@ -126,6 +144,25 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
             n_true += ((mi[:, :, None] * mj[:, None, :]).reshape(int(is_sig.sum()), TG.n)
                        * w0[is_sig][:, None]).sum(axis=0)
 
+        if soft_reco:
+            # every replica contributes 1/nrep of the weight to whichever reco bin it landed in
+            for rsel_r, rbin_r in reps:
+                keep_r = rsel_r & (rbin_r >= 0)
+                sr = keep_r & is_sig
+                np.add.at(A, (rbin_r[sr], tbin[sr], fbin[sr]), w0[sr] / nrep)
+                np.add.at(n_sig_reco, rbin_r[sr], w0[sr] / nrep)
+            # background keeps ONE assignment: its weight is theta-dependent and must stay one event
+            # per row of the compact bank, so replicas would have to be replicated events too.
+            keep = rsel & (rbin >= 0)
+            bkg_r = keep & ~is_sig
+            if bkg_r.any():
+                bkg_parts.append(BP.filter_events(B, bkg_r))
+                bkg_bins.append(rbin[bkg_r].astype(np.int32))
+                bkg_fbins.append(fbin[bkg_r].astype(np.int32))
+            if log:
+                log(f"  [unfold] chunk {ci + 1}/{len(files)} ({nrep} replicas)")
+            del B
+            continue
         keep = rsel & (rbin >= 0)
         sig_r = keep & is_sig
         if soft_sigma is None:
