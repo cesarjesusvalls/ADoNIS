@@ -109,7 +109,7 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
     # recomputed from the hard-vertex records at every fit iteration, so the records must stay resident;
     # pointers would mean re-reading the bank per iteration.  filter_events guarantees
     # bank_weight(filter_events(B, m), theta) == bank_weight(B, theta)[m], so compacting changes nothing.
-    bkg_parts, bkg_bins, bkg_fbins = [], [], []
+    bkg_parts, bkg_bins, bkg_fbins, bkg_frac = [], [], [], []
     for ci, f in enumerate(files):
         B = BP.load_bank_chunk(f, nch)
         R = smear_chunk(B, spec, ci)
@@ -145,20 +145,31 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
                        * w0[is_sig][:, None]).sum(axis=0)
 
         if soft_reco:
-            # every replica contributes 1/nrep of the weight to whichever reco bin it landed in
+            # SIGNAL: every replica contributes 1/nrep of the weight to the bin it landed in.
             for rsel_r, rbin_r in reps:
                 keep_r = rsel_r & (rbin_r >= 0)
                 sr = keep_r & is_sig
                 np.add.at(A, (rbin_r[sr], tbin[sr], fbin[sr]), w0[sr] / nrep)
                 np.add.at(n_sig_reco, rbin_r[sr], w0[sr] / nrep)
-            # background keeps ONE assignment: its weight is theta-dependent and must stay one event
-            # per row of the compact bank, so replicas would have to be replicated events too.
-            keep = rsel & (rbin >= 0)
-            bkg_r = keep & ~is_sig
+            # BACKGROUND: the detector does not know which events are signal, so the background must be
+            # softened the same way.  It cannot be replicated as EVENTS -- its weight is theta-dependent
+            # and has to stay one row per event in the compact bank -- so instead each event keeps one
+            # row and carries a DISTRIBUTION over reco bins.  The hard case is the one-hot special case
+            # of this, which is why both paths end in the same matrix product downstream.
+            any_pass = np.zeros(len(w0), bool)
+            for rsel_r, rbin_r in reps:
+                any_pass |= (rsel_r & (rbin_r >= 0))
+            bkg_r = any_pass & ~is_sig          # non-signal that survives reco in AT LEAST one replica
             if bkg_r.any():
                 bkg_parts.append(BP.filter_events(B, bkg_r))
-                bkg_bins.append(rbin[bkg_r].astype(np.int32))
-                bkg_fbins.append(fbin[bkg_r].astype(np.int32))
+                loc = np.cumsum(bkg_r) - 1      # global event index -> row in this chunk's compact bank
+                rows, cols, vals = [], [], []
+                for rsel_r, rbin_r in reps:
+                    m = bkg_r & rsel_r & (rbin_r >= 0)
+                    rows.append(loc[m]); cols.append(rbin_r[m] * NF + fbin[m])
+                    vals.append(np.full(int(m.sum()), 1.0 / nrep))
+                bkg_frac.append((np.concatenate(rows), np.concatenate(cols), np.concatenate(vals),
+                                 int(bkg_r.sum())))
             if log:
                 log(f"  [unfold] chunk {ci + 1}/{len(files)} ({nrep} replicas)")
             del B
@@ -188,9 +199,23 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         del B, R
 
     bkg_bank = SG._concat_compact(bkg_parts)
-    bkg_bin = np.concatenate(bkg_bins)
-    bkg_fbin = np.concatenate(bkg_fbins)
-    n_bkg_reco = np.bincount(bkg_bin, weights=np.asarray(bkg_bank["w0"], float), minlength=RG.n)
+    if soft_reco:
+        # one sparse (n_events x n_reco*n_flux) matrix: row e, column i*NF+b holds the fraction of
+        # event e's weight the detector puts in reco bin i.  Rows may sum to LESS than 1 -- an event
+        # that survives the selection in only some replicas is partly inefficient, and that is real.
+        from scipy.sparse import coo_matrix
+        R_, C_, V_, off = [], [], [], 0
+        for r_, c_, v_, n_ in bkg_frac:
+            R_.append(r_ + off); C_.append(c_); V_.append(v_); off += n_
+        bkg_M = coo_matrix((np.concatenate(V_), (np.concatenate(R_), np.concatenate(C_))),
+                           shape=(off, RG.n * NF)).tocsr()
+        bkg_bin = np.zeros(0, np.int32); bkg_fbin = np.zeros(0, np.int32)
+        n_bkg_reco = np.asarray(bkg_M.T @ np.asarray(bkg_bank["w0"], float)).reshape(RG.n, NF).sum(1)
+    else:
+        bkg_M = None
+        bkg_bin = np.concatenate(bkg_bins)
+        bkg_fbin = np.concatenate(bkg_fbins)
+        n_bkg_reco = np.bincount(bkg_bin, weights=np.asarray(bkg_bank["w0"], float), minlength=RG.n)
 
     # ONE scale, applied to w0.  bank_weight is w0 * (knob factors), so scaling w0 carries the
     # normalisation into every theta-dependent background weight with no further bookkeeping.
@@ -203,6 +228,6 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         tot = n_sig_reco + n_bkg_reco
         pur = np.where(tot > 0, n_sig_reco / tot, np.nan)
     return dict(A=A, n_true=n_true, n_sig_reco=n_sig_reco, n_bkg_reco=n_bkg_reco,
-                bkg_bank=bkg_bank, bkg_bin=bkg_bin, bkg_fbin=bkg_fbin, nflux=NF,
+                bkg_bank=bkg_bank, bkg_bin=bkg_bin, bkg_fbin=bkg_fbin, bkg_M=bkg_M, nflux=NF,
                 eff=eff, purity=pur, scale=scale, w_total_raw=w_total,
                 norm_events=(w_total * scale))

@@ -38,6 +38,11 @@ class UnfoldEngine:
         self.nflux = int(inp.get("nflux", FX.n_flux()))
         self.bkg_fbin = np.asarray(inp["bkg_fbin"], np.int64)
         self.bkg_flat = self.bkg_bin * self.nflux + self.bkg_fbin      # (reco, flux) -> one bincount
+        # SOFT assignment stores a distribution over reco bins per background event instead of one
+        # index.  The hard case is the one-hot version of the same matrix, so both go through _spread.
+        self.bkg_M = inp.get("bkg_M", None)
+        if isinstance(self.bkg_M, np.ndarray) and self.bkg_M.dtype == object:
+            self.bkg_M = self.bkg_M.item()
         self.flux_L = FX.prior_chol()                                  # correlated prior, whitened below
         self.det_prior = 0.05          # per-reco-bin detector normalisation, uncorrelated
         self.JB = BR.to_jax(inp["bkg_bank"])
@@ -54,6 +59,12 @@ class UnfoldEngine:
         """B_ib(theta): background rate per (reco bin, flux bin).  Kept resolved in the flux index
         because a flux parameter scales background too."""
         w = np.asarray(BR.bank_weight(self.JB, K.knobs_of(np.asarray(th), self.nom), self.grids))
+        return self._spread(w)
+
+    def _spread(self, w):
+        """Per-event weights -> (nreco, nflux).  One-hot bincount, or the sparse fractions."""
+        if self.bkg_M is not None:
+            return np.asarray(self.bkg_M.T @ w).reshape(self.nreco, self.nflux)
         return np.bincount(self.bkg_flat, weights=w,
                            minlength=self.nreco * self.nflux).reshape(self.nreco, self.nflux)
 
@@ -83,8 +94,7 @@ class UnfoldEngine:
         out = np.zeros((self.nreco, self.nflux, K.NPAR))
         for k in range(K.NPAR):
             g = np.asarray(self._jvp(thj, jnp.zeros(K.NPAR).at[k].set(1.0), self.JB))
-            out[:, :, k] = np.bincount(self.bkg_flat, weights=g,
-                                       minlength=self.nreco * self.nflux).reshape(self.nreco, self.nflux)
+            out[:, :, k] = self._spread(g)
         return out
 
     def jac_blocks(self, c, f, th, knob_idx):
