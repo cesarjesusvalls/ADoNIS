@@ -58,7 +58,7 @@ def main(label="sec5"):
     ax.legend(frameon=False, fontsize=7.5, loc="lower right", bbox_to_anchor=(1.0, 0.13))
     ax.text(0.02, 0.03, "dashed = injected,  markers = recovered", transform=ax.transAxes,
             ha="left", va="bottom", fontsize=7.5, color="0.35")
-    ax.set_title("(a) the flux is not recovered", fontsize=9, loc="left")
+    ax.set_title("(a)  the flux is not recovered", fontsize=9.5, loc="left")
 
     ax = fig.add_subplot(gs[0, 1])
     x = np.arange(nt)
@@ -71,7 +71,7 @@ def main(label="sec5"):
     ax.set_xlabel("truth cell"); ax.set_ylabel(r"$(c_j-c_j^{\rm true})/\sigma(c_j)$")
     ax.set_xticks(x); ax.set_ylim(-1.4, 1.4)
     ax.text(0.02, 0.95, r"$\pm1\sigma$", transform=ax.transAxes, va="top", fontsize=7.5, color="0.4")
-    ax.set_title("(b) the excess lands on the templates", fontsize=9, loc="left")
+    ax.set_title("(b)  the excess lands on the templates", fontsize=9.5, loc="left")
 
     style.save(fig, f"{label}_figH")
 

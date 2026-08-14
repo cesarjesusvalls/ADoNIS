@@ -50,24 +50,32 @@ def main(label="sec5", study="asimov"):
     # its own the full matrix devotes two thirds of its area to showing that nothing happens there.  The
     # zoom carries the physics; the full matrix is what proves the zoom is not hiding anything.
     nz = [e for b, _s, e in bounds if b == "xsec"][0]        # templates + flux + xsec
+    ctx = {"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
+           "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}
     fig = plt.figure(figsize=(10.4, 4.7))
     gs = fig.add_gridspec(1, 2, width_ratios=[1, 1.06], wspace=0.24)
 
-    for k, (M, bnd, ttl) in enumerate([
+    with plt.rc_context(ctx):
+     for k, (M, bnd, ttl) in enumerate([
             (R, bounds, f"(a) all {len(blocks)} parameters"),
             (R[:nz, :nz], [b for b in bounds if b[0] != "detector"],
              "(b) templates, flux and cross section")]):
         ax = fig.add_subplot(gs[0, k])
-        im = ax.imshow(M, cmap="RdBu_r", vmin=-1, vmax=1, origin="upper", interpolation="nearest")
+        # SAME diverging map as the section-3 gradient heatmap: signed quantities look alike
+        # across the paper, so a reader does not have to re-learn the colour bar.
+        im = ax.imshow(M, cmap=style.CMAP_GRAD_DIV, vmin=-1, vmax=1, origin="upper",
+                       interpolation="nearest")
         for _b, st_, _e in bnd[1:]:
             ax.axhline(st_ - 0.5, color="k", lw=0.8)
             ax.axvline(st_ - 0.5, color="k", lw=0.8)
         ticks = [0.5 * (st_ + e_) - 0.5 for _b, st_, e_ in bnd]
         ax.set_xticks(ticks); ax.set_yticks(ticks)
         ax.set_xticklabels([BLOCK_LABEL[b] for b, _s, _e in bnd], fontsize=7.5, rotation=22, ha="right")
-        ax.set_yticklabels([BLOCK_LABEL[b] for b, _s, _e in bnd], fontsize=7.5, rotation=68, va="center")
+        ax.set_yticklabels([BLOCK_LABEL[b] for b, _s, _e in bnd], fontsize=7.5, rotation=0, va="center")
         ax.tick_params(length=0)
-        ax.set_title(ttl, fontsize=8.5, loc="left")
+        ax.set_title(ttl, fontsize=9.5, loc="left")
+        for sp in ax.spines.values():
+            sp.set_visible(False)
         if k == 1:
             fig.colorbar(im, ax=ax, pad=0.02, shrink=0.88).set_label("correlation", fontsize=8)
     ax = fig.axes[1]

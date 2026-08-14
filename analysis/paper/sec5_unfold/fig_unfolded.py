@@ -64,7 +64,7 @@ def main(label="sec5"):
     ax.set_xlabel("truth cell"); ax.set_ylabel(r"template $c_j$")
     ax.set_xticks(x); ax.legend(frameon=False, fontsize=8, loc="upper left")
     ax.set_xlim(-0.6, nt - 0.4)
-    ax.set_title("(a) unfolded templates", fontsize=9, loc="left")
+    ax.set_title("(a)  unfolded templates", fontsize=9.5, loc="left")
 
     for k, (axis, edges, xlab, ttl) in enumerate(
             [("dpt", tdpt, r"$\delta p_T$ [MeV/c]", r"(b) $\delta p_T$"),
@@ -87,7 +87,7 @@ def main(label="sec5"):
             _boxes(ax, val - ev, val + ev, e[:-1], e[1:], col, alpha=0.4, label=lab)
             ax.plot(ctr, val, "_", color="k", ms=8, mew=1.1, zorder=5)
         ax.set_xlabel(xlab); ax.set_ylabel("rate / bin width")
-        ax.set_title(f"{ttl} projection  (lines = truth)", fontsize=8.5, loc="left")
+        ax.set_title(f"{ttl} projection  (lines = truth)", fontsize=9.5, loc="left")
         if k == 0:
             ax.legend(frameon=False, fontsize=8)
 

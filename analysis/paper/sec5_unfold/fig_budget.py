@@ -49,7 +49,7 @@ def main(label="sec5"):
     h, l = ax.get_legend_handles_labels()
     ax.legend(h[::-1], l[::-1], frameon=False, fontsize=7.5, ncol=2, loc="upper left")
     ax.set_ylim(0, 1.32 * total.max())
-    ax.set_title("(a) per-cell error budget (nested)", fontsize=9, loc="left")
+    ax.set_title("(a)  per-cell error budget (nested)", fontsize=9.5, loc="left")
 
     ax = fig.add_subplot(gs[0, 1])
     means = [e[k].mean() for k, _l, _c in BLOCKS]
@@ -62,7 +62,7 @@ def main(label="sec5"):
     ax.set_ylabel(r"mean $\sigma(c_j)$ / statistical")
     ax.set_ylim(0.9, 1.05 * means[-1] / means[0])
     ax.grid(axis="y", alpha=0.25, lw=0.5)
-    ax.set_title("(b) cumulative", fontsize=9, loc="left")
+    ax.set_title("(b)  cumulative", fontsize=9.5, loc="left")
 
     style.save(fig, f"{label}_figG")
 
