@@ -26,11 +26,11 @@ fit_cut: 0.5                   # a knob is FIT when shrinkage sigma_post/sigma_p
 axes:
 
   # ---- What does each PROBE TYPE buy you?  (neutrino / electron / hadron beams) ------------------ #
-  # The ONLY axis kept: it makes sec2_shrinkage_subsets, the paper's "constraining power per probe"
+  # The ONLY axis kept: it makes constrains_per_subset, the paper's "constraining power per probe"
   # figure.  (The per-sample / cumulative-ladder axes and the failure-mode + degeneracy reference
   # figures were pruned -- they are not paper figures.)
   by_probe:
-    figure: sec2_shrinkage_subsets       # kept at the historical name
+    figure: constrains_per_subset        # renamed 2026-08-14 (was sec2_shrinkage_subsets)
     title: Gate I per probe type
     marginalized_only: true              # single panel: what the joint fit delivers (no raw/degeneracy panel)
     groups:                              # all samples, grouped by beam particle (uses the default npz)

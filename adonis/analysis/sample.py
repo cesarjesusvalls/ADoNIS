@@ -222,7 +222,11 @@ class AnaSample:
         central = {k: sumw[j] for j, k in enumerate(keys)}
         mcerr = {k: np.sqrt(sumw2[j]) for j, k in enumerate(keys)}
         sigma = np.concatenate([_bin_sigma(central[k], mcerr[k], self.syst) for k in keys])
-        return dict(J=J, sigma=sigma, row0=row0, keys=keys, edges=edges_by, central=central)
+        # mcerr travels WITH the Jacobian: the sparse-bin mask (mcerr > mask_mcfrac * central) defines
+        # which bins the fit uses, so any figure claiming to show "the bins that are fitted" needs it.
+        # It used to be computed here and dropped, which meant the sec3 gradient figure drew bins the
+        # sec4 fit had thrown away.
+        return dict(J=J, sigma=sigma, row0=row0, keys=keys, edges=edges_by, central=central, mcerr=mcerr)
 
     # ---- verbs ----
     def jacobian(self, **kw):
@@ -258,7 +262,8 @@ class AnaSample:
         np.savez(out, J=r["J"], sigma=r["sigma"], row0=r["row0"], prior=K.PRIOR, pnames=K.PNAMES,
                  dskeys=r["keys"], shrink=r["shrink"], F=r["F"], V=r["V"],
                  **{f"{k}_edges": r["edges"][k] for k in r["keys"]},
-                 **{f"{k}_central": r["central"][k] for k in r["keys"]})
+                 **{f"{k}_central": r["central"][k] for k in r["keys"]},
+                 **{f"{k}_mcerr": r["mcerr"][k] for k in r["keys"]})
         if log:
             log(f"[out] {out}")
         return out

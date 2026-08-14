@@ -148,7 +148,7 @@ def main(label=None):
                   f"[{', '.join(pnames[k] for k in np.where(M[:, c] < fit_cut)[0])}]")
 
         figname = axis.get("figure", f"sec2_shrinkage_{aname}")
-        # Every kept axis is `marginalized_only` -> the single-panel grouped figure (sec2_shrinkage_subsets).
+        # Every kept axis is `marginalized_only` -> the single-panel grouped figure (constrains_per_subset).
         fig_shrinkage_grouped(M, pnames, [g[1] for g in groups], names, figname, fit_cut)
         tables[aname] = (M, R, names)
 
