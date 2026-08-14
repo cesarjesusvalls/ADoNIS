@@ -39,10 +39,11 @@ def main(label="sec4_P1"):
     live = np.isfinite(sig) & (sig > 0)
     print(f"{len(dsk)} samples, {int(live.sum())}/{len(sig)} live bins")
 
-    nd = len(dsk); nc = 4; nr = int(np.ceil(nd / nc))
+    # 3 x 7 fits the 21 samples exactly; the old 4-wide grid left three empty slots.
+    nd = len(dsk); nc = 3; nr = int(np.ceil(nd / nc))
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans"}):
-        fig, ax = plt.subplots(nr, nc, figsize=(3.5 * nc, 2.3 * nr))
+        fig, ax = plt.subplots(nr, nc, figsize=(3.4 * nc, 2.05 * nr))
         for i, k in enumerate(dsk):
             A = ax.flat[i]; a, b = row0[i], row0[i + 1]
             m = live[a:b]
@@ -72,7 +73,9 @@ def main(label="sec4_P1"):
         for j in range(nd, nr * nc):
             ax.flat[j].axis("off")
         fig.supylabel("rate per bin  (sample units)", fontsize=9)
-        fig.tight_layout()
+        # explicit padding: the per-panel titles carry two lines (name + chi2), and at the
+        # default pad they collided with the axis above.
+        fig.tight_layout(pad=0.9, h_pad=1.5, w_pad=1.1)
         style.save(fig, f"{label}_figD")
 
 
