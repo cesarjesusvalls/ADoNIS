@@ -93,16 +93,45 @@ event-passes vs dials, log p = beta log n     (at 125k)
     migrad    beta  = 1.55
 ```
 
-**Gauss-Newton's wall-clock advantage narrows as statistics grow.** Its work is batched and therefore
-compute-bound (alpha ~ 0.9); MIGRAD's is spread over hundreds of small calls whose cost is partly fixed
-overhead, so its wall-clock grows more slowly with N. Extrapolating the 3.0x at 125k to the production
-2.4M-event configuration gives roughly **2x**, not 3x. That extrapolation is the weakest number in this
-report and is flagged as such — see Limitations.
+**Do not read those alphas as a trend in the advantage.** They are fitted straight across a REGIME
+CHANGE, and averaging over it is misleading. Taken directly, the wall-clock ratio to Gauss-Newton at
+n=17 runs
 
-In the dial count, the intrinsic Gauss-Newton Jacobian is 1 primal + n tangents, i.e. linear; the
-measured beta = 1.26 exceeds that because the iteration count also grows with n. Gradient-free MIGRAD's
-beta = 1.55 is the compounding of a per-gradient cost of ~2n objective calls with an iteration count
-that itself grows.
+    migrad+g (noise)    5.70 -> 3.46 -> 2.92 -> 3.01      (15k, 30k, 60k, 125k)
+    migrad   (noise)   15.66 -> 8.70 -> 7.18 -> 7.78
+    migrad+g (asimov)  11.93 -> 10.50 -> 8.60 -> 8.92
+    migrad   (asimov)  28.52 -> 23.31 -> 18.83 -> 19.32
+
+falling from 15k to 60k and then FLAT. At small event counts MIGRAD is overhead-dominated -- hundreds of
+tiny calls, each paying a fixed launch and host sync -- while Gauss-Newton's batched work is already
+compute-bound. By ~60k both are compute-bound and scale together, so the ratio stabilises. The honest
+extrapolation to production statistics is therefore that the advantage **stays at ~3x and ~8x**, not
+that it decays.
+
+(An earlier draft of this report inferred "~2x at production" from the single-power-law fit. That was
+wrong, and it is precisely the error the alphas invite: a power law fitted through two regimes describes
+neither.)
+
+**The parameter axis is where the advantage genuinely grows.** Fitted at 125k, cost ~ n^gamma:
+
+| | wall-clock | event-passes |
+|---|---|---|
+| gn (asimov) | n^0.42 | n^0.92 |
+| gn (noise) | n^0.81 | n^1.26 |
+| migrad + gradient | n^0.89-0.96 | n^0.98-1.04 |
+| migrad, no gradient | n^1.39-1.55 | n^1.39-1.55 |
+
+Gauss-Newton's wall-clock is **sub-linear in the dial count**: a new dial is one more tangent column in
+a dispatch that was already being launched, so it is close to free. Gradient-free MIGRAD grows as
+~n^1.5, because each gradient costs ~2n objective calls *and* the iteration count rises with n.
+Gradient-driven MIGRAD sits between at ~n^0.9, since the VJP itself is O(1) in n and only the call count
+grows. The wall-clock ratio at 125k accordingly runs 2.7x (n=2) -> 4.4x -> 11.3x -> 19.3x (n=17) on
+Asimov. Seventeen dials is the small end of what a real analysis wants, so this is the axis the argument
+should lean on.
+
+In event-passes, the intrinsic Gauss-Newton Jacobian is 1 primal + n tangents, i.e. linear; the measured
+beta = 1.26 under noise exceeds that because the iteration count also grows with n (it is 0.92 on
+Asimov, where the iteration count is flat at 9).
 
 ## What this supports, and what it does not
 
@@ -120,8 +149,8 @@ wall-clock advantage is real on this hardware and comes from batching.
 
 1. **No production-statistics point.** 250k events/sample (2.4M resident) is absent: the fused Jacobian
    fails to load its compiled CUBIN there even on a 40 GB card and at dial batch 1, so dial-batching
-   cannot rescue it. The 2x extrapolation above rests on a 4-point fit over 8.3x and should not be
-   quoted as a measurement. Recovering it needs the Jacobian split into two device-resident stages, or
+   cannot rescue it. The ratios are flat over the last doubling (60k -> 125k), so carrying them to 250k
+   is a mild extrapolation rather than a leap, but it is still an extrapolation and not a measurement. Recovering it needs the Jacobian split into two device-resident stages, or
    chunking over **events** rather than dials — the latter is exact and costs no extra passes, since
    binning is a sum over events.
 2. **One missing cell**, N=125k / n=12, for the same reason; it does not affect any number quoted here.
