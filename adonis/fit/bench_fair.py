@@ -49,6 +49,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import gc
 import sys
 import time
 
@@ -164,8 +165,10 @@ def main(argv=None):
         eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
     log(f"estimator {cfg.fit.estimator.upper()} (prior x{cfg.fit.prior_scale:g})")
 
-    rows, out = [], {}
-    for n in ndials:
+    rows, out, kern = [], {}, None
+    # DESCENDING n: the biggest jacobian is built first, on a device that has not yet been
+    # fragmented by anything else.  Cell order does not affect any result -- each n is independent.
+    for n in sorted(ndials, reverse=True):
         subset = sorted(order[:n])
         names = [eng.pnames[k] for k in subset]
         idx = np.asarray(subset, int)
@@ -177,25 +180,42 @@ def main(argv=None):
         eng.set_closure_data(truth)
         data0 = [np.asarray(d["data"], float).copy() for s in eng.samples for d in s.ds]
 
-        # DEVICE-MEMORY FALLBACK HAPPENS HERE, BEFORE THE CLOCK, NOT MID-FIT.  A vmapped JVP over n
-        # tangents carries an (n, n_events) tangent through every intermediate, and at 250k/sample that
-        # can exhaust an 11 GB card.  The old code caught the OOM inside the Jacobian and halved the
-        # batch on the fly, which silently changed the dispatch count in the middle of a timed run.
-        # Here the batch is settled during warm-up and REPORTED; every timed call then uses one fixed,
-        # known configuration.
-        bt = a.jac_batch or n
-        while True:
-            try:
-                kern = FitKernel(eng, subset, jac_batch=bt)
-                kern.warmup()
-                break
-            except Exception as e:                    # noqa: BLE001 -- re-raised unless it is a device OOM
-                s_ = str(e)
-                if bt == 1 or not ("RESOURCE_EXHAUSTED" in s_ or "OUT_OF_MEMORY" in s_.upper()):
-                    raise
-                bt = max(1, bt // 2)
-                log(f"  n={n}: device OOM building the jacobian -> retrying at batch {bt} "
-                    f"(identical result, more dispatches, and it is recorded)")
+        # RELEASE THE PREVIOUS KERNEL BEFORE BUILDING THE NEXT.  Each kernel holds five compiled XLA
+        # executables per sample plus their CUDA graphs, and those do NOT go away when the python object
+        # is rebound.  Building the n=17 kernel while the n=2 kernel's executables were still resident
+        # is what exhausted an 11 GB card at 20k events/sample -- where the actual tangent data is ~3 MB,
+        # so it was never the arithmetic.  Drop the reference, then clear jax's compilation cache.
+        #
+        # AND NO RETRY-ON-OOM.  An earlier version halved the batch and tried again; after a device OOM
+        # the CUDA context is poisoned ("Recorded commands are not empty ... can be recorded at most
+        # once") and the retry fails with an INTERNAL error that is not an OOM, so the fallback both
+        # failed and disguised why.  A clean, loud failure with the flag to set is worth more than a
+        # recovery that cannot be trusted.
+        if kern is not None:
+            del kern
+            kern = None
+        gc.collect()
+        jax.clear_caches()
+        try:
+            kern = FitKernel(eng, subset, jac_batch=(a.jac_batch or n))
+            kern.warmup()
+        except Exception as e:                        # noqa: BLE001
+            s_ = str(e)
+            if "RESOURCE_EXHAUSTED" in s_ or "OUT_OF_MEMORY" in s_.upper():
+                # PRINT XLA'S OWN MESSAGE.  Replacing it with a friendlier one threw away the
+                # allocation size and the memory breakdown -- the only facts that identify WHAT is too
+                # big -- and cost an hour of guessing at a ceiling that could have been read off directly.
+                try:
+                    mm = jax.local_devices()[0].memory_stats()
+                    log(f"  device at failure: {mm['bytes_in_use']/2**30:.2f}/"
+                        f"{mm['bytes_limit']/2**30:.2f} GB in use, peak {mm['peak_bytes_in_use']/2**30:.2f} GB")
+                except Exception:                             # noqa: BLE001
+                    pass
+                log(f"  XLA said:\n{s_}")
+                raise SystemExit(
+                    f"device OOM building the n={n} jacobian at batch {a.jac_batch or n} "
+                    f"(see the allocation breakdown above).")
+            raise
         log(f"n={n:2d}: {kern.describe()}  compile {kern.compile_s:.1f}s  "
             f"live {kern.n_live} (ref {nlive_ref})")
         assert kern.n_live == nlive_ref, "frozen mask did not hold -- the N axis would be confounded"
@@ -266,6 +286,16 @@ def main(argv=None):
                                  eb_wall=(eb_wall or {}).get(meth), x=f.x,
                                  bias=float(np.max(np.abs((f.x - xt) / prior_true[idx])))))
                 out[f"trace_{n}_{tag}_{meth}"] = np.column_stack(f.trace.arrays()[:3])
+
+            # DROP EVERY REFERENCE TO THE KERNEL BEFORE THE NEXT ONE IS BUILT.  Trace keeps `self.k` so
+            # it can tag each objective evaluation with an event-pass count, and FitResult keeps the
+            # Trace -- so the previous cell's `fits` dict pins the whole kernel, and the `del kern` at the
+            # top of the next n block frees nothing.  That is why N=125k built n=17 and then OOMed on
+            # n=12, a SMALLER kernel: the memory was never the new kernel's, it was the old one's.
+            # The trace arrays are already copied into `out` above, so nothing is lost here.
+            for f_ in fits.values():
+                f_.trace = None
+            del fits, best
 
             log(f"  n={n:2d} {tag:>7} chi2_ref {c_ref:.6e}  cond(J) {cond:.3e}  "
                 + (f"Eb on wall: {[m for m, v in eb_wall.items() if v] or 'none'}" if eb_wall else ""))

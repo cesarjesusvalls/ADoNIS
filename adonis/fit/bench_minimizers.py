@@ -221,6 +221,85 @@ def main(argv=None):
     log(f"  chi2 at truth : host {_chi2_host(xt):.6e} | device {float(f_only(xt)):.6e}")
     log(f"  chi2 at start : host {_chi2_host(x0):.6e} | device {v0:.6e}")
 
+    # ================= COMPARABILITY AUDIT ========================================================= #
+    # A timing comparison is only meaningful if the two arms differ in METHOD and in nothing else.
+    # Every check below failed silently at least once during development, so each one is now asserted
+    # rather than assumed, and the configuration that produced a number is printed beside it.
+    import os as _os
+    from adonis.fit.stages import multisample as _MS
+    audit, fatal = {}, []
+
+    # (1) BINNING PATH.  GN reaches the model through eng.model/eng.jac; MIGRAD through model_blocks_jax.
+    # With S4_JAX_BIN unset the first bins on the HOST (per-event transfer + np.bincount) while the
+    # second bins on DEVICE -- measured as 106 ms vs 14.9 ms for identical physics, i.e. a 7x handicap
+    # to GN that has nothing to do with Gauss-Newton.  They must use the same path.
+    audit["S4_JAX_BIN"] = _os.environ.get("S4_JAX_BIN", "<unset>")
+    if not _MS._JAX_BIN:
+        fatal.append("S4_JAX_BIN is off: GN bins on the host, MIGRAD's objective on the device. "
+                     "Set S4_JAX_BIN=1 or the timings are not comparable.")
+
+    # (2) JACOBIAN BATCHING.  vmap costs ~1 primal + B tangents, so a batch narrower than the dial count
+    # pays an EXTRA PRIMAL per additional dispatch.  The default 16 against 17 dials means two
+    # dispatches (16+1) and one wasted primal, which distorts the n=17 point specifically.
+    audit["S4_JAC_BATCH"] = _MS.JAC_BATCH
+    audit["n_dispatch"] = int(np.ceil(nd / max(1, _MS.JAC_BATCH)))
+    if _MS.JAC_BATCH < nd:
+        fatal.append(f"JAC_BATCH={_MS.JAC_BATCH} < {nd} dials -> {audit['n_dispatch']} dispatches, "
+                     f"one extra primal pass each. Set S4_JAC_BATCH>={nd}.")
+
+    # (3) PRECISION.  float32 would change both speed and attainable chi2, and silently.
+    audit["x64"] = bool(jax.config.jax_enable_x64)
+    if not audit["x64"]:
+        fatal.append("jax_enable_x64 is off: the objective is float32.")
+
+    # (4) DEVICE.
+    audit["platform"] = jax.devices()[0].platform
+    if audit["platform"] != "gpu":
+        fatal.append(f"running on {audit['platform']}, not gpu.")
+
+    # (5) SAME OBJECTIVE.  Host and device chi2 must agree, at the start AND at the solution -- agreeing
+    # only at one point would not exclude a shape difference.
+    d_start = abs(_chi2_host(x0) - v0) / max(abs(v0), 1e-300)
+    d_truth = abs(_chi2_host(xt) - float(f_only(xt)))
+    audit["chi2_reldiff_start"], audit["chi2_absdiff_truth"] = d_start, d_truth
+    if d_start > 1e-10:
+        fatal.append(f"host and device chi2 differ by {d_start:.2e} at the start point.")
+
+    # (6) THE PRIOR BLOCK.  trf_fit minimises ||r_data||^2 + ||(x-th0)/prior||^2; chi2_fn has NO prior
+    # term.  Under MLE the prior is widened x1e6 so the block is numerically dead -- but "numerically
+    # dead" is a claim that has to be checked, not asserted, because it is the one structural
+    # difference between the two objectives.
+    _pw = 1.0 / eng.prior[np.array(subset, int)]
+    pri_start = float(np.sum(((x0 - np.asarray(eng.th0)[np.array(subset, int)]) * _pw) ** 2))
+    pri_truth = float(np.sum(((xt - np.asarray(eng.th0)[np.array(subset, int)]) * _pw) ** 2))
+    audit["prior_block_at_truth"] = pri_truth
+    audit["prior_frac_of_chi2"] = pri_truth / max(v0, 1e-300)
+    if audit["prior_frac_of_chi2"] > 1e-6:
+        fatal.append(f"prior block is {pri_truth:.3e}, {audit['prior_frac_of_chi2']:.2e} of chi2 -- "
+                     f"GN and MIGRAD are minimising materially different objectives.")
+
+    # (7) MASKING.  Both must drop the same bins.  GN masks via w=0 in trf_fit, the device objective via
+    # W=0 in _chi2_parts; both key off sigma, but verify the COUNT rather than trusting it.
+    n_live = int(okb.sum()); n_dead = int((~okb).sum())
+    audit["bins_live"], audit["bins_masked"] = n_live, n_dead
+    _Wdev = np.concatenate([np.asarray(w_) for w_ in eng.chi2_data_dev()[1]])
+    if int((_Wdev > 0).sum()) != n_live:
+        fatal.append(f"live-bin count differs: host {n_live} vs device {int((_Wdev > 0).sum())}.")
+
+    # (8) START POINT and BOX, identical by construction -- assert it anyway.
+    audit["start_at_nominal"] = bool(np.allclose(x0, np.asarray(eng.th0)[np.array(subset, int)]))
+    audit["n_bounded_below"] = int(np.isfinite(lo).sum())
+
+    log("  --- comparability audit ---")
+    for k, v in audit.items():
+        log(f"      {k:24s} {v}")
+    if fatal:
+        for m in fatal:
+            log(f"  [FATAL] {m}")
+        raise SystemExit("comparability audit failed; timings would not be apples-to-apples")
+    log("  audit PASSED: both arms use the device binning path, one jacobian dispatch, float64, "
+        "the same objective to 1e-10, the same live bins and the same start.")
+
     # per-call cost, so the fit times can be read as a call count
     def _t(fn, n=5):
         fn(); ts = []
@@ -325,6 +404,16 @@ def main(argv=None):
               f" {nv:6d} {ng:6d} {np.median(d['chi2']):11.3e} {b:15.2e}{rel}")
     print(f"\nminimisation only (GN less its {GN_TAIL:.2f}s post-fit covariance/diagnostic tail): "
           + "  ".join(f"{m} {corr[m]:.2f}s" for m in methods))
+    # THE ONE ASYMMETRY NO ASSERT CAN REMOVE: the arms stop on DIFFERENT criteria -- GN on the projected
+    # gradient (gtol 1e-8), MIGRAD on the estimated distance to minimum (EDM ~ tol*errordef*1e-3).  They
+    # therefore do different AMOUNTS of work, and the times are "each to its own stopping rule", not
+    # "time to equal accuracy".  Printed as a ratio so it cannot be read past.
+    _acc = {m: float(np.abs((res[m]["x"] - xt) / prior_true).max()) for m in methods}
+    print("\nSTOPPING RULES DIFFER -- times are each method to ITS OWN criterion, not to equal accuracy:")
+    for m in methods:
+        print(f"    {m:>10}  max|dtheta|/prior {_acc[m]:.3e}"
+              + ("   <- reference" if m == "gn" else
+                 f"   ({_acc[m]/max(_acc.get('gn', 1e-30), 1e-30):.1e}x GN's residual error)"))
 
     np.savez(a.out, methods=np.array(methods, dtype=object), subset=np.array(subset), truth=xt,
              per_call_chi2=c_f, per_call_chi2grad=c_vg, per_call_jac=c_J, per_call_model=c_m, prior_true=prior_true,
