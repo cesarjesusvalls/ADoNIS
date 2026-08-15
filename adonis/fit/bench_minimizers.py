@@ -259,12 +259,20 @@ def main(argv=None):
         t_vjp = _t(lambda: vg(x0)[1], n=5)
         t_fd = _t(lambda: _fd_grad(x0), n=3)
         t_jacf = c_J
-        mh = Minuit(lambda *aa: f_only(np.asarray(aa, float)), *xt, name=names_all)
-        mh.errordef = Minuit.LEAST_SQUARES
-        for i, nm in enumerate(names_all):
-            mh.limits[nm] = (None if not np.isfinite(lo[i]) else lo[i],
-                             None if not np.isfinite(hi[i]) else hi[i])
-        th0_ = time.perf_counter(); mh.hesse(); t_hesse = time.perf_counter() - th0_
+        # HESSE, REPEATED.  This is the measurement the O(n^2) claim rests on, so timing it once -- with
+        # no error bar and no protection against a one-off stall -- is not good enough.  A FRESH Minuit
+        # per repeat: hesse() caches its result on the object, so calling it twice on the same instance
+        # times a no-op the second time and would report a spurious speed-up.
+        def _hesse_once():
+            mh = Minuit(lambda *aa: f_only(np.asarray(aa, float)), *xt, name=names_all)
+            mh.errordef = Minuit.LEAST_SQUARES
+            for i, nm in enumerate(names_all):
+                mh.limits[nm] = (None if not np.isfinite(lo[i]) else lo[i],
+                                 None if not np.isfinite(hi[i]) else hi[i])
+            t_ = time.perf_counter(); mh.hesse(); return time.perf_counter() - t_
+        _hs = [_hesse_once() for _ in range(3)]
+        t_hesse = float(np.median(_hs))
+        log(f"  HESSE repeats: {['%.2f' % v for v in _hs]}s -> median {t_hesse:.2f}s")
         print(f"\n==== derivatives at {nd} dials (same objective, {jax.devices()[0].platform}) ====")
         print(f"{'object':>34} {'seconds':>9} {'obj-calls':>10} {'vs autodiff':>12}")
         print(f"{'MINUIT gradient (2n fin.diff.)':>34} {t_fd:9.3f} {2*nd:10d} {t_fd/t_vjp:11.1f}x")

@@ -77,6 +77,14 @@ def main(argv=None):
     ap.add_argument("--sig-cap", type=int, default=60000)
     ap.add_argument("--nit", type=int, default=200)
     ap.add_argument("--max-calls", type=int, default=50000)
+    ap.add_argument("--fixed-truth", action="store_true",
+                    help="use the CONFIG's injected truth for every toy and vary only the statistical "
+                         "throw. This is the closure repeated under noise -- one likelihood surface, N "
+                         "data realisations -- which is what a coverage/boundary statement is about. "
+                         "Without it each toy also re-throws the other 16 dial truths, which averages "
+                         "over different surfaces and conflates landscape variation with the effect.")
+    ap.add_argument("--nograd", action="store_true",
+                    help="also run derivative-free MIGRAD at the first tol (finite-difference gradients)")
     ap.add_argument("--eb-truth", default="",
                     help="fix the Eb_shift TRUTH for every toy: a number, or 'wall'. With 'wall' plus "
                          "--noise this is the textbook Chernoff setup -- a parameter whose true value "
@@ -103,6 +111,8 @@ def main(argv=None):
     from adonis.fit.stages.multisample_coverage import _throw_truth as _tu
     globals()['_throw_truth_upstream'] = _tu
     from adonis.fit.bench_minimizers import _bounds, _migrad
+    from adonis.fit.fitters import parse_inject
+    from adonis.reweight.reweight_model import nominal_knobs
 
     cfg = FitConfig.load(a.config)
     if a.sig_cap:
@@ -116,6 +126,7 @@ def main(argv=None):
     real_prior = eng.prior.copy()
     if cfg.fit.prior_scale != 1.0:
         eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
+    truth_cfg, _ = parse_inject(cfg.inject_string(), nominal_knobs())   # the closure's own injection
     names = [eng.pnames[k] for k in subset]
     keb = names.index(EB)
     lo, hi = _bounds(eng, subset)
@@ -136,13 +147,22 @@ def main(argv=None):
 
     rng = np.random.default_rng(a.seed)
     methods = ["gn"] + [f"migrad+g@{t:g}" for t in tols]
+    if a.nograd:
+        methods.append(f"migrad@{tols[0]:g}")           # no gradient supplied -> 2n calls per gradient
+    # FIXED TRUTH: draw it once, outside the loop, so every toy shares one likelihood surface and the
+    # only thing varying is the data.  Both minimisers see the SAME data in a given toy by construction
+    # (it is built once per toy, before either runs), so the comparison is paired throw by throw.
+    fixed_star = None
+    if a.fixed_truth:
+        fixed_star = truth_cfg.copy()
+        log(f"[truth] FIXED at the config's injection for all {a.toys} toys; only the stat throw varies")
     star_eb, stars, fits = [], [], {m: [] for m in methods}
     times = {m: [] for m in methods}
     chi2s = {m: [] for m in methods}
     ncalls = {m: [] for m in methods}
 
     for it in range(a.toys):
-        star = _throw(eng, subset, real_prior, rng)
+        star = fixed_star.copy() if fixed_star is not None else _throw(eng, subset, real_prior, rng)
         if a.eb_truth:
             star[subset[keb]] = K.phys_lo(EB) if a.eb_truth == "wall" else float(a.eb_truth)
         eng.set_closure_data(star)
@@ -164,7 +184,8 @@ def main(argv=None):
                 x = th[idx]
             else:
                 tol = float(m.split("@")[1])
-                x, nfg, c_data, dt = _migrad(eng, subset, x0, lo, hi, True, tol, a.max_calls, f_only, vg)
+                x, nfg, c_data, dt = _migrad(eng, subset, x0, lo, hi, m.startswith("migrad+g"),
+                                             tol, a.max_calls, f_only, vg)
             if m == "gn":
                 nfg = (int(getattr(eng, "last_nfev", -1)), int(getattr(eng, "last_njev", -1)))
             fits[m].append(x.copy()); times[m].append(dt); chi2s[m].append(float(c_data))
