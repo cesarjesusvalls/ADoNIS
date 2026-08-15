@@ -31,6 +31,12 @@ from analysis.paper.physical_fit import PNAMES
 from adonis.analysis import knobs as K   # PHYS_BOUND / phys_lo: one source of truth for hard boundaries
 
 
+# Physical reach for a dial whose nominal sits ON a bound and whose prior has been widened away.
+# E_b_shift: the prior is +-4 MeV, so a flat draw over [wall, wall+4] spans the physically interesting
+# range without inheriting the 1e6 widening.
+THROW_REACH = {"Eb_shift": (0.0, 4.0)}
+
+
 def _throw_truth(eng, subset, real_prior, rng):
     """One toy truth drawn from the REAL prior (legacy ensemble; see S4_FIXED_TRUTH for the other mode).
 
@@ -46,7 +52,21 @@ def _throw_truth(eng, subset, real_prior, rng):
         # UNCONSTRAINED dials (S4_PRIOR_FREE widens the prior by 1e6) have no prior to draw from -- held
         # at nominal.  Without this the widened width feeds straight into the draw: E_b would be thrown
         # uniformly out to ~1e6.
+        # UNCONSTRAINED dials would be thrown out to ~1e6 by the widened prior, so they cannot use it --
+        # but "hold at nominal" is WRONG for a dial whose nominal IS its boundary.  E_b_shift is stored
+        # as 1e-2 with a hard floor at 1e-2, and real_prior 4.0 > 100 x 1e-2 fires this guard, so every
+        # coverage toy was thrown with E_b pinned exactly on its wall -- and the flat-draw branch below,
+        # written for precisely this dial, was unreachable.  A boundary-coverage number built that way
+        # measures the pinning, not the statistics.  Freeze only dials that are NOT on a bound; a dial
+        # sitting on one is thrown flat over its physical reach instead.
         if real_prior[k] > 100.0 * max(abs(eng.th0[k]), 1e-12):
+            near_bound = (lo is not None and abs(eng.th0[k] - lo) <= 1e-9 * max(abs(lo), 1.0)) or \
+                         (hi is not None and abs(eng.th0[k] - hi) <= 1e-9 * max(abs(hi), 1.0))
+            if not near_bound:
+                continue
+            reach = float(np.max(np.abs(THROW_REACH.get(eng.pnames[k], (0.0, 1.0)))))
+            star[k] = rng.uniform(lo if lo is not None else eng.th0[k] - reach,
+                                  (lo if lo is not None else eng.th0[k]) + reach)
             continue
         # FLAT draw only when the Gaussian actually STRADDLES a boundary (the old E_b case: sigma 4.0 about
         # a nominal of 0.01 put half the draws below zero, and clamping them piled 255/500 toys on the

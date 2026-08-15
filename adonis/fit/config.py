@@ -134,6 +134,9 @@ class FitConfig:
     data: Data
     fit: Fit
     uncertainty: tuple           # ordered blocks, each a dict with a "method" key
+    # DEFAULTED FIELDS LAST -- a dataclass rejects a non-default field after a defaulted one, and putting
+    # `compute` above `uncertainty` made every FitConfig.load() raise at import time.
+    compute: dict = field(default_factory=dict)   # device-memory plan; see adonis.fit.compute
     path: Path = None
 
     # ---- loading ---------------------------------------------------------------------------------- #
@@ -141,7 +144,7 @@ class FitConfig:
     def load(cls, path) -> "FitConfig":
         p = Path(path)
         raw = yaml.safe_load(p.read_text()) or {}
-        _only(raw, {"name", "samples", "beams", "banks", "data", "fit", "uncertainty"}, p.name)
+        _only(raw, {"name", "samples", "beams", "banks", "data", "fit", "uncertainty", "compute"}, p.name)
         unc = tuple(dict(u) for u in (raw.get("uncertainty") or []))
         for u in unc:
             if u.get("method") not in STAGES:
@@ -150,6 +153,7 @@ class FitConfig:
         return cls(name=raw["name"],
                    samples=tuple(raw.get("samples") or ()),
                    beams=tuple(raw.get("beams") or ()),
+                   compute=dict(raw.get("compute") or {}),
                    banks=Banks.parse(raw.get("banks")),
                    data=Data.parse(raw.get("data")),
                    fit=Fit.parse(raw.get("fit")),

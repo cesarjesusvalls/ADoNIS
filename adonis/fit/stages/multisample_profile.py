@@ -26,7 +26,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from adonis.fit.stages.multisample import build_multisample_engine
-from adonis.fit.fitters import lm_fit, trf_fit
+from adonis.fit.fitters import logdet_cov, lm_fit, trf_fit
 from adonis.fit import provenance
 from analysis.paper.physical_fit import PNAMES
 from adonis.analysis import knobs as K
@@ -168,17 +168,19 @@ def main():
             th[k] = val                                     # ensure the pinned value (lm_fit never moves it)
             Lval, cdval = objective(th)
             prof[c, gi] = Lval - L_min; profd[c, gi] = cdval - cd_min
-            # lm_fit was called WITH subset=free, so _V is already the 15x15 nuisance covariance.
-            # slogdet returns sgn=0 whenever pinv has truncated a direction, which it does here (the
-            # M_A_res/S_Delta block is near-degenerate) -- it gave NaN at every node.  Sum the logs of the
-            # POSITIVE eigenvalues instead: the truncated directions carry no volume and must simply be
-            # excluded, and eigvalsh is exact for the symmetric V.
-            _w = np.linalg.eigvalsh(np.atleast_2d(_V))
-            _pos = _w[_w > np.max(_w) * 1e-12] if _w.size and np.max(_w) > 0 else np.array([])
-            logdetV[c, gi] = float(np.sum(np.log(_pos))) if _pos.size else np.nan
+            # THE OCCAM LOG-DET COMES FROM THE EXACT HESSIAN, not from the fit's (J^T W J)^-1.
+            # The Gauss-Newton matrix drops sum_b r_b d2m_b: a ~2.4e-04 elementwise perturbation, so it
+            # is invisible in any sigma -- but a log-determinant sums over ALL eigen-directions and is
+            # dominated by the worst-constrained ones, and on this near-degenerate nuisance block
+            # (cond ~260) it moves log det V by up to 0.25.  The Occam term enters the profile in units
+            # where Delta chi2 = 1 is one sigma, so that is not a rounding difference.  Measured in
+            # docs/bench_fair_report.md; the exact hessian costs ~n HVPs.
+            # Directions truncated by the pseudo-inverse are dropped and counted: slogdet returns sgn=0
+            # the moment one is, which used to give NaN at every node.
+            logdetV[c, gi], _nkept = logdet_cov(eng, free, th)
             if gi == 0:
-                log(f"    [{eng.pnames[k]}] V eig: min {_w.min():.3e} max {_w.max():.3e} "
-                    f"kept {_pos.size}/{_w.size}  logdet {logdetV[c, gi]:.3f}")
+                log(f"    [{eng.pnames[k]}] exact-hessian logdet {logdetV[c, gi]:.3f} "
+                    f"({_nkept}/{len(free)} directions kept)")
         _d0, _d1 = prof[c, 0], prof[c, -1]
         _bad = [w for w, d, e in (("lo", _d0, g_lo), ("hi", _d1, g_hi))
                 if d < 9.0 and abs(e - ((lo_p if w == "lo" else hi_p) - bfp[k]) / spost[c]

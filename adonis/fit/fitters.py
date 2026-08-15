@@ -52,128 +52,147 @@ def parse_inject(s, nom):
 
 
 
-def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None):
-    """Bound-constrained least squares by trust-region reflective (scipy 'trf'), same contract as lm_fit.
+_KCACHE = {}
 
-    WHY this replaces the hand-rolled LM + clip.  Both earlier recipes failed on E_b for optimiser
-    reasons, not statistical ones -- its profile is parabolic to 5% (Dchi2 = 1.59 at the wall vs 1.229^2
-    = 1.51), so there was never any non-Gaussianity to model:
 
-      * LINEAR space, step then clip.  Projecting a rejected step onto the boundary manufactures
-        SPURIOUS local minima: E_b parks on the floor, the other 15 dials re-optimise around it and the
-        point becomes self-consistent (one-sided gradient >= 0, so it even passes a KKT check).  Measured
-        on 12 such toys, 10 reached a LOWER chi2 when restarted above the wall -- 21.6% of the ensemble
-        was sitting on the floor, ~83% of that being optimiser failure rather than censoring.
-      * LOG space, theta <- theta*exp(du).  Removes the floor but not the bound (e^u > 0 always), at the
-        cost of an unbounded step: du = -g_u/A_uu scales as 1/theta, so the first iteration jumped E_b
-        from 1.0 to 2e-9 (a factor e^-20, the step clip) and was ACCEPTED because the other dials improved
-        enough to lower total chi2.  The remaining iterations then crawl back and stall short.
+def fit_kernel(eng, subset, mask=None):
+    """The FitKernel for (engine, subset, mask), built once and REUSED.
 
-    TRF fixes the actual defect: a genuine trust region bounds the step, and bounds are handled by
-    reflection rather than truncation, so a step that would leave the box is not silently replaced by one
-    that points somewhere else.  Residuals are the whitened data terms stacked with the prior terms, and
-    the analytic Jacobian from eng.jac is passed straight through.
+    Every kernel loads ~50 CUBIN modules onto the device and `jax.clear_caches()` does not unload them,
+    so building one per call would exhaust the CUDA context part-way through any scan.  A profile scan
+    re-minimises the SAME free subset at every node -- only the pinned value moves, and that is a runtime
+    argument (`set_fixed`), not a constant -- so one kernel serves the whole scan.
     """
-    from scipy.optimize import least_squares
-    data, sigma = eng.data_sigma()
-    if mask is None:
-        mask = np.ones(len(data), bool)
+    key = (id(eng), tuple(int(k) for k in subset),
+           None if mask is None else np.asarray(mask, bool).tobytes())
+    k = _KCACHE.get(key)
+    if k is None:
+        from adonis.fit.compute import resolve
+        from adonis.fit.kernels import FitKernel
+        nev = max([int(getattr(s_, "n_events", 0) or 0) for s_ in eng.samples] or [0])
+        plan = resolve(getattr(eng, "cfg", None), len(subset), nev, log=log)
+        k = FitKernel(eng, subset, mask=mask, jac_batch=(plan["jac_batch"] or None))
+        k.plan = plan
+        k.warmup(which=("residuals", "jac"))
+        _KCACHE[key] = k
+    return k
+
+
+def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None, exact_cov=False):
+    """Bound-constrained least squares by trust-region reflective, ON THE FUSED KERNEL.
+
+    Same contract as before -- (th, V, J, m, chi2_total, chi2_data) -- but the residuals and the analytic
+    Jacobian now come from `adonis.fit.kernels.FitKernel`, which bins INSIDE the jit.  The path this
+    replaces computed per-event derivatives on the device and shipped them to the host to be binned with
+    np.bincount: ~77 MB per sample per iteration at 17 dials and 125k events/sample, on every iteration
+    of every fit.  Measured on one shared objective, that host round trip was the whole of what used to
+    look like Gauss-Newton being slow (docs/bench_fair_report.md).
+
+    WHY TRF.  Both earlier recipes failed on E_b for optimiser reasons, not statistical ones -- its
+    profile is parabolic to 5%, so there was never any non-Gaussianity to model:
+      * LINEAR space, step then clip: projecting a rejected step onto the boundary manufactures SPURIOUS
+        local minima.  E_b parks on the floor, the other dials re-optimise around it, and the point even
+        passes a KKT check.  10 of 12 such toys reached a LOWER chi2 when restarted above the wall.
+      * LOG space: removes the floor but not the bound, at the cost of an unbounded step -- the first
+        iteration jumped E_b by e^-20 and was ACCEPTED because the other dials improved enough.
+    A genuine trust region bounds the step and reflection handles the box, so a step that would leave it
+    is not silently replaced by one pointing somewhere else.
+
+    exact_cov: return V from the EXACT hessian (forward-over-reverse HVPs) instead of (J^T W J)^-1.
+    Off by default because the two differ by ~1e-4 on the DIAGONAL -- invisible in any quoted sigma --
+    while costing n HVPs.  It matters for the log-DETERMINANT, which is sensitive to the
+    worst-constrained directions (measured 0.145 at the closure best fit); see `logdet_cov`.
+    """
+    from adonis.fit.minimizers import gn_fit
+
+    kern = fit_kernel(eng, subset, mask)
     idx = np.array(subset, int)
-    w = np.where(mask & np.isfinite(sigma) & (sigma > 0), 1.0 / np.where(sigma > 0, sigma, 1.0), 0.0)
-    pw = 1.0 / eng.prior[idx]
     th = (eng.th0 if th_init is None else th_init).copy()
-    lo = np.array([-np.inf if _K.phys_lo(eng.pnames[k]) is None else _K.phys_lo(eng.pnames[k])
-                   for k in subset], float)
-    hi = np.array([np.inf if _K.phys_hi(eng.pnames[k]) is None else _K.phys_hi(eng.pnames[k])
-                   for k in subset], float)
+    kern.set_fixed(th)          # dials outside `subset` sit where the caller put them
+    kern.refresh_data()         # data/sigma may have moved (a toy throw, a new closure)
+
+    lo, hi = kern.bounds()
     x0 = np.clip(th[idx], lo + 1e-12, hi - 1e-12)
 
-    # TRAJECTORY.  least_squares has no callback, so the iterate sequence is captured off the two
-    # callbacks it does have.  `_resid` runs at every TRIAL point (accepted or rejected) and caches what
-    # it computed; `_jac` runs only at ACCEPTED iterates, and pushes the cached values for the point it
-    # was handed.  That gives the accepted-step sequence for free -- no extra model evaluation, which
-    # matters because one model call is a full pass over 2.4M resident events.
-    #
-    # Without this the closure fit recorded nothing at all: `traj_*` in the npz were empty arrays,
-    # because the trajectory was wired into lm_fit only and the config selects TRF.  The step count was
-    # then unrecoverable after the fact -- it lived in stdout and nowhere else.
-    _last = {}
-
-    def _resid(x):
-        t = th.copy(); t[idx] = x
-        r_data = (eng.model(t) - data) * w
-        r_prior = (x - eng.th0[idx]) * pw
-        if record is not None:
-            cd = float(np.sum(r_data ** 2))
-            _last["x"] = x.copy(); _last["cd"] = cd
-            _last["ct"] = cd + float(np.sum(r_prior ** 2))
-        return np.concatenate([r_data, r_prior])
-
-    def _jac(x):
-        if record is not None and _last.get("x") is not None and np.array_equal(_last["x"], x):
-            t = th.copy(); t[idx] = x
-            record.append((t.copy(), _last["ct"], _last["cd"]))
-        t = th.copy(); t[idx] = x
-        return np.vstack([eng.jac(t, subset) * w[:, None], np.diag(pw)])
-
-    # x_scale='jac' is not optional here.  The M_A_res/S_Delta block is degenerate at corr = -0.995
-    # (condition number ~1e5), and with the default unit scaling TRF terminates on the step tolerance
-    # while the projected gradient is still 1e-1 -- it reports a "solution" that is not a stationary
-    # point.  Rescaling by the Jacobian columns makes the trust region isotropic in the variables that
-    # actually matter.  tr_solver='exact' is the right choice at 16 parameters (dense, tiny).
-    # GTOL is the only tolerance that is allowed to stop this fit early, and it is loose ON PURPOSE.
-    # least_squares stops when ANY criterion is met, so leaving all three at 1e-14 meant TRF essentially
-    # never exited before max_nfev: every warm-started node in the corner scan paid the full 8 function
-    # + 7 Jacobian evaluations even when the starting point was already stationary.  Stopping on the
-    # PROJECTED GRADIENT is the criterion that actually means "this is a minimum"; xtol/ftol stay tight
-    # so a small step or a small chi2 change can still never be mistaken for convergence on the
-    # degenerate M_A_res/S_Delta direction, which is exactly how the old LM false-converged.
-    # Tolerances come from the config the engine carries, so the fit that runs is the fit the config
-    # describes.  The literals are the fallback for a direct call with no config attached.
     _mz = getattr(getattr(eng, "cfg", None), "fit", None)
     _mz = getattr(_mz, "minimizer", None)
-    GTOL = float(getattr(_mz, "gtol", 1e-8))
-    XTOL = float(getattr(_mz, "xtol", 1e-14))
-    FTOL = float(getattr(_mz, "ftol", 1e-14))
-    r = least_squares(_resid, x0, jac=_jac, bounds=(lo, hi), method="trf",
-                      x_scale="jac", tr_solver="exact",
-                      max_nfev=max(nit, 8), xtol=XTOL, ftol=FTOL, gtol=GTOL)
+    # GTOL is the only tolerance allowed to stop this fit early, and it is loose ON PURPOSE: stopping on
+    # the PROJECTED GRADIENT is the criterion that means "this is a minimum", while xtol/ftol stay tight
+    # so a small step or a small chi2 change can never be mistaken for convergence on the degenerate
+    # M_A_res/delta_strength direction (corr -0.995), which is exactly how the old LM false-converged.
+    r = gn_fit(kern, x0, bounds=(lo, hi), max_nfev=max(nit, 8),
+               gtol=float(getattr(_mz, "gtol", 1e-8)),
+               xtol=float(getattr(_mz, "xtol", 1e-14)),
+               ftol=float(getattr(_mz, "ftol", 1e-14)),
+               trace=record is not None)
     th[idx] = r.x
-    # Convergence is RECORDED, not assumed.  The LM it replaces never once satisfied its own tolerance
-    # (0/12 on the wall toys, every fit hitting the iteration cap) and nothing downstream noticed -- that
-    # silence is how 21.6% of an ensemble ended up on the E_b floor and got read as physics.
-    eng.last_opt = float(r.optimality)
-    eng.last_status = int(r.status)
-    # COST as well as quality of convergence.  nfev counts trial points, njev accepted iterations; the
-    # two differ whenever the trust region rejects a step, so quoting one for the other is wrong.
-    eng.last_nfev = int(r.nfev)
-    eng.last_njev = int(r.njev)
-    m = eng.model(th)
-    # The gradient NORM is scale-dependent and says nothing on its own: |g|=0.1 against curvature ~100
-    # leaves 1e-4 of chi2 on the table, which is irrelevant next to the 0.4-4.3 gaps between basins.
-    # The decidable quantity is the PREDICTED CHI2 GAP g^T A^-1 g (the Newton decrement) -- how much
-    # chi2 remains between here and the local minimum, in the same units as everything we compare.
-    _r = (m - data) * w
-    _J = eng.jac(th, subset) * w[:, None]
-    _g = _J.T @ _r + (r.x - eng.th0[idx]) * pw**2
-    _A = _J.T @ _J + np.diag(pw**2)
-    try:
-        eng.last_gap = float(_g @ np.linalg.solve(_A, _g))
-    except np.linalg.LinAlgError:
-        eng.last_gap = float(_g @ (np.linalg.pinv(_A, rcond=1e-12) @ _g))
-    c_data = float(np.sum(((m - data) * w) ** 2))
-    c_tot = c_data + float(np.sum(((r.x - eng.th0[idx]) * pw) ** 2))
-    # The SOLUTION closes the trajectory.  scipy evaluates the jacobian only at points it is about to
-    # step from, so the accepted final iterate never reaches the `_jac` hook and would be missing.
-    if record is not None and not (record and np.array_equal(record[-1][0], th)):
-        record.append((th.copy(), c_tot, c_data))
-    J = eng.jac(th, subset)
-    A = J.T @ (J * (w ** 2)[:, None]) + np.diag(pw ** 2)
-    V = np.linalg.pinv(A, rcond=1e-12)
-    log(f"  [{tag}] trf: chi2={c_tot:.5f} (data {c_data:.5f}) nfev={r.nfev} njev={r.njev} "
-        f"opt={r.optimality:.2e} gap={eng.last_gap:.2e} -- " + " ".join(f"{eng.pnames[k]}={th[k]:.4f}" for k in subset))
-    return th, V, J, m, c_tot, c_data
 
+    # Convergence is RECORDED, not assumed.  The LM this replaced never once satisfied its own tolerance
+    # (0/12 on the wall toys) and nothing downstream noticed -- that silence is how 21.6% of an ensemble
+    # ended up on the E_b floor and got read as physics.
+    eng.last_status = 1 if r.converged else 0
+    eng.last_nfev, eng.last_njev = int(r.nfev), int(r.njev)
+    eng.last_passes = float(r.passes)
+
+    J = r.J                                       # (nbin + n, n), already whitened, incl. the prior block
+    V = kern.covariance_exact(r.x) if exact_cov else kern.covariance_gn(J)
+    m = kern.model(r.x)
+    c_tot = float(r.chi2)
+    dx = (r.x - kern.x0) * kern.pw
+    c_data = c_tot - float(dx @ dx)
+    # The Newton decrement -- how much chi2 remains between here and the local minimum, in the same units
+    # as everything we compare.  A gradient NORM says nothing on its own: |g|=0.1 against curvature ~100
+    # leaves 1e-4 of chi2 on the table, irrelevant next to the 0.4-4.3 gaps between basins.
+    # chi2 = ||r||^2, so g = 2 J^T r and H = 2 J^T J; the predicted decrease is (1/2) g^T H^-1 g, i.e.
+    # (1/4) g^T (J^T J)^-1 g.  Built from J and r, which the fit already has -- no extra program.
+    rr = kern.residuals(r.x)
+    g = 2.0 * (J.T @ rr)
+    eng.last_opt = float(np.max(np.abs(g)))
+    try:
+        eng.last_gap = float(0.25 * g @ np.linalg.solve(J.T @ J, g))
+    except np.linalg.LinAlgError:
+        eng.last_gap = float(0.25 * g @ (np.linalg.pinv(J.T @ J, rcond=1e-12) @ g))
+
+    if record is not None and r.trace is not None:
+        t_, c_, p_, x_ = r.trace.arrays()
+        for xi, ci in zip(x_, c_):
+            ti = th.copy(); ti[idx] = xi
+            record.append((ti, float(ci), float(ci)))
+        if not (record and np.array_equal(record[-1][0], th)):
+            record.append((th.copy(), c_tot, c_data))
+
+    log(f"  [{tag}] trf: chi2={c_tot:.5f} (data {c_data:.5f}) nfev={r.nfev} njev={r.njev} "
+        f"passes={r.passes:.0f} gap={eng.last_gap:.2e} -- "
+        + " ".join(f"{eng.pnames[k]}={th[k]:.4f}" for k in subset))
+    return th, V, J[:kern.nbin], m, c_tot, c_data
+
+
+def logdet_cov(eng, subset, th, mask=None):
+    """log det V for the Laplace/Occam factor, from the EXACT hessian.
+
+    NOT from (J^T W J)^-1.  That drops sum_b r_b d2m_b, which is a ~2.4e-04 elementwise perturbation at
+    the closure best fit and therefore invisible in any sigma -- but a log-determinant is a sum over ALL
+    eigen-directions and is dominated by the worst-constrained ones, so on this nuisance block
+    (cond ~260) it moves log det V by 0.145.  The Occam term enters the profile in units where
+    Delta chi2 = 1 is one sigma, so an error of 0.02-0.25 is not a rounding difference; measured across
+    profile nodes in docs/bench_fair_report.md.  The exact hessian costs ~n HVPs, against ~2n^2 objective
+    evaluations for a finite-difference HESSE.
+
+    Returns (logdet, n_kept): directions truncated by the pseudo-inverse are dropped and counted, because
+    slogdet returns sgn=0 the moment one is, which would silently poison the whole scan.
+    """
+    kern = fit_kernel(eng, subset, mask)
+    kern.set_fixed(th)
+    kern.refresh_data()
+    x = np.asarray(th, float)[np.array(subset, int)]
+    # HVP BATCH 4, NOT n.  The hessian program is compiled ON TOP of the residual and jacobian programs
+    # this kernel already holds, and a vmap of width n makes it large enough that its CUBIN fails to load
+    # -- observed killing every 2-D corner shard at 125k.  A narrower vmap is the same arithmetic in more
+    # dispatches: the hessian is still exact and still O(n) passes, only the peak program size changes.
+    hb = int(getattr(kern, "plan", {}).get("hvp_batch", 4))
+    w = np.linalg.eigvalsh(0.5 * kern.hessian(x, batch=hb))
+    pos = w[w > 1e-12 * max(w.max(), 1e-300)]
+    return (float(-np.sum(np.log(pos))) if pos.size else np.nan), int(pos.size)
 
 
 def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1e-6, th_init=None):

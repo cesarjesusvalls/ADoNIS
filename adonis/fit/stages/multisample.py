@@ -653,6 +653,10 @@ def main():
              mcerr=np.concatenate([d["mcerr"] for d in eng.ds]),
              model_nom=eng.model(eng.th0),
              **{f"{d['key']}_edges": d["edges"] for d in eng.ds},
+             # the sparse-bin cut that produced this mask, so a figure can state it rather than the
+             # reader having to know which config was used
+             mask_mcfrac=float(cfg.data.sigma.mask_mcfrac), syst=float(cfg.data.sigma.syst),
+             sig_cap=int(cfg.banks.sig_cap),
              fit_th=th, fit_V=V, fit_sub=np.array(subset), fit_chi2data=chi2_data,
              fit_model=eng.model(th),
              traj_theta=traj_theta, traj_chi2=traj_chi2, traj_chi2data=traj_chi2data,

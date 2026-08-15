@@ -243,7 +243,7 @@ class BinSpec:
              atomics (~6000 events/bin here).  Built lazily; nothing pays for it unless S4_JAX_BIN=1.
     """
 
-    __slots__ = ("sel", "coef", "binidx", "nbin", "scale", "offset", "_dev")
+    __slots__ = ("sel", "coef", "binidx", "nbin", "scale", "offset", "_dev", "_chunks")
 
     def __init__(self, binidx, nbin, scale, sel=None, coef=None, offset=None):
         n = len(np.asarray(binidx))
@@ -254,6 +254,7 @@ class BinSpec:
         self.scale = np.asarray(scale, float)
         self.offset = None if offset is None else np.asarray(offset, float)
         self._dev = None
+        self._chunks = None
 
     def apply(self, w):
         """Host (numpy) reference path -- bank-ordered gather."""
@@ -272,6 +273,54 @@ class BinSpec:
                              scale=jnp.asarray(self.scale),
                              offset=None if self.offset is None else jnp.asarray(self.offset))
         return self._dev
+
+    def chunks(self, n_events, C):
+        """Per-chunk gather tables for a scan over EVENT blocks of size C.
+
+        The model is a sum over events, m_b = sum_{e in b} coef_e w_e, so it decomposes EXACTLY over
+        chunks: m = sum_c m^(c).  That is what makes event-chunking free -- unlike splitting the DIAL
+        axis, which adds one full primal pass per extra dispatch.  Chunking has to happen on the BANK
+        axis, because that is where w is computed, while `sel` picks an arbitrary subset of it; so the
+        entries belonging to a chunk are ragged and are padded to a common length with a TRASH BIN at
+        index nbin, dropped after the segment_sum.
+
+        Returns (starts, loc, binidx, coef, n_chunk, L, C): `loc` is the event index WITHIN its window,
+        `binidx` is nbin on padding.  Built once; costs nothing at run time.
+        """
+        key = (int(n_events), int(C))
+        if getattr(self, "_chunks", None) is None:
+            self._chunks = {}
+        got = self._chunks.get(key)
+        if got is not None:
+            return got
+        C = min(int(C), int(n_events))
+        nch = int(np.ceil(n_events / C))
+        # WINDOW STARTS, with the LAST ONE SHIFTED BACK to n-C so every window has the same width and no
+        # padding of the bank is needed.  Padding would mean a second copy of the per-event arrays, and
+        # those ARE the dominant resident memory (1.47 GB at 125k x 10 samples) -- the cure would cost
+        # more than the disease.  The last window overlaps its predecessor; each entry is assigned to
+        # EXACTLY ONE window (the one its index would naturally fall in, clamped), so nothing is double
+        # counted and the sum over windows is still exactly the sum over events.
+        starts = np.minimum(np.arange(nch) * C, max(int(n_events) - C, 0))
+        wof = np.minimum(self.sel // C, nch - 1)         # which window owns each entry
+        order = np.argsort(wof, kind="stable")
+        cnt = np.bincount(wof, minlength=nch)
+        L = int(cnt.max()) if cnt.size else 0
+        loc = np.zeros((nch, L), np.int64)
+        bix = np.full((nch, L), self.nbin, np.int64)     # nbin == the trash bin, dropped after the sum
+        cof = np.zeros((nch, L), float)
+        pos = 0
+        for c in range(nch):
+            k = int(cnt[c])
+            if k:
+                e = order[pos:pos + k]
+                loc[c, :k] = self.sel[e] - starts[c]
+                bix[c, :k] = self.binidx[e]
+                cof[c, :k] = 1.0 if self.coef is None else self.coef[e]
+            pos += k
+        assert loc.min() >= 0 and (L == 0 or loc.max() < C), "window assignment out of range"
+        self._chunks[key] = (starts, loc, bix, cof, nch, L, C)
+        return self._chunks[key]
 
     def apply_dev(self, w):
         """Device path: identical arithmetic, stays on the GPU, reverse-mode differentiable."""

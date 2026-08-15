@@ -126,6 +126,12 @@ def main(argv=None):
     tag = f"{cfg.name}_{a.stage}" + (f"_{a.shard.replace('/', 'of')}" if a.shard else "")
     (outdir / f"{tag}.manifest.json").write_text(json.dumps(man, indent=2))
 
+    # POOL FRACTION BEFORE JAX.  XLA reads XLA_PYTHON_CLIENT_MEM_FRACTION once, at backend init, so it
+    # has to be set before the stage module (which imports jax) is loaded.  Doing it here means the
+    # device plan lives in the CONFIG rather than in whichever wrapper script happened to export it.
+    from adonis.fit.compute import apply_env
+    apply_env(cfg, log=lambda m: print(f"             {m}", flush=True))
+
     sys.argv = [STAGE_MODULE[a.stage], a.config]
     runpy.run_module(STAGE_MODULE[a.stage], run_name="__main__")
 

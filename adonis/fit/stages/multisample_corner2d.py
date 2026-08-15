@@ -32,7 +32,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from adonis.fit.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
-from adonis.fit.fitters import lm_fit, trf_fit, parse_inject
+from adonis.fit.fitters import logdet_cov, lm_fit, trf_fit, parse_inject
 from adonis.fit import provenance
 from analysis.paper.physical_fit import PNAMES
 from adonis.reweight.reweight_model import nominal_knobs
@@ -213,8 +213,15 @@ def main():
                 th[kk] = K.clip_phys(pn[kk], th[kk])
             if MODE == "prof":
                 th, Vn, *_ = _INNER(eng, ko, f"p{pi}", nit=NIT, th_init=th)
-                _sg, _ld = np.linalg.slogdet(np.asarray(Vn))
-                ldv[pi, ia, ib] = _ld if _sg > 0 else np.nan
+                # EXACT-HESSIAN log-det for the Occam factor (see multisample_profile.py and
+                # docs/bench_fair_report.md): (J^T W J)^-1 is fine for sigmas and wrong by up to 0.25 for a
+                # log-determinant, which is what this term actually is.
+                # `ko` is the free (nuisance) dial set for this pair -- the same one _INNER just
+                # minimised.  `_sg` no longer exists: logdet_cov drops pseudo-inverse-truncated
+                # directions itself and returns how many it kept, instead of slogdet returning sgn=0 and
+                # poisoning the node with a NaN.
+                _ld, _nk = logdet_cov(eng, ko, th)
+                ldv[pi, ia, ib] = _ld
                 th[ka], th[kb] = axa[ia], axb[ib]    # lm_fit never moves the pinned pair, re-assert
                 for kk in (ka, kb):
                     th[kk] = K.clip_phys(pn[kk], th[kk])

@@ -114,36 +114,42 @@ class FitKernel:
         self.B = self.n if not jac_batch else min(int(jac_batch), self.n)
         self.nblk = int(np.ceil(self.n / self.B))
 
-        _idx, _th0 = jnp.asarray(self.idx), jnp.asarray(self.th0)
+        _idx = jnp.asarray(self.idx)
+        # THE FIXED DIALS ARE AN ARGUMENT, NOT A CONSTANT.  A profile scan re-minimises the same free
+        # subset at node after node, changing only where the scanned dial is pinned.  If that vector were
+        # closed over, every node would need its own FitKernel -- and every kernel loads ~50 CUBIN
+        # modules that jax.clear_caches() does not unload, so a 13-node scan would exhaust the CUDA
+        # context.  As an argument of fixed shape it changes for the price of a host-to-device copy.
+        self._thf = jnp.asarray(self.th0)
 
         def _mk_f(s):
-            def f(x):
-                th = _th0.at[_idx].set(x)
-                return jnp.concatenate(list(s.model_blocks_jax(th)))
+            def f(x, thf):
+                return jnp.concatenate(list(s.model_blocks_jax(thf.at[_idx].set(x))))
             return f
         self._f = [_mk_f(s) for s in eng.samples]
 
         # EAGER BIN-CACHE WARM, before any jax.jit exists (see module docstring).
         for f in self._f:
-            np.asarray(f(jnp.asarray(self.x0)))
+            np.asarray(f(jnp.asarray(self.x0), self._thf))
 
-        # ---- the four jitted objects, all derived from the one f ---------------------------------- #
+        # ---- the jitted objects, all derived from the one f --------------------------------------- #
         def _mk(f):
-            def r(x, D, R):                       # whitened residual block for this sample
-                return (f(x) - D) * R
+            def r(x, thf, D, R):                  # whitened residual block for this sample
+                return (f(x, thf) - D) * R
 
-            def c(x, D, R):                       # its chi2 contribution -- literally sum(r*r)
-                rr = r(x, D, R)
+            def c(x, thf, D, R):                  # its chi2 contribution -- literally sum(r*r)
+                rr = r(x, thf, D, R)
                 return jnp.sum(rr * rr)
 
-            def jc(x, D, R, T):                   # (B, nbin_s) tangent block: d r / d x . T
-                return jax.vmap(lambda t: jax.jvp(lambda u: r(u, D, R), (x,), (t,))[1])(T)
+            def jc(x, thf, D, R, T):              # (B, nbin_s) tangent block: d r / d x . T
+                return jax.vmap(lambda t: jax.jvp(lambda u: r(u, thf, D, R), (x,), (t,))[1])(T)
 
-            def hs(x, D, R, V):                   # (B, n) Hessian rows: FORWARD-OVER-REVERSE
+            def hs(x, thf, D, R, V):              # (B, n) Hessian rows: FORWARD-OVER-REVERSE
                 # One HVP is a jvp through the gradient, i.e. ~one extra forward sweep on top of the
                 # VJP -- so the EXACT hessian costs O(n) passes, against ~2n^2 objective evaluations for
                 # a finite-difference HESSE.  That is the whole reason it is worth having.
-                return jax.vmap(lambda v: jax.jvp(lambda u: jax.grad(c)(u, D, R), (x,), (v,))[1])(V)
+                return jax.vmap(lambda v: jax.jvp(
+                    lambda u: jax.grad(c)(u, thf, D, R), (x,), (v,))[1])(V)
 
             return (jax.jit(r), jax.jit(c), jax.jit(jax.grad(c)), jax.jit(jc), jax.jit(f), jax.jit(hs))
         (self._j_r, self._j_c, self._j_g, self._j_J, self._j_m,
@@ -160,6 +166,14 @@ class FitKernel:
 
         self.refresh_data()
         self.reset_counts()
+
+    def set_fixed(self, th_fixed):
+        """Move the NON-fitted dials (e.g. pin a scanned dial at a profile node).  No recompilation:
+        a host-to-device copy of NPAR floats.  The prior centre `x0` is untouched -- pinning a dial must
+        not drag the prior along with it."""
+        self.th0 = np.asarray(th_fixed, float).copy()
+        self._thf = jnp.asarray(self.th0)
+        return self
 
     # ---- data ------------------------------------------------------------------------------------- #
     def refresh_data(self):
@@ -211,7 +225,7 @@ class FitKernel:
     def model(self, x):
         """Binned model (unwhitened, prior-free) at x -- the device counterpart of eng.model()."""
         xj = jnp.asarray(np.asarray(x, float))
-        out = np.concatenate([np.asarray(f(xj)) for f in self._j_m])
+        out = np.concatenate([np.asarray(f(xj, self._thf)) for f in self._j_m])
         self.counts["model"] += 1
         self.counts["primal"] += 1
         return out
@@ -219,7 +233,8 @@ class FitKernel:
     def residuals(self, x):
         """(nbin + n,) -- whitened data residuals stacked with the prior residuals."""
         xj = jnp.asarray(np.asarray(x, float))
-        r = np.concatenate([np.asarray(f(xj, D, R)) for f, D, R in zip(self._j_r, self._D, self._R)])
+        r = np.concatenate([np.asarray(f(xj, self._thf, D, R))
+                            for f, D, R in zip(self._j_r, self._D, self._R)])
         self.counts["resid"] += 1
         self.counts["primal"] += 1
         return np.concatenate([r, (np.asarray(x, float) - self.x0) * self.pw])
@@ -231,7 +246,8 @@ class FitKernel:
         value-only and residual paths can never drift apart.  One host sync per sample.
         """
         xj = jnp.asarray(np.asarray(x, float))
-        c = float(sum(float(f(xj, D, R)) for f, D, R in zip(self._j_c, self._D, self._R)))
+        c = float(sum(float(f(xj, self._thf, D, R))
+                      for f, D, R in zip(self._j_c, self._D, self._R)))
         self.counts["chi2"] += 1
         self.counts["primal"] += 1
         dx = (np.asarray(x, float) - self.x0) * self.pw
@@ -240,7 +256,8 @@ class FitKernel:
     def grad(self, x):
         """(n,) gradient of chi2 by ONE reverse-mode VJP per sample -- O(1) in the dial count."""
         xj = jnp.asarray(np.asarray(x, float))
-        g = sum(np.asarray(f(xj, D, R)) for f, D, R in zip(self._j_g, self._D, self._R))
+        g = sum(np.asarray(f(xj, self._thf, D, R))
+                for f, D, R in zip(self._j_g, self._D, self._R))
         self.counts["grad"] += 1
         self.counts["vjp"] += 1
         return np.asarray(g) + 2.0 * (np.asarray(x, float) - self.x0) * self.pw ** 2
@@ -253,7 +270,7 @@ class FitKernel:
         for i, (f, D, R) in enumerate(zip(self._j_J, self._D, self._R)):
             blocks = []
             for T, lo, m in self._T:
-                blocks.append(np.asarray(f(xj, D, R, T))[:m])      # (m, nbin_s)
+                blocks.append(np.asarray(f(xj, self._thf, D, R, T))[:m])   # (m, nbin_s)
             out[self.row0_s[i]:self.row0_s[i + 1]] = np.vstack(blocks).T
         self.counts["jac"] += 1
         self.counts["primal"] += self.nblk          # one primal per DISPATCH, shared by its B tangents
@@ -285,7 +302,8 @@ class FitKernel:
             m_ = min(B, self.n - lo)
             blk = np.zeros((B, self.n)); blk[:m_] = E[lo:lo + m_]
             Vt = jnp.asarray(blk)
-            acc = sum(np.asarray(f(xj, D, R, Vt)) for f, D, R in zip(self._j_H, self._D, self._R))
+            acc = sum(np.asarray(f(xj, self._thf, D, R, Vt))
+                      for f, D, R in zip(self._j_H, self._D, self._R))
             H[lo:lo + m_] = np.asarray(acc)[:m_]
             nblk += 1
         self.counts["hess"] += 1
