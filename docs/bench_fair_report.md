@@ -224,11 +224,20 @@ pinning a dial off the minimum leaves a residual by construction. An earlier rea
 treated the Asimov nodes as a null and would have accepted a broken Hessian.
 
 **Why the error is what it is.** At the noise best fit the dropped term is a *tiny* elementwise
-perturbation -- 2.4e-04 relative -- yet it moves `log det V` by 0.145, an amplification of ~600x. A
-log-determinant is dominated by the worst-constrained directions, and this nuisance block has condition
-number ~260. So the Gauss-Newton error in the Occam factor is not driven by the residual being large; it
-is driven by the covariance being ill-conditioned, which is exactly the regime an Occam factor is
-introduced to handle.
+perturbation -- 2.4e-04 relative -- yet it moves `log det V` by 0.145. To first order
+
+    d(log det V) = -tr(A^-1 dA),     A = J^T W J,   dA = sum_b r_b d2m_b
+
+A perturbation PROPORTIONAL to A would give n x 2.4e-04 ~ 4e-03, i.e. negligible. The observed 0.145 is
+~36x that, because dA is not proportional to A: it carries weight in the directions where A^-1 is large.
+The bound n x (relative size) x cond ~ 17 x 2.4e-04 x 260 ~ 1.06 contains it comfortably. So the
+Gauss-Newton error in the Occam factor is not driven by the residual being large -- it is driven by dA
+landing on the worst-constrained directions of an ill-conditioned nuisance block (cond ~260), which is
+exactly the regime an Occam factor is introduced to handle.
+
+(An earlier draft called this "an amplification of ~600x", which was simply 0.145 / 2.4e-04 -- the ratio
+of a dimensionless log-det shift to a max-norm relative matrix perturbation. Those are not the same kind
+of quantity and the ratio is not an amplification factor.)
 
 ### Recommendation
 
