@@ -58,7 +58,17 @@ data:
   sigma:
     syst: 0.05                # sigma = 5% of the NOMINAL central value
     mc_term: false            # S4_SIGMA_SYST_ONLY=1 -- the MC error is NOT added in quadrature
-    mask_mcfrac: 0.05         # S4_MIN_MCFRAC -- drop bins whose MC error exceeds 5% of central
+    mask_mcfrac: 0.10         # DECIDED: drop bins whose MC error exceeds 10% of central (was 5%).
+                              # At 125k this keeps 294/325 bins against 263 at the 5% cut -- +31, and they
+                              # are the MINERvA STV tails (delta-p_T +8, p_n +7) and the p|| tail (+5),
+                              # i.e. exactly where the nucleon-FSI and SRC information sits.
+                              # THE ASYMMETRY, recorded rather than left implicit: sigma stays at
+                              # syst = 5% of central, so a bin admitted between 5% and 10% carries an MC
+                              # error LARGER than the error it is fitted with.  In a closure that is
+                              # harmless -- the MC fluctuation is common-mode between data and prediction
+                              # and cancels exactly -- but on real data those bins are over-weighted
+                              # relative to what their true uncertainty warrants.  The clean alternative,
+                              # if that ever matters, is data.sigma.mc_term: true rather than a looser cut.
     freeze_at: nominal        # sigma and the mask are frozen at nominal, not recomputed per toy
     # At P1 (250k/sample) 282 of 325 bins survived.  At 125k the count is LOWER -- measured by
     # adonis.fit.dump_live_mask against this config -- and ndf moves with it, so every chi2/ndf quoted
@@ -103,8 +113,11 @@ uncertainty:
     jacobian: per_node        # recomputed at every node, not frozen at the BFP
 
   - method: nuts              # figure B / A; adonis.fit.nuts
-    chains: 16
-    samples: 1500             # 24,000 total
+    chains: 20
+    samples: 1250             # 25,000 total (was 16 x 1500 = 24,000)
+    # 20 x 1250 rather than 16 x 1563: an exact 25,000, and more chains means better between-chain
+    # diagnostics.  The trade is setup -- bank load plus XLA compile is paid ONCE PER CHAIN and was
+    # already ~40% of this stage's GPU-time at 16 chains.
     warmup: 150
     max_depth: 8
     mass_matrix: fit_V        # from the closure covariance, in sigma_post units

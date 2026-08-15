@@ -4,9 +4,9 @@ Three things per panel, all from the reference closure npz:
 
   data        the Asimov data, m(theta_true), with the fit's own per-bin sigma (5% syst; bins whose MC
               error exceeded 5% of the central value carry sigma=inf and are dropped from the fit -- they
-              have their x-span SHADED here, and their marker hollowed.  Shading is not decoration: a
-              masked bin is by definition a low-occupancy tail, so on a panel normalised to its own peak
-              its marker lands at y ~ 0.01 and a hollow marker alone renders 62 excluded bins invisible)
+              are drawn HOLLOW here so the masking is visible rather than implied.  They are all
+              low-occupancy tails -- that is why their MC error exceeds the cut -- so they sit low in a
+              panel normalised to its own peak; the per-panel live/total count states how many there are)
   pre-fit     m(theta_nominal), the prediction before any fitting
   post-fit    m(theta_hat), the prediction the fit arrives at
 
@@ -130,19 +130,7 @@ def main(label="sec4_P1"):
                 A.step(x, q_, where="mid", color=C_POST, lw=1.5, ls="--", label="Post-fit")
             A.errorbar(x[m], d_[m], yerr=s_[m], fmt="o", ms=2.8, lw=0, elinewidth=0.9,
                        color=C_DATA, label="Asimov data", zorder=5)
-            if (~m).any():
-                # MASKED BINS: shade the x-span, do not only hollow the marker.  Every masked bin is a
-                # low-occupancy tail -- that is WHY its MC error exceeds 5% of the central value -- so on
-                # a panel normalised to its own peak the marker sits at y ~ 0.01, flat against the axis
-                # and invisible.  The hollow marker alone showed 62 excluded bins as nothing at all.
-                # The band says which x-REGIONS the fit does not use, at any bin content.
-                if ek in z.files:
-                    for _b in np.where(~m)[0]:
-                        A.axvspan(e[_b], e[_b + 1], color="0.85", lw=0, zorder=0)
-                else:
-                    _hw = 0.5 * np.median(np.diff(x)) if len(x) > 1 else 0.5
-                    for _b in np.where(~m)[0]:
-                        A.axvspan(x[_b] - _hw, x[_b] + _hw, color="0.85", lw=0, zorder=0)
+            if (~m).any():          # masked bins drawn hollow: the cut is visible, not implied
                 A.plot(x[~m], d_[~m], "o", ms=2.8, mfc="none", mec="0.45", mew=0.8, zorder=4)
             c_pre = float(np.sum(((p_[m] - d_[m]) / s_[m]) ** 2))
             c_post = float(np.sum(((q_[m] - d_[m]) / s_[m]) ** 2))
@@ -186,7 +174,7 @@ def main(label="sec4_P1"):
         _lv, _tt = int(live.sum()), int(live.size)
         fig.text(0.5, 0.992,
                  (f"MC-error cut {_cut:.0%} of central" if _cut == _cut else "MC-error cut: nominal")
-                 + f"   -   {_lv}/{_tt} bins used, {_tt - _lv} masked (shaded)",
+                 + f"   -   {_lv}/{_tt} bins used, {_tt - _lv} masked (open circles)",
                  ha="center", va="top", fontsize=9.0, color="0.25")
         fig.tight_layout(pad=0.9, h_pad=1.0, w_pad=1.1, rect=(0.012, 0, 1, 0.968))
         # Named, not label-tagged, to match closure_demo.  A second study point would overwrite it.
