@@ -39,22 +39,26 @@ L68, L90 = 2.30, 4.61                  # 2-D Delta-chi2 levels (68% / 90% of a 2
 C_ARROW = "#00b3c8"
 C_CROP = "k"                           # the crop rectangle is an annotation, not one of the objects
 VIEW_SIG = 3.2                         # display window, in sigma_post, for the contour half
-# The corner quotes every dial in PHYSICAL units, so the E_b axis is the binding energy itself and the
-# "Delta" that style.plab carries (correct wherever the dial is shown as an offset) would misname it
-# here.  Local to this figure: style.plab stays as it is for the sections that do show the shift.
-_LBL = {"Eb_shift": r"$E_b$"}
+# Labels come from style.plab and NOTHING is overridden here.  This figure used to relabel Eb_shift as
+# E_b on the theory that physical units meant the axis was the binding energy; it is not.  E_b is a
+# per-event quantity sampled from the spectral function, and the dial rigidly translates that whole
+# distribution: S(p, E_removal - Delta E_b).  Physical units make the axis MeV of SHIFT, so Delta E_b is
+# right here for exactly the same reason it is right everywhere else.
 def _lab(nm):
-    return _LBL.get(nm, style.plab(nm))
+    return style.plab(nm)
 # Laplace and NUTS agree closely, so they take two shades of ONE family -- mid blue and navy -- and
 # their agreement reads as a family resemblance rather than as a coincidence of two unrelated hues.
 # The Gaussian is the one that disagrees, so it gets the high-contrast colour.
 #   Laplace  #1f4b9c blue (filled, two alphas)   NUTS  #07204d navy (lines)
 #   Gaussian #e8871a orange                      BFP   #1a9e57 green (as in figure A)
 C_LAP, C_NUTS, C_GAUS, C_BFP = "#1f4b9c", "#07204d", "#e8871a", "#1a9e57"
-# ONE style everywhere: the Laplace marginal is the filled blue SURFACE (68% dark, 90% light),
-# NUTS is orange LINES (solid 68 / dashed 90) laid over it, and the Gaussian is teal lines in
-# the same two styles.  The raw profile is not drawn in the corner -- (c)/(d) of figure A make
-# the point that it needs the volume factor, and repeating it here only adds a fourth object.
+# PROFILE: the same teal closure_demo gives it, so the two figures name the same object identically.
+C_PROF = "#2a9d8f"
+# ONE style everywhere: the Laplace marginal is the filled blue SURFACE (68% dark, 90% light), the
+# profile is teal LINES at the same two levels, NUTS is navy lines over both, and the Gaussian is
+# orange dashed.  The profile used to be omitted here on the grounds that (c)/(d) of figure A carried
+# the volume-factor argument; those panels are no longer produced, and figure A now draws the profile
+# bar itself, so the corner shows it too and the two figures stay consistent.
 
 
 NB_MAX, NB_MIN, NB_TARGET = 36, 12, 250     # adaptive 2-D binning: see _nbins
@@ -161,6 +165,17 @@ def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
                 thr = y[o][min(int(np.searchsorted(cum, frac)), len(o) - 1)]
                 A.fill_between(xf, 0, y, where=(y >= thr), color=C_LAP, alpha=al, lw=0)
             A.plot(xf, y, color=C_LAP, lw=1.2)
+    # PROFILE: exp(-Dchi2/2) ALONE, unit area -- literally the Laplace curve above without its
+    # exp(ld/2) factor, so the gap between the teal line and the filled blue is the volume correction,
+    # the same reading as the 2-D panels and closure_demo panel (a).  Drawn after the fill so the line
+    # sits on top of it, and before NUTS so the exact answer stays the topmost curve.
+    if nm in prof1:
+        g_, d_, _l = prof1[nm]
+        xf = np.linspace(max(g_.min(), aa[0]), min(g_.max(), aa[-1]), 800)
+        yp = np.exp(-0.5 * np.maximum(CubicSpline(g_, d_)(xf), 0.0))
+        if yp.max() > 0 and np.trapezoid(yp, xf) > 0:
+            yp = yp / np.trapezoid(yp, xf); top = max(top, yp.max())
+            A.plot(xf, yp, color=C_PROF, lw=1.3)
     if nm in ncol:                                    # NUTS marginal, orange
         s_ = U[:, ncol[nm]]
         # SMOOTHED, like the 2-D panels.  A 40-bin step histogram of 24k samples is mostly sampling
@@ -409,6 +424,20 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                     A.axis("off"); continue
                 d = d - np.nanmin(d)
 
+                # ---- PROFILE: the SAME surface without the nuisance-volume factor ------------------
+                # exp(-Dchi2/2) treated as a density and cut at its 68/90% HPD levels -- the identical
+                # construction the Laplace gets below, minus exp(ld/2).  Drawn that way on purpose: the
+                # only difference between this contour and the filled one is the volume correction, so
+                # the gap between them IS the correction, exactly as in closure_demo panel (a).  Lines,
+                # not a fill, so it cannot hide the Laplace surface underneath.
+                dp = np.exp(-0.5 * np.maximum(d, 0.0))
+                dp = np.where(np.isfinite(dp), dp, 0.0)
+                if dp.max() > 0:
+                    p68, p90 = hpd_levels(dp)
+                    if p90 < p68:
+                        A.contour(X, Y, dp, levels=[p90, p68], colors=C_PROF,
+                                  linewidths=[0.8, 1.2], zorder=4)
+
                 # ---- LAPLACE MARGINAL: filled surface at its 68/90% HPD levels ---------------------
                 _ld = w.get("ld")
                 if _ld is not None and np.isfinite(_ld).mean() > 0.99:
@@ -490,13 +519,14 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
         # SHORT labels, placed inside the empty upper-right block.  What each object IS belongs in
         # the caption; the legend only has to let a reader tell the three apart on the panel.
         h = [plt.Rectangle((0, 0), 1, 1, fc=C_LAP, alpha=0.68),
+             plt.Line2D([], [], color=C_PROF, lw=1.4),
              plt.Line2D([], [], color=C_NUTS, lw=1.6),
              plt.Line2D([], [], color=C_GAUS, lw=1.4),
              plt.Line2D([], [], color=C_BFP, marker="*", ls="", ms=11)]
         # ABOVE the grid, horizontal.  The upper-right corner used to be empty in a corner plot and
         # held this legend; the gradient panels now live there, so it has to come out.
-        fig.legend(h, ["Laplace", "NUTS", "Gaussian", "BFP"],
-                   loc="upper center", ncol=4, fontsize=10, frameon=False,
+        fig.legend(h, ["Laplace", "Profile", "NUTS", "Gaussian", "BFP"],
+                   loc="upper center", ncol=5, fontsize=10, frameon=False,
                    bbox_to_anchor=(0.5, 1.0), handletextpad=0.4, columnspacing=1.6)
         # what each half of the figure is
         fig.tight_layout(rect=(0, 0, 1, 0.968))

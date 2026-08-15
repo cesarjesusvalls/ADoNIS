@@ -69,7 +69,17 @@ def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
-        fig, ax = plt.subplots(figsize=(0.92 * ng + 3.6, 0.34 * nk + 2.0))
+        # SIZING (2026-08-14).  Three separate knobs, kept separate on purpose:
+        #   SCALE     0.8 on both dimensions.  Font sizes stay in POINTS, so shrinking the canvas is
+        #             what makes every label proportionally larger at page width.
+        #   CELL_W    0.736 in per column (was 0.92, -20%): the cells were wider than the two-digit
+        #             number they carry needs.
+        #   MARGIN_W  the non-cell width -- rotated block labels + knob symbols.  Down from 3.6 because
+        #             the colour bar moved to the bottom and no longer occupies horizontal space; the
+        #             height gains the matching allowance instead.
+        SCALE, CELL_W, MARGIN_W, CELL_H, MARGIN_H = 0.8, 0.736, 2.9, 0.34, 2.35
+        fig, ax = plt.subplots(figsize=(SCALE * (CELL_W * ng + MARGIN_W),
+                                        SCALE * (CELL_H * nk + MARGIN_H)))
         im = ax.imshow(np.clip(M, 0, 1), aspect="auto", cmap=cm, vmin=0, vmax=1)
         for k in range(nk):
             for c in range(ng):
@@ -84,13 +94,18 @@ def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
         ax.grid(which="minor", color="white", lw=1.1); ax.tick_params(which="minor", length=0)
         style.knob_group_tabs(ax, gid)                       # physics-block separators + colour tabs + labels
         if names and names[-1] == "all":                     # set the combined column apart
-            ax.axvline(ng - 1.5, color="0.25", lw=1.6)
+            ax.axvline(ng - 1.5, color="0.25", lw=1.6, zorder=6)   # above the FIT boxes, as the block rules are
         ax.set_yticks(range(nk)); ax.set_yticklabels(plabels, fontsize=8.5)
         ax.set_xticks(range(ng)); ax.set_xticklabels(labels, fontsize=8.5)
         ax.tick_params(length=0)
         for s in ax.spines.values():
             s.set_visible(False)
-        cb = fig.colorbar(im, ax=ax, fraction=0.030, pad=0.02)
+        # HORIZONTAL, under the panel.  Placed via append_axes rather than `fig.colorbar(ax=...)` so the
+        # bar is EXACTLY as wide as the heatmap -- the auto-placed version came out ~80% of it and read
+        # as a misalignment.  `pad` is in inches and has to clear the two-line sample labels.
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        cax = make_axes_locatable(ax).append_axes("bottom", size="1.4%", pad=0.62)
+        cb = fig.colorbar(im, cax=cax, orientation="horizontal", ticks=[0.0, 0.5, 1.0])
         cb.set_label("posterior / prior width   $\\sigma_{\\rm post}/\\sigma_{\\rm prior}$", fontsize=8.5)
         cb.ax.tick_params(labelsize=7.5)
         return style.save(fig, figname)
@@ -148,7 +163,7 @@ def main(label=None):
                   f"[{', '.join(pnames[k] for k in np.where(M[:, c] < fit_cut)[0])}]")
 
         figname = axis.get("figure", f"sec2_shrinkage_{aname}")
-        # Every kept axis is `marginalized_only` -> the single-panel grouped figure (constrains_per_subset).
+        # Every kept axis is `marginalized_only` -> the single-panel grouped figure (constraints_per_subset).
         fig_shrinkage_grouped(M, pnames, [g[1] for g in groups], names, figname, fit_cut)
         tables[aname] = (M, R, names)
 

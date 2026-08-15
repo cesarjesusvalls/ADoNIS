@@ -49,6 +49,10 @@ C_BFP = "#1a9e57"
 # the two objects that were missing from this figure: the Laplace (Occam) correction of the profile,
 # and the EXACT marginal from NUTS.  They should land on top of each other -- that is the check.
 C_OCC, C_NUTS = "#6a3d9a", "#e08214"
+# PROFILE sits between the Gaussian and the Laplace correction, so it takes a hue between the neutral
+# grey and the purple: a desaturated teal, distinct from both and from the orange NUTS at four nested
+# ribbons deep.  (Chosen for separability at small linewidth, not for meaning.)
+C_PROF = "#2a9d8f"
 # Panel (b) is drawn from the SAME ramp as the section-2 constraint heatmap
 # (style.CMAP_CONSTRAINT = #07204d -> #1f4b9c -> #4f7fe0 -> #8fb2f5 -> ...): the toys take its mid tone
 # and the chi2 reference its darkest, so the two sections read as one palette instead of one blue each.
@@ -303,22 +307,28 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
             xhat = (bfp[k] - nom[k]) / p
             sc = spost[c] / p
             # FOUR PREDICTIONS, all from the SAME single dataset, stacked so they can be read against
-            # each other: the quadratic sigma, the profile, the profile corrected by the nuisance
-            # volume (Laplace marginal), and the exact marginal from NUTS.  No toys -- a histogram of
-            # best fits is a spread, not an interval, and belongs with the coverage test in (b).
-            # PROFILE-ONLY is deliberately not drawn here: that it needs the volume factor is
-            # the point of (c) and (d).  The three intervals share ONE line per dial, drawn as nested
-            # ribbons -- widest/faintest behind, narrowest/solid in front -- so a dial occupies a single
-            # row and the relative widths are read directly instead of across three stacked rows.
-            rows = [(C_GAUSS, -ZQ, ZQ, 7.0, 0.45, 2)]
+            # each other, in the order they build on one another:
+            #   Gaussian  the quadratic sigma at the best fit
+            #   Profile   the likelihood profile -- exact in the dial, but no nuisance volume
+            #   Laplace   that profile times the nuisance volume factor (the Occam correction)
+            #   NUTS      the exact marginal, by sampling
+            # so the Profile->Laplace step IS the volume correction, visible as one bar moving.  It used
+            # to be omitted here because panels (c) and (d) made that point; those panels are no longer
+            # produced, so without it the correction had nothing to correct.
+            # No toys -- a histogram of best fits is a spread, not an interval, and belongs with the
+            # coverage test in (b).  All four share ONE line per dial as nested ribbons -- widest and
+            # faintest behind, narrowest and solid in front -- so a dial stays one row and the relative
+            # widths are read directly rather than across four stacked rows.
+            rows = [(C_GAUSS, -ZQ, ZQ, 8.0, 0.40, 2)]
+            rows.append((C_PROF, hlo, hhi, 5.4, 0.65, 3))   # already in sigma_post units, like `oc`
             oc = _occam(_g, prof[c], logdet[c], MASS) if logdet is not None else None
             if oc is not None:
-                rows.append((C_OCC, oc[0], oc[1], 3.6, 0.95, 3))
+                rows.append((C_OCC, oc[0], oc[1], 3.0, 0.95, 4))
             nu = NU.get(pn[k])
             a_ = b_ = None
             if nu is not None:
                 a_, b_ = _hpd_sample(nu, MASS)
-                rows.append((C_NUTS, a_, b_, 1.5, 1.0, 4))
+                rows.append((C_NUTS, a_, b_, 1.3, 1.0, 5))
             for col, lo_, hi_, lw, al, zo in rows:
                 axA.plot([xhat + lo_ * sc, xhat + hi_ * sc], [yy[i]] * 2, color=col, lw=lw,
                          alpha=al, solid_capstyle="butt", zorder=zo)
@@ -349,10 +359,11 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
         axA.tick_params(which="both", top=False, right=False, labelsize=7)
         h = [plt.Line2D([], [], color="k", marker="*", ls="", ms=10),
              plt.Line2D([], [], color=C_BFP, marker="D", ls="", ms=4.5, mec="white", mew=0.5),
-             plt.Line2D([], [], color=C_GAUSS, lw=0.9),
-             plt.Line2D([], [], color=C_OCC, lw=2.2),
-             plt.Line2D([], [], color=C_NUTS, lw=2.2)]
-        axA.legend(h, ["Injected truth", "BFP", "Gaussian",
+             plt.Line2D([], [], color=C_GAUSS, lw=5.0, alpha=0.40),
+             plt.Line2D([], [], color=C_PROF, lw=3.6, alpha=0.65),
+             plt.Line2D([], [], color=C_OCC, lw=2.4),
+             plt.Line2D([], [], color=C_NUTS, lw=1.6)]
+        axA.legend(h, ["Injected truth", "BFP", "Gaussian", "Profile",
                        "Marginal (Laplace)", "Marginal (NUTS)"],
                    # OUTSIDE the axes, above.  At a legible size there is no empty region left inside:
                    # every candidate spot collides with a dial's interval (lower-left ran into N_SRC).

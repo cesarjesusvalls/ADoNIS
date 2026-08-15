@@ -215,7 +215,7 @@ def save(fig, name):
 
 # ============================================================================================= #
 # Shared heatmap language for the §2 gradient and §3 Fisher figures: knobs grouped into physics
-# blocks (cross-section / pion FSI / NN FSI / nuclear), one perceptual blue + one diverging map
+# blocks (amplitude / pion FSI / nucleon FSI / nuclear), one perceptual blue + one diverging map
 # anchored on the §1 blue (#648fff), and a helper that draws the colour-coded block tabs.
 # ============================================================================================= #
 CMAP_CONSTRAINT = mcolors.LinearSegmentedColormap.from_list(   # shrinkage: dark = tighter constraint
@@ -223,12 +223,18 @@ CMAP_CONSTRAINT = mcolors.LinearSegmentedColormap.from_list(   # shrinkage: dark
 CMAP_GRAD_DIV = mcolors.LinearSegmentedColormap.from_list(     # signed per-bin gradient (blue<->orange)
     "grad_div", ["#0a2a5c", "#648fff", "#f4f4f6", "#fe8a3c", "#7a2f00"])
 FIT_EC = "#fe6100"                                             # FIT outline: §1 RES orange (safe on blue)
-KNOB_GROUP_NAME = {0: "cross‑section", 1: "pion\nFSI", 2: "NN\nFSI", 3: "nuclear"}
+# Block 0 is "amplitude", NOT "form factor" and NOT "cross-section".  Not form factor: delta_strength
+# rescales partial wave 5 (the P33 Delta) of the DCC amplitude, which is not a form-factor parameter,
+# though the other ten are.  Not cross-section: every block changes the cross-section, so the name draws
+# no line.  What the eleven share is the hard vertex -- they all enter the amps2 quadratic.
+# Blocks 1 and 2 are named by the particle PROPAGATING through the cascade, which is the distinction the
+# split actually makes; the interactions themselves are piN and NN respectively.
+KNOB_GROUP_NAME = {0: "amplitude", 1: "pion\nFSI", 2: "nucleon\nFSI", 3: "nuclear"}
 KNOB_GROUP_COLOR = {0: "#b07d56", 1: "#5f8a6f", 2: "#7b6f9e", 3: "#a86f82"}   # muted clay/sage/violet/rose
 
 
 def knob_group(p):
-    """Physics block for a knob name: 0 cross-section, 1 pion FSI, 2 NN FSI, 3 nuclear."""
+    """Physics block for a knob name: 0 amplitude (hard vertex), 1 pion FSI, 2 nucleon FSI, 3 nuclear."""
     if p.startswith("s_piN") or p in ("sabs", "s_conv"):
         return 1
     if p.startswith("s_NN") or p.startswith("f_NN"):
@@ -246,7 +252,11 @@ def knob_group_tabs(ax, gid, tabx=-0.15, tabw=0.022, labx=-0.185, lw=1.6, fontsi
     yt = ax.get_yaxis_transform()
     bounds = [i for i in range(1, nk) if gid[i] != gid[i - 1]]
     for b in bounds:
-        ax.axhline(b - .5, color="0.22", lw=lw)
+        # ABOVE the cell annotations.  At default zorder the separator sits under the FIT highlight
+        # boxes, whose edge runs the full width of a cell along the shared boundary -- so wherever a
+        # highlighted knob sat next to a block edge the rule vanished for that whole column and the
+        # separator read as a few floating segments.  The block structure outranks a per-cell marker.
+        ax.axhline(b - .5, color="0.22", lw=lw, zorder=6)
     seg = [-.5] + [b - .5 for b in bounds] + [nk - .5]
     for a, b in zip(seg[:-1], seg[1:]):
         g = gid[int((a + b) / 2 + .5)]
