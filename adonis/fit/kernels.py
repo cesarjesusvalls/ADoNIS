@@ -71,6 +71,9 @@ from adonis.analysis import knobs as _K
 #   one VJP                   2 passes (forward sweep + reverse sweep)
 # The VJP factor is a convention, stated so it can be re-weighted: the raw counts are kept separately.
 VJP_PASSES = 2.0
+# One hessian-vector product is a forward sweep carried through a reverse sweep: the primal, the tangent,
+# and the cotangent.  Counted as 3 passes, on the same stated-convention basis as VJP_PASSES.
+HVP_PASSES = 3.0
 
 
 class FitKernel:
@@ -88,14 +91,18 @@ class FitKernel:
              never the result; both the effective and the executed tangent counts are recorded.
     """
 
-    def __init__(self, eng, subset, mask=None, jac_batch=None):
+    def __init__(self, eng, subset, mask=None, jac_batch=None, th_fixed=None):
         self.eng = eng
         self.subset = [int(k) for k in subset]
         self.idx = np.asarray(self.subset, int)
         self.n = len(self.subset)
         self.pnames = [eng.pnames[k] for k in self.subset]
-        self.th0 = np.asarray(eng.th0, float)
-        self.x0 = self.th0[self.idx].copy()
+        # th_fixed holds the dials NOT in `subset` -- a profile node pins the scanned dial here while the
+        # rest are re-minimised.  The PRIOR CENTRE stays at eng.th0 regardless: pinning a dial away from
+        # nominal must not drag the prior along with it, or the node is minimising a different objective
+        # than the fit it belongs to.
+        self.th0 = np.asarray(eng.th0 if th_fixed is None else th_fixed, float)
+        self.x0 = np.asarray(eng.th0, float)[self.idx].copy()
         self.pw = 1.0 / np.asarray(eng.prior, float)[self.idx]      # prior residual weights
         self.nbin_s = [int(sum(d["nbin"] for d in s.ds)) for s in eng.samples]
         self.nbin = int(sum(self.nbin_s))
@@ -132,8 +139,15 @@ class FitKernel:
             def jc(x, D, R, T):                   # (B, nbin_s) tangent block: d r / d x . T
                 return jax.vmap(lambda t: jax.jvp(lambda u: r(u, D, R), (x,), (t,))[1])(T)
 
-            return (jax.jit(r), jax.jit(c), jax.jit(jax.grad(c)), jax.jit(jc), jax.jit(f))
-        self._j_r, self._j_c, self._j_g, self._j_J, self._j_m = (list(z) for z in zip(*[_mk(f) for f in self._f]))
+            def hs(x, D, R, V):                   # (B, n) Hessian rows: FORWARD-OVER-REVERSE
+                # One HVP is a jvp through the gradient, i.e. ~one extra forward sweep on top of the
+                # VJP -- so the EXACT hessian costs O(n) passes, against ~2n^2 objective evaluations for
+                # a finite-difference HESSE.  That is the whole reason it is worth having.
+                return jax.vmap(lambda v: jax.jvp(lambda u: jax.grad(c)(u, D, R), (x,), (v,))[1])(V)
+
+            return (jax.jit(r), jax.jit(c), jax.jit(jax.grad(c)), jax.jit(jc), jax.jit(f), jax.jit(hs))
+        (self._j_r, self._j_c, self._j_g, self._j_J, self._j_m,
+         self._j_H) = (list(z) for z in zip(*[_mk(f) for f in self._f]))
 
         # ONE tangent shape for every block: (B, n), zero-padded on the last one.
         E = np.eye(self.n)
@@ -182,13 +196,16 @@ class FitKernel:
                            primal=0,        # full forward passes over the events
                            tangent=0,       # JVP tangent columns actually EXECUTED (padding included)
                            tangent_eff=0,   # tangent columns that carried a real dial (padding excluded)
-                           vjp=0)           # reverse-mode sweeps
+                           vjp=0,           # reverse-mode sweeps
+                           hvp=0,           # hessian-vector products (forward-over-reverse)
+                           hess=0)
         return self
 
     def event_passes(self):
         """Passes over the resident event set, per the convention at the top of this module."""
         c = self.counts
-        return float(c["primal"] + c["tangent"] + VJP_PASSES * c["vjp"])
+        return float(c["primal"] + c["tangent"] + VJP_PASSES * c["vjp"]
+                     + HVP_PASSES * c["hvp"])
 
     # ---- the objective ---------------------------------------------------------------------------- #
     def model(self, x):
@@ -248,6 +265,43 @@ class FitKernel:
         """(nbin + n, n) -- the data Jacobian stacked with the prior block diag(1/prior)."""
         return np.vstack([self.jac_data(x), np.diag(self.pw)])
 
+    def hessian(self, x, batch=None):
+        """(n, n) EXACT Hessian of chi2 -- not the Gauss-Newton approximation.
+
+        WHY THIS MATTERS FOR THE LAPLACE/OCCAM FACTOR.  The fit's own covariance is (J^T W J)^-1, which
+        drops the term sum_b r_b d2m_b: exact only in the small-residual limit.  The Occam correction is
+        a log-det of precisely the matrix being approximated, so "the covariance is free" is a claim
+        about the GAUSS-NEWTON matrix, not about the Hessian.  This gives the real one in ~n HVPs, where
+        a finite-difference HESSE needs ~2n^2 objective evaluations.
+
+        The prior block is exactly 2 diag(1/prior^2) -- quadratic, so no derivative work is needed.
+        """
+        B = self.n if not batch else min(int(batch), self.n)
+        xj = jnp.asarray(np.asarray(x, float))
+        E = np.eye(self.n)
+        H = np.zeros((self.n, self.n))
+        nblk = 0
+        for lo in range(0, self.n, B):
+            m_ = min(B, self.n - lo)
+            blk = np.zeros((B, self.n)); blk[:m_] = E[lo:lo + m_]
+            Vt = jnp.asarray(blk)
+            acc = sum(np.asarray(f(xj, D, R, Vt)) for f, D, R in zip(self._j_H, self._D, self._R))
+            H[lo:lo + m_] = np.asarray(acc)[:m_]
+            nblk += 1
+        self.counts["hess"] += 1
+        self.counts["hvp"] += nblk * B
+        H = 0.5 * (H + H.T)                      # symmetrise: the two sweeps round differently
+        return H + 2.0 * np.diag(self.pw ** 2)
+
+    def covariance_gn(self, J):
+        """(J^T J)^-1 from a whitened jacobian -- the Gauss-Newton covariance, free once J exists."""
+        return np.linalg.pinv(J.T @ J, rcond=1e-12)
+
+    def covariance_exact(self, x, batch=None):
+        """(H/2)^-1 from the exact Hessian.  For chi2 = ||r||^2, H = 2(J^T J + sum r d2r), so the
+        covariance is (H/2)^-1 and reduces to (J^T J)^-1 exactly when the residual term vanishes."""
+        return np.linalg.pinv(0.5 * self.hessian(x, batch=batch), rcond=1e-12)
+
     # ---- setup ------------------------------------------------------------------------------------ #
     def warmup(self, x=None, which=("model", "residuals", "chi2", "grad", "jac")):
         """Compile the jitted objects on the exact shapes the timed loop will use, then zero the
@@ -263,7 +317,7 @@ class FitKernel:
         t0 = _t.perf_counter()
         for w in which:
             {"model": self.model, "residuals": self.residuals, "chi2": self.chi2,
-             "grad": self.grad, "jac": self.jac_data}[w](x)
+             "grad": self.grad, "jac": self.jac_data, "hess": self.hessian}[w](x)
         self.compile_s = _t.perf_counter() - t0
         return self.reset_counts()
 

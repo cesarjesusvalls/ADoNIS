@@ -177,3 +177,70 @@ One process per cell: each `FitKernel` loads ~50 CUBIN modules onto the device a
 does not unload them, so building several kernels in one process exhausts the CUDA context regardless of
 how much memory is free. That failure is why several earlier runs died on a *smaller* kernel than one
 that had just succeeded.
+
+## The Hessian: what the Laplace/Occam factor costs, and whether the free route is usable
+
+The Occam correction needs `log det V_nuis` at every node of a profile scan -- 221 nodes in 1-D, 7938 in
+the 2-D corner. There are three routes, and they differ in accuracy as well as price. Measured at four
+real nodes (one dial pinned 1 sigma off the best fit, the other 16 re-minimised), 600k resident events:
+
+| route | wall/node | event-passes/node | objective calls | over the 7938-node corner |
+|---|---|---|---|---|
+| A `J^T W J`, by-product of the fit | **0.39 ms** | **0** | 0 | ~3 s, 0 passes |
+| B exact Hessian, autodiff HVPs | 0.18 s | 48 | 0 | 0.40 h, 381k passes |
+| C MINUIT HESSE, finite differences | 1.35 s | ~285 | ~285 | **2.98 h, 2.26M passes** |
+
+Route A is free because the inner fit already built J. Route B is ~n HVPs (forward-over-reverse), i.e.
+**O(n)** for the exact matrix. Route C is O(n^2) objective evaluations, each a full pass over the
+resident events. B beats C by ~7x in wall-clock and ~6x in event-passes. (MINUIT's *other* covariance,
+the one `migrad()` accumulates, is a quasi-Newton approximation built along the path taken; feeding that
+into a log-det puts a path-dependent error into the very factor being computed, so HESSE is the honest
+MINUIT route and it is the expensive one.)
+
+### Is the free route accurate enough?
+
+`J^T W J` is not the Hessian: it drops `sum_b r_b d2m_b`, exact only at zero residual. Differences in
+`log det V` from the exact Hessian, in units where a difference `d` shifts the Occam-corrected chi2 by
+`d` (so compare with the Delta chi2 = 1 scale of a 1-sigma interval):
+
+| pinned dial | GN - exact (noise) | GN - exact (Asimov) | HESSE - exact (noise) |
+|---|---|---|---|
+| node 0 | +0.222 | +0.251 | 0.010 |
+| node 1 | +0.040 | +0.059 | 0.003 |
+| node 2 | +0.101 | +0.123 | 0.010 |
+| node 3 | +0.018 | +0.050 | 0.607 |
+
+HESSE agrees with the autodiff Hessian to ~0.01 on three of four nodes, which validates the HVP
+implementation against an independent computation. (The 0.607 outlier is HESSE's own finite-difference
+step, not the reference.)
+
+**The null control.** At an UNPINNED Asimov best fit the residual is identically zero, so `J^T W J` must
+BE the exact Hessian:
+
+    max|H/2 - J^T J| / max|J^T J| = 4.9e-10      log det V:  GN - exact = -1.2e-06
+
+It is. Note what this control is *not*: a profile NODE is not a null however noiseless the data, because
+pinning a dial off the minimum leaves a residual by construction. An earlier reading of this benchmark
+treated the Asimov nodes as a null and would have accepted a broken Hessian.
+
+**Why the error is what it is.** At the noise best fit the dropped term is a *tiny* elementwise
+perturbation -- 2.4e-04 relative -- yet it moves `log det V` by 0.145, an amplification of ~600x. A
+log-determinant is dominated by the worst-constrained directions, and this nuisance block has condition
+number ~260. So the Gauss-Newton error in the Occam factor is not driven by the residual being large; it
+is driven by the covariance being ill-conditioned, which is exactly the regime an Occam factor is
+introduced to handle.
+
+### Recommendation
+
+**Use route B, the exact autodiff Hessian.** The free route carries an uncontrolled error of order
+0.02-0.25 in the quantity being computed -- up to a quarter of a Delta chi2 = 1 unit -- in a term whose
+whole purpose is to be a correction. Route B removes that for 48 event-passes per node, and is still ~7x
+cheaper than the MINUIT route that would be needed to get the same accuracy without autodiff. The
+existing corner scans store `logdet_Vnuis` computed the Gauss-Newton way and should be revisited.
+
+**What is NOT established here.** These four nodes are four *different pinned dials*, each at 1 sigma. A
+profile scan varies ONE dial across many positions, and what enters the profile is the *variation* of the
+Occam term along that scan, not its absolute value -- a constant offset cancels. Whether the
+Gauss-Newton error is roughly constant along a scan (and so largely cancels) or varies with position is
+not measured here. The 0.02-0.25 spread bounds it from above; establishing the actual effect on a quoted
+interval needs one dial scanned at several positions, which is the obvious follow-up.
