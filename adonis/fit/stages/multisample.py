@@ -334,28 +334,100 @@ class MultiEngine:
         """Full stacked model as ONE JAX array -- the differentiable counterpart of .model()."""
         return jnp.concatenate([b for s in self.samples for b in s.model_blocks_jax(theta)])
 
+    def _chi2_parts(self, subset):
+        """chi2 as a list of PER-SAMPLE terms, each a JAX function of the SUBSET dials.
+
+        Deliberately NOT one function over the stacked model.  Jitting the concatenation of all ten
+        samples fuses them into a single XLA program whose live set is every sample's intermediates at
+        once, and that OOMs an 11 GB turing card (`RESOURCE_EXHAUSTED ... jit_chi2_of_x`) even though the
+        same fit runs fine through `.model()`, which walks the samples one at a time.  Per-sample jits
+        bound the peak at the largest single sample and sum on the host, exactly as `.model()` does.
+        The arithmetic is identical -- chi2 is a sum over bins, so splitting the sum changes nothing.
+
+        Shared by chi2_fn / chi2_grad_fn so the value-only and value-and-grad objectives can never drift
+        apart: a benchmark comparing them is only meaningful if they are literally the same function.
+
+        DATA AND WEIGHTS ARE ARGUMENTS, not captured constants.  A toy ensemble calls set_closure_data()
+        for every toy; if D and W were closed over, each toy would need a fresh jax.jit and pay a full
+        XLA compile (~1-2 min) before its fits could start.  As arguments of fixed shape they change
+        without retracing, so an ensemble compiles once.  Use chi2_data_dev() to get (D, W) per sample.
+        """
+        idx = jnp.asarray(np.asarray(subset, int))
+        th0 = jnp.asarray(self.th0)
+        parts = []
+        for s in self.samples:
+            def term(x, D, W, s=s):              # default arg binds THIS sample, not the loop variable
+                th = th0.at[idx].set(x)
+                r = jnp.concatenate([b for b in s.model_blocks_jax(th)]) - D
+                return jnp.sum(W * r * r)
+
+            parts.append(term)
+
+        # WARM THE BIN CACHES EAGERLY, before anything is jitted.  BinSpec._device() builds its gather
+        # indices lazily and memoises them on the spec (info_content.py:266).  If that first call happens
+        # inside a trace, the cached arrays belong to THAT trace, and the next transformation of the same
+        # spec fails with `UnexpectedTracerError: ... int64[60000] ... escaped the scope`.  Observed
+        # exactly that: chi2_fn jitted fine and chi2_grad_fn then died on the cache it had left behind.
+        # One eager pass per sample makes every cache concrete; it is setup, not part of any timing.
+        if not getattr(self, "_bins_warm", False):
+            D0, W0 = self.chi2_data_dev()
+            xw = jnp.asarray(np.asarray(self.th0)[np.asarray(subset, int)])
+            for p, d, w in zip(parts, D0, W0):
+                p(xw, d, w)
+            self._bins_warm = True
+        return parts
+
+    def chi2_data_dev(self):
+        """Per-sample (data, 1/sigma^2) as device arrays, read from the CURRENT eng.ds.
+
+        Call again after set_closure_data() to pick up a new toy; the jitted objectives take these as
+        arguments, so swapping them costs a host-to-device copy of a few hundred floats, not a recompile.
+        """
+        D, W = [], []
+        for s in self.samples:
+            sig = np.concatenate([d["sigma"] for d in s.ds])
+            ok = np.isfinite(sig) & (sig > 0)
+            W.append(jnp.asarray(np.where(ok, 1.0 / np.where(ok, sig, 1.0) ** 2, 0.0)))
+            D.append(jnp.asarray(np.concatenate([d["data"] for d in s.ds])))
+        return D, W
+
+    def chi2_fn(self, subset):
+        """chi2 ALONE, jitted per sample.  For a derivative-free minimiser: asking value_and_grad for the
+        value and throwing the gradient away would make it pay for a VJP it never uses.
+
+        The returned callable has `.set_data(D, W)` so an ensemble can retarget it at the next toy
+        without recompiling; it starts bound to whatever data the engine holds now.
+        """
+        fs = [jax.jit(p) for p in self._chi2_parts(subset)]
+        st = list(self.chi2_data_dev())
+
+        def chi2(x):
+            xj = jnp.asarray(np.asarray(x, float))
+            return float(sum(f(xj, d, w) for f, d, w in zip(fs, st[0], st[1])))   # one host sync
+        chi2.set_data = lambda D, W: st.__setitem__(slice(0, 2), [D, W])
+        return chi2
+
     def chi2_grad_fn(self, subset):
-        """(chi2, grad) over `subset` by REVERSE mode.
+        """(chi2, grad) over `subset` by REVERSE mode, summed over samples.
 
         MIGRAD and HMC need only the SCALAR gradient, which one VJP delivers for ~2-3 model evaluations
         regardless of how many dials there are -- against a full forward Jacobian at 16 JVPs (measured
         1.05 s vs 0.16 s for a model evaluation).  Only possible because the binning is now a single
         differentiable BinSpec primitive shared by every sample type; while half the model binned on the
         host this could not be written.
+
+        Returns (float, ndarray) rather than JAX scalars: every consumer is a host-side minimiser.
+        Same `.set_data(D, W)` retargeting as chi2_fn.
         """
-        data, sigma = self.data_sigma()
-        ok = np.isfinite(sigma) & (sigma > 0)
-        W = jnp.asarray(np.where(ok, 1.0 / np.where(ok, sigma, 1.0) ** 2, 0.0))
-        D = jnp.asarray(data)
-        idx = jnp.asarray(np.asarray(subset, int))
-        th0 = jnp.asarray(self.th0)
+        vgs = [jax.jit(jax.value_and_grad(p)) for p in self._chi2_parts(subset)]
+        st = list(self.chi2_data_dev())
 
-        def chi2_of_x(x):
-            th = th0.at[idx].set(x)
-            r = self.model_jax(th) - D
-            return jnp.sum(W * r * r)
-
-        return jax.jit(jax.value_and_grad(chi2_of_x))
+        def value_and_grad(x):
+            xj = jnp.asarray(np.asarray(x, float))
+            out = [f(xj, d, w) for f, d, w in zip(vgs, st[0], st[1])]
+            return float(sum(o[0] for o in out)), np.asarray(sum(o[1] for o in out))
+        value_and_grad.set_data = lambda D, W: st.__setitem__(slice(0, 2), [D, W])
+        return value_and_grad
 
     def data_sigma(self):
         return (np.concatenate([d["data"] for d in self.ds]),
@@ -530,7 +602,7 @@ def main():
     # nowhere but the environment -- unreproducible from the config alone.
     truth, _ = parse_inject(INJECT, nominal_knobs())
     eng.set_closure_data(truth)
-    log(f"closure data ready (nonlinear exact reweight @ {inj_desc})")
+    log(f"closure data ready (nonlinear exact reweight @ {INJECT})")
     log("  truth: " + " ".join(f"{eng.pnames[k]}={truth[k]:.3f}" for k in subset))
 
     # Scale the FIT's prior width AFTER the truth is injected (so the injection always uses the real prior).
@@ -551,12 +623,13 @@ def main():
     # FITTER.  TRF by default, matching the toys and the profile scan: LM clips its step onto the box and
     # then inflates lambda until the step underflows, exiting via `norm(dth) < 1e-12` reported as
     # convergence -- harmless here (the Asimov fit reaches the truth to 1e-15) but there is no reason for
-    # the three stages to use different minimisers.  S4_FITTER=lm restores LM (and the trajectory record,
-    # which trf_fit does not produce -- the convergence figure needs that path).
+    # the three stages to use different minimisers.  S4_FITTER=lm restores LM.  BOTH paths record the
+    # trajectory now: it used to be LM-only, so the default TRF run persisted three empty arrays and the
+    # step count survived only in stdout.
     traj = []
     if cfg.fit.minimizer.method == "trf":
         from adonis.fit.fitters import trf_fit
-        th, V, J, m, chi2, chi2_data = trf_fit(eng, subset, "fit", nit=NIT)
+        th, V, J, m, chi2, chi2_data = trf_fit(eng, subset, "fit", nit=NIT, record=traj)
     else:
         th, V, J, m, chi2, chi2_data = lm_fit(eng, subset, "fit", huber=False, nit=NIT, record=traj, tol=TOL)
     traj_theta = np.array([t[0] for t in traj]) if traj else np.zeros((0, len(eng.th0)))
@@ -564,7 +637,7 @@ def main():
     log(f"trajectory: {len(traj)} points recorded")
 
     # ---- report ------------------------------------------------------------------------------------ #
-    print(f"\n==== S4 multisample closure [{LABEL}] ({inj_desc}) ====   chi2_data={chi2_data:.1f}/{eng.row0[-1]}")
+    print(f"\n==== S4 multisample closure [{LABEL}] ({INJECT}) ====   chi2_data={chi2_data:.1f}/{eng.row0[-1]}")
     print(f"{'dial':>18} {'truth':>7} {'BFP':>8} {'+/-':>7} {'bias/sig':>8}")
     for c, k in enumerate(subset):
         s = np.sqrt(max(V[c, c], 0.0))
@@ -573,7 +646,7 @@ def main():
 
     # ---- persist (reusable for the sec4 figure; single 'fit' method) ------------------------------- #
     out = f"output/altgen/{LABEL}.npz"
-    np.savez(out, mode="closure_multisample", inj=inj_desc, truth=truth, subset=subset,
+    np.savez(out, mode="closure_multisample", inj=INJECT, truth=truth, subset=subset,
              pnames=eng.pnames, prior=eng.prior, row0=eng.row0, dskeys=[d["key"] for d in eng.ds],
              data=np.concatenate([d["data"] for d in eng.ds]),
              sigma=np.concatenate([d["sigma"] for d in eng.ds]),
@@ -582,7 +655,11 @@ def main():
              **{f"{d['key']}_edges": d["edges"] for d in eng.ds},
              fit_th=th, fit_V=V, fit_sub=np.array(subset), fit_chi2data=chi2_data,
              fit_model=eng.model(th),
-             traj_theta=traj_theta, traj_chi2=traj_chi2, traj_chi2data=traj_chi2data)
+             traj_theta=traj_theta, traj_chi2=traj_chi2, traj_chi2data=traj_chi2data,
+             # COST of the fit, persisted so it never has to be reconstructed from stdout again.
+             fit_nfev=getattr(eng, "last_nfev", -1), fit_njev=getattr(eng, "last_njev", -1),
+             fit_status=getattr(eng, "last_status", -1), fit_opt=getattr(eng, "last_opt", np.nan),
+             fit_gap=getattr(eng, "last_gap", np.nan))
     log(f"[out] {out}")
     log("done")
 

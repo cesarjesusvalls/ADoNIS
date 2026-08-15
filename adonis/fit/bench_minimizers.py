@@ -1,0 +1,329 @@
+"""Minimiser benchmark on the section-4 closure: Gauss-Newton vs MIGRAD, with and without gradients.
+
+The section's claim is that autodiff changes what a fit COSTS, not just what it can express.  This is the
+measurement behind that claim, on the real 17-dial multisample closure rather than a toy: the same data,
+the same start point (nominal, 37 sigma from the truth), the same convergence target, three minimisers.
+
+    gn          our Gauss-Newton / trust-region-reflective fit.  Uses the full FORWARD Jacobian
+                (one JVP per dial) and solves the normal equations -- second-order information for free
+                because the model is a sum of squares.
+    migrad+g    MIGRAD driven by the REVERSE-mode gradient.  One VJP per call regardless of dial count.
+    migrad      MIGRAD with no gradient supplied, so it builds one by FINITE DIFFERENCES: ~2 x ndial
+                extra cost-function calls per gradient, each a full pass over the resident events.
+
+WHAT IS TIMED.  Only the minimisation.  Bank loading, closure-data construction and JIT compilation all
+happen before the clock starts, and every callable is warmed up on the exact argument shapes it will see.
+Timing a JIT compile as if it were arithmetic is the classic way to make a JAX benchmark meaningless --
+the first call to the gradient objective here costs seconds and every later one milliseconds.
+
+GPU.  There is NO GPU option in MIGRAD and there could not be: it is a CPU C++ minimiser doing 17-dim
+linear algebra, microseconds per step.  What runs on the GPU is the COST FUNCTION -- the model evaluation
+over ~2.4M resident events -- for all three methods alike.  The script prints the JAX device it actually
+got, because a silent fall back to CPU would change every number here by more than the effect measured.
+
+REPEATS.  The fits are deterministic (Asimov data, fixed start), so repeats measure the TIMING spread,
+not a spread in results; the script asserts the results are in fact identical across repeats and reports
+median and min-max of the wall time.  Anything else would be a bug in the timing, not physics.
+
+Usage:
+    srun --jobid=<ID> --overlap python -m adonis.fit.bench_minimizers [config] [--reps N] [--methods ...]
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+
+import numpy as np
+
+from adonis.analysis import knobs as K
+
+
+def _bounds(eng, subset):
+    """(lo, hi) per fitted dial from the PHYS_BOUND registry -- the same box the GN fit uses, so MIGRAD
+    is not quietly given a different feasible set."""
+    lo = np.array([-np.inf if K.phys_lo(eng.pnames[k]) is None else K.phys_lo(eng.pnames[k])
+                   for k in subset], float)
+    hi = np.array([np.inf if K.phys_hi(eng.pnames[k]) is None else K.phys_hi(eng.pnames[k])
+                   for k in subset], float)
+    return lo, hi
+
+
+def _migrad(eng, subset, x0, lo, hi, use_grad, tol, max_calls, f, vg):
+    """One MIGRAD fit.  Returns (x, (nvalue, nderiv), chi2, seconds) with ONLY migrad() in the clock.
+
+    `f` and `vg` are the ALREADY-COMPILED objectives, passed in rather than built here.  Building them
+    inside this function is the mistake that produced the first two rounds of numbers: eng.chi2_fn()
+    returns a FRESH jax.jit wrapper each call, with an empty compilation cache, so every repeat silently
+    recompiled inside the timed region -- 65 of MIGRAD's 72 seconds were XLA compiling, and the effect
+    was invisible because it hit all repeats equally and so produced a tight, convincing spread.
+    """
+    from iminuit import Minuit
+
+    names = [eng.pnames[k] for k in subset]
+    if use_grad:
+        # VALUE from the cheap value-only path, GRADIENT from the VJP.  The obvious wrapper -- serve both
+        # from one cached value_and_grad -- is a trap and measurably so: MIGRAD's line search evaluates
+        # the FUNCTION at several trial points before asking for a gradient, so every one of those paid
+        # for a VJP it never used, and a one-entry cache then thrashed and recomputed the gradient at the
+        # point it had already evicted.  That made "MIGRAD with gradients" come out SLOWER than without
+        # (52s vs 41s), which is an artefact of the harness and not a property of either method.
+        nf = [0, 0]                                            # [value calls, gradient calls]
+
+        def fcn(*a):
+            nf[0] += 1
+            return f(np.asarray(a, float))
+
+        def grd(*a):
+            nf[1] += 1
+            return vg(np.asarray(a, float))[1]
+
+        m = Minuit(fcn, *x0, name=names, grad=grd)
+    else:
+        nf = [0, 0]
+
+        def fcn(*a):
+            nf[0] += 1
+            return f(np.asarray(a, float))
+
+        m = Minuit(fcn, *x0, name=names)
+
+    m.errordef = Minuit.LEAST_SQUARES          # chi2, not -2lnL/2: the 1-sigma contour is chi2_min + 1
+    for i, n in enumerate(names):
+        m.limits[n] = (None if not np.isfinite(lo[i]) else lo[i],
+                       None if not np.isfinite(hi[i]) else hi[i])
+    m.tol = tol
+    m.strategy = 1
+
+    t0 = time.perf_counter()
+    m.migrad(ncall=max_calls)
+    dt = time.perf_counter() - t0
+    # OUR counters, not m.fmin.nfcn: iminuit's counter does not separate value from gradient calls, and
+    # the two cost very different amounts here (15 ms vs 33 ms), so the split is the whole story.
+    return np.array(m.values), (nf[0], nf[1]), float(m.fval), dt
+
+
+def _gn(eng, subset, tol, nit):
+    """One Gauss-Newton (TRF) fit, clock around the fit only.
+
+    NOTE the clock includes trf_fit's POST-CONVERGENCE work -- one model evaluation and two Jacobians
+    for the covariance and the Newton-decrement diagnostic -- which is not minimisation.  main() knows
+    the measured per-call costs and reports the corrected figure alongside the raw one rather than
+    quietly crediting Gauss-Newton with work it does after it has already found the minimum.
+    """
+    from adonis.fit.fitters import trf_fit
+
+    t0 = time.perf_counter()
+    th, _V, _J, _m, _c_tot, c_data = trf_fit(eng, subset, "bench", nit=nit)
+    dt = time.perf_counter() - t0
+    # (residual evals, jacobian evals) -- the same value/derivative split reported for MIGRAD
+    return (th[np.array(subset, int)],
+            (int(getattr(eng, "last_nfev", -1)), int(getattr(eng, "last_njev", -1))),
+            float(c_data), dt)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("--reps", type=int, default=3, help="timed repeats per method")
+    ap.add_argument("--methods", default="gn,migrad+g,migrad")
+    ap.add_argument("--tol", type=float, default=0.1, help="iminuit tol (EDM target = tol*errordef*1e-3)")
+    ap.add_argument("--max-calls", type=int, default=20000, help="MIGRAD call ceiling")
+    ap.add_argument("--nit", type=int, default=200, help="GN max_nfev")
+    ap.add_argument("--sig-cap", type=int, default=0,
+                    help="override banks.sig_cap (0 = use the config's). The differentiable objective "
+                         "needs device room ON TOP of the resident banks, which a 11GB card does not "
+                         "have at the config's 250k/sample; lowering this trades absolute times for a "
+                         "comparison that still runs. The METHOD RATIOS are what the benchmark is for.")
+    ap.add_argument("--jac-bench", action="store_true",
+                    help="also time the DERIVATIVE objects themselves: MINUIT finite differences vs "
+                         "ADoNIS forward/reverse autodiff, on the identical cost function")
+    ap.add_argument("--out", default="output/altgen/bench_minimizers.npz")
+    a = ap.parse_args(argv)
+    methods = [s.strip() for s in a.methods.split(",") if s.strip()]
+
+    t0 = time.time()
+    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+
+    import jax
+    log(f"jax {jax.__version__}  devices={jax.devices()}  default={jax.devices()[0].platform}")
+    if jax.devices()[0].platform != "gpu":
+        log("[warn] NOT on a GPU -- these timings are not the numbers you want")
+
+    # ---- setup: banks, closure data, dial subset.  NONE of this is timed. ------------------------- #
+    from adonis.fit.config import FitConfig
+    from adonis.fit.fitters import parse_inject
+    from adonis.fit.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
+    from adonis.reweight.reweight_model import nominal_knobs
+
+    cfg = FitConfig.load(a.config)
+    log(f"config {cfg.path}  digest {cfg.digest()}")
+    if a.sig_cap:
+        # Banks is frozen ON PURPOSE -- its docstring calls sig_cap "part of the physics definition, not
+        # a performance knob", because fewer resident events means larger MC errors per bin and hence a
+        # DIFFERENT sparse-bin mask.  So this is not "the same fit, cheaper": it is a smaller fit, and
+        # only the RATIOS between minimisers carry over to production statistics.  Rebuild rather than
+        # mutate, so the frozen contract is respected and the digest still describes what ran.
+        import dataclasses
+        log(f"[override] banks.sig_cap {cfg.banks.sig_cap:,} -> {a.sig_cap:,}  -- fewer events raises the "
+            f"per-bin MC error and MASKS MORE BINS: a different, smaller fit. Method ratios transfer; "
+            f"absolute times do not.")
+        cfg = dataclasses.replace(cfg, banks=dataclasses.replace(cfg.banks, sig_cap=a.sig_cap))
+    eng = build_multisample_engine(log, cfg)
+    g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
+    subset = fit_subset(g, eng.pnames, cfg, log)
+    truth, _ = parse_inject(cfg.inject_string(), nominal_knobs())
+    eng.set_closure_data(truth)
+    # KEEP THE REAL PRIOR before the MLE widening.  Every accuracy number below is quoted in units of it:
+    # dividing a bias by the WIDENED prior (x1e6) makes any miss look negligible, which is how a MIGRAD
+    # fit that had parked E_b on its bound, 0.49 away from the truth, first reported "bias/prior 1.3e-7".
+    prior_true = eng.prior[np.array(subset, int)].copy()
+    if cfg.fit.prior_scale != 1.0:               # MLE: widen the prior so the fit is data-only
+        eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
+    nd = len(subset)
+    x0 = np.asarray(eng.th0)[np.array(subset, int)].copy()
+    xt = np.asarray(truth)[np.array(subset, int)]
+    lo, hi = _bounds(eng, subset)
+    names_all = [eng.pnames[k] for k in subset]
+    log(f"{nd} dials, start at nominal, truth {np.abs(xt - x0).max():.3f} away (max abs)")
+
+    # ---- warm-up: compile everything OUTSIDE the clock ------------------------------------------- #
+    # Each callable is invoked on the exact shapes the timed loop will use.  The gradient objective in
+    # particular compiles for seconds; counting that once per repeat would swamp the comparison.
+    log("warm-up (JIT compile + first-touch), not timed")
+    tw = time.perf_counter()
+    f_only = eng.chi2_fn(subset); v0 = float(f_only(x0))
+    vg = eng.chi2_grad_fn(subset); vv, gg = vg(x0)
+    m0 = eng.model(np.asarray(eng.th0)); J0 = eng.jac(np.asarray(eng.th0), subset)
+    log(f"  compiled in {time.perf_counter()-tw:.1f}s   chi2(start)={v0:.4g}  |grad|={np.linalg.norm(gg):.4g}"
+        f"  model{m0.shape} jac{J0.shape}")
+    assert abs(v0 - vv) < 1e-6 * max(1.0, abs(v0)), "value-only and value-and-grad objectives disagree"
+
+    # ---- do GN and MIGRAD actually minimise the SAME function? ------------------------------------ #
+    # They are handed the objective by different routes: GN builds residuals from eng.model() on the
+    # host, MIGRAD calls the jitted per-sample chi2 on the device.  If those two disagree at all, the
+    # benchmark is comparing minimisers of two different functions and the chi2 column is meaningless.
+    # The first run showed MIGRAD bottoming out at chi2 = 1.949 with its parameters at the truth to
+    # 1e-7 -- a floor, not a convergence failure -- which is exactly the signature of such a mismatch.
+    data, sigma = eng.data_sigma()
+    okb = np.isfinite(sigma) & (sigma > 0)
+    Wb = np.where(okb, 1.0 / np.where(okb, sigma, 1.0), 0.0)
+
+    def _chi2_host(x):
+        th = np.asarray(eng.th0).copy(); th[np.array(subset, int)] = x
+        return float(np.sum(((eng.model(th) - data) * Wb) ** 2))
+
+    th_t = np.asarray(eng.th0).copy(); th_t[np.array(subset, int)] = xt
+    m_host, m_dev = eng.model(th_t), np.asarray(eng.model_jax(th_t))
+    rel = np.abs(m_host - m_dev) / np.maximum(np.abs(m_host), 1e-300)
+    log(f"  host vs device model at truth: max rel {rel.max():.3e} (bin {int(np.argmax(rel))}), "
+        f"median {np.median(rel):.3e}")
+    log(f"  chi2 at truth : host {_chi2_host(xt):.6e} | device {float(f_only(xt)):.6e}")
+    log(f"  chi2 at start : host {_chi2_host(x0):.6e} | device {v0:.6e}")
+
+    # per-call cost, so the fit times can be read as a call count
+    def _t(fn, n=5):
+        fn(); ts = []
+        for _ in range(n):
+            s = time.perf_counter(); fn(); ts.append(time.perf_counter() - s)
+        return float(np.median(ts))
+    c_f = _t(lambda: float(f_only(x0)))
+    c_vg = _t(lambda: float(vg(x0)[0]))
+    c_J = _t(lambda: eng.jac(np.asarray(eng.th0), subset))
+    c_m = _t(lambda: eng.model(np.asarray(eng.th0)))
+    log(f"  per-call: chi2 {1e3*c_f:.1f} ms | chi2+grad {1e3*c_vg:.1f} ms ({c_vg/c_f:.2f}x)"
+        f" | full jacobian {1e3*c_J:.1f} ms ({c_J/c_f:.1f}x) | model {1e3*c_m:.1f} ms")
+    GN_TAIL = c_m + 2 * c_J        # trf_fit's post-convergence covariance + diagnostic, see _gn()
+
+    # ---- DERIVATIVES: MINUIT's finite differences vs ADoNIS's autodiff ---------------------------- #
+    # The fit-level comparison hides WHERE the time goes.  This measures the derivative objects
+    # themselves, on the identical cost function, so the scaling in the dial count is visible:
+    #   MINUIT gradient  ~ 2*n objective calls   (central differences, one pair per dial) -> O(n)
+    #   MINUIT hessian   ~ 2*n^2 calls           (HESSE)                                  -> O(n^2)
+    #   ADoNIS gradient  = 1 VJP                 (reverse mode)                           -> O(1)
+    #   ADoNIS jacobian  = n JVPs, batched       (forward mode) -- and it returns the FULL 325 x n
+    #                      residual jacobian, from which J^T J gives the Gauss-Newton hessian for free,
+    #                      i.e. strictly more information than MINUIT's scalar gradient.
+    if a.jac_bench:
+        from iminuit import Minuit
+
+        def _fd_grad(x, h=1e-4):
+            """Central-difference gradient: the 2n calls MIGRAD makes when handed no derivative."""
+            g = np.empty(len(x))
+            for i in range(len(x)):
+                xp = x.copy(); xp[i] += h
+                xm = x.copy(); xm[i] -= h
+                g[i] = (f_only(xp) - f_only(xm)) / (2 * h)
+            return g
+
+        t_vjp = _t(lambda: vg(x0)[1], n=5)
+        t_fd = _t(lambda: _fd_grad(x0), n=3)
+        t_jacf = c_J
+        mh = Minuit(lambda *aa: f_only(np.asarray(aa, float)), *xt, name=names_all)
+        mh.errordef = Minuit.LEAST_SQUARES
+        for i, nm in enumerate(names_all):
+            mh.limits[nm] = (None if not np.isfinite(lo[i]) else lo[i],
+                             None if not np.isfinite(hi[i]) else hi[i])
+        th0_ = time.perf_counter(); mh.hesse(); t_hesse = time.perf_counter() - th0_
+        print(f"\n==== derivatives at {nd} dials (same objective, {jax.devices()[0].platform}) ====")
+        print(f"{'object':>34} {'seconds':>9} {'obj-calls':>10} {'vs autodiff':>12}")
+        print(f"{'MINUIT gradient (2n fin.diff.)':>34} {t_fd:9.3f} {2*nd:10d} {t_fd/t_vjp:11.1f}x")
+        print(f"{'ADoNIS gradient (1 reverse VJP)':>34} {t_vjp:9.3f} {'~2':>10} {1.0:11.1f}x")
+        print(f"{'MINUIT hessian (HESSE, ~2n^2)':>34} {t_hesse:9.3f} {'~'+str(2*nd*nd):>10} "
+              f"{t_hesse/t_jacf:11.1f}x")
+        print(f"{'ADoNIS jacobian (n forward JVPs)':>34} {t_jacf:9.3f} {'~'+str(nd):>10} {1.0:11.1f}x"
+              f"   -> full {len(data)}x{nd} residual jacobian; J^T J is the GN hessian, no extra cost")
+
+    # ---- timed loop ------------------------------------------------------------------------------ #
+    res = {}
+    for meth in methods:
+        ts, ns, cs, xs = [], [], [], []
+        for r in range(a.reps):
+            if meth == "gn":
+                x, n, c, dt = _gn(eng, subset, cfg.fit.minimizer.newton_tol, a.nit)
+            elif meth == "migrad+g":
+                x, n, c, dt = _migrad(eng, subset, x0, lo, hi, True, a.tol, a.max_calls, f_only, vg)
+            elif meth == "migrad":
+                x, n, c, dt = _migrad(eng, subset, x0, lo, hi, False, a.tol, a.max_calls, f_only, vg)
+            else:
+                raise SystemExit(f"unknown method {meth}")
+            ts.append(dt); ns.append(n); cs.append(c); xs.append(x)
+            log(f"  {meth:9s} rep {r+1}/{a.reps}: {dt:8.2f}s  value={n[0]:5d} deriv={n[1]:4d}"
+                f"  chi2={c:.3e}"
+                f"  max|x-truth|/prior={np.abs((x - xt) / prior_true).max():.2e}")
+        xs = np.array(xs)
+        # Repeats are deterministic in the ALGORITHM but not bit-wise on a GPU: segment_sum reduces with
+        # atomics, so summation order varies run to run and the last digits move.  Flag only a spread
+        # large enough to be a real non-determinism (1e-6 of the prior), not float noise.
+        tolx = 1e-6 * prior_true
+        if a.reps > 1 and not np.all(np.abs(xs - xs[0]) <= tolx):
+            log(f"  [warn] {meth}: repeats differ beyond GPU round-off "
+                f"(max {np.abs(xs - xs[0]).max():.2e})")
+        res[meth] = dict(t=np.array(ts), n=np.array(ns), chi2=np.array(cs), x=xs[0])
+
+    # ---- report ---------------------------------------------------------------------------------- #
+    print(f"\n==== minimiser benchmark ({nd} dials, {a.reps} reps, {jax.devices()[0].platform}) ====")
+    print(f"{'method':>10} {'median s':>10} {'min-max s':>16} {'value':>6} {'deriv':>6} {'chi2':>11} "
+          f"{'max bias/prior':>15}")
+    # GN's raw time carries a post-convergence tail (see _gn); take it off before comparing minimisers.
+    corr = {m: (np.median(res[m]["t"]) - (GN_TAIL if m == "gn" else 0.0)) for m in methods}
+    base = corr.get("gn")
+    for meth in methods:
+        d = res[meth]
+        b = np.abs((d["x"] - xt) / prior_true).max()
+        rel = "" if not base else f"   {corr[meth]/base:7.1f}x GN"
+        nv, ng = int(np.median(d["n"][:, 0])), int(np.median(d["n"][:, 1]))
+        print(f"{meth:>10} {np.median(d['t']):10.2f} {d['t'].min():7.2f}-{d['t'].max():<8.2f}"
+              f" {nv:6d} {ng:6d} {np.median(d['chi2']):11.3e} {b:15.2e}{rel}")
+    print(f"\nminimisation only (GN less its {GN_TAIL:.2f}s post-fit covariance/diagnostic tail): "
+          + "  ".join(f"{m} {corr[m]:.2f}s" for m in methods))
+
+    np.savez(a.out, methods=np.array(methods, dtype=object), subset=np.array(subset), truth=xt,
+             per_call_chi2=c_f, per_call_chi2grad=c_vg, per_call_jac=c_J, per_call_model=c_m, prior_true=prior_true,
+             gn_tail=GN_TAIL, platform=jax.devices()[0].platform, reps=a.reps,
+             **{f"{m}_{k}": res[m][k] for m in methods for k in ("t", "n", "chi2", "x")})
+    log(f"[out] {a.out}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -52,7 +52,7 @@ def parse_inject(s, nom):
 
 
 
-def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None):
+def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None):
     """Bound-constrained least squares by trust-region reflective (scipy 'trf'), same contract as lm_fit.
 
     WHY this replaces the hand-rolled LM + clip.  Both earlier recipes failed on E_b for optimiser
@@ -88,11 +88,31 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None):
                    for k in subset], float)
     x0 = np.clip(th[idx], lo + 1e-12, hi - 1e-12)
 
+    # TRAJECTORY.  least_squares has no callback, so the iterate sequence is captured off the two
+    # callbacks it does have.  `_resid` runs at every TRIAL point (accepted or rejected) and caches what
+    # it computed; `_jac` runs only at ACCEPTED iterates, and pushes the cached values for the point it
+    # was handed.  That gives the accepted-step sequence for free -- no extra model evaluation, which
+    # matters because one model call is a full pass over 2.4M resident events.
+    #
+    # Without this the closure fit recorded nothing at all: `traj_*` in the npz were empty arrays,
+    # because the trajectory was wired into lm_fit only and the config selects TRF.  The step count was
+    # then unrecoverable after the fact -- it lived in stdout and nowhere else.
+    _last = {}
+
     def _resid(x):
         t = th.copy(); t[idx] = x
-        return np.concatenate([(eng.model(t) - data) * w, (x - eng.th0[idx]) * pw])
+        r_data = (eng.model(t) - data) * w
+        r_prior = (x - eng.th0[idx]) * pw
+        if record is not None:
+            cd = float(np.sum(r_data ** 2))
+            _last["x"] = x.copy(); _last["cd"] = cd
+            _last["ct"] = cd + float(np.sum(r_prior ** 2))
+        return np.concatenate([r_data, r_prior])
 
     def _jac(x):
+        if record is not None and _last.get("x") is not None and np.array_equal(_last["x"], x):
+            t = th.copy(); t[idx] = x
+            record.append((t.copy(), _last["ct"], _last["cd"]))
         t = th.copy(); t[idx] = x
         return np.vstack([eng.jac(t, subset) * w[:, None], np.diag(pw)])
 
@@ -124,6 +144,10 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None):
     # silence is how 21.6% of an ensemble ended up on the E_b floor and got read as physics.
     eng.last_opt = float(r.optimality)
     eng.last_status = int(r.status)
+    # COST as well as quality of convergence.  nfev counts trial points, njev accepted iterations; the
+    # two differ whenever the trust region rejects a step, so quoting one for the other is wrong.
+    eng.last_nfev = int(r.nfev)
+    eng.last_njev = int(r.njev)
     m = eng.model(th)
     # The gradient NORM is scale-dependent and says nothing on its own: |g|=0.1 against curvature ~100
     # leaves 1e-4 of chi2 on the table, which is irrelevant next to the 0.4-4.3 gaps between basins.
@@ -139,6 +163,10 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None):
         eng.last_gap = float(_g @ (np.linalg.pinv(_A, rcond=1e-12) @ _g))
     c_data = float(np.sum(((m - data) * w) ** 2))
     c_tot = c_data + float(np.sum(((r.x - eng.th0[idx]) * pw) ** 2))
+    # The SOLUTION closes the trajectory.  scipy evaluates the jacobian only at points it is about to
+    # step from, so the accepted final iterate never reaches the `_jac` hook and would be missing.
+    if record is not None and not (record and np.array_equal(record[-1][0], th)):
+        record.append((th.copy(), c_tot, c_data))
     J = eng.jac(th, subset)
     A = J.T @ (J * (w ** 2)[:, None]) + np.diag(pw ** 2)
     V = np.linalg.pinv(A, rcond=1e-12)
