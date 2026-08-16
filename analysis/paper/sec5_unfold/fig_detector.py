@@ -2,11 +2,12 @@
 
 Three statements, because an unfolding result is only readable if you know what was unfolded:
 
-  (a) the RESPONSE, column-normalised.  Each column is one truth cell; the colour is the probability that
-      such an event is reconstructed in each reco bin.  A diagonal band means the detector preserves the
-      variable; the width of that band is the whole reason templates cannot be made arbitrarily fine.
-  (b) EFFICIENCY per truth cell -- how much of the signal survives reco selection.
-  (c) PURITY per reco bin -- how much of what is reconstructed there is signal at all.
+  (a) the RECO rate in the (delta-p_T, delta-alpha_T) plane -- everything the "experiment" sees, signal
+      and background, on the 10 x 6 reco grid.
+  (b) the TRUTH rate, signal only, on the 3 x 3 truth grid.  Same plane, same units; the difference
+      between the two panels is the detector plus the selection.
+  (c) EFFICIENCY per truth cell -- how much of the signal survives reco selection.
+  (d) PURITY per reco bin -- how much of what is reconstructed there is signal at all.
 
 Usage:  python -m analysis.paper.sec5_unfold.fig_detector [label]
 """
@@ -23,56 +24,62 @@ from analysis.paper import style
 C_EFF, C_PUR = "#1f4b9c", "#e08214"
 
 
+def _finite(e):
+    """Edges for drawing: the open top bin is closed at twice its neighbour's width."""
+    e = np.asarray(e, float).copy()
+    if not np.isfinite(e[-1]):
+        e[-1] = e[-2] + (e[-2] - e[-3])
+    return e
+
+
+def _rate_panel(ax, fig, R, edpt, edat, title, cmap="viridis"):
+    """Rate on the physical (delta-p_T, delta-alpha_T) plane, drawn on its own edges."""
+    m = ax.pcolormesh(_finite(edpt), _finite(edat), np.asarray(R).T, cmap=cmap, shading="flat")
+    cb = fig.colorbar(m, ax=ax, pad=0.02)
+    cb.set_label("events", fontsize=8)
+    cb.ax.tick_params(labelsize=7)
+    ax.set_xlabel(r"$\delta p_T$ [MeV/c]", fontsize=9)
+    ax.set_ylabel(r"$\delta\alpha_T$ [rad]", fontsize=9)
+    ax.tick_params(labelsize=7.5)
+    ax.set_title(title, fontsize=9.5, loc="left")
+
+
 def main(label="sec5"):
     style.use()
     z = np.load(style.ALTGEN / f"{label}_unfold.npz", allow_pickle=True)
-    A = np.asarray(z["A"]).sum(axis=2)              # sum the flux axis: the response as reco x truth
     eff, pur = np.asarray(z["eff"]), np.asarray(z["purity"])
-    ntrue, nreco = A.shape[1], A.shape[0]
+    reco_dpt, reco_dat = np.asarray(z["reco_dpt"]), np.asarray(z["reco_dat"])
+    true_dpt, true_dat = np.asarray(z["true_dpt"]), np.asarray(z["true_dat"])
+    nrd, nra = len(reco_dpt) - 1, len(reco_dat) - 1
+    ntd, nta = len(true_dpt) - 1, len(true_dat) - 1
+    reco_tot = (np.asarray(z["n_sig_reco"]) + np.asarray(z["n_bkg_reco"])).reshape(nrd, nra)
+    true_sig = np.asarray(z["n_true"]).reshape(ntd, nta)
+    ntrue, nreco = len(eff), len(pur)
 
-    # Column-normalised: P(reco bin | truth cell).  Raw counts would just show the flux spectrum.
-    col = A.sum(axis=0)
-    P = np.divide(A, col[None, :], out=np.zeros_like(A), where=col[None, :] > 0)
-
-    # Heatmaps go sans-serif and spineless, as in sections 2 and 3 -- the matrix IS the frame there,
-    # and a serif tick label beside a dense grid reads as clutter.
     ctx = {"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
            "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}
-    fig = plt.figure(figsize=(11.0, 3.6))
-    gs = fig.add_gridspec(1, 3, width_ratios=[1.25, 1, 1], wspace=0.34)
+    fig = plt.figure(figsize=(12.6, 3.2))
+    gs = fig.add_gridspec(1, 4, width_ratios=[1.15, 1.0, 1.0, 1.0], wspace=0.42)
 
-    ax = fig.add_subplot(gs[0, 0])
     with plt.rc_context(ctx):
-        im = ax.imshow(P, aspect="auto", origin="lower", cmap=style.CMAP_CONSTRAINT,
-                       interpolation="nearest")
-    # Both axes are FLATTENED 2-D grids, so without separators the block structure reads as noise.
-    # reco is 10 dpt x 6 dat (dpt slowest) and truth is 3 x 3, matching binning.Grid2D.
-    for r in range(6, 60, 6):
-        ax.axhline(r - 0.5, color="w", lw=0.45, alpha=0.55)
-    for c in range(3, 9, 3):
-        ax.axvline(c - 0.5, color="w", lw=0.8, alpha=0.8)
-    for sp in ax.spines.values():
-        sp.set_visible(False)
-    ax.tick_params(length=0)
-    ax.set_xlabel(r"truth cell   (blocks: $\delta p_T$)"); ax.set_ylabel(r"reco bin   (blocks: $\delta p_T$)")
-    ax.set_xticks(range(ntrue)); ax.set_yticks([0, 15, 30, 45, 59])
-    fig.colorbar(im, ax=ax, pad=0.02).set_label(r"$P(\mathrm{reco}\,|\,\mathrm{truth})$", fontsize=8)
-    ax.set_title("(a)  response", fontsize=9.5, loc="left")
-
-    ax = fig.add_subplot(gs[0, 1])
-    ax.bar(np.arange(ntrue), eff, color=C_EFF, width=0.72)
-    ax.axhline(np.nansum(eff * col) / col.sum(), color="k", ls="--", lw=0.9,
-               label=f"mean {np.nansum(eff*col)/col.sum():.2f}")
-    ax.set_xlabel("truth cell"); ax.set_ylabel("efficiency"); ax.set_ylim(0.5, 0.85)
-    ax.set_xticks(range(ntrue)); ax.legend(frameon=False, fontsize=8)
-    ax.set_title("(b)  efficiency", fontsize=9.5, loc="left")
+        _rate_panel(fig.add_subplot(gs[0, 0]), fig, reco_tot, reco_dpt, reco_dat,
+                    f"(a)  reco rate, all events  ({reco_tot.sum():.0f})")
+        _rate_panel(fig.add_subplot(gs[0, 1]), fig, true_sig, true_dpt, true_dat,
+                    f"(b)  truth rate, signal  ({true_sig.sum():.0f})", cmap="magma")
 
     ax = fig.add_subplot(gs[0, 2])
+    ax.bar(np.arange(ntrue), eff, color=C_EFF, width=0.72)
+    ax.axhline(np.nanmean(eff), color="k", ls="--", lw=0.9, label=f"mean {np.nanmean(eff):.2f}")
+    ax.set_xlabel("truth cell"); ax.set_ylabel("efficiency"); ax.set_ylim(0.5, 0.85)
+    ax.set_xticks(range(ntrue)); ax.legend(frameon=False, fontsize=8)
+    ax.set_title("(c)  efficiency", fontsize=9.5, loc="left")
+
+    ax = fig.add_subplot(gs[0, 3])
     ax.step(np.arange(nreco), pur, where="mid", color=C_PUR, lw=1.3)
     ax.axhline(np.nanmean(pur), color="k", ls="--", lw=0.9, label=f"mean {np.nanmean(pur):.2f}")
     ax.set_xlabel("reco bin"); ax.set_ylabel("purity"); ax.set_ylim(0.70, 0.95)
     ax.legend(frameon=False, fontsize=8)
-    ax.set_title("(c)  purity", fontsize=9.5, loc="left")
+    ax.set_title("(d)  purity", fontsize=9.5, loc="left")
 
     style.save(fig, f"{label}_figE")
 
