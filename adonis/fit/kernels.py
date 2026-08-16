@@ -352,3 +352,114 @@ class FitKernel:
                 + (f" ({self.nblk * self.B - self.n} padded tangent column"
                    f"{'s' if self.nblk * self.B - self.n != 1 else ''})" if self.nblk * self.B != self.n
                    else ""))
+
+
+# ---- event chunking -------------------------------------------------------------------------------- #
+# The model is a SUM over events, m_b = sum_{e in b} coef_e w_e(theta), so it decomposes exactly over
+# event windows: m = sum_w m^(w).  That is what makes chunking the event axis free -- unlike splitting
+# the DIAL axis, which costs one extra full primal pass per additional dispatch.  Peak memory becomes
+# O(C) instead of O(n_events), so the ceiling that stops this kernel at 125k events/sample goes away.
+#
+# THE RAGGED PART.  A bank is not one array.  hv_*/p_struck/w0/channel are per-EVENT and slice directly,
+# but the FSI records (f_bc, f_sa, ... with f_p_eidx / f_n_eidx) are per-INTERACTION SLOT with an event
+# index, and pool_fsi_reweight reduces them over `n_events`.  So a window needs its slots SELECTED and
+# its event indices REBASED, and the selection is ragged -- different windows hold different slot counts.
+# Pad to a common length with a TRASH event index at C, run the reduction over C+1 events, and drop the
+# last: padded slots then contribute to an event nobody reads, whatever their values are.  Same device as
+# the trash bin in BinSpec.chunks.
+_PION_SLOT = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
+_NUC_SLOT = ("hh", "a", "iso", "finel", "inel", "swap")
+
+
+def event_windows(n_events, chunk):
+    """[(start, C)] covering range(n_events) with a COMMON width, last window shifted back to n-C.
+
+    Common width because every window must hit the same compiled program: a short final window is a
+    second shape and a second XLA compile, which is exactly the cost chunking is meant to avoid.
+    Shifting the last window back overlaps its predecessor, so each event is assigned to exactly ONE
+    window by the tables built in `bank_chunk_plan` -- nothing is double counted.
+    """
+    C = int(min(chunk, n_events))
+    nch = int(np.ceil(n_events / C))
+    return [(int(min(i * C, n_events - C)), C) for i in range(nch)], C, nch
+
+
+def bank_chunk_plan(JB, n_events, chunk):
+    """Per-window slot tables for a bank's ragged FSI records.
+
+    Returns (windows, C, nch, plan) where plan[w] = {"p": idx into the pion slots, "n": idx into the
+    nucleon slots, "p_eidx": rebased, "n_eidx": rebased} with every array padded to a common length and
+    padding pointing at the trash event C.
+    """
+    wins, C, nch = event_windows(n_events, chunk)
+    pe = np.asarray(JB["f_p_eidx"]); ne = np.asarray(JB["f_n_eidx"])
+    # own[e] = the window that owns event e; clamped so the shifted last window does not double count
+    own = np.minimum(np.arange(n_events) // C, nch - 1)
+    p_own, n_own = own[pe], own[ne]
+    Lp = int(np.bincount(p_own, minlength=nch).max())
+    Ln = int(np.bincount(n_own, minlength=nch).max())
+    plan = []
+    for w, (s, _) in enumerate(wins):
+        ip = np.where(p_own == w)[0]
+        inn = np.where(n_own == w)[0]
+        pp = np.full(Lp, 0, np.int64); pe_l = np.full(Lp, C, np.int64)      # C == trash event
+        nn = np.full(Ln, 0, np.int64); ne_l = np.full(Ln, C, np.int64)
+        pp[:len(ip)] = ip; pe_l[:len(ip)] = pe[ip] - s
+        nn[:len(inn)] = inn; ne_l[:len(inn)] = ne[inn] - s
+        plan.append(dict(p=pp, p_eidx=pe_l, n=nn, n_eidx=ne_l))
+    return wins, C, nch, plan, Lp, Ln
+
+
+def bank_windows(JB, n_events, chunk, drop_source=False):
+    """Materialise the per-window sub-banks ONCE.  Returns (nch, C, [sub_bank...], owns).
+
+    THE POINT, and the mistake it fixes.  The first version did the dynamic_slice, the per-slot
+    jnp.take and the pad-row concatenate INSIDE the jitted call, so every model evaluation
+    re-materialised its sub-bank: measured 4.0 ms against 0.5 ms unchunked at ONE window, i.e. an 8x
+    penalty for chunking that was not chunking anything.  The windows are fixed, so this work belongs at
+    construction, once.
+
+    Because the windows PARTITION the bank, the caller can drop the source arrays afterwards
+    (`drop_source`) and the decomposition costs only the padding rather than a second copy.  Peak
+    TRANSIENT memory during a jvp/vjp is then O(C), which is the entire reason for chunking.
+
+    The pad row is baked in here too: every per-event array is one longer than C, the ragged FSI
+    reduction runs over C+1 events, and padded slots point at that trash event.  `bank_weight_window`
+    truncates back to C.
+
+    `owns[w] = (lo, hi)` is the half-open range of GLOBAL event indices this window is responsible for.
+    The last window is shifted back to n-C so all windows share one compiled shape, so it overlaps its
+    predecessor; `owns` is what keeps every event counted exactly once.
+    """
+    wins, C, nch, plan, Lp, Ln = bank_chunk_plan(JB, n_events, chunk)
+    pion = tuple("f_" + f for f in _PION_SLOT)
+    nuc = tuple("f_" + f for f in _NUC_SLOT)
+    per_event = tuple(k for k in JB if k.startswith("hv_") or k in ("p_struck", "channel", "w0"))
+    subs, owns = [], []
+    for w, (st, _) in enumerate(wins):
+        pl = plan[w]
+        B = {}
+        for k in per_event:
+            v = JB[k][st:st + C]
+            B[k] = jnp.concatenate([v, jnp.zeros((1,) + v.shape[1:], v.dtype)], axis=0)
+        for k in pion:
+            B[k] = jnp.take(JB[k], jnp.asarray(pl["p"]), axis=0)
+        for k in nuc:
+            B[k] = jnp.take(JB[k], jnp.asarray(pl["n"]), axis=0)
+        B["f_p_eidx"] = jnp.asarray(pl["p_eidx"])
+        B["f_n_eidx"] = jnp.asarray(pl["n_eidx"])
+        subs.append(B)
+        lo = w * C if w < nch - 1 else st
+        owns.append((lo, min(lo + C, n_events)))
+    if drop_source:
+        JB.clear()                       # the windows hold everything; free the undivided arrays
+    return nch, C, subs, owns
+
+
+def bank_weight_window(BR, Bw, knobs, grids, C):
+    """bank_weight on a PRE-BUILT window sub-bank: reduce over C+1 events, drop the trash event.
+
+    The sub-bank already carries its pad row (see bank_windows), so this does no slicing, no gathering
+    and no concatenation -- it is exactly the unchunked call on a smaller bank.
+    """
+    return BR.bank_weight(Bw, knobs, grids)[:C]
