@@ -187,12 +187,18 @@ real nodes (one dial pinned 1 sigma off the best fit, the other 16 re-minimised)
 | route | wall/node | event-passes/node | objective calls | over the 7938-node corner |
 |---|---|---|---|---|
 | A `J^T W J`, by-product of the fit | **0.39 ms** | **0** | 0 | ~3 s, 0 passes |
-| B exact Hessian, autodiff HVPs | 0.18 s | 48 | 0 | 0.40 h, 381k passes |
+| B exact Hessian, autodiff HVPs | 0.18 s | **18** | 0 | 0.40 h, 143k passes |
 | C MINUIT HESSE, finite differences | 1.35 s | ~285 | ~285 | **2.98 h, 2.26M passes** |
+
+(Route B's event-pass count was originally quoted as 48, charging `HVP_PASSES = 3` per column. That was
+wrong in autodiff's DISFAVOUR: a vmapped HVP dispatch shares its reverse sweep across all columns, just
+as a vmapped JVP shares its primal, so B columns cost one VJP plus B marginal passes -- `2 + 16 = 18`,
+not `3 x 16 = 48`. Measured on a synthetic replica: cost(B) = a + bB with a ~ 10.4 ms against an
+independently timed single VJP of 9.5 ms, and b ~ 2.2 ms against a single primal of 2.5 ms.)
 
 Route A is free because the inner fit already built J. Route B is ~n HVPs (forward-over-reverse), i.e.
 **O(n)** for the exact matrix. Route C is O(n^2) objective evaluations, each a full pass over the
-resident events. B beats C by ~7x in wall-clock and ~6x in event-passes. (MINUIT's *other* covariance,
+resident events. B beats C by ~7x in wall-clock and **~16x** in event-passes. (MINUIT's *other* covariance,
 the one `migrad()` accumulates, is a quasi-Newton approximation built along the path taken; feeding that
 into a log-det puts a path-dependent error into the very factor being computed, so HESSE is the honest
 MINUIT route and it is the expensive one.)

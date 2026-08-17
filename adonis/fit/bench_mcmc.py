@@ -44,6 +44,11 @@ def main(argv=None):
     ap.add_argument("config", nargs="?", default="configs/fits/sec4_P2.yaml")
     ap.add_argument("--sig-cap", type=int, default=15000)
     ap.add_argument("--ndials", type=int, required=True)
+    ap.add_argument("--dials", default="", help="explicit comma-separated dial NAMES; overrides the "
+                    "nested shrinkage subset.  Lets a FIXED n be run with different parameter sets, "
+                    "which is the only way to separate dimensional scaling from the individual role of "
+                    "a tricky parameter -- the nested subsets confound the two by construction.")
+    ap.add_argument("--tag", default="", help="label for the output file when --dials is used")
     ap.add_argument("--method", choices=("mh", "nuts"), required=True)
     ap.add_argument("--chain", type=int, default=0)
     ap.add_argument("--warmup", type=int, default=0, help="0 = method default (MH 4000, NUTS 300)")
@@ -77,7 +82,16 @@ def main(argv=None):
     cfg = dataclasses.replace(cfg, banks=dataclasses.replace(cfg.banks, sig_cap=a.sig_cap))
     eng = MS.build_multisample_engine(log, cfg)
     g = np.load(MS.MULTISAMPLE_NPZ, allow_pickle=True)
-    subset = sorted(_dial_order(g, eng.pnames)[:a.ndials])
+    if a.dials:
+        want = [w.strip() for w in a.dials.split(",") if w.strip()]
+        miss = [w for w in want if w not in list(eng.pnames)]
+        if miss:
+            raise SystemExit(f"--dials: unknown {miss}")
+        subset = sorted(list(eng.pnames).index(w) for w in want)
+        if len(subset) != a.ndials:
+            raise SystemExit(f"--dials gave {len(subset)} dials, --ndials says {a.ndials}")
+    else:
+        subset = sorted(_dial_order(g, eng.pnames)[:a.ndials])
     nlive = freeze_sample(eng, np.load(a.ref, allow_pickle=True), log)
 
     th0 = np.asarray(eng.th0, float); idx = np.asarray(subset, int)
@@ -163,7 +177,7 @@ def main(argv=None):
                     q, lp = qp, lpp; nacc += 1
                 draws.append(q.copy()); nit += 1
         t_samp = time.time() - t1
-        extra = dict(accept=nacc / max(nit, 1), scale=s, ndiv=0, ngrad=0, depth=0.0)
+        extra = dict(accept=nacc / max(nit, 1), scale=s, ndiv=0, ngrad=0, depth=0.0, ndiv_frac=0.0)
 
     else:
         nw = a.warmup or 300
@@ -181,23 +195,29 @@ def main(argv=None):
         t_warm = time.time() - t_warm0
         log(f"NUTS warm-up {nw} its, eps {eps:.4f}")
         kern.reset_counts()
-        t1 = time.time(); ndiv = 0; deps = []; accs = []
+        t1 = time.time(); deps = []; accs = []; dv = []
         while time.time() - t1 < a.sample_seconds:
-            sm, dep, acc, nf = NU.nuts_sample(q, logp_grad, eps, Minv, Mchol, 10, rng, log=lambda m: None)
+            sm, dep, acc, nf = NU.nuts_sample(q, logp_grad, eps, Minv, Mchol, 10, rng,
+                                              log=lambda m: None, ndiv_out=dv)
             q = sm[-1]
             draws.extend(list(sm))
             deps.append(np.mean(dep)); accs.append(np.mean(acc))
-            ndiv += int(np.sum(np.asarray(dep) < a.max_depth) * 0)     # divergences counted below
         t_samp = time.time() - t1
+        # REAL divergences now, from the energy-error criterion inside build_tree.  The previous
+        # expression was multiplied by zero and, even without that, counted trees that did NOT saturate
+        # max depth -- unrelated to divergence.  Every NUTS cell therefore reported exactly 0.
+        ndiv = int(np.sum(dv))
         extra = dict(accept=float(np.mean(accs)), scale=eps, ndiv=ndiv,
-                     ngrad=int(kern.counts["grad"]), depth=float(np.mean(deps)))
+                     ngrad=int(kern.counts["grad"]), depth=float(np.mean(deps)),
+                     ndiv_frac=float(ndiv / max(len(draws), 1)))
 
     D = np.asarray(draws)
     c = dict(kern.counts)
     out = a.out or f"output/altgen/mcmc_{a.method}_n{a.ndials}_c{a.chain}.npz"
     np.savez(out, draws=D, names=np.array(names, dtype=object), method=a.method, ndials=a.ndials,
              chain=a.chain, sig_cap=a.sig_cap, nlive=nlive, bfp=xb, V=V, spost=spost,
-             t_sample=t_samp, t_warm=t_warm, n_logp=c["chi2"], n_grad=c["grad"],
+             t_sample=t_samp, t_warm=t_warm, n_logp=c["chi2"], n_vg=c["vg"], n_grad=c["grad"],
+             visits=kern.visits(),
              passes=kern.event_passes(), counts=np.array([c], dtype=object),
              noise_seed=a.noise_seed, **{k: v for k, v in extra.items()})
     log(f"{a.method} n={a.ndials} chain {a.chain}: {len(D):,} draws in {t_samp:.1f}s "

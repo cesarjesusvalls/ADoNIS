@@ -77,11 +77,21 @@ def _ess_from_chains(a):
     m, n = a.shape
     if n < 4:
         return float(m * n)
+    # A FROZEN CHAIN CARRIES NO INFORMATION, so its ESS is 0 -- not N.  The old code fell through to
+    # `return m*n` whenever var_plus <= 0, i.e. it reported a stuck chain as PERFECTLY INDEPENDENT.
+    # Worse, that test is a float comparison on an FFT result: a chain frozen at 3.14 gave ESS = N while
+    # one frozen at 7.77 gave ESS = 8, decided by round-off.  Sticking on a flat direction is precisely
+    # the failure mode of a random walk, so the bug rewarded the sampler it should have penalised.
+    # Test the RAW spread up front instead of trusting a downstream float comparison.
+    if np.ptp(a) <= 1e-12 * max(np.abs(a).max(), 1.0):
+        return 0.0
     acov = np.stack([_autocov(a[i]) for i in range(m)])            # (m, n)
     chain_var = acov[:, 0] * n / (n - 1.0)
-    var_plus = chain_var.mean()
+    # var_plus = W (n-1)/n + B/n, with B = 0 for a single chain.  The (n-1)/n factor applies EITHER
+    # WAY; keeping it inside the m>1 branch made single-chain ESS too small by n/(n-1).
+    var_plus = chain_var.mean() * (n - 1.0) / n
     if m > 1:
-        var_plus = var_plus * (n - 1.0) / n + a.mean(axis=1).var(ddof=1)
+        var_plus = var_plus + a.mean(axis=1).var(ddof=1)
     if not np.isfinite(var_plus) or var_plus <= 0:
         return float(m * n)
     # rho_t averaged over chains
@@ -111,9 +121,9 @@ def _ess_from_chains(a):
     return float(m * n / tau)
 
 
-def split_rhat(x):
-    """Rank-normalised split-Rhat.  1.0 for converged chains; >1.01 is the usual action threshold."""
-    a = _rank_normalise(_split(_as_chains(x)))
+def _rhat_one(a):
+    """Rank-normalised split-Rhat of one already-transformed series."""
+    a = _rank_normalise(_split(_as_chains(a)))
     m, n = a.shape
     if n < 2:
         return np.nan
@@ -122,6 +132,19 @@ def split_rhat(x):
     if W <= 0:
         return np.nan
     return float(np.sqrt(((n - 1.0) / n * W + B / n) / W))
+
+
+def split_rhat(x):
+    """max(rank-normalised split-Rhat, rank-normalised FOLDED split-Rhat) -- the paper's statistic.
+
+    The folded half (|z - median z|) is what detects a pure SCALE mismatch: four chains sharing a mean
+    with sd 1, 2, 4, 8 -- obviously unconverged -- give a plain Rhat of 1.0000076 and sail through a
+    1.01 gate.  Since this gate is the only thing licensing a sampler-efficiency comparison, omitting
+    the fold left it blind to exactly the failure mode where one sampler's proposal has not yet relaxed
+    to the true posterior width.
+    """
+    a = _as_chains(x)
+    return float(np.nanmax([_rhat_one(a), _rhat_one(np.abs(a - np.median(a)))]))
 
 
 def ess_bulk(x):

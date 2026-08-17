@@ -207,7 +207,7 @@ class FitKernel:
 
     # ---- counters --------------------------------------------------------------------------------- #
     def reset_counts(self):
-        self.counts = dict(chi2=0, resid=0, grad=0, jac=0, model=0,
+        self.counts = dict(chi2=0, vg=0, resid=0, grad=0, jac=0, model=0,
                            primal=0,        # full forward passes over the events
                            tangent=0,       # JVP tangent columns actually EXECUTED (padding included)
                            tangent_eff=0,   # tangent columns that carried a real dial (padding excluded)
@@ -215,6 +215,15 @@ class FitKernel:
                            hvp=0,           # hessian-vector products (forward-over-reverse)
                            hess=0)
         return self
+
+    def visits(self):
+        """Forward traversals of the event set: value-only calls plus value-and-gradient calls.
+
+        The denominator for a "per model evaluation" figure that is fair to both a sampler that only
+        ever asks for the likelihood and one that always asks for likelihood-and-gradient.
+        """
+        c = self.counts
+        return int(c["chi2"] + c["vg"] + c["resid"] + c["model"] + c["jac"])
 
     def event_passes(self):
         """Passes over the resident event set, per the convention at the top of this module."""
@@ -274,7 +283,11 @@ class FitKernel:
         """
         xj = jnp.asarray(np.asarray(x, float))
         out = [f(xj, self._thf, D, R) for f, D, R in zip(self._j_vg, self._D, self._R)]
-        self.counts["chi2"] += 1
+        # ITS OWN COUNTER.  Incrementing counts["chi2"] here made a value-and-gradient indistinguishable
+        # from a plain likelihood downstream, so an "ESS per likelihood evaluation" column charged a
+        # gradient at a likelihood's price -- exactly 2x too kind to the gradient method.  `visits`
+        # (one forward traversal, with or without a reverse sweep) is the honest shared denominator.
+        self.counts["vg"] += 1
         self.counts["grad"] += 1
         self.counts["vjp"] += 1
         dx = (np.asarray(x, float) - self.x0) * self.pw
@@ -327,7 +340,13 @@ class FitKernel:
             H[lo:lo + m_] = np.asarray(acc)[:m_]
             nblk += 1
         self.counts["hess"] += 1
-        self.counts["hvp"] += nblk * B
+        # SHARE THE REVERSE SWEEP ACROSS THE DISPATCH, as jac_data shares its primal.  grad(c)(x) does
+        # not depend on the tangent direction, so a vmapped dispatch of B HVP columns costs one VJP plus
+        # B marginal passes -- measured cost(B) = a + b B with a ~ 10.4 ms against an independently
+        # timed single VJP of 9.5 ms, and b ~ 2.2 ms against a single primal of 2.5 ms.  Charging
+        # HVP_PASSES per column instead overcounted by ~2.7x and made autodiff look worse than it is.
+        self.counts["vjp"] += nblk
+        self.counts["tangent"] += nblk * B
         H = 0.5 * (H + H.T)                      # symmetrise: the two sweeps round differently
         return H + 2.0 * np.diag(self.pw ** 2)
 
@@ -470,8 +489,18 @@ def bank_windows(JB, n_events, chunk, drop_source=False):
         B["f_p_eidx"] = jnp.asarray(pl["p_eidx"])
         B["f_n_eidx"] = jnp.asarray(pl["n_eidx"])
         subs.append(B)
-        lo = w * C if w < nch - 1 else st
-        owns.append((lo, min(lo + C, n_events)))
+    # OWNERSHIP IS THE SAME RULE bank_chunk_plan USES for the ragged FSI slots: event e belongs to
+    # window min(e//C, nch-1).  In GLOBAL indices that is [w C, (w+1) C) for every window, with the last
+    # one running to n_events.  Note this is NOT the window's slice: the last window is SHIFTED BACK to
+    # start at n-C so every window shares one compiled shape, so its slice [n-C, n) is wider than the
+    # events it owns, and a reader extracting from it must offset by `starts[w]`, not by `lo`.
+    #
+    # The original code set the last window's lo to its SLICE start (n-C) instead of its OWNERSHIP start
+    # ((nch-1) C), so windows nch-2 and nch-1 both claimed the overlap -- 35,000 of 125,000 events (28%
+    # of the bank) at chunk 40,000.  A reassembly test cannot see this (assignment is idempotent to
+    # overlap); summing per-window contributions, which is the whole point of chunking, would have
+    # double counted them.
+    owns = [(int(w * C), int(min((w + 1) * C, n_events))) for w in range(nch)]
     if drop_source:
         JB.clear()                       # the windows hold everything; free the undivided arrays
     return nch, C, subs, owns

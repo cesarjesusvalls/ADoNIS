@@ -86,3 +86,43 @@ def test_repeated_values_do_not_break_rank_normalisation():
                 x[i, t] = x[i, t - 1]
     assert np.isfinite(split_rhat(x)) and np.isfinite(ess_bulk(x))
     assert ess_bulk(x) < x.size              # correlated by construction
+
+
+def test_frozen_chain_has_no_effective_samples():
+    """A stuck chain carries no information: ESS must be ~0, never N, and must not depend on the value.
+
+    The old code returned m*n (perfect independence) for a constant chain, and which branch it took was
+    decided by FFT round-off: frozen at 3.14 -> ESS = N, frozen at 7.77 -> ESS = 8.
+    """
+    for c in (0.0, 3.14, 7.77, -2.5):
+        x = np.full((4, 4000), c)
+        assert ess_basic(x) == 0.0, c
+        assert ess_bulk(x) == 0.0, c
+
+
+def test_rhat_detects_pure_scale_mismatch():
+    """Same mean, sd 1:2:4:8 -- unconverged, and invisible without the FOLDED half of Rhat."""
+    rng = np.random.default_rng(11)
+    x = rng.standard_normal((4, 4000)) * np.array([1.0, 2.0, 4.0, 8.0])[:, None]
+    assert split_rhat(x) > 1.01
+
+
+def test_tail_ess_of_iid_is_about_n():
+    rng = np.random.default_rng(12)
+    x = rng.standard_normal((4, 20000))
+    e = ess_tail(x)
+    assert 0.85 * x.size < e < 1.15 * x.size, e
+
+
+def test_single_chain_ess_matches_theory():
+    rng = np.random.default_rng(13)
+    rho = 0.8
+    n = 40000
+    e = rng.standard_normal(n) * np.sqrt(1 - rho ** 2)
+    v = 0.0
+    x = np.empty(n)
+    for t in range(n):
+        v = rho * v + e[t]
+        x[t] = v
+    expect = n * (1 - rho) / (1 + rho)
+    assert 0.7 * expect < ess_basic(x) < 1.4 * expect

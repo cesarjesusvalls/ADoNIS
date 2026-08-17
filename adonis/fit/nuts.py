@@ -40,23 +40,32 @@ def _uturn(qm, qp, pm, pp, Minv):
     return (d @ (Minv @ pm) < 0) or (d @ (Minv @ pp) < 0)
 
 
-def build_tree(q, p, g, logu, v, j, eps, Minv, gradf, H0, rng, nfev):
-    """Recursive NUTS tree (Hoffman & Gelman 2014, slice form).  Carries (q, p, g) at both ends."""
+def build_tree(q, p, g, logu, v, j, eps, Minv, gradf, H0, rng, nfev, ndiv=None):
+    """Recursive NUTS tree (Hoffman & Gelman 2014, slice form).  Carries (q, p, g) at both ends.
+
+    `ndiv`, when a one-element list is passed, counts DIVERGENCES -- leaves where the energy error
+    exceeded the 1000-nat threshold.  Without it a caller cannot distinguish a trajectory that stopped
+    because it made a U-turn (healthy) from one that stopped because the integrator blew up (the step
+    size is too large for the local geometry), and the second is exactly the failure that would quietly
+    erode a gradient sampler's apparent advantage as the posterior gets harder.
+    """
     if j == 0:
         q1, p1, lp1, g1 = leapfrog(q, p, g, v * eps, Minv, gradf); nfev[0] += 1
         H = lp1 - 0.5 * p1 @ (Minv @ p1)
         n1 = 1 if logu <= H else 0
         s1 = 1 if logu < H + 1000.0 else 0
+        if s1 == 0 and ndiv is not None:
+            ndiv[0] += 1
         return (q1, p1, g1, q1, p1, g1, q1, n1, s1, min(1.0, np.exp(H - H0)), 1)
     (qm, pm, gm, qp, pp, gp, q1, n1, s1, a1, na1) = build_tree(q, p, g, logu, v, j - 1, eps, Minv,
-                                                               gradf, H0, rng, nfev)
+                                                               gradf, H0, rng, nfev, ndiv)
     if s1 == 1:
         if v == -1:
             (qm, pm, gm, _, _, _, q2, n2, s2, a2, na2) = build_tree(qm, pm, gm, logu, v, j - 1, eps,
-                                                                    Minv, gradf, H0, rng, nfev)
+                                                                    Minv, gradf, H0, rng, nfev, ndiv)
         else:
             (_, _, _, qp, pp, gp, q2, n2, s2, a2, na2) = build_tree(qp, pp, gp, logu, v, j - 1, eps,
-                                                                    Minv, gradf, H0, rng, nfev)
+                                                                    Minv, gradf, H0, rng, nfev, ndiv)
         if n1 + n2 > 0 and rng.random() < n2 / (n1 + n2):
             q1 = q2
         a1 += a2; na1 += na2
@@ -65,7 +74,7 @@ def build_tree(q, p, g, logu, v, j, eps, Minv, gradf, H0, rng, nfev):
     return (qm, pm, gm, qp, pp, gp, q1, n1, s1, a1, na1)
 
 
-def nuts_sample(q0, gradf, eps, Minv, Mchol, nsamp, rng, log=print, tag=""):
+def nuts_sample(q0, gradf, eps, Minv, Mchol, nsamp, rng, log=print, tag="", ndiv_out=None):
     q = q0.copy(); out = np.empty((nsamp, len(q0))); depth = []; acc = []; nf = []
     lp, g = gradf(q)
     t0 = time.time()
@@ -74,15 +83,15 @@ def nuts_sample(q0, gradf, eps, Minv, Mchol, nsamp, rng, log=print, tag=""):
         H0 = lp - 0.5 * p @ (Minv @ p)
         logu = H0 + np.log(rng.random())
         qm = qp = q.copy(); pm = pp = p.copy(); gm = gp = g.copy()
-        j = 0; n = 1; s = 1; a = 0.0; na = 0; nfev = [0]
+        j = 0; n = 1; s = 1; a = 0.0; na = 0; nfev = [0]; nd = [0]
         while s == 1 and j < MAXDEPTH:
             v = 1 if rng.random() < 0.5 else -1
             if v == -1:
                 (qm, pm, gm, _, _, _, q1, n1, s1, a, na) = build_tree(qm, pm, gm, logu, v, j, eps,
-                                                                      Minv, gradf, H0, rng, nfev)
+                                                                      Minv, gradf, H0, rng, nfev, nd)
             else:
                 (_, _, _, qp, pp, gp, q1, n1, s1, a, na) = build_tree(qp, pp, gp, logu, v, j, eps,
-                                                                      Minv, gradf, H0, rng, nfev)
+                                                                      Minv, gradf, H0, rng, nfev, nd)
             if s1 == 1 and rng.random() < min(1.0, n1 / max(n, 1)):
                 q = q1
             n += n1
@@ -90,6 +99,8 @@ def nuts_sample(q0, gradf, eps, Minv, Mchol, nsamp, rng, log=print, tag=""):
             j += 1
         lp, g = gradf(q)                       # state for the next iteration's H0
         out[i] = q; depth.append(j); acc.append(a / max(na, 1)); nf.append(nfev[0] + 1)
+        if ndiv_out is not None:
+            ndiv_out.append(nd[0])
         if (i + 1) % 25 == 0:
             el = time.time() - t0
             log(f"  {tag}{i+1}/{nsamp}  {el/(i+1):.1f} s/sample  grads/sample {np.mean(nf):.1f}  "
