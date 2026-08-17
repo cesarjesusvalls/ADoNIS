@@ -151,9 +151,10 @@ class FitKernel:
                 return jax.vmap(lambda v: jax.jvp(
                     lambda u: jax.grad(c)(u, thf, D, R), (x,), (v,))[1])(V)
 
-            return (jax.jit(r), jax.jit(c), jax.jit(jax.grad(c)), jax.jit(jc), jax.jit(f), jax.jit(hs))
+            return (jax.jit(r), jax.jit(c), jax.jit(jax.grad(c)), jax.jit(jc), jax.jit(f), jax.jit(hs),
+                    jax.jit(jax.value_and_grad(c)))
         (self._j_r, self._j_c, self._j_g, self._j_J, self._j_m,
-         self._j_H) = (list(z) for z in zip(*[_mk(f) for f in self._f]))
+         self._j_H, self._j_vg) = (list(z) for z in zip(*[_mk(f) for f in self._f]))
 
         # ONE tangent shape for every block: (B, n), zero-padded on the last one.
         E = np.eye(self.n)
@@ -262,6 +263,25 @@ class FitKernel:
         self.counts["vjp"] += 1
         return np.asarray(g) + 2.0 * (np.asarray(x, float) - self.x0) * self.pw ** 2
 
+    def chi2_and_grad(self, x):
+        """(chi2, grad) from ONE value_and_grad per sample -- the right primitive for HMC/NUTS.
+
+        A leapfrog step needs BOTH at the same point, always, so splitting them into two programs would
+        make the sampler pay a second primal pass for a value it is about to compute anyway.  (The
+        opposite was true for MIGRAD, which evaluates the function at several trial points before asking
+        for a gradient: there a shared value_and_grad made it pay for VJPs it never used.  Same
+        principle, opposite conclusion, because the access pattern differs.)
+        """
+        xj = jnp.asarray(np.asarray(x, float))
+        out = [f(xj, self._thf, D, R) for f, D, R in zip(self._j_vg, self._D, self._R)]
+        self.counts["chi2"] += 1
+        self.counts["grad"] += 1
+        self.counts["vjp"] += 1
+        dx = (np.asarray(x, float) - self.x0) * self.pw
+        c = float(sum(float(o[0]) for o in out)) + float(dx @ dx)
+        g = np.asarray(sum(o[1] for o in out)) + 2.0 * dx * self.pw
+        return c, g
+
     def jac_data(self, x):
         """(nbin, n) whitened data Jacobian.  Binning happens INSIDE the jit: what crosses the bus is
         nbin*n floats, never the (n, n_events) per-event derivative the old path shipped."""
@@ -335,7 +355,8 @@ class FitKernel:
         t0 = _t.perf_counter()
         for w in which:
             {"model": self.model, "residuals": self.residuals, "chi2": self.chi2,
-             "grad": self.grad, "jac": self.jac_data, "hess": self.hessian}[w](x)
+             "grad": self.grad, "jac": self.jac_data, "hess": self.hessian,
+             "chi2_and_grad": self.chi2_and_grad}[w](x)
         self.compile_s = _t.perf_counter() - t0
         return self.reset_counts()
 
