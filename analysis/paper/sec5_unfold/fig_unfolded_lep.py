@@ -54,8 +54,8 @@ def _legend(ax):
     figure's subject rather than a detail of its styling.  Hence one legend column for the studies
     (colour) and one for truth-vs-result (line against marker).
     """
-    h = [Line2D([], [], color=c, lw=1.2, alpha=0.7) for _s, _l, c, _m in STUDIES]
-    h += [Line2D([], [], color="0.25", lw=1.2, alpha=0.7),
+    h = [Line2D([], [], color=c, lw=1.2) for _s, _l, c, _m in STUDIES]
+    h += [Line2D([], [], color="0.25", lw=1.2),
           Line2D([], [], color="0.25", lw=0.0, marker="o", ms=3.4)]
     lab = [l for _s, l, _c, _m in STUDIES] + ["truth (input)", "unfolded (result)"]
     ax.legend(h, lab, frameon=False, fontsize=6.8, ncol=1, loc="lower left", handlelength=1.9,
@@ -87,8 +87,11 @@ def main(label="sec5lep"):
         c, ct = np.asarray(z[f"{st}_c"]), np.asarray(z[f"{st}_c_true"])
         C = np.asarray(z[f"{st}_cov"])[:nt, :nt]
         P = G.projector("pmu", te, N * keep)               # zeroing the excluded cells' weights
+        # NO ALPHA on the truth step.  The x error bars are opaque and lie along the same horizontals,
+        # so a semi-transparent step blended with them and its horizontal segments came out a different
+        # colour from its verticals -- the step looked like two different lines.
         ax.step(np.r_[te[0], te], np.r_[0, (P @ ct) * xs / wid, 0][:len(te) + 1], where="post",
-                color=col, lw=1.0, alpha=0.55, zorder=1)
+                color=col, lw=1.0, zorder=1)
         val = (P @ c) * xs / wid
         err = np.sqrt(np.diag(P @ C @ P.T)) * xs / wid
         ax.errorbar(0.5 * (te[:-1] + te[1:]), val, yerr=err, xerr=0.5 * wid, fmt=mk, ms=3,
@@ -107,12 +110,14 @@ def main(label="sec5lep"):
         C = np.asarray(z[f"{st}_cov"])[:nt, :nt]
         P = G.projector("cos", ce, N)
         ax.step(np.r_[ce[0], ce], np.r_[0, (P @ ct) * xs / cw, 0][:len(ce) + 1], where="post",
-                color=col, lw=1.0, alpha=0.55, zorder=1)
+                color=col, lw=1.0, zorder=1)
         val = (P @ c) * xs / cw
         err = np.sqrt(np.diag(P @ C @ P.T)) * xs / cw
         ax.errorbar(0.5 * (ce[:-1] + ce[1:]), val, yerr=err, xerr=0.5 * cw, fmt=mk, ms=3,
                     lw=0.0, elinewidth=0.9, color=col, zorder=3)
-    ax.set_yscale("log")
+    # LINEAR here.  d(sigma)/dp_mu falls by orders of magnitude across the momentum range and needs
+    # the log; d(sigma)/dcos theta_mu does not, and a log axis on a nearly-flat quantity compresses
+    # exactly the differences the panel exists to show.
     ax.set_xlabel(r"$\cos\theta_\mu$")
     ax.set_ylabel(r"$d\sigma/d\cos\theta_\mu$ [$10^{-38}$cm$^2$/nucleon]", fontsize=7.5)
     ax.set_xlim(ce[0], ce[-1])          # cos runs exactly -1 to 1, edge to edge
