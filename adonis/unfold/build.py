@@ -42,7 +42,18 @@ from adonis.workflow import selection as SG
 
 
 def _obs2(obs):
-    """(dpt, dat) from a select_full observable dict, whatever the key spelling."""
+    """The unfolded observable pair, per binning.UNFOLD_OBS.
+
+    "stv" -> (delta-p_T [MeV], delta-alpha_T [rad])
+    "lep" -> (p_mu [GeV/c], cos theta_mu).  p_mu is converted from the selection's MeV to the GeV/c of
+             the published binning HERE and nowhere else, so there is exactly one place the unit can be
+             wrong -- a factor 1000 in a momentum axis would move every event into the first bin and
+             still produce a plausible-looking fit.
+    """
+    from adonis.unfold.binning import UNFOLD_OBS
+    if UNFOLD_OBS == "lep":
+        return (np.asarray(obs["pmu"], dtype=float) / 1000.0,
+                np.asarray(obs["cos_mu"], dtype=float))
     return np.asarray(obs["dpt"], dtype=float), np.asarray(obs["dalphat"], dtype=float)
 
 
@@ -90,6 +101,12 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
     count-based normalisation would silently include them and shift the scale.
     """
     spec = spec or SmearSpec()
+    # SOFT TRUTH MEMBERSHIP IS RECTANGULAR-ONLY.  It spreads an event over cells using one shared edge
+    # array per axis, which a staircase grid does not have -- its p_mu edges differ per cos slice.  Fail
+    # loudly rather than index the wrong array and return a response matrix that looks fine.
+    from adonis.unfold.binning import StaircaseGrid
+    if soft_sigma is not None and isinstance(TG or truth_grid(), StaircaseGrid):
+        raise NotImplementedError("soft_sigma is not supported on a StaircaseGrid truth binning")
     TG = TG or truth_grid()
     RG = RG or reco_grid()
     files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
