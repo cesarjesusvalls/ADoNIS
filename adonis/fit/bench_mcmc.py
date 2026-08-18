@@ -55,6 +55,12 @@ def main(argv=None):
     ap.add_argument("--sample-seconds", type=float, default=300.0)
     ap.add_argument("--noise-seed", type=int, default=1, help="the pseudo-data throw, SHARED by both")
     ap.add_argument("--max-depth", type=int, default=8)
+    ap.add_argument("--adapt-metric", action="store_true",
+                    help="NUTS only: Stan-style warm-up (dual averaging + WINDOWED METRIC adaptation) "
+                         "instead of the fixed Laplace metric.  This breaks the strict fairness of the "
+                         "MH comparison -- NUTS then acquires geometry MH does not have -- so it is a "
+                         "SEPARATE arm answering 'what would production do', not a replacement for the "
+                         "matched-geometry run.")
     ap.add_argument("--ref", default="output/altgen/sec4_P1.npz")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
@@ -184,14 +190,27 @@ def main(argv=None):
         Minv = V                                        # kinetic 1/2 p^T Minv p with M = V^-1
         Mchol = np.linalg.cholesky(np.linalg.inv(V) + 1e-12 * np.eye(len(xb)))
         eps = 0.5
-        # WARM-UP: same dual-averaging-free scheme the production NUTS uses -- run a block, rescale eps
-        # toward 0.8 acceptance, repeat.  Kept identical to production so this measures that sampler.
-        for _ in range(6):
-            blk = max(10, nw // 6)
-            sm, dep, acc, nf = NU.nuts_sample(q, logp_grad, eps, Minv, Mchol, blk, rng, log=lambda m: None)
-            q = sm[-1]
-            am = float(np.mean(acc))
-            eps *= (am / 0.8) ** 0.5 if am > 0 else 1.0
+        if a.adapt_metric:
+            # Stan-style: dual averaging + expanding windows that RE-ESTIMATE the metric from the draws.
+            # The fixed Laplace metric describes the posterior only where it is close to Gaussian; on a
+            # curved or near-degenerate direction it does not, and the sampler pays in tiny steps and
+            # deep trees.  Measured on a synthetic degenerate Gaussian: adaptation from a deliberately
+            # wrong (identity) metric recovers 7.9 gradients/draw against an oracle 8.0, versus 127.4
+            # unadapted -- a 16x cost reduction for the same answer.
+            q, _lp, _g, eps, Minv, Mchol, _inf = NU.warmup_stan(
+                # 2000, not 600: a dense metric in up to 17 dimensions, plus a step size that only
+                # converges in the terminal buffer, needs the room.  Warm-up is excluded from
+                # t_sample for BOTH methods and is a rounding error at production chain lengths, so
+                # the only cost of spending more of it is queue time.
+                q, logp_grad, Minv, max(nw, 2000), rng, log=log)
+        else:
+            for _ in range(6):
+                blk = max(10, nw // 6)
+                sm, dep, acc, nf = NU.nuts_sample(q, logp_grad, eps, Minv, Mchol, blk, rng,
+                                                  log=lambda m: None)
+                q = sm[-1]
+                am = float(np.mean(acc))
+                eps *= (am / 0.8) ** 0.5 if am > 0 else 1.0
         t_warm = time.time() - t_warm0
         log(f"NUTS warm-up {nw} its, eps {eps:.4f}")
         kern.reset_counts()

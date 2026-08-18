@@ -74,33 +74,144 @@ def build_tree(q, p, g, logu, v, j, eps, Minv, gradf, H0, rng, nfev, ndiv=None):
     return (qm, pm, gm, qp, pp, gp, q1, n1, s1, a1, na1)
 
 
+def nuts_step(q, lp, g, gradf, eps, Minv, Mchol, rng):
+    """ONE NUTS iteration.  Returns (q, lp, g, depth, alpha, nfev, ndiv).
+
+    Extracted so the sampler and the warm-up run the SAME tree code -- two copies of a doubling
+    recursion is how a warm-up ends up tuning a sampler that is not the one that then runs.
+    """
+    p = Mchol @ rng.standard_normal(len(q))
+    H0 = lp - 0.5 * p @ (Minv @ p)
+    logu = H0 + np.log(rng.random())
+    qm = qp = q.copy(); pm = pp = p.copy(); gm = gp = g.copy()
+    j = 0; n = 1; sflag = 1; a = 0.0; na = 0; nfev = [0]; nd = [0]
+    while sflag == 1 and j < MAXDEPTH:
+        v = 1 if rng.random() < 0.5 else -1
+        if v == -1:
+            (qm, pm, gm, _, _, _, q1, n1, s1, a, na) = build_tree(qm, pm, gm, logu, v, j, eps,
+                                                                  Minv, gradf, H0, rng, nfev, nd)
+        else:
+            (_, _, _, qp, pp, gp, q1, n1, s1, a, na) = build_tree(qp, pp, gp, logu, v, j, eps,
+                                                                  Minv, gradf, H0, rng, nfev, nd)
+        if s1 == 1 and rng.random() < min(1.0, n1 / max(n, 1)):
+            q = q1
+        n += n1
+        sflag = s1 * (0 if _uturn(qm, qp, pm, pp, Minv) else 1)
+        j += 1
+    lp, g = gradf(q)
+    return q, lp, g, j, a / max(na, 1), nfev[0] + 1, nd[0]
+
+
+def _metric(S, n):
+    """Stan's regularised covariance estimate for a warm-up window.
+
+    Shrinks toward a scaled identity so a window with fewer draws than dimensions still yields a
+    positive-definite metric: Sigma = n/(n+5) S + 1e-3 (5/(n+5)) I.
+    """
+    d = S.shape[0]
+    Sig = (n / (n + 5.0)) * S + 1e-3 * (5.0 / (n + 5.0)) * np.eye(d)
+    return 0.5 * (Sig + Sig.T)
+
+
+def warmup_stan(q0, gradf, Minv0, nwarm, rng, target=0.8, log=print, dense=True):
+    """Stan-style warm-up: dual-averaging step size + WINDOWED METRIC ADAPTATION.
+
+    Why this exists.  A fixed metric taken from the Laplace covariance describes a posterior well only
+    where that covariance describes it -- i.e. where the posterior is close to Gaussian.  On a curved or
+    near-degenerate direction it does not, the integrator diverges, and the sampler answers by building
+    ever deeper trees.  Measured on a three-way degenerate subset: 137 divergences and Rhat 1.0124, a
+    convergence FAILURE, with a fixed metric.  Re-estimating the metric from the draws is the standard
+    remedy, and this is that remedy.
+
+    Schedule (Stan's, scaled to whatever nwarm is given): a fast init buffer tuning only the step size,
+    then expanding slow windows each of which re-estimates the metric from its own draws and restarts
+    dual averaging, then a fast terminal buffer that re-tunes the step size against the FINAL metric.
+
+    Returns (q, lp, g, eps, Minv, Mchol, info).
+    """
+    d = len(q0)
+    # THE TERMINAL BUFFER IS THE ONLY PLACE eps CONVERGES, so it gets a quarter of the budget.
+    # With Stan's 10% split (60 its of 600) the step size never settled: a measured warm-up went
+    # 0.4364 -> 0.4317 -> 0.2436 -> 0.4748 -> 0.3505 across windows, i.e. oscillating by 2x, and
+    # sampling then ran at acceptance 0.93 against a 0.80 target at EVERY cell of the grid.  Too
+    # small an eps is not a wrong answer, it is a slow one -- leapfrog steps go as 1/eps -- so the
+    # whole NUTS arm was paying ~2x the gradients it needed and the sampler comparison read as a
+    # property of the algorithm when it was a property of my warm-up schedule.
+    #
+    # Each window also restarts dual averaging with mu = log(10 eps0), which biases eps upward at
+    # the start of every window; the returned exp(lbar) averages over that excursion, so a SHORT
+    # window returns a value dominated by its own transient.  Only the terminal buffer runs against
+    # a frozen metric, so only it can actually converge -- give it room to.
+    n_init = max(10, int(0.10 * nwarm))
+    n_term = max(50, int(0.25 * nwarm))
+    n_mid = max(20, nwarm - n_init - n_term)
+    Minv = np.array(Minv0, float)
+    Mchol = np.linalg.cholesky(np.linalg.inv(Minv))
+    q = np.array(q0, float); lp, g = gradf(q)
+    eps = 1.0
+    info = dict(windows=[], ndiv=0, nfev=0)
+
+    def _dual(eps0, nsteps, collect):
+        """Dual averaging (Hoffman & Gelman Alg. 6) for `nsteps`, optionally collecting draws."""
+        nonlocal q, lp, g, Minv, Mchol
+        mu = np.log(10.0 * eps0); lbar = 0.0; Hbar = 0.0
+        gam, t0, kap = 0.05, 10.0, 0.75
+        e = eps0; got = []; alphas = []
+        for m in range(1, nsteps + 1):
+            q, lp, g, dep, alpha, nf, nd = nuts_step(q, lp, g, gradf, e, Minv, Mchol, rng)
+            info["ndiv"] += nd; info["nfev"] += nf; alphas.append(alpha)
+            Hbar = (1.0 - 1.0 / (m + t0)) * Hbar + (target - alpha) / (m + t0)
+            le = mu - np.sqrt(m) / gam * Hbar
+            eta = m ** (-kap)
+            lbar = eta * le + (1.0 - eta) * lbar
+            e = float(np.exp(le))
+            if collect:
+                got.append(q.copy())
+        # mean alpha over the LAST HALF: the first half is the mu = log(10 eps0) transient, and
+        # averaging it in would report the schedule's excursion rather than where eps settled.
+        ab = float(np.mean(alphas[len(alphas) // 2:])) if alphas else float("nan")
+        return float(np.exp(lbar)), got, ab
+
+    eps, _, _ = _dual(eps, n_init, False)
+    log(f"  warmup init {n_init} its -> eps {eps:.4f}")
+    # expanding slow windows: 25, 50, 100, ... capped so the total is n_mid
+    w, used, k = max(20, n_mid // 8), 0, 0
+    while used < n_mid:
+        take = int(min(w, n_mid - used))
+        if n_mid - used - take < take // 2:      # absorb a short tail into this window
+            take = n_mid - used
+        eps, draws, _ = _dual(eps, take, True)
+        Y = np.asarray(draws)
+        if len(Y) > d + 2:
+            S = np.cov(Y.T) if dense else np.diag(Y.var(axis=0, ddof=1))
+            Minv = _metric(np.atleast_2d(S), len(Y))
+            Mchol = np.linalg.cholesky(np.linalg.inv(Minv))
+            info["windows"].append(dict(n=len(Y), cond=float(np.linalg.cond(Minv))))
+            log(f"  warmup window {k}: {len(Y)} draws -> metric cond {np.linalg.cond(Minv):.3e}, "
+                f"eps {eps:.4f}")
+        used += take; w *= 2; k += 1
+    eps, _, abar = _dual(eps, n_term, False)
+    # ACHIEVED acceptance against the frozen final metric.  If this is not near `target`, eps did not
+    # converge and every downstream gradient count is inflated -- so it is logged and stored, not
+    # left to be inferred from the sampling-phase number after the fact.
+    info["alpha_term"] = abar
+    log(f"  warmup term {n_term} its -> eps {eps:.4f}, achieved alpha {abar:.3f} (target {target:.2f})"
+        f"; {len(info['windows'])} metric updates, {info['ndiv']} divergences during warmup")
+    if not (target - 0.08 < abar < target + 0.08):
+        log(f"  WARNING: warm-up did not converge -- alpha {abar:.3f} vs target {target:.2f}; "
+            f"leapfrog steps go as 1/eps so gradient counts below are NOT tuned")
+    return q, lp, g, eps, Minv, Mchol, info
+
+
 def nuts_sample(q0, gradf, eps, Minv, Mchol, nsamp, rng, log=print, tag="", ndiv_out=None):
     q = q0.copy(); out = np.empty((nsamp, len(q0))); depth = []; acc = []; nf = []
     lp, g = gradf(q)
     t0 = time.time()
     for i in range(nsamp):
-        p = Mchol @ rng.standard_normal(len(q))
-        H0 = lp - 0.5 * p @ (Minv @ p)
-        logu = H0 + np.log(rng.random())
-        qm = qp = q.copy(); pm = pp = p.copy(); gm = gp = g.copy()
-        j = 0; n = 1; s = 1; a = 0.0; na = 0; nfev = [0]; nd = [0]
-        while s == 1 and j < MAXDEPTH:
-            v = 1 if rng.random() < 0.5 else -1
-            if v == -1:
-                (qm, pm, gm, _, _, _, q1, n1, s1, a, na) = build_tree(qm, pm, gm, logu, v, j, eps,
-                                                                      Minv, gradf, H0, rng, nfev, nd)
-            else:
-                (_, _, _, qp, pp, gp, q1, n1, s1, a, na) = build_tree(qp, pp, gp, logu, v, j, eps,
-                                                                      Minv, gradf, H0, rng, nfev, nd)
-            if s1 == 1 and rng.random() < min(1.0, n1 / max(n, 1)):
-                q = q1
-            n += n1
-            s = s1 * (0 if _uturn(qm, qp, pm, pp, Minv) else 1)
-            j += 1
-        lp, g = gradf(q)                       # state for the next iteration's H0
-        out[i] = q; depth.append(j); acc.append(a / max(na, 1)); nf.append(nfev[0] + 1)
+        q, lp, g, j, alpha, nfev, nd = nuts_step(q, lp, g, gradf, eps, Minv, Mchol, rng)
+        out[i] = q; depth.append(j); acc.append(alpha); nf.append(nfev)
         if ndiv_out is not None:
-            ndiv_out.append(nd[0])
+            ndiv_out.append(nd)
         if (i + 1) % 25 == 0:
             el = time.time() - t0
             log(f"  {tag}{i+1}/{nsamp}  {el/(i+1):.1f} s/sample  grads/sample {np.mean(nf):.1f}  "
