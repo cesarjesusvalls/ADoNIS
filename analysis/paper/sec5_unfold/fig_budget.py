@@ -10,7 +10,7 @@ sqrt-of-a-sum drawn as a sum, and the true total would float somewhere inside it
 the first version of this figure showed.  Here each bar's TOP is the actual sigma once that block is
 switched on, so the visible band is the increment and the tallest bar is the total.
 
-(a) per truth cell, nested.  (b) the means, as multiples of the statistical error.
+A single panel: the per-truth-cell nested budget.
 
 Usage:  python -m analysis.paper.sec5_unfold.fig_budget [label]
 """
@@ -38,32 +38,32 @@ def main(label="sec5"):
 
     total = e["det"]
 
-    fig = plt.figure(figsize=(9.6, 3.5))
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.55, 1], wspace=0.28)
-
-    ax = fig.add_subplot(gs[0, 0])
-    for k, lab, col in reversed(BLOCKS):          # tallest first, each drawn over the last
-        ax.bar(x, e[k], color=col, width=0.74, label=lab, zorder=2)
-    ax.set_xlabel("truth cell"); ax.set_ylabel(r"$\sigma(c_j)$ with block enabled")
-    ax.set_xticks(x)
+    # SINGLE PANEL.  The cumulative panel (b) carried one number per block -- the same four numbers the
+    # nested bars already show as their tops -- so it restated the left panel in a second geometry
+    # rather than adding information.  With 30 truth cells the per-cell panel needs the width far more
+    # than the summary needed the space.
+    # VERTICAL.  With 58 truth cells a horizontal bar chart gives each cell a readable label and a full
+    # figure height to separate them; horizontally they collide.  The nesting is unchanged -- each bar's
+    # LENGTH is the actual sigma once that block is switched on, so the visible increment is what the
+    # block costs and the longest bar is the total.
+    fig = plt.figure(figsize=(4.2, max(3.5, 0.135 * nt + 1.1)))
+    ax = fig.add_subplot(1, 1, 1)
+    for k, lab, col in reversed(BLOCKS):          # longest first, each drawn over the last
+        ax.barh(x, e[k], color=col, height=0.74, label=lab, zorder=2)
+    ax.set_ylabel("linearised truth bin index")
+    ax.set_xlabel(r"$\sigma(c_j)$ with block enabled")
+    # ALWAYS LABEL THE LAST BIN.  Thinning to every second index drops the final one whenever the
+    # count is even (58 cells -> ticks at 0,2,...,56, and bin 57 is drawn but unlabelled), which reads
+    # as a missing bin rather than a missing tick.
+    tk = list(range(0, nt, 2)) if nt > 20 else list(range(nt))
+    if tk[-1] != nt - 1:
+        tk.append(nt - 1)
+    ax.set_yticks(tk)
+    ax.tick_params(axis="y", labelsize=6.5)
+    ax.invert_yaxis()                              # cell 0 at the top, reading order
     h, l = ax.get_legend_handles_labels()
-    ax.legend(h[::-1], l[::-1], frameon=False, fontsize=7.5, ncol=2, loc="upper left")
-    ax.set_ylim(0, 1.32 * total.max())
-    ax.set_title("(a)  per-cell error budget (nested)", fontsize=9.5, loc="left")
-
-    ax = fig.add_subplot(gs[0, 1])
-    means = [e[k].mean() for k, _l, _c in BLOCKS]
-    ax.plot(range(len(BLOCKS)), np.array(means) / means[0], "o-", color="#1f4b9c", ms=5, lw=1.4)
-    for i, (m, (k, lab, _c)) in enumerate(zip(means, BLOCKS)):
-        ax.annotate(f"{m:.3f}", (i, m / means[0]), textcoords="offset points", xytext=(0, 8),
-                    ha="center", fontsize=7.5)
-    ax.set_xticks(range(len(BLOCKS)))
-    ax.set_xticklabels(["stat", "+xsec", "+flux", "+det"], fontsize=8)
-    ax.set_ylabel(r"mean $\sigma(c_j)$ / statistical")
-    ax.set_ylim(0.9, 1.05 * means[-1] / means[0])
-    ax.grid(axis="y", alpha=0.25, lw=0.5)
-    ax.set_title("(b)  cumulative", fontsize=9.5, loc="left")
-
+    ax.legend(h[::-1], l[::-1], frameon=False, fontsize=7, ncol=1, loc="lower right")
+    ax.set_xlim(0, 1.32 * total.max())
     style.save(fig, f"{label}_figG")
 
 
