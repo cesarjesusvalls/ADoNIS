@@ -23,28 +23,20 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
 
-# LABELS ARE BUILT FROM THE FIT, NOT TYPED.  These read "cross section (11)" and "detector (60, 5%)"
-# while the fit behind the figure had 12 and 116 -- counts from an older configuration that survived a
-# change of signal definition, truth binning and reco grid.  A caption quoting the real numbers then
-# contradicted the legend on the same page.  Anything countable comes out of the npz.
-BLOCK_COLOR = {"stat": "#b9c6de", "xsec": None, "flux": None, "det": "#1a9e57"}
-
-
-def _blocks(z):
-    """[(key, label, colour)] with every count read from the stored parameter layout."""
-    import collections
-    n = collections.Counter(str(b) for b in z["param_block"])
-    det = float(z["det_prior"])
-    return [("stat", "statistical", BLOCK_COLOR["stat"]),
-            ("xsec", f"cross section ({n['xsec']})", style.C_QE),
-            ("flux", f"flux ({n['flux']}, correlated)", style.C_RES),
-            ("det", f"detector ({n['detector']}, {det:.0%})", BLOCK_COLOR["det"])]
+# NAMES ONLY.  These labels once carried counts -- "cross section (11)", "detector (60, 5%)" -- which
+# were literals, went stale across a change of signal definition, truth binning and reco grid, and ended
+# up contradicting the caption on the same page.  Deriving them from the npz fixed the staleness but
+# kept the duplication: the counts belong in the caption, stated once, where they can be read alongside
+# everything else about the fit.  A legend only has to say which bar is which.
+BLOCKS = [("stat", "statistical", "#b9c6de"),
+          ("xsec", "cross section", style.C_QE),
+          ("flux", "flux", style.C_RES),
+          ("det", "detector", "#1a9e57")]
 
 
 def main(label="sec5"):
     style.use()
     z = np.load(style.ALTGEN / f"{label}_unfold.npz", allow_pickle=True)
-    BLOCKS = _blocks(z)
     e = {k: np.asarray(z[f"budget_{k}"]) for k, _l, _c in BLOCKS}
     nt = len(e["stat"])
     x = np.arange(nt)
