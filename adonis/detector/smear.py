@@ -44,11 +44,20 @@ class SmearSpec:
     sigma_p: float = 0.20            # fractional momentum resolution
     sigma_theta_deg: float = 10.0    # 3-D angular resolution (cone half-angle, 1 sigma)
     seed: int = 20260813
+    # PION DETECTION EFFICIENCY.  Below `pi_eff_p_max` MeV/c a charged pion is SEEN with probability
+    # `pi_eff`; otherwise it is missed and the event is reconstructed as if it were not there.  This is
+    # the one effect that creates a real CC0pi BACKGROUND: a true CC1pi event whose only pion is missed
+    # passes the CC0pi reco selection.  With perfect PID (the defaults) a topological CC0pi sample has
+    # purity exactly 1.0 -- truth and reco selections coincide event for event -- so the cross-section
+    # knobs, which reweight only the background, have nothing to act on and their systematic is
+    # identically zero.  That is not a small mis-estimate; it is a missing term.
+    pi_eff_p_max: float = 0.0        # MeV/c; 0 disables (perfect PID, the previous behaviour)
+    pi_eff: float = 1.0              # probability of SEEING a pion below pi_eff_p_max
 
     @classmethod
     def parse(cls, d):
         d = dict(d or {})
-        extra = set(d) - {"sigma_p", "sigma_theta_deg", "seed"}
+        extra = set(d) - {"sigma_p", "sigma_theta_deg", "seed", "pi_eff_p_max", "pi_eff"}
         if extra:
             raise ValueError(f"detector: unknown key(s) {sorted(extra)}")
         return cls(**d)
@@ -110,4 +119,25 @@ def smear_chunk(B, spec: SmearSpec, chunk: int):
     out = dict(B)
     out["k_lep"] = _smear_p4(B["k_lep"], rng, spec)
     out["fs_p4"] = _smear_p4(B["fs_p4"], rng, spec)
+
+    # MISSED PIONS.  A pion that is not seen must be invisible to the PID accounting, which is what
+    # makes the event reconstruct as CC0pi.  The final state is RAGGED -- flat arrays plus per-event
+    # offsets -- so entries cannot be deleted without rebuilding the offsets of every downstream
+    # consumer; setting the PID to 0 is equivalent and local, because the meson veto is
+    # np.isin(fs_pid, MESONS) and 0 is in no list.  fs_pid is COPIED here: smear_chunk otherwise shares
+    # every array but k_lep and fs_p4 with the truth bank, and mutating it in place would silently
+    # change the TRUTH selection too, which is the one thing this must not do.
+    #
+    # The threshold is on the TRUE momentum: whether a detector can see a particle is a property of the
+    # particle, not of the number the reconstruction happened to draw for it.
+    #
+    # The draw happens AFTER both _smear_p4 calls and only when the effect is enabled, so the kinematic
+    # smearing is bit-identical to the perfect-PID case and the two can be compared directly.
+    if spec.pi_eff_p_max > 0.0 and spec.pi_eff < 1.0:
+        pid = np.asarray(B["fs_pid"]).copy()
+        ptrue = np.linalg.norm(np.asarray(B["fs_p4"], dtype=np.float64)[:, 1:], axis=1)
+        cand = (np.abs(pid) == 211) & (ptrue < spec.pi_eff_p_max)
+        missed = cand & (rng.random(pid.shape[0]) >= spec.pi_eff)
+        pid[missed] = 0
+        out["fs_pid"] = pid
     return out

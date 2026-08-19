@@ -53,7 +53,13 @@ def main(sample="configs/samples/t2k_cc0pi.yaml", label="sec5", norm=50_000, max
     # that away.  Both numbers are stated in the output so a figure can never claim a resolution the
     # fit did not use.
     from adonis.unfold.binning import UNFOLD_OBS
-    spec = SmearSpec(sigma_p=0.10, sigma_theta_deg=5.0) if UNFOLD_OBS == "lep" else SmearSpec()
+    # pi_eff: 50% of charged pions below 400 MeV/c are missed.  Without it a topological CC0pi sample
+    # has NO background (purity exactly 1.0), the knobs have nothing to reweight, and the cross-section
+    # systematic is identically zero -- so the budget figure would report a term that is missing, not
+    # small.  A missed pion turns a true CC1pi event into a reco CC0pi one, which is the dominant
+    # background of the real measurement.
+    spec = (SmearSpec(sigma_p=0.10, sigma_theta_deg=5.0, pi_eff_p_max=400.0, pi_eff=0.5)
+            if UNFOLD_OBS == "lep" else SmearSpec())
     inp = build(s.bank, s.cfg.signal, spec=spec, norm_events=norm, max_chunks=max_chunks, log=log)
     eng = UnfoldEngine(inp)
     TG, RG = truth_grid(), reco_grid()
