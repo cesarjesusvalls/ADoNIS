@@ -68,8 +68,14 @@ def _q2_wexp(mu, pmu, cmu, knu):
 
 
 def _mu_pass(pmu, cmu, sd):
+    # BOTH None means NO ANGULAR CUT, which is a real signal definition, not a missing value: the T2K
+    # CC0pi double-differential measurement (arXiv:2002.09323) bins cos theta_mu down to -1.  Before
+    # this, cos_mu: null with cth: null reached `cmu > None` and raised.  Encoding it as cos_mu: -1.0
+    # instead would work but says something slightly different -- it excludes exactly -1 -- and hides
+    # the intent behind a magic number.
     cut = sd.cos_mu if sd.cos_mu is not None else sd.cth       # CC0pi backward/forward mu cut, else cth
-    return (pmu >= sd.mu_win[0]) & (pmu <= sd.mu_win[1]) & (cmu > cut)
+    ok = (pmu >= sd.mu_win[0]) & (pmu <= sd.mu_win[1])
+    return ok if cut is None else (ok & (cmu > cut))
 
 
 def _finish(obs, sel, w, chan):

@@ -1,0 +1,47 @@
+# T2K CC0pi DOUBLE-DIFFERENTIAL d^2sigma/dp_mu dcos(theta_mu) signal (T2K:2020sbd, arXiv:2002.09323).
+#
+# SEPARATE FROM configs/samples/t2k_cc0pi.yaml ON PURPOSE.  That file is the CC0pi-Np TKI signal of
+# arXiv:1802.05078 and is shared by three consumers (sec1 validation, Gate-I gradients, sec4), all of
+# which should keep it -- sec1 compares against the STV release, which IS that signal.  This is a
+# DIFFERENT measurement that happens to share a name, and running one with the other's binning gives a
+# result that looks plausible and is wrong.
+#
+# WHAT DIFFERS, and what it cost when the TKI signal was used with this binning:
+#
+#   proton      TKI REQUIRES a leading proton in 450-1000 MeV/c with cos > 0.4.  This measurement is
+#               topological: any number of protons, including zero.  The requirement preferentially
+#               removes low-energy-transfer events, which are the low-p_mu ones, so the measured
+#               deficit against the published values was MOMENTUM DEPENDENT -- 5.3x at p_mu < 0.3 GeV/c
+#               falling to 1.7x by 0.6 -- and it moved the peak of the spectrum to higher p_mu.  A flat
+#               normalisation error cannot do that; a phase-space cut correlated with p_mu can.
+#   muon angle  TKI cuts cos_mu > -0.6, which leaves 40% of this binning's backward slice
+#               (cos_mu in [-1, 0.2]) empty by construction while the fit still treats that template as
+#               covering the full range.
+#   muon p      no lower cut here: the published binning starts at p_mu = 0.
+#   mesons      zero pions AND no other mesons (eta, K, ...), i.e. veto_other_mesons.
+#   target      CH, not pure carbon.  Free hydrogen has no neutrons, so it contributes essentially
+#               nothing to nu_mu CC0pi; the practical consequence is the per-nucleon divisor (13 for
+#               CH against 12 for C), not a new event source.
+#
+# The bank is the same carbon bank -- only the selection changes.
+render: multiobs
+name: t2k_cc0pi_ddxs
+inputs:
+  adonis_bank: [output/paper_banks_p4/nu_T2K_C/merged]
+  reference:   [output/achilles/fsrich/nu_T2K_C.npz]
+signal:
+  mu_win: [0.0, inf]        # published binning starts at p_mu = 0
+  cos_mu: null              # no backward muon cut -- the binning covers cos_mu down to -1
+  cth: null                 # no forward cut either (it exists only to cut the TKI proton)
+  require_proton: false     # ANY number of protons, including zero.  THE key difference.
+  p_win: [0.0, inf]         # unused with require_proton false; permissive so it cannot bite
+  proton_lead: global
+  pi_win: null
+  pion_id: none             # veto all pions
+  veto_other_mesons: true   # "no other mesons in the final state"
+  target: CH
+observables:
+  - {key: pmu,     label: '$p_\mu$ [MeV/c]',   linspace: [0.0, 5000.0, 26]}
+  - {key: cos_mu,  label: '$\cos\theta_\mu$',  linspace: [-1.0, 1.0, 21]}
+out_path: output/paper/t2k_cc0pi_ddxs.png
+title: 'T2K CC0$\pi$ $d^2\sigma/dp_\mu d\cos\theta_\mu$ on CH'

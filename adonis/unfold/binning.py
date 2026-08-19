@@ -131,16 +131,22 @@ def reco_grid():
 # spanning 0.80-0.94 come out at ratio 1.01-1.18 -- which is the opposite of the STV grid, where every
 # delta-p_T bin was below 1.0.  One p_mu bin (3.0-3.25 GeV inside cos 0.94-0.98) is genuinely
 # unresolved at ratio 0.80; it sits in the far tail and holds almost nothing.
+# EVERY SLICE'S TOP BIN IS AN OVERFLOW TO 30 GeV/c, not a closed edge.  Checked against the published
+# table for cos theta_mu in [0.94, 0.98], whose last bin is 3 -> 30 rather than 3 -> 3.25: its value,
+# 4.698e-41, sits ~100x below its neighbours, which is what dividing by a width of 27 instead of ~1
+# produces.  Closing those axes at the second-to-last edge pushed every high-momentum signal event
+# outside the truth grid, where build() correctly but silently reclassifies it as BACKGROUND -- an
+# event with no template to scale it.  The measurement loses no rate; the fit did.
 T2K_CC0PI_SLICES = [
     ((-1.00, 0.20), [0.0, 30.0]),                                               # backward catch-all
-    (( 0.20, 0.60), [0.0, 0.3, 0.4, 0.5, 0.6, 0.7]),
-    (( 0.60, 0.70), [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 0.95]),
-    (( 0.70, 0.80), [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 0.95]),
-    (( 0.80, 0.85), [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.2]),
-    (( 0.85, 0.90), [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.5, 1.7]),
-    (( 0.90, 0.94), [0.0, 0.4, 0.5, 0.6, 0.8, 1.25, 2.0, 2.4]),
-    (( 0.94, 0.98), [0.0, 0.4, 0.5, 0.6, 0.8, 1.0, 1.25, 1.5, 2.0, 3.0, 3.25]),
-    (( 0.98, 1.00), [0.0, 0.5, 0.7, 0.9, 1.25, 2.0, 3.0, 5.0, 5.625]),
+    (( 0.20, 0.60), [0.0, 0.3, 0.4, 0.5, 0.6, 30.0]),
+    (( 0.60, 0.70), [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 30.0]),
+    (( 0.70, 0.80), [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 30.0]),
+    (( 0.80, 0.85), [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 30.0]),
+    (( 0.85, 0.90), [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.5, 30.0]),
+    (( 0.90, 0.94), [0.0, 0.4, 0.5, 0.6, 0.8, 1.25, 2.0, 30.0]),
+    (( 0.94, 0.98), [0.0, 0.4, 0.5, 0.6, 0.8, 1.0, 1.25, 1.5, 2.0, 3.0, 30.0]),
+    (( 0.98, 1.00), [0.0, 0.5, 0.7, 0.9, 1.25, 2.0, 3.0, 5.0, 30.0]),
 ]
 
 
