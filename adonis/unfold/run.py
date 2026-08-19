@@ -131,4 +131,8 @@ def main(sample="configs/samples/t2k_cc0pi.yaml", label="sec5", norm=50_000, max
 
 if __name__ == "__main__":
     import sys
-    main(*(sys.argv[1:3] or []))
+    # norm reachable from the CLI: it sets the assumed DATA exposure (not the MC), so it is the knob
+    # for "what would this measurement look like with N times the statistics" and was previously
+    # editable only by changing the default.
+    a = sys.argv[1:4]
+    main(*(a[:2] or []), **({"norm": int(float(a[2]))} if len(a) > 2 else {}))

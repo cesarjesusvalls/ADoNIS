@@ -1,21 +1,27 @@
-"""FIGURE F (lepton kinematics) -- the unfolded T2K CC0pi double-differential result, projected to 1-D.
+"""FIGURE F (lepton kinematics) -- the unfolded T2K CC0pi result, in two angular slices.
 
-(a) d(sigma)/dp_mu and (b) d(sigma)/dcos theta_mu, in the 1e-38 cm^2/nucleon units of the published
-    measurement (arXiv:2002.09323).  The 58 templates themselves are the measurement; these are the two
-    1-D readings of it.
+Each panel is d^2(sigma) / dp_mu dcos(theta_mu) for one cos theta_mu slice of the published binning
+(arXiv:2002.09323), in the 1e-38 cm^2/nucleon units of the measurement.
 
-TWO THINGS THE PROJECTION HAS TO GET RIGHT, both of which the rectangular-grid version got wrong:
+WHY SLICES RATHER THAN PROJECTIONS.  Every 1-D projection of this measurement needs an assumption or an
+omission, and slices need neither:
 
-  * FULL COVARIANCE, not quadrature.  Cells folded into one projected bin are correlated, and ignoring
-    that is wrong in BOTH directions -- measured, quadrature understated the 3x3 STV projection by ~30%
-    (correlations positive) and overstated the 5x6 one by up to 3.6x (adjacent cells anti-correlated
-    because the detector could not resolve them).  With P the projection operator the value is P c and
-    the covariance is exactly P C P^T, so this uses that.
-  * THE BACKWARD CATCH-ALL IS EXCLUDED FROM (a).  The cos < 0.2 slice is a single bin spanning
-    0-30 GeV/c and holds 27.6% of the signal.  Spreading it across a p_mu axis in proportion to width
-    -- the flat-within-cell assumption every projection makes -- would invent a momentum spectrum for a
-    quarter of the rate.  It is dropped from (a) and stated on the panel; (b) keeps it, because the cos
-    slices are common to every cell and that projection needs no assumption at all.
+  * a p_mu projection has to collapse cells whose p_mu edges differ between cos slices, which means
+    distributing each cell's rate across a common axis in proportion to width -- flat-within-cell --
+    and it has to drop the cos < 0.2 catch-all, a single bin spanning 0-30 GeV/c holding 27.6% of the
+    signal, because spreading THAT flat would invent a momentum spectrum for a quarter of the rate;
+  * a cos theta_mu projection has no good axis.  The slices are near-uniform in angle but wildly
+    unequal in cosine -- the backward slice alone is 1.2 of the 2.0 range, leaving six of the nine
+    slices inside the forward 0.2 -- so a linear cos axis hides the region the measurement is about,
+    and plotting against theta instead spends more than half the axis on one backward bin.
+
+Inside a slice none of that arises: the p_mu bins ARE the published ones, each point is a single
+template, and its error is the square root of its own diagonal entry -- no projection operator, no
+covariance collapse, no assumption.  The cell-to-cell correlations are figure I's subject.
+
+Slices chosen on measured content, not by eye: [0.20, 0.60] has the highest occupancy (4013 events,
+median sigma(c) 0.22) and [0.94, 0.98] has the most bins and the widest momentum reach (10 bins out to
+3.25 GeV/c).  Between them they bracket the angular range.
 
 Usage:  ADONIS_UNFOLD_OBS=lep python -m analysis.paper.sec5_unfold.fig_unfolded_lep [label]
 """
@@ -28,7 +34,6 @@ from matplotlib.lines import Line2D
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
-from adonis.unfold.binning import t2k_truth_grid
 
 # SECTION-1 PALETTE.  The paper already has a colour language -- IBM colourblind-safe, blue for the
 # first series and orange for the second -- and a section that invents its own makes the reader relearn
@@ -36,30 +41,38 @@ from adonis.unfold.binning import t2k_truth_grid
 C_A, C_S = style.C_QE, style.C_RES
 STUDIES = [("asimov", "closure", C_A, "o"), ("sig120", r"signal $\times1.20$", C_S, "s")]
 
-# Same chain as analysis/paper/info_content.load_cc0pi, so figure and data share one convention:
-#   sigma [1e-38 cm^2/nucleon] = (sum w0) * 1e-33 / 12 * 1e38
-W0_TO_CM2, A_CARBON, XS_UNIT = 1e-33, 12.0, 1e38
+# sigma [1e-38 cm^2/nucleon] = (sum w0) * W0_TO_CM2 / A_NUCLEON * 1e38
+#
+# A_NUCLEON = 13, NOT 12.  T2K:2020sbd reports per nucleon on CH, so the divisor is the 13 nucleons of
+# a CH unit; info_content.load_cc0pi uses 12 because the STV release it loads is quoted on carbon.
+# Free hydrogen has no neutrons and so contributes essentially nothing to nu_mu CC0pi, which is why
+# this is a divisor change and not a missing event source -- the carbon bank is still the whole
+# prediction.  It is an 8% effect and the only number here worth re-checking against the release.
+# XS_UNIT = 1e39, i.e. the result is quoted in 1e-39 cm^2.  1e-38 left both panels needing a
+# matplotlib scale-factor label (x10^-1 on the left), which is drawn at the top-left of the axes and
+# collided with the slice title.  In 1e-39 the values run 1.1-7.3 and 1.2-14, so no offset is needed
+# and the axis reads directly.
+W0_TO_CM2, A_NUCLEON, XS_UNIT = 1e-33, 13.0, 1e39
 
-# Common p_mu axis for panel (b).  Chosen from the edges the slices actually share, so most cells map
-# onto target bins exactly and the flat-within-cell assumption does as little work as possible.
-PMU_TARGET = [0.0, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.25, 2.0, 3.25, 5.625]
+SLICES = [(0.20, 0.60), (0.94, 0.98)]
 
 
-def _legend(ax):
-    """Two things need distinguishing, and colour alone does not do it.
+def _legend():
+    """Say what a LINE is and what a MARKER is.
 
-    The reader has to know that the STEP is the generator truth -- what the fit should return -- and the
-    MARKER is what it did return.  A legend keyed only on the two studies leaves that to be inferred
-    from the drawing, and the whole claim of the panel is that the two agree, so the distinction is the
-    figure's subject rather than a detail of its styling.  Hence one legend column for the studies
-    (colour) and one for truth-vs-result (line against marker).
+    The reader has to know the step is the generator truth -- what the fit should return -- and the
+    marker is what it did return.  A legend keyed only on the two studies leaves that to be inferred
+    from the drawing, and the panel's whole claim is that the two coincide, so the distinction is the
+    subject rather than a styling detail.
     """
     h = [Line2D([], [], color=c, lw=1.2) for _s, _l, c, _m in STUDIES]
     h += [Line2D([], [], color="0.25", lw=1.2),
           Line2D([], [], color="0.25", lw=0.0, marker="o", ms=3.4)]
     lab = [l for _s, l, _c, _m in STUDIES] + ["truth (input)", "unfolded (result)"]
-    ax.legend(h, lab, frameon=False, fontsize=6.8, ncol=1, loc="lower left", handlelength=1.9,
-              labelspacing=0.28, borderpad=0.2)
+    # ABOVE THE PANELS, not inside one.  Placed in the axes it landed on the curves it describes --
+    # the spectrum peaks at upper-centre-left in both slices, so there is no free corner.  A
+    # figure-level legend also stops it being attached to whichever panel happened to have room.
+    return h, lab
 
 
 def main(label="sec5lep"):
@@ -67,61 +80,57 @@ def main(label="sec5lep"):
     z = np.load(style.ALTGEN / f"{label}_unfold.npz", allow_pickle=True)
     if str(z["true_kind"]) != "staircase":
         raise SystemExit(f"{label} is not a staircase (lepton) unfolding -- use fig_unfolded instead")
-    G = t2k_truth_grid()
     N = np.asarray(z["n_true"])
-    nt = G.n
     cl, ch = np.asarray(z["true_c_lo"]), np.asarray(z["true_c_hi"])
-    xs = W0_TO_CM2 / A_CARBON * XS_UNIT / float(z["norm_scale"])
+    pl, ph = np.asarray(z["true_p_lo"]), np.asarray(z["true_p_hi"])
+    nt = len(N)
+    xs = W0_TO_CM2 / A_NUCLEON * XS_UNIT / float(z["norm_scale"])
 
-    # 30% SMALLER CANVAS.  Font sizes are absolute points, so shrinking the canvas without touching
-    # them makes every label relatively larger -- which is what a figure reproduced at column width in a
-    # paper actually needs.
-    fig = plt.figure(figsize=(5.04, 2.52))
+    fig = plt.figure(figsize=(5.04, 2.72))
     gs = fig.add_gridspec(1, 2, width_ratios=[1, 1], wspace=0.34)
 
-    # ---- (a) d sigma / d p_mu, backward slice excluded --------------------------------------------- #
-    ax = fig.add_subplot(gs[0, 0])
-    keep = cl >= 0.2
-    te = np.array(PMU_TARGET); wid = np.diff(te)
-    for st, lab, col, mk in STUDIES:
-        c, ct = np.asarray(z[f"{st}_c"]), np.asarray(z[f"{st}_c_true"])
-        C = np.asarray(z[f"{st}_cov"])[:nt, :nt]
-        P = G.projector("pmu", te, N * keep)               # zeroing the excluded cells' weights
-        # NO ALPHA on the truth step.  The x error bars are opaque and lie along the same horizontals,
-        # so a semi-transparent step blended with them and its horizontal segments came out a different
-        # colour from its verticals -- the step looked like two different lines.
-        ax.step(np.r_[te[0], te], np.r_[0, (P @ ct) * xs / wid, 0][:len(te) + 1], where="post",
-                color=col, lw=1.0, zorder=1)
-        val = (P @ c) * xs / wid
-        err = np.sqrt(np.diag(P @ C @ P.T)) * xs / wid
-        ax.errorbar(0.5 * (te[:-1] + te[1:]), val, yerr=err, xerr=0.5 * wid, fmt=mk, ms=3,
-                    lw=0.0, elinewidth=0.9, color=col, zorder=3)
-    ax.set_yscale("log")
-    ax.set_xlabel(r"$p_\mu$ [GeV/$c$]")
-    ax.set_ylabel(r"$d\sigma/dp_\mu$ [$10^{-38}$cm$^2$/nucleon/(GeV/$c$)]", fontsize=7.5)
-    ax.set_xlim(te[0], te[-1])          # bin edges flush against the axes, no padding
-    _legend(ax)
+    for k, (c0, c1) in enumerate(SLICES):
+        ax = fig.add_subplot(gs[0, k])
+        m = np.flatnonzero((cl == c0) & (ch == c1))
+        edges = np.append(pl[m], ph[m][-1])
+        dp, dcos = np.diff(edges), c1 - c0
+        for st, lab, col, mk in STUDIES:
+            c, ct = np.asarray(z[f"{st}_c"]), np.asarray(z[f"{st}_c_true"])
+            C = np.asarray(z[f"{st}_cov"])[:nt, :nt]
+            # d^2 sigma / dp dcos.  Each point is ONE template, so its uncertainty is its own diagonal
+            # entry -- there is no projection here and nothing to collapse.
+            base = N[m] * xs / (dp * dcos)
+            ax.step(np.r_[edges[0], edges], np.r_[0, ct[m] * base, 0][:len(edges) + 1], where="post",
+                    color=col, lw=1.0, zorder=1)
+            ax.errorbar(0.5 * (edges[:-1] + edges[1:]), c[m] * base,
+                        yerr=np.sqrt(np.diag(C)[m]) * base, xerr=0.5 * dp,
+                        fmt=mk, ms=3, lw=0.0, elinewidth=0.9, color=col, zorder=3)
+        # LINEAR y.  Within a single angular slice the cross section spans about ONE decade (2e-2 to
+        # 4e-1 on the left, 1.5e-2 to 1.2e-1 on the right), so a log axis compresses the differences
+        # the panel exists to show and buys nothing -- and it dragged in a log formatter that labels
+        # only decades, leaving two or three labels on the axis.  Log belongs on the p_mu spectrum
+        # integrated over angle, which really does fall by orders of magnitude; it does not belong here.
+        ax.set_ylim(bottom=0.0)
+        # THE OVERFLOW BIN IS NOT DRAWN.  It runs to 30 GeV/c; shown to scale it takes ~90% of the
+        # axis, and even compressed behind an axis break it spends real width on a bin whose per-GeV
+        # density is ~100x below its neighbours.  Its CONTENT is in the fit and stored in the npz --
+        # only its display is dropped.  NOTHING ON THE FIGURE SAYS SO, so the omitted range belongs in
+        # the LaTeX caption: the axis stopping at 0.6 or 3 GeV/c is not self-explanatory.
+        ax.set_xlim(edges[0], edges[-2])
+        ax.set_xlabel(r"$p_\mu$ [GeV/$c$]")
+        if k == 0:
+            ax.set_ylabel(r"$d^2\sigma/dp_\mu\,d\cos\theta_\mu$" "\n"
+                          r"[$10^{-39}$cm$^2$/nucleon/(GeV/$c$)]", fontsize=6.6)
+        # SLICE DEFINITION AS A HEADER, not inside the axes.  In the panel it competes with the data
+        # for space -- bottom-left sat on the first bin's step, top-right on the falling edge -- and
+        # which corner is free depends on the slice, so any in-axes position is a per-slice choice
+        # that breaks as soon as SLICES changes.
+        ax.set_title(rf"${c0:.2f}<\cos\theta_\mu<{c1:.2f}$", fontsize=7.5, pad=4)
 
-    # ---- (b) d sigma / d cos theta_mu, everything included ----------------------------------------- #
-    ax = fig.add_subplot(gs[0, 1])
-    ce = G.cos_edges; cw = np.diff(ce)
-    for st, lab, col, mk in STUDIES:
-        c, ct = np.asarray(z[f"{st}_c"]), np.asarray(z[f"{st}_c_true"])
-        C = np.asarray(z[f"{st}_cov"])[:nt, :nt]
-        P = G.projector("cos", ce, N)
-        ax.step(np.r_[ce[0], ce], np.r_[0, (P @ ct) * xs / cw, 0][:len(ce) + 1], where="post",
-                color=col, lw=1.0, zorder=1)
-        val = (P @ c) * xs / cw
-        err = np.sqrt(np.diag(P @ C @ P.T)) * xs / cw
-        ax.errorbar(0.5 * (ce[:-1] + ce[1:]), val, yerr=err, xerr=0.5 * cw, fmt=mk, ms=3,
-                    lw=0.0, elinewidth=0.9, color=col, zorder=3)
-    # LINEAR here.  d(sigma)/dp_mu falls by orders of magnitude across the momentum range and needs
-    # the log; d(sigma)/dcos theta_mu does not, and a log axis on a nearly-flat quantity compresses
-    # exactly the differences the panel exists to show.
-    ax.set_xlabel(r"$\cos\theta_\mu$")
-    ax.set_ylabel(r"$d\sigma/d\cos\theta_\mu$ [$10^{-38}$cm$^2$/nucleon]", fontsize=7.5)
-    ax.set_xlim(ce[0], ce[-1])          # cos runs exactly -1 to 1, edge to edge
-
+    h, lab = _legend()
+    fig.legend(h, lab, frameon=False, fontsize=6.4, ncol=4, loc="upper center",
+               bbox_to_anchor=(0.5, 1.045), handlelength=1.9, columnspacing=1.3, borderpad=0.2)
+    fig.subplots_adjust(top=0.885, bottom=0.17)
     style.save(fig, f"{label}_figF")
 
 
