@@ -155,7 +155,7 @@ class UnfoldEngine:
 
             c      templates, in TRUTH space, NO prior.  An unfolded spectrum pulled toward the
                    generator is not a measurement.
-            f      flux, in TRUE ENERGY, CORRELATED 20% prior (whitened by its Cholesky factor).
+            f      flux, in TRUE ENERGY, CORRELATED 10% prior (whitened by its Cholesky factor).
             theta  cross-section knobs, independent Gate-I priors (20%, 4 MeV on E_b).
             d      detector, in RECO space, independent 5% priors -- one per reco bin.
 

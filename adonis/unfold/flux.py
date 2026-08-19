@@ -11,7 +11,7 @@ half the events sit, and everything below 600 MeV is merged: a [0, 400) paramete
 signal events, and a parameter with no events is not constrained by the data at all -- it would sit
 wherever its prior and its neighbours put it while contributing a free direction to the fit.
 
-PRIOR.  20% on each bin, correlated so that no single bin can be pulled far from its neighbours:
+PRIOR.  10% on each bin, correlated so that no single bin can be pulled far from its neighbours:
 
     Sigma_bb' = sigma_b sigma_b' exp( -|E_b - E_b'| / L )
 
@@ -29,7 +29,12 @@ import numpy as np
 # bin above 2 GeV.
 FLUX_EDGES = [0.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1200.0, 1400.0, 1700.0, 2000.0, np.inf]
 
-SIGMA = 0.20          # per-bin prior width
+# 10%, not 20%.  The T2K flux uncertainty after the NA61/SHINE hadron-production constraint is roughly
+# 8-10% near the peak, so 20% was a factor ~2 pessimistic -- and since flux dominated the section's
+# error budget, that pessimism was setting the headline number.  It stays ABOVE the detector's 5% per
+# reco bin because a flux parameter moves every bin it touches coherently while the detector dials are
+# independent, so the two are not comparable at equal nominal width.
+SIGMA = 0.10          # per-bin prior width
 CORR_LENGTH = 400.0   # MeV; roughly two bins across the peak
 
 
@@ -53,7 +58,7 @@ def bin_centres():
 
 
 def prior_cov(sigma=SIGMA, corr_length=CORR_LENGTH):
-    """The flux prior covariance: 20% diagonal, neighbours correlated over `corr_length` in true E_nu."""
+    """The flux prior covariance: 10% diagonal, neighbours correlated over `corr_length` in true E_nu."""
     c = bin_centres()
     rho = np.exp(-np.abs(c[:, None] - c[None, :]) / float(corr_length))
     s = np.full(n_flux(), float(sigma))
