@@ -23,15 +23,28 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
 
-BLOCKS = [("stat", "statistical", "#b9c6de"),
-          ("xsec", "cross section (11)", "#1f4b9c"),
-          ("flux", "flux (10, correlated)", "#e08214"),
-          ("det", "detector (60, 5%)", "#1a9e57")]
+# LABELS ARE BUILT FROM THE FIT, NOT TYPED.  These read "cross section (11)" and "detector (60, 5%)"
+# while the fit behind the figure had 12 and 116 -- counts from an older configuration that survived a
+# change of signal definition, truth binning and reco grid.  A caption quoting the real numbers then
+# contradicted the legend on the same page.  Anything countable comes out of the npz.
+BLOCK_COLOR = {"stat": "#b9c6de", "xsec": None, "flux": None, "det": "#1a9e57"}
+
+
+def _blocks(z):
+    """[(key, label, colour)] with every count read from the stored parameter layout."""
+    import collections
+    n = collections.Counter(str(b) for b in z["param_block"])
+    det = float(z["det_prior"])
+    return [("stat", "statistical", BLOCK_COLOR["stat"]),
+            ("xsec", f"cross section ({n['xsec']})", style.C_QE),
+            ("flux", f"flux ({n['flux']}, correlated)", style.C_RES),
+            ("det", f"detector ({n['detector']}, {det:.0%})", BLOCK_COLOR["det"])]
 
 
 def main(label="sec5"):
     style.use()
     z = np.load(style.ALTGEN / f"{label}_unfold.npz", allow_pickle=True)
+    BLOCKS = _blocks(z)
     e = {k: np.asarray(z[f"budget_{k}"]) for k, _l, _c in BLOCKS}
     nt = len(e["stat"])
     x = np.arange(nt)
