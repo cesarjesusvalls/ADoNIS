@@ -41,8 +41,9 @@ import jax.numpy as jnp
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.workflow import selection as SG
-from analysis.paper import info_content as IC
-from analysis.paper import fisher_engine as FE
+from adonis.analysis import binning as IC   # BinSpec/bin_w* -- core copy, was analysis.paper.info_content
+from adonis.stats import fisher as _FI            # vif_from_fisher
+from adonis.stats.gaussian import bin_sigma as _bin_sigma
 from adonis.analysis.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
 from adonis.analysis.sample import AnaSample
 # (the SYST import lived here and was used only in comments; the live sigma policy is cfg.data.sigma)
@@ -467,7 +468,7 @@ class MultiEngine:
             for i, (d, b) in enumerate(zip(s.ds, s.model_blocks(truth))):
                 d["data"] = np.asarray(b)
                 if not syst_only:
-                    d["sigma"] = FE.bin_sigma(d["data"], d["mcerr"], sig.syst)
+                    d["sigma"] = _bin_sigma(d["data"], d["mcerr"], sig.syst)
                     continue
                 # SIGMA IS FROZEN AT NOMINAL, not recomputed at each toy's theta*.  A measurement's
                 # error is a property of the measurement; letting sigma_b = SYST*|model_b(theta*)|
@@ -541,7 +542,7 @@ def fit_subset(g, pnames, cfg, log=None):
     # constrained through a fragile cancellation against the others.  S4_VIF_CUT drops those.
     cut = float(getattr(cfg.fit, "vif_cut", 0) or 0)
     if cut > 0 and "F" in g.files:
-        vif, rmul = FE.vif_from_fisher(np.asarray(g["F"]), np.asarray(g["prior"]))
+        vif, rmul = _FI.vif_from_fisher(np.asarray(g["F"]), np.asarray(g["prior"]))
         drop = [k for k in sub if vif[k] > cut]
         if drop and log:
             for k in drop:

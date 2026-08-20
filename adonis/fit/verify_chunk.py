@@ -34,7 +34,7 @@ def main(argv=None):
     from adonis.reweight import bank_reweight as BR
     from adonis.reweight.reweight_model import nominal_knobs
     from adonis.analysis.knobs import knobs_of, theta_nominal
-    from analysis.paper import info_content as IC
+    from adonis.analysis import binning as IC
 
     log(f"jax {jax.__version__} devices={jax.devices()}")
     cfg = FitConfig.load(a.config)
