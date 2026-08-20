@@ -95,27 +95,10 @@ NB_PER_CM2 = 1e33; A_CH = 13.0
 
 
 # ------------------------------------------------------------------ data loaders ------------------------- #
-def load_cc0pi(obs):
-    """T2K CC0pi-Np STV data (edges, per-bin conv, data[1e-38], cov[1e-38^2]) -- as in tune.py."""
-    r = uproot.open(f"../nuisance/data/T2K/CC0pi/STV/{'dpt' if obs == 'dpt' else 'dat'}Results.root")
-    if obs == "dpt":
-        edges = np.asarray(r["Result"].axis().edges()) * 1000.0             # MeV
-        conv = 1e-33 / 12.0 * 1000.0 * 1e38
-    else:
-        edges = np.asarray(r["Result"].axis().edges())                     # rad
-        conv = 1e-33 / 12.0 * 1e38
-    data = np.asarray(r["Result"].values()) * 1e38
-    cov = np.asarray(r["Covariance_Matrix"].values())
-    return edges, conv, data, cov
+# Measurement-release parsers moved to adonis/measurements/t2k_stv.py.
+from adonis.measurements.t2k_stv import load_cc0pi, load_cc1pi   # noqa: F401
 
 
-def load_cc1pi(name):
-    """T2K CC1pi+Np STV data (edges, data[nb/unit per CH], cov) -- as in make_plots.block_cc1pi_stv."""
-    lines = open(f"../nuisance/data/T2K/CC1pipNp_STV/xsec_{name}.txt").read().splitlines()
-    edges = np.array([float(x) for x in lines[0].split(":")[1].split()])
-    vals = np.array([float(x) for x in lines[1].split(":")[1].split()]); nb = len(vals)
-    cov = np.array([[float(x) for x in lines[3 + i].split()] for i in range(nb)])
-    return edges, vals * NB_PER_CM2 * A_CH, cov * (NB_PER_CM2 * A_CH) ** 2
 
 
 def freeH_offsets(edges_by_name):

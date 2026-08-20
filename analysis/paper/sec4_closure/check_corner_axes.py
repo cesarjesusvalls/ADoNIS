@@ -7,7 +7,6 @@ Result: a corner built on M_A_res [-17.50,+5.40] while the profile said [-5.40,+
 wall test and every crop.  Read-only.
 """
 import sys, glob, numpy as np
-sys.path.insert(0,'/sdf/home/c/cjesus/DIFFGEN/ADoNIS')
 from analysis.paper.sec4_closure.fig_corner_prof import load_views
 lab = sys.argv[1] if len(sys.argv)>1 else 'sec4_P2'
 z = np.load(f'output/altgen/{lab}_profile.npz', allow_pickle=True)

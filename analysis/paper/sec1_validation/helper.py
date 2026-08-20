@@ -396,3 +396,18 @@ def render(spec, show_ratio=True):
     """Dispatch one figure spec (dict, with '_path' injected by make.py) to its render function.
     show_ratio=False renders the ratio-less variant to a *_noratio file (see make.py --no-ratio)."""
     return RENDERERS[spec["render"]](spec, show_ratio=show_ratio)
+
+
+def render_sample(cfg_path, show_ratio=True):
+    """Render the sec1 ADoNIS-vs-ACHILLES figure for a sample config.
+
+    Was AnaSample.plot().  It lived in adonis/analysis/sample.py and imported this module, which made
+    the core depend on one section's figure code; the sample config IS a sec1 spec, so the verb belongs
+    on this side of the boundary.  render_multiobs/render_panels re-load the AnalysisConfig from _path,
+    so one config file still drives both this and AnaSample.gate1().
+    """
+    import yaml
+    from pathlib import Path
+    spec = yaml.safe_load(Path(cfg_path).read_text()) or {}
+    spec["_path"] = str(cfg_path); spec.setdefault("name", Path(cfg_path).stem)
+    return render(spec, show_ratio=show_ratio)

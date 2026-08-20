@@ -20,7 +20,6 @@ measurement error model (central values = GENIE).
 """
 import os, sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 import numpy as np
 import uproot
 import awkward as ak
@@ -210,7 +209,7 @@ def main():
     # Selection + observables factored into extract_cc1pi (single source of truth). Units: nb/unit
     # per CH -- GENIE-C part only; the frozen ADoNIS free-H offset is added by the fit (identically
     # to the model, so H cancels in residuals). load_cc1pi gives T2K edges/cov in nb/CH.
-    from analysis.paper.info_content import load_cc1pi
+    from adonis.measurements.t2k_stv import load_cc1pi
     E1 = extract_cc1pi(E)
     vals1 = E1["vals1"]; per_event_nb_CH = E1["per_event_nb_CH"]
     NAME1 = {"pn": "pN", "dptt": "dpTT", "daT": "daT"}

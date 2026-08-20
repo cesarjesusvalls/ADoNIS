@@ -8,15 +8,16 @@ stdout on the way to writing the file anyway; it is now a refusal, because the m
 downstream figure reads and a NaN row there is indistinguishable from a dial that legitimately has no
 profile.  --allow-partial accepts it knowingly, and marks the product partial.
 """
-import sys, glob
+import os, sys, glob
 from pathlib import Path
 import numpy as np
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from analysis.paper import style
+# ALTGEN was reached via analysis.paper.style purely for a path constant -- the fit layer was
+# importing the PLOTTING module to learn where to write.  Own it here.
+ALTGEN = Path(os.environ.get('ADONIS_OUT', 'output')) / 'altgen'
 from adonis.fit import merge as MG
 
 def main(label="sec4_all16", allow_partial=False):
-    fs = sorted(glob.glob(str(style.ALTGEN / f"{label}_profile_sh*.npz")))
+    fs = sorted(glob.glob(str(ALTGEN / f"{label}_profile_sh*.npz")))
     if not fs:
         raise SystemExit(f"no shards for {label}")
     Z = [np.load(f, allow_pickle=True) for f in fs]
@@ -48,7 +49,7 @@ def main(label="sec4_all16", allow_partial=False):
     if missing:
         rep.error(f"no profile curve for {len(missing)} dial(s): {missing}")
         rep.raise_if_bad(allow_partial)
-    out = style.ALTGEN / f"{label}_profile.npz"
+    out = ALTGEN / f"{label}_profile.npz"
     np.savez(out, **rep.stamp(), subset=sub, pnames=base["pnames"], grid_sigma=base["grid_sigma"],
              grids_sigma=grids, prof_dobj=prof, prof_dchi2=profd, logdet_Vnuis=ldet,
              bfp=base["bfp"],

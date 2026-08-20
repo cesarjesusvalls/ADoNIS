@@ -33,7 +33,6 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
@@ -47,7 +46,7 @@ from adonis.stats.gaussian import bin_sigma as _bin_sigma
 from adonis.analysis.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
 from adonis.analysis.sample import AnaSample
 # (the SYST import lived here and was used only in comments; the live sigma policy is cfg.data.sigma)
-from analysis.paper.beams.beam_fisher import beam_model
+from adonis.analysis.beams import beam_model
 
 MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", "output/altgen/multisample_carbon.npz")
 # Jacobian dial-batch: how many tangents go through ONE vmapped jvp.  Default = all dials in one call.

@@ -12,7 +12,6 @@ is precomputed once (the sampling step) and each fit iteration is a pure reweigh
 """
 import os, sys, time
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))   # repo root (analysis/t2k/differentiability/ -> .)
 import numpy as np, uproot
 import jax
 jax.config.update("jax_enable_x64", True)

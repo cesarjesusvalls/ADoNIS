@@ -14,7 +14,6 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root (analysis/utils/ -> .)
 from adonis.oracle.hepmc import parse_events
 from adonis.oracle.hepmc import hepmc_norm
 

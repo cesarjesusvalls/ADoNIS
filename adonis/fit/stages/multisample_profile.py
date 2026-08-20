@@ -24,7 +24,6 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from adonis.fit.stages.multisample import build_multisample_engine
 from adonis.fit.fitters import logdet_cov, lm_fit, trf_fit
 from adonis.fit import provenance

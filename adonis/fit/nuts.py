@@ -16,7 +16,6 @@ Env: NUTS_SAMPLES, NUTS_WARMUP, NUTS_CHAIN, NUTS_MAXDEPTH, ADONIS_LABEL.
 import os, sys, time
 import pathlib
 import numpy as np
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 MAXDEPTH = 8      # rebound from cfg.stage("nuts")["max_depth"] in run_real()
 

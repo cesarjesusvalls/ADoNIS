@@ -13,7 +13,6 @@ PIDs: proton 2212, neutron 2112, pions {211,111,-211}.
 """
 import os, sys, json, glob
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 import numpy as np
 
 PION_PIDS = (211, 111, -211)
