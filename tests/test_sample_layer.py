@@ -1,7 +1,7 @@
 """One sample layer: the Gate-I Jacobian and the sec4 engine must describe the same stack.
 
 The regression this guards is concrete.  The list of samples used to live in two places -- SAMPLES in
-gate1_multisample.py and a literal list of _bank() calls in physfit/multisample.py -- and the sec4 engine
+the Gate-I builder and a literal list of _bank() calls in the sec4 engine -- and the sec4 engine
 asserts its dskeys against the npz gate1 produced.  Adding the MINERvA CC1pi+ samples meant editing both
 in step; getting it wrong surfaces as an AssertionError several minutes into a GPU job, or (worse) as a
 Jacobian and a fit that quietly describe different data.
@@ -44,7 +44,7 @@ def test_beams_declared_once_and_only_once(cfg, beams):
     for b in cfg.beams:
         assert len(beams["beams"][b]["observables"]) == 2, \
             "beam_jacobian returns exactly two observables per beam (reaction, then the second)"
-    src = pathlib.Path("analysis/paper/gate1_multisample.py").read_text()
+    src = pathlib.Path("adonis/analysis/gate1.py").read_text()   # was analysis/paper/gate1_multisample.py
     assert "BEAM_OBS = {" not in src, "BEAM_OBS is declared in code again; it belongs in beams.yaml"
     assert "SAMPLES = [" not in src, "the sample list is hardcoded again; it belongs in the fit config"
 
