@@ -1,0 +1,86 @@
+# Section 5 -- the unfolding study, at the configuration behind the published figures.
+#
+# This replaces three environment variables read at module import, three positional CLI arguments, and
+# physics constants spread over five modules.  Every value here was previously a source edit, which is
+# why the only record distinguishing one run from another was its LABEL: sec5lep4x, sec5ddxs,
+# sec5pieff, sec5f10 differ in signal definition, pion efficiency and flux prior, and nothing in the
+# saved npz said so.
+#
+# Reproduces sec5f10.
+
+name: sec5_unfold
+
+# ---- what is measured ----------------------------------------------------------------------------- #
+# The TOPOLOGICAL CC0pi signal of T2K:2020sbd -- any number of protons, no angular cut -- NOT the
+# CC0pi-Np TKI signal of t2k_cc0pi.yaml, which requires a 450-1000 MeV/c leading proton.  Running the
+# TKI signal against this binning gave a momentum-dependent deficit against the published values (5.3x
+# below 0.3 GeV/c falling to 1.7x by 0.6) and moved the peak of the spectrum.
+sample: t2k_cc0pi_ddxs
+
+# Assumed DATA exposure, not MC: weights are normalised so the total pre-selection rate is this.  The
+# bank holds ~3.7M true-signal events, so the response is not statistics-limited at this value.
+norm_events: 200000
+
+# ---- detector -------------------------------------------------------------------------------------- #
+# 10% momentum / 5 deg is the working point the lepton binning needs: 54 of the 58 published bins are
+# then wider than their resolution, against ZERO of the STV bins at 20% / 10 deg.
+#
+# pi_eff IS PHYSICS, NOT A DETAIL.  With perfect PID the truth and reco selections of a topological
+# CC0pi sample coincide event for event, purity is exactly 1.0000, and the cross-section knobs -- which
+# reweight only the background -- have nothing to act on: their systematic comes out identically zero.
+# 50% of charged pions below 400 MeV/c going unseen turns true CC1pi events into reco CC0pi ones, which
+# is the dominant background of the real measurement.  Measured: purity 0.9146, 12 dials float.
+detector:
+  sigma_p: 0.10
+  sigma_theta_deg: 5.0
+  pi_eff_p_max: 400.0
+  pi_eff: 0.5
+
+# ---- binning ----------------------------------------------------------------------------------------- #
+# "lep" selects the published T2K staircase: 58 truth bins over 9 cos theta_mu slices, p_mu binned
+# conditionally on the slice because the two are correlated and a rectangular grid built from marginal
+# quantiles empties its corners (measured: 0.0 events in the high-p_mu backward cell, which makes that
+# template identically zero and the fit singular).
+# reco_split: 2 -> 116 reco bins.  The templates carry no prior, so 58 against 58 would leave no margin.
+binning:
+  observables: lep
+  reco_split: 2
+
+# ---- flux ------------------------------------------------------------------------------------------- #
+# 10%: the T2K flux uncertainty after the NA61/SHINE hadron-production constraint is roughly 8-10% near
+# the peak, so the original 20% was a factor ~2 pessimistic and was setting the section's headline
+# number.  Above the detector's 5% on purpose -- a flux parameter moves every bin it touches coherently
+# while the detector dials are independent, so equal nominal widths are not equal constraints.
+flux:
+  sigma: 0.10
+  corr_length: 400.0
+
+# ---- priors ----------------------------------------------------------------------------------------- #
+# dial_threshold is an L2 over the 116 reco bins, so >= 1 means a typical bin moves by ~1/sqrt(116) =
+# 9.3% of its Poisson error -- a weak requirement, which is why 12 of 28 dials pass.  The cut is sharp
+# here (rank 12 is 1.001, rank 13 is 0.983), so "12" is where the threshold lands, not a natural group.
+priors:
+  detector: 0.05
+  dial_threshold: 1.0
+
+# ---- studies ---------------------------------------------------------------------------------------- #
+studies:
+  - {name: asimov}                            # closure: everything must return 1
+  - {name: sig120,   scale_c: 1.20}           # the templates must find it and nothing else may move
+  - {name: flux120,  scale_flux_peak: 1.20}   # separability: flux also scales the signal
+  # 0.15 and 1.15, NOT 0.20/1.20: transcribed from the previous hardcoded studies, where the tilt was
+  # linspace(0.85, 1.15) and combo used c = 1.15.  The first version of this file said 0.20 and the
+  # acceptance diff against sec5f10 caught it -- combo_c_true off by exactly (1.20-1.15)/1.15.
+  - {name: fluxtilt, flux_tilt: 0.15}
+  - {name: combo,    scale_c: 1.15, flux_tilt: 0.15}
+
+# Nested, not stacked: each entry is the error with that block AND all before it enabled, so the
+# increment is what the block costs in the presence of the others.
+budget: [stat, xsec, flux, det]
+
+# ---- figures ---------------------------------------------------------------------------------------- #
+# Stamped into the npz so the plot scripts stay pure npz consumers.  The slices are chosen on measured
+# content: [0.20,0.60] has the best occupancy, [0.94,0.98] the most bins and the widest reach.
+figures:
+  slices: [[0.20, 0.60], [0.94, 0.98]]
+  aspect: 0.5

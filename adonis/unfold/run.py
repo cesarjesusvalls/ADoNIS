@@ -19,8 +19,8 @@ import numpy as np
 from adonis.analysis import knobs as K
 from adonis.analysis.sample import AnaSample
 from adonis.unfold import flux as FX
-from adonis.detector import SmearSpec
-from adonis.unfold.binning import StaircaseGrid, reco_grid, truth_grid
+from adonis.unfold.binning import StaircaseGrid
+from adonis.unfold.config import UnfoldConfig
 
 
 def _grid_arrays(G, tag):
@@ -38,53 +38,67 @@ def _grid_arrays(G, tag):
 from adonis.unfold.build import build
 from adonis.unfold.fit import UnfoldEngine
 
-BUDGET = [("stat", dict(free_flux=False, free_det=False, use_knobs=False)),
-          ("xsec", dict(free_flux=False, free_det=False, use_knobs=True)),
-          ("flux", dict(free_flux=True, free_det=False, use_knobs=True)),
-          ("det", dict(free_flux=True, free_det=True, use_knobs=True))]
+# Which block each budget entry TURNS ON.  The sequence is cumulative -- each fit keeps everything
+# enabled before it -- so the visible increment is what that block costs in the presence of the others,
+# which is the only decomposition whose parts add up to the whole.
+_BUDGET_ENABLE = {"stat": {}, "xsec": {"use_knobs": True},
+                  "flux": {"free_flux": True}, "det": {"free_det": True}}
 
 
-def main(sample="configs/samples/t2k_cc0pi.yaml", label="sec5", norm=50_000, max_chunks=None,
-         threshold=1.0, log=print):
-    s = AnaSample.from_config(sample)
-    # DETECTOR WORKING POINT.  The lepton-kinematics study runs a better detector than the STV one
-    # (10% / 5 deg against 20% / 10 deg): the point of moving observables was that p_mu and
-    # cos theta_mu are directly measured, and pairing them with the coarse STV detector would throw
-    # that away.  Both numbers are stated in the output so a figure can never claim a resolution the
-    # fit did not use.
-    from adonis.unfold.binning import UNFOLD_OBS
-    # pi_eff: 50% of charged pions below 400 MeV/c are missed.  Without it a topological CC0pi sample
-    # has NO background (purity exactly 1.0), the knobs have nothing to reweight, and the cross-section
-    # systematic is identically zero -- so the budget figure would report a term that is missing, not
-    # small.  A missed pion turns a true CC1pi event into a reco CC0pi one, which is the dominant
-    # background of the real measurement.
-    spec = (SmearSpec(sigma_p=0.10, sigma_theta_deg=5.0, pi_eff_p_max=400.0, pi_eff=0.5)
-            if UNFOLD_OBS == "lep" else SmearSpec())
-    inp = build(s.bank, s.cfg.signal, spec=spec, norm_events=norm, max_chunks=max_chunks, log=log)
-    eng = UnfoldEngine(inp)
-    TG, RG = truth_grid(), reco_grid()
+def _budget_sequence(names):
+    """(name, kwargs) per entry, cumulative, with a FRESH dict each time.
+
+    The previous version stored the kwargs in a module-level list and did `kw.pop("use_knobs")`, which
+    mutated that list: a second main() in the same process raised KeyError on the first entry.  Nothing
+    caught it because every run was its own process.
+    """
+    state = dict(free_flux=False, free_det=False, use_knobs=False)
+    for n in names:
+        if n not in _BUDGET_ENABLE:
+            raise ValueError(f"budget: unknown block {n!r}; allowed {sorted(_BUDGET_ENABLE)}")
+        state = {**state, **_BUDGET_ENABLE[n]}
+        yield n, dict(state)
+
+
+def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
+    """Run every study in `config` and persist one npz.  Nothing here reads the environment."""
+    cfg = UnfoldConfig.load(config)
+    label = label or cfg.name
+    s = AnaSample.from_config(cfg.sample_path())
+    spec = cfg.smear_spec()
+    TG, RG = cfg.grids()
+    inp = build(s.bank, s.cfg.signal, spec=spec, norm_events=cfg.norm_events,
+                max_chunks=cfg.max_chunks, log=log, obs_mode=cfg.binning.observables, TG=TG, RG=RG)
+    eng = UnfoldEngine(inp, det_prior=cfg.priors.detector,
+                       flux_sigma=cfg.flux.sigma, flux_corr=cfg.flux.corr_length)
     d0, s0 = eng.asimov()
-    idx, imp = eng.select_dials(s0, threshold=threshold, log=log)
+    idx, imp = eng.select_dials(s0, threshold=cfg.priors.dial_threshold, log=log)
 
-    # PERSIST THE NORMALISATION.  n_true and A are scaled so the pre-selection sample is `norm` events,
+    # PERSIST THE NORMALISATION.  n_true and A are scaled so the pre-selection sample is `norm_events`,
     # which is a display choice, not physics.  Without `scale` stored, the figures cannot get back to
-    # the raw summed w0 and therefore cannot express anything in cross-section units -- the absolute
-    # scale would have to be re-derived from the bank, which is exactly how a plot ends up with a
-    # normalisation nobody can trace.
+    # the raw summed w0 and therefore cannot express anything in cross-section units.
+    #
+    # PERSIST THE CONFIG TOO.  `cfg_json` is the resolved configuration, so a figure -- or anyone
+    # reading the file a year later -- can state the detector, binning, priors and exposure that
+    # produced it without consulting a yaml that may since have changed.  The run label used to be the
+    # only record of what distinguished one npz from another.
     out = dict(A=inp["A"], n_true=inp["n_true"], eff=inp["eff"], purity=inp["purity"],
                norm_scale=inp["scale"], w_total_raw=inp["w_total_raw"], norm_events=inp["norm_events"],
                n_sig_reco=inp["n_sig_reco"], n_bkg_reco=inp["n_bkg_reco"],
                dial_impact=imp, dial_names=np.array(K.PNAMES), dial_idx=idx,
-               obs_mode=UNFOLD_OBS, sigma_p=spec.sigma_p, sigma_theta_deg=spec.sigma_theta_deg,
+               obs_mode=cfg.binning.observables, sigma_p=spec.sigma_p,
+               sigma_theta_deg=spec.sigma_theta_deg, pi_eff=spec.pi_eff,
+               pi_eff_p_max=spec.pi_eff_p_max, cfg_json=cfg.as_json(), cfg_name=cfg.name,
                **_grid_arrays(TG, "true"), **_grid_arrays(RG, "reco"),
-               flux_edges=np.array(FX.FLUX_EDGES), flux_cov=FX.prior_cov(),
+               flux_edges=np.array(cfg.flux.edges if cfg.flux.edges else FX.FLUX_EDGES),
+               flux_cov=FX.prior_cov(cfg.flux.sigma, cfg.flux.corr_length),
                det_prior=eng.det_prior, nflux=eng.nflux)
 
     # PARAMETER LAYOUT of the fitted vector, so the covariance can be read without re-deriving it:
     # [ c (templates) | f (flux) | theta (cross section) | d (detector) ].  Template priors are infinite
     # by construction -- that is what "unconstrained" means, and it is why the flux, which IS penalised,
     # cannot move: the templates absorb the variation for free.
-    pri = np.concatenate([np.full(TG.n, np.inf), np.full(eng.nflux, FX.SIGMA),
+    pri = np.concatenate([np.full(TG.n, np.inf), np.full(eng.nflux, eng.flux_sigma),
                           eng.prior[idx], np.full(eng.nreco, eng.det_prior)])
     out["param_prior"] = pri
     out["param_block"] = np.array(["template"] * TG.n + ["flux"] * eng.nflux
@@ -94,21 +108,21 @@ def main(sample="configs/samples/t2k_cc0pi.yaml", label="sec5", norm=50_000, max
                                  + [K.PNAMES[k] for k in idx]
                                  + [f"d[{i}]" for i in range(eng.nreco)])
 
-    # FLUX INJECTIONS.  Flux and templates both scale the signal, so these are the tests that decide
-    # whether the two blocks are separable at all: a fit that cannot tell them apart will report a
-    # signal excess that is not there, or absorb a real one into the flux.
-    f_peak = np.ones(eng.nflux); f_peak[1:5] = 1.20               # peak bins only, 600-1000 MeV
-    f_tilt = np.linspace(0.85, 1.15, eng.nflux)                   # a SHAPE change, mean ~1
-    studies = {"asimov":  dict(c=np.ones(TG.n)),
-               "sig120":  dict(c=np.full(TG.n, 1.20)),
-               "flux120": dict(c=np.ones(TG.n), f=f_peak),
-               "fluxtilt": dict(c=np.ones(TG.n), f=f_tilt),
-               # the hard one: signal and flux distorted at the same time, in different variables
-               "combo":   dict(c=np.full(TG.n, 1.15), f=f_tilt)}
-    for name, tru in studies.items():
-        ct = tru["c"]; ft = tru.get("f")
+    # FLUX INJECTIONS.  Flux and templates both scale the signal, so these decide whether the two
+    # blocks are separable at all: a fit that cannot tell them apart reports a signal excess that is
+    # not there, or absorbs a real one into the flux.
+    for st in cfg.studies:
+        ct = np.full(TG.n, st.scale_c)
+        ft = None
+        if st.scale_flux_peak != 1.0 or st.flux_tilt:
+            ft = np.ones(eng.nflux)
+            if st.scale_flux_peak != 1.0:
+                ft[1:5] = st.scale_flux_peak                  # peak bins only, 600-1000 MeV
+            if st.flux_tilt:                                  # a SHAPE change, mean ~1
+                ft = ft * np.linspace(1.0 - st.flux_tilt, 1.0 + st.flux_tilt, eng.nflux)
         data, sig = eng.asimov(c_true=ct, f_true=ft)
         r = eng.fit(data, sig, knob_idx=idx, log=log)
+        name = st.name
         out[f"{name}_c"] = r["c"]; out[f"{name}_c_err"] = r["c_err"]
         out[f"{name}_f"] = r["f"]; out[f"{name}_f_err"] = r["f_err"]
         out[f"{name}_det"] = r["det"]; out[f"{name}_det_err"] = r["det_err"]
@@ -121,7 +135,8 @@ def main(sample="configs/samples/t2k_cc0pi.yaml", label="sec5", norm=50_000, max
             log(f"[{name}] chi2 {r['chi2']:.2e}  max|c-truth| {np.abs(r['c'] - ct).max():.2e}")
 
     data, sig = eng.asimov()
-    for name, kw in BUDGET:
+    for name, kw in _budget_sequence(cfg.budget):
+        kw = dict(kw)
         ki = idx if kw.pop("use_knobs") else np.zeros(0, int)
         r = eng.fit(data, sig, knob_idx=ki, log=None, **kw)
         out[f"budget_{name}"] = r["c_err"]
@@ -136,9 +151,8 @@ def main(sample="configs/samples/t2k_cc0pi.yaml", label="sec5", norm=50_000, max
 
 
 if __name__ == "__main__":
-    import sys
-    # norm reachable from the CLI: it sets the assumed DATA exposure (not the MC), so it is the knob
-    # for "what would this measurement look like with N times the statistics" and was previously
-    # editable only by changing the default.
-    a = sys.argv[1:4]
-    main(*(a[:2] or []), **({"norm": int(float(a[2]))} if len(a) > 2 else {}))
+    import argparse
+    ap = argparse.ArgumentParser(description="Run the section-5 unfolding studies from a config.")
+    ap.add_argument("config", nargs="?", default="configs/fits/sec5_unfold.yaml")
+    ap.add_argument("--label", default=None, help="output stem; defaults to the config's name")
+    main(**vars(ap.parse_args()))

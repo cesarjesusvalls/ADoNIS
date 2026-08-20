@@ -31,7 +31,7 @@ from adonis.unfold import flux as FX
 class UnfoldEngine:
     """Everything the fit needs, resident: the response, the background bank, and the priors."""
 
-    def __init__(self, inp, prior_scale=1.0):
+    def __init__(self, inp, prior_scale=1.0, det_prior=0.05, flux_sigma=None, flux_corr=None):
         self.A = np.asarray(inp["A"], float)
         self.n_true_mc = np.asarray(inp["n_true"], float)     # generator truth per bin, the c = 1 reference
         self.bkg_bin = np.asarray(inp["bkg_bin"], np.int64)
@@ -43,8 +43,13 @@ class UnfoldEngine:
         self.bkg_M = inp.get("bkg_M", None)
         if isinstance(self.bkg_M, np.ndarray) and self.bkg_M.dtype == object:
             self.bkg_M = self.bkg_M.item()
-        self.flux_L = FX.prior_chol()                                  # correlated prior, whitened below
-        self.det_prior = 0.05          # per-reco-bin detector normalisation, uncorrelated
+        # PRIOR WIDTHS ARE ARGUMENTS.  These were literals -- 0.05 here, FX.SIGMA inside prior_chol --
+        # so the only way to change the section's dominant systematic was to edit a module, and a saved
+        # npz could not state which width produced it.  None keeps the module default.
+        self.flux_sigma = FX.SIGMA if flux_sigma is None else float(flux_sigma)
+        self.flux_corr = FX.CORR_LENGTH if flux_corr is None else float(flux_corr)
+        self.flux_L = FX.prior_chol(self.flux_sigma, self.flux_corr)   # correlated prior, whitened below
+        self.det_prior = float(det_prior)      # per-reco-bin detector normalisation, uncorrelated
         self.JB = BR.to_jax(inp["bkg_bank"])
         self.grids = BR.default_grids()
         self.nom = nominal_knobs()
