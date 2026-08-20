@@ -28,6 +28,11 @@ from analysis.paper import style
 # up contradicting the caption on the same page.  Deriving them from the npz fixed the staleness but
 # kept the duplication: the counts belong in the caption, stated once, where they can be read alongside
 # everything else about the fit.  A legend only has to say which bar is which.
+ASPECT = 0.5          # 1.0 = one readable row per truth bin; 0.5 = near-square for 58 bins
+# ONE tick-label size for BOTH axes.  The y ticks were overridden to 6.5 to fit 29 labels at full
+# height while x inherited style's 8, so the two axes of the same figure were set in different sizes.
+# With the pitch now adapting to the height there is room for the shared value.
+TICK_FS = 8
 BLOCKS = [("stat", "statistical", "#b9c6de"),
           ("xsec", "cross section", style.C_QE),
           ("flux", "flux", style.C_RES),
@@ -51,25 +56,36 @@ def main(label="sec5"):
     # figure height to separate them; horizontally they collide.  The nesting is unchanged -- each bar's
     # LENGTH is the actual sigma once that block is switched on, so the visible increment is what the
     # block costs and the longest bar is the total.
-    fig = plt.figure(figsize=(4.2, max(3.5, 0.135 * nt + 1.1)))
+    # NEAR-SQUARE.  One row per truth bin at a readable pitch gives ~8.9 in for 58 bins, which is a
+    # column-and-a-half of page for a figure whose message -- which block dominates, and where -- is
+    # legible at half that.  ASPECT sets the trade: the bars get thinner, so the tick pitch has to
+    # thin out with them or the labels collide.
+    height = max(3.2, ASPECT * (0.135 * nt + 1.1))
+    fig = plt.figure(figsize=(4.2, height))
     ax = fig.add_subplot(1, 1, 1)
     for k, lab, col in reversed(BLOCKS):          # longest first, each drawn over the last
         ax.barh(x, e[k], color=col, height=0.74, label=lab, zorder=2)
     ax.set_ylabel("linearised truth bin index")
     ax.set_xlabel(r"$\sigma(c_j)$ with block enabled")
-    # ALWAYS LABEL THE LAST BIN.  Thinning to every second index drops the final one whenever the
-    # count is even (58 cells -> ticks at 0,2,...,56, and bin 57 is drawn but unlabelled), which reads
-    # as a missing bin rather than a missing tick.
-    tk = list(range(0, nt, 2)) if nt > 20 else list(range(nt))
-    if tk[-1] != nt - 1:
-        tk.append(nt - 1)
-    ax.set_yticks(tk)
-    ax.tick_params(axis="y", labelsize=6.5)
+    # ENDPOINTS ONLY.  The figure does not print the binning, so a truth bin index maps to nothing the
+    # reader can look up -- labelling 20 of them implied a correspondence that is not on the page.  The
+    # first and last say how many bins there are, which is the only thing the index axis has to carry
+    # here; the point of the figure is which block dominates, not which cell is which.
+    ax.set_yticks([0, nt - 1])
     ax.invert_yaxis()                              # cell 0 at the top, reading order
+
+    # X KEEPS ITS TICK MARKS, Y DOES NOT.  On x they mark a continuous scale and the reader uses them
+    # to place a bar's length between labels.  On y there is no scale to subdivide -- just two
+    # endpoints on a categorical index -- so a tick mark there points at nothing.  No grid: the spines
+    # already give the reference, and gridlines behind 58 bars add lines faster than readability.
+    # BOTTOM ONLY.  style sets xtick.top=True, so axis="x" puts marks on the top spine too -- a second
+    # copy of the scale along an edge nothing is measured from.
+    ax.tick_params(axis="x", top=False, bottom=True, labelsize=TICK_FS)
+    ax.tick_params(axis="y", length=0, labelsize=TICK_FS)
     h, l = ax.get_legend_handles_labels()
-    ax.legend(h[::-1], l[::-1], frameon=False, fontsize=7, ncol=1, loc="lower right")
+    ax.legend(h[::-1], l[::-1], frameon=False, fontsize=TICK_FS, ncol=1, loc="upper right")
     ax.set_xlim(0, 1.32 * total.max())
-    style.save(fig, f"{label}_figG")
+    style.save(fig, "unfolding_uncertainty_budget")
 
 
 if __name__ == "__main__":

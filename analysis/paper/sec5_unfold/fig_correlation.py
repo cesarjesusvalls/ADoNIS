@@ -130,7 +130,7 @@ def main(label="sec5", study="asimov"):
     fl = [(s, e) for b, s, e in bounds if b == "flux"][0]
     cf = R[ct[0]:ct[1], fl[0]:fl[1]]
 
-    style.save(fig, f"{label}_figI")
+    style.save(fig, "unfolding_param_correlations")
 
 
 if __name__ == "__main__":

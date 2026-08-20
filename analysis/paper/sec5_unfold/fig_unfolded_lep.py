@@ -131,7 +131,12 @@ def main(label="sec5lep"):
     fig.legend(h, lab, frameon=False, fontsize=6.4, ncol=4, loc="upper center",
                bbox_to_anchor=(0.5, 1.045), handlelength=1.9, columnspacing=1.3, borderpad=0.2)
     fig.subplots_adjust(top=0.885, bottom=0.17)
-    style.save(fig, f"{label}_figF")
+    # FIXED NAME, no run label.  The output used to be "{label}_figF" and was renamed by hand when
+    # copied to the paper repo, so the same figure had two names and neither told you what it showed.
+    # Emitting the paper's name directly means the two repositories cannot drift.  A re-run under a
+    # different label overwrites this file, which is the intended behaviour: there is one current
+    # figure, and the label lives in the npz next to the numbers.
+    style.save(fig, "unfolding_example")
 
 
 if __name__ == "__main__":
