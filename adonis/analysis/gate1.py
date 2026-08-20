@@ -76,8 +76,16 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
     F, V, _sig_post, shrink, _reach = gate1_from(J, sigma, K.PRIOR)      # joint Gate I on the FULL stack
 
     ALTGEN.mkdir(parents=True, exist_ok=True)
+    # STAMP THE RESOLVED CONFIG.  sec2 and sec3 read this npz, never the yaml, so without this the
+    # figures cannot state which sample list, chunk caps or syst produced the Jacobian they plot --
+    # and the yaml can change afterwards.  Additive key; every existing key is untouched.
+    import json
+    stamp = json.dumps({"fit_config": str(fit_config), "samples": list(samples),
+                        "beams": list(beams), "nbins": nbins, "syst": syst,
+                        "max_chunks": max_chunks}, sort_keys=True, default=str)
     out = ALTGEN / f"{out_label}.npz"
     np.savez(out, J=J, sigma=sigma, prior=K.PRIOR, pnames=K.PNAMES, dskeys=dskeys, row0=row0,
+             cfg_json=stamp,
              shrink=shrink, F=F, V=V, **edges, **central)
     log(f"[out] {out}")
     log(f"  bins={J.shape[0]}  knobs={J.shape[1]}  observables={len(dskeys)}  "
