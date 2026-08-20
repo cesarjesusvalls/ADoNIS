@@ -31,7 +31,7 @@ from adonis.workflow.config import load_analysis_config   # noqa: E402
 from adonis.workflow import selection as SG                      # noqa: E402
 from adonis.workflow.plotting import make_figure, chi2_ratio_panel   # noqa: E402
 from analysis.paper import style                                 # noqa: E402
-from analysis.paper import plotcache                             # noqa: E402
+from adonis import cache as plotcache                             # noqa: E402
 
 
 def _p(spec):

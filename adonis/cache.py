@@ -1,11 +1,15 @@
-"""On-disk memo for the REDUCED arrays a paper figure plots.  Style only -- no physics.
+"""On-disk memo for an expensive reduction, fingerprinted on its inputs.  No physics.
+
+Was analysis/paper/plotcache.py.  It is a general utility, not a plotting one: adonis.analysis.beams
+caches the per-beam Jacobian through it, which is why the layering test refused the module once
+beam_jacobian moved into the package.  Figures use it too -- that was simply its first caller.
 
 Iterating on plot style was dominated by recomputing physics, not by drawing: fig03 spent 65 s of
 its 74 s re-reducing multi-GB beam banks and re-scanning ACHILLES hepmc TEXT to ~30 numbers per
 curve, then ~1 s drawing them.  That reduction is a pure function of (input files, parameters), so
 it is memoised here and a restyle costs only the import + the draw.
 
-    from analysis.paper import plotcache
+    from adonis import cache as plotcache
     d = plotcache.cached("fig03_pip_Ar",
                          lambda: {"edges": e, "y": y, "yerr": ye},     # -> dict of ndarrays
                          deps=[bank_dir, *hepmc_paths],

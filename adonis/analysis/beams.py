@@ -149,7 +149,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     the cache is also written per-beam as it completes, so a preempted rebuild resumes without redoing the
     beams it already finished.  NB the fingerprint is over INPUT FILES + params, NOT this code -- if
     beam_model's physics changes, force a rebuild with ADONIS_PLOT_REFRESH=1."""
-    from analysis.paper import plotcache
+    from adonis import cache as plotcache
 
     def _compute():
         import jax.numpy as jnp
