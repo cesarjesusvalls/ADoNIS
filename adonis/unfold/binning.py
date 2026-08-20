@@ -22,8 +22,6 @@ need to, because the projections quoted in the paper are taken in TRUTH space.
 """
 from __future__ import annotations
 
-import os
-
 import numpy as np
 
 PI = float(np.pi)
@@ -55,8 +53,8 @@ TRUTH_EDGES = {
     "5x6": ([0.0, 84.4, 127.2, 175.7, 271.3, np.inf],
             [0.0, 0.627, 1.218, 1.745, 2.216, 2.669, PI]),
 }
-TRUTH_GRID = os.environ.get("ADONIS_TRUTH_GRID", "3x3")
-TRUE_DPT, TRUE_DAT = TRUTH_EDGES[TRUTH_GRID]
+DEFAULT_TRUTH = "3x3"
+TRUE_DPT, TRUE_DAT = TRUTH_EDGES[DEFAULT_TRUTH]     # module-level pair, for the rectangular default
 
 
 class Grid2D:
@@ -95,23 +93,30 @@ class Grid2D:
 
 
 # WHICH OBSERVABLE PAIR THE SECTION UNFOLDS.  "stv" is the transverse-kinematic pair the section was
-# built on; "lep" is muon momentum and angle on the published T2K binning.  The switch exists because
+# built on; "lep" is muon momentum and angle on the published T2K binning.  The switch matters because
 # the two behave completely differently under the same detector: delta-p_T is a VECTOR SUM of muon and
 # proton momenta, so it inherits both resolutions and ends up coarser than either, while p_mu and
 # cos theta_mu are measured directly.  Measured on this bank at the section working point, every STV
 # truth bin was narrower than its resolution and 54 of 58 lepton bins are wider than theirs.
-UNFOLD_OBS = os.environ.get("ADONIS_UNFOLD_OBS", "stv")
+#
+# THESE ARE ARGUMENTS, NOT ENVIRONMENT.  They used to be `os.environ.get(...)` evaluated at MODULE
+# IMPORT, which fails in the worst available way: an importer that had not already exported
+# ADONIS_UNFOLD_OBS silently got the STV grid and produced a complete, plausible result on the wrong
+# binning.  Nothing raised, nothing warned, and the only symptom was a 9-cell answer where 58 were
+# wanted.  Import order is not a place to keep physics.
 
 
-def truth_grid():
-    if UNFOLD_OBS == "lep":
+def truth_grid(obs="stv", variant=DEFAULT_TRUTH):
+    """Truth binning.  obs "stv" -> rectangular Grid2D from TRUTH_EDGES[variant]; "lep" -> T2K staircase."""
+    if obs == "lep":
         return t2k_truth_grid()
-    return Grid2D(TRUE_DPT, TRUE_DAT, "truth")
+    return Grid2D(*TRUTH_EDGES[variant], name="truth")
 
 
-def reco_grid():
-    if UNFOLD_OBS == "lep":
-        return t2k_reco_grid(int(os.environ.get("ADONIS_RECO_SPLIT", "2")))
+def reco_grid(obs="stv", split=2):
+    """Reco binning.  `split` subdivides each staircase p_mu bin (lep only); unused for "stv"."""
+    if obs == "lep":
+        return t2k_reco_grid(int(split))
     return Grid2D(RECO_DPT, RECO_DAT, "reco")
 
 

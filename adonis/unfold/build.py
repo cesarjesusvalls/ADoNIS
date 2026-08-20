@@ -41,17 +41,19 @@ from scipy.special import erf
 from adonis.workflow import selection as SG
 
 
-def _obs2(obs):
-    """The unfolded observable pair, per binning.UNFOLD_OBS.
+def _obs2(obs, mode="stv"):
+    """The unfolded observable pair, for `mode`.
 
     "stv" -> (delta-p_T [MeV], delta-alpha_T [rad])
     "lep" -> (p_mu [GeV/c], cos theta_mu).  p_mu is converted from the selection's MeV to the GeV/c of
              the published binning HERE and nowhere else, so there is exactly one place the unit can be
              wrong -- a factor 1000 in a momentum axis would move every event into the first bin and
              still produce a plausible-looking fit.
+
+    `mode` is passed in rather than read from a module global set by the environment at import time:
+    the observable pair and the truth grid have to agree, and a global lets them disagree silently.
     """
-    from adonis.unfold.binning import UNFOLD_OBS
-    if UNFOLD_OBS == "lep":
+    if mode == "lep":
         return (np.asarray(obs["pmu"], dtype=float) / 1000.0,
                 np.asarray(obs["cos_mu"], dtype=float))
     return np.asarray(obs["dpt"], dtype=float), np.asarray(obs["dalphat"], dtype=float)
@@ -75,6 +77,7 @@ def _soft_membership(vals, edges, sigma):
 
 
 def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks=None, log=print,
+          obs_mode="stv",
           TG=None, RG=None, soft_sigma=None, soft_reco=0):
     """Stream `bank_dir` and return the unfolding inputs.
 
@@ -105,10 +108,10 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
     # array per axis, which a staircase grid does not have -- its p_mu edges differ per cos slice.  Fail
     # loudly rather than index the wrong array and return a response matrix that looks fine.
     from adonis.unfold.binning import StaircaseGrid
-    if soft_sigma is not None and isinstance(TG or truth_grid(), StaircaseGrid):
+    if soft_sigma is not None and isinstance(TG or truth_grid(obs_mode), StaircaseGrid):
         raise NotImplementedError("soft_sigma is not supported on a StaircaseGrid truth binning")
-    TG = TG or truth_grid()
-    RG = RG or reco_grid()
+    TG = TG or truth_grid(obs_mode)
+    RG = RG or reco_grid(obs_mode)
     files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
     if max_chunks:
         files = files[:max_chunks]
@@ -134,7 +137,7 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         w_total += w0.sum()
 
         tsel, tobs, _, _ = SG.select_full(B, signal)
-        tdpt, tdat = _obs2(tobs)
+        tdpt, tdat = _obs2(tobs, obs_mode)
         tbin = TG.index(tdpt, tdat)
         # RECO REPLICAS: replica r of chunk ci uses seed offset r, so each is an independent draw of the
         # same detector and the set is still a pure function of (seed, chunk).
@@ -143,7 +146,7 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         for rep in range(nrep):
             Rr = smear_chunk(B, spec, ci * 1000 + rep) if soft_reco else R
             rsel_r, robs_r, _, _ = SG.select_full(Rr, signal)
-            rdpt_r, rdat_r = _obs2(robs_r)
+            rdpt_r, rdat_r = _obs2(robs_r, obs_mode)
             reps.append((rsel_r, RG.index(rdpt_r, rdat_r)))
             del Rr
         rsel, rbin = reps[0]
