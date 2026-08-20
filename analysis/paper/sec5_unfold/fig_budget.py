@@ -28,7 +28,7 @@ from analysis.paper import style
 # up contradicting the caption on the same page.  Deriving them from the npz fixed the staleness but
 # kept the duplication: the counts belong in the caption, stated once, where they can be read alongside
 # everything else about the fit.  A legend only has to say which bar is which.
-ASPECT = 0.5          # 1.0 = one readable row per truth bin; 0.5 = near-square for 58 bins
+ASPECT = 0.5          # fallback; the config's figures.aspect wins.  1.0 = one row per bin
 # ONE tick-label size for BOTH axes.  The y ticks were overridden to 6.5 to fit 29 labels at full
 # height while x inherited style's 8, so the two axes of the same figure were set in different sizes.
 # With the pitch now adapting to the height there is room for the shared value.
@@ -37,6 +37,19 @@ BLOCKS = [("stat", "statistical", "#b9c6de"),
           ("xsec", "cross section", style.C_QE),
           ("flux", "flux", style.C_RES),
           ("det", "detector", "#1a9e57")]
+
+
+def _fig_cfg(z):
+    """The `figures:` block of the config that produced `z`.
+
+    Read from the npz, NOT from the yaml: the figure scripts are pure consumers of a persisted fit --
+    that is what stops a plot disagreeing with the numbers it claims to show -- and a yaml can change
+    after the fit has run.  Older files carry no cfg_json, so the module defaults stand in.
+    """
+    import json
+    if "cfg_json" in z.files:
+        return json.loads(str(z["cfg_json"])).get("figures", {}) or {}
+    return {}
 
 
 def main(label="sec5"):
@@ -60,7 +73,7 @@ def main(label="sec5"):
     # column-and-a-half of page for a figure whose message -- which block dominates, and where -- is
     # legible at half that.  ASPECT sets the trade: the bars get thinner, so the tick pitch has to
     # thin out with them or the labels collide.
-    height = max(3.2, ASPECT * (0.135 * nt + 1.1))
+    height = max(3.2, float(_fig_cfg(z).get("aspect", ASPECT)) * (0.135 * nt + 1.1))
     fig = plt.figure(figsize=(4.2, height))
     ax = fig.add_subplot(1, 1, 1)
     for k, lab, col in reversed(BLOCKS):          # longest first, each drawn over the last
