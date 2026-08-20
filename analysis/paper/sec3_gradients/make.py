@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "altgen"))
 from analysis.paper import style
-from analysis.paper import fisher_engine as FE
+from adonis.stats import fisher as FE
 
 # every observable label carries its EXPERIMENT (+ topology): line 1 = experiment/sample, line 2 = the
 # observable variable (the thin inclusive-multiplicity rows use a compact single-line superscript form).

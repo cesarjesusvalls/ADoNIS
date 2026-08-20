@@ -38,7 +38,7 @@ from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
-from analysis.paper.physical_fit import PRIOR, theta_nominal
+from adonis.analysis.knobs import PRIOR, theta_nominal
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.analysis import knobs as K
 

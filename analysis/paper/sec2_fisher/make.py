@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 from analysis.paper import style
-from analysis.paper import fisher_engine as FE
+from adonis.stats import fisher as FE
 from analysis.paper.sec2_fisher import subsets as SS
 
 plab = style.plab      # knob name -> LaTeX symbol; single-sourced in style.py (identical to sec2's labels)

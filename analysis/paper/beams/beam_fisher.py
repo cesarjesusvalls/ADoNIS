@@ -57,7 +57,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
 
     def _compute():
         import jax.numpy as jnp
-        from analysis.paper import physical_fit as PF
+        from adonis.analysis import knobs as PF
         m = beam_model(beam, nbins=nbins, syst=syst, log=log)
         NPAR = PF.NPAR
         J = np.zeros((2 * nbins, NPAR))
@@ -72,9 +72,9 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
 
 
 def main(syst=0.05, nbins=15):
-    from analysis.paper import physical_fit as PF
+    from adonis.analysis import knobs as PF
     from analysis.paper import style
-    from analysis.paper import fisher_engine as FE
+    from adonis.stats import fisher as FE
     PNAMES = PF.PNAMES
     PRIOR = PF.PRIOR
     NPAR = PF.NPAR
