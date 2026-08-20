@@ -3,8 +3,8 @@ from the AnaSample samples + the FSI beam Jacobians.  A THIN caller: it composes
 core object (adonis.analysis.sample.SampleSet) and stacks the cached beam jvps; no selection/binning lives
 here.  This replaces sec3_gradients/build_multisample.py (the per-sample physfit_*.npz drivers are gone).
 
-    python -m analysis.paper.gate1_multisample                       # full banks (a GPU/big-node job)
-    ADONIS_MS_MAXCHUNKS=4 python -m analysis.paper.gate1_multisample # smoke (subsampled banks)
+    python -m adonis.analysis.gate1                       # full banks (a GPU/big-node job)
+    ADONIS_MS_MAXCHUNKS=4 python -m adonis.analysis.gate1 # smoke (subsampled banks)
 
 dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) + the beam keys (pip_react, ...); sec2/sec3 read them.
 The CH T2K CC1pi+ sample (t2k_cc1pi_ch) is used -- the non-pure-target demonstration.
@@ -19,11 +19,14 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# Was analysis.paper.style.ALTGEN -- the builder reached into the PLOTTING module for its output
+# path.  Same default, owned here.
+ALTGEN = Path(os.environ.get('ADONIS_OUT', 'output')) / 'altgen'
+
 from adonis.analysis.sample import SampleSet, gate1_from     # noqa: E402
 from adonis.analysis import knobs as K                        # noqa: E402
-from analysis.paper.beams import beam_fisher as BF            # noqa: E402
-from analysis.paper import style                              # noqa: E402
+from adonis.analysis import beams as BF   # beam_model/BEAM_DIRS; the figure driver stays on
+                                          # the paper side
 
 # minerva_cc1pip_{tpi,q2} (arXiv:2605.24224) add the RES Q2 lever arm: the RES axial block enters as
 # dipole(Q2; M_A_res) * res_axial_strength, so M_A_res (Q2 SHAPE) and C5A (NORMALISATION) are only
@@ -72,8 +75,8 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
     J = np.vstack(J); sigma = np.concatenate(sigma); row0 = np.asarray(row0)
     F, V, _sig_post, shrink, _reach = gate1_from(J, sigma, K.PRIOR)      # joint Gate I on the FULL stack
 
-    style.ALTGEN.mkdir(parents=True, exist_ok=True)
-    out = style.ALTGEN / f"{out_label}.npz"
+    ALTGEN.mkdir(parents=True, exist_ok=True)
+    out = ALTGEN / f"{out_label}.npz"
     np.savez(out, J=J, sigma=sigma, prior=K.PRIOR, pnames=K.PNAMES, dskeys=dskeys, row0=row0,
              shrink=shrink, F=F, V=V, **edges, **central)
     log(f"[out] {out}")

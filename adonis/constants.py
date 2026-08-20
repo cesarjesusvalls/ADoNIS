@@ -83,3 +83,16 @@ PDG_CHARGED_LEPTONS = frozenset({11, 13, -11, -13})
 PDG_PIONS = frozenset({111, 211, -211})
 PDG_NUCLEONS = frozenset({2112, 2212})
 PDG_MESONS = frozenset({111, 211, -211, 221, 130, 310, 311, 321, -321, -311})
+
+
+# ---- run-mode flags -------------------------------------------------------------------------------- #
+# S4_EB_MIRROR: with the mirror on, the SF response is EVEN in Eb_shift, so negative values denote the
+# same physical shift |Eb| and the fit must NOT be bounded at zero.  TWO modules need this and must
+# agree -- adonis.analysis.knobs (whether Eb_shift is bounded) and adonis.reweight.sf_reweight (whether
+# the response is mirrored).  They each read the environment independently, which is safe only by
+# coincidence of using the same variable name, so the read lives here once.  It sits in constants.py
+# rather than knobs.py because sf_reweight cannot import knobs -- knobs depends on reweight_model.
+#
+# Promoting this to a config field means threading it into sf_reweight, which runs inside jitted code.
+import os as _os
+EB_MIRROR = _os.environ.get("S4_EB_MIRROR", "") == "1"

@@ -86,7 +86,16 @@ def _base(name):
 # With S4_EB_MIRROR=1 the SF response is EVEN in Eb_shift (see sf_reweight), so negative values are
 # meaningful -- they denote the same physical shift |Eb|.  Bounding the fit at zero would then re-impose
 # the very wall the mirroring exists to remove, so Eb_shift becomes unbounded in that mode.
-_MIRRORED = {"Eb_shift"} if os.environ.get("S4_EB_MIRROR", "") == "1" else set()
+# ONE owner for this flag.  It was read from the environment independently HERE and in
+# adonis/reweight/sf_reweight.py, and the two must agree: this file decides whether Eb_shift is bounded
+# at zero, that file decides whether the SF response is even about zero.  Disagreement means the fit is
+# bounded away from values the physics treats as meaningful, or unbounded into values it does not.
+# They happen to agree today only because both read the same variable name.
+#
+# Promoting it to a config field means threading it into sf_reweight, which runs inside jitted code --
+# worth doing, but not as a side effect of a layering cleanup.  Single source now; config later.
+from adonis.constants import EB_MIRROR
+_MIRRORED = {"Eb_shift"} if EB_MIRROR else set()
 
 
 def phys_lo(name):

@@ -134,3 +134,34 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     return dict(w_of=w_of, binned_dev=binned_dev, jvp=jvp, jvpv=jvpv, jvp2=jvp2, jvp3=jvp3, binned=binned, central=central, sigma=sig,
                 mcerr=mcerr, edges=edges, keys=keys, th0=th0, nbins=nbins, n_tried=n_tried,
                 n_events=len(ridx))
+
+
+# beam_jacobian moved here too: adonis.analysis.gate1 -- the Gate-I builder, now core -- calls it to
+# stack the beam half of the Jacobian.  It was left on the paper side as 'figure driver'; that was
+# wrong, and only showed up because the layering test forced the import to be named explicitly.
+def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
+    """(J (2*nbins, NPAR), sigma (2*nbins,), central, edges, n_tried) for one beam bank.  Rows: reaction
+    bins, then the second observable's bins (absorption for pi+, pion production for p/n).  One jax.jvp
+    per knob through the SAME reweight, over beam_model.
+
+    CACHED on disk (plotcache, keyed on the beam bank files + nbins/syst).  The 28-knob jvp over ~12M
+    events is the slow part of every multisample rebuild and only changes when the bank or params change;
+    the cache is also written per-beam as it completes, so a preempted rebuild resumes without redoing the
+    beams it already finished.  NB the fingerprint is over INPUT FILES + params, NOT this code -- if
+    beam_model's physics changes, force a rebuild with ADONIS_PLOT_REFRESH=1."""
+    from analysis.paper import plotcache
+
+    def _compute():
+        import jax.numpy as jnp
+        from adonis.analysis import knobs as PF
+        m = beam_model(beam, nbins=nbins, syst=syst, log=log)
+        NPAR = PF.NPAR
+        J = np.zeros((2 * nbins, NPAR))
+        for k in range(NPAR):
+            g = m["jvp"](m["th0"], jnp.zeros(NPAR).at[k].set(1.0))
+            J[:, k] = m["binned"](g)                                # d sigma_bin / d theta_k (exact)
+        return dict(J=J, sigma=m["sigma"], central=m["central"], edges=m["edges"], n_tried=m["n_tried"])
+
+    d = plotcache.cached(f"beam_jac_{beam}_n{nbins}_s{syst:g}", _compute,
+                         deps=[BEAM_DIRS[beam]], params={"beam": beam, "nbins": nbins, "syst": syst})
+    return d["J"], d["sigma"], d["central"], d["edges"], d["n_tried"]

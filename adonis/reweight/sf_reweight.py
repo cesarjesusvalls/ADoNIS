@@ -81,7 +81,7 @@ def _bspline2d(g, p, E):
 
 
 
-_EB_MIRROR = os.environ.get("S4_EB_MIRROR", "") == "1"   # see the note inside sf_reweight()
+from adonis.constants import EB_MIRROR as _EB_MIRROR   # single owner; see the note there
 
 
 def sf_reweight(grids, p_mag, E_removal, *, kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0, src_tail=1.0,

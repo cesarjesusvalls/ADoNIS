@@ -488,7 +488,7 @@ def build_multisample_engine(log, cfg):
 
     The sample LIST and the chunk caps come from the config -- they used to be a hardcoded list of
     _bank() calls plus four environment variables, which meant adding a sample required editing this
-    file and gate1_multisample.py in step, and a chunk cap could differ between two stages of one run.
+    file and adonis/analysis/gate1.py in step, and a chunk cap could differ between two stages of one run.
     """
     nu_chunks, beam_chunks, e_chunks = cfg.banks.nu_chunks, cfg.banks.beam_chunks, cfg.banks.e_chunks
     log(f"loading banks: nu={nu_chunks}ch minerva={nu_chunks}ch e={e_chunks}ch beams={beam_chunks}ch")
@@ -505,7 +505,7 @@ def build_multisample_engine(log, cfg):
                           signal=s.cfg.signal, cap=(sig_cap or None))
 
     # SAMPLES AND BEAMS FROM THE CONFIG, in config order.  This was a literal list of _bank() calls
-    # that had to be kept in step by hand with SAMPLES in gate1_multisample.py -- adding MINERvA CC1pi+
+    # that had to be kept in step by hand with SAMPLES in adonis/analysis/gate1.py -- adding MINERvA CC1pi+
     # meant editing both.  ORDER STILL MATTERS: it must match the dskeys order in multisample_carbon.npz,
     # which the assertion below enforces, so the config lists experiment samples first and beams last.
     # Electron samples take the (much smaller) e_chunks cap; the rest take nu_chunks.

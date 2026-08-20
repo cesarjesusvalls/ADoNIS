@@ -87,7 +87,7 @@ Sharding note: prefer many 1-core array tasks over one fat process (~13–18× p
 One command builds the object all three sections consume, `output/altgen/multisample_carbon.npz`:
 
 ```bash
-$PCU -u -m analysis.paper.gate1_multisample
+$PCU -u -m adonis.analysis.gate1
 ```
 
 It reads the sample definitions from `configs/samples/*.yaml` through `AnaSample`/`SampleSet` and appends
