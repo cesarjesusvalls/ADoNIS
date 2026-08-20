@@ -67,11 +67,9 @@ def _binidx(mask, vals, edges):
     return sel, bidx, nb
 
 
-def _bin_sigma(central, mcerr, syst):
-    """Diagonal error sigma = sqrt((syst*central)^2 + mcerr^2), empty-bin guarded (var=0 -> inf, so
-    J/sigma = 0 not NaN)."""
-    var = (syst * np.asarray(central)) ** 2 + np.asarray(mcerr) ** 2
-    return np.where(var > 0, np.sqrt(var), np.inf)
+# bin_sigma moved to adonis/stats/gaussian.py -- it had an identical twin in
+# analysis/paper/fisher_engine.py (verified: same AST apart from the docstring).
+from adonis.stats.gaussian import bin_sigma as _bin_sigma
 
 
 def gate1_from(J, sigma, prior):

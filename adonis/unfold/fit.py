@@ -20,6 +20,8 @@ error, and at these occupancies (min 11.5 signal events per bin) that bias is no
 from __future__ import annotations
 
 import numpy as np
+
+from adonis.stats.gaussian import gn_covariance
 from scipy.optimize import least_squares
 
 from adonis.analysis import knobs as K
@@ -228,7 +230,7 @@ class UnfoldEngine:
         r = least_squares(resid, p0, jac=jacf, bounds=(lo, hi), method="trf",
                           xtol=1e-14, ftol=1e-14, gtol=1e-10, max_nfev=max_nfev)
         J = jacf(r.x)
-        cov = np.linalg.pinv(J.T @ J, rcond=1e-12)             # GN covariance; exact at an Asimov minimum
+        cov = gn_covariance(J)                                 # GN covariance; exact at an Asimov minimum
         c, f, th, det = unpack(r.x)
         chi2 = float(np.sum(((self.model(c, f, th, det) - data) / sigma) ** 2))
         err = np.sqrt(np.abs(np.diag(cov)))

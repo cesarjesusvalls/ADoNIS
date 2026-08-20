@@ -55,6 +55,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from adonis.stats.gaussian import gn_covariance
+
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
@@ -352,7 +354,7 @@ class FitKernel:
 
     def covariance_gn(self, J):
         """(J^T J)^-1 from a whitened jacobian -- the Gauss-Newton covariance, free once J exists."""
-        return np.linalg.pinv(J.T @ J, rcond=1e-12)
+        return gn_covariance(J)
 
     def covariance_exact(self, x, batch=None):
         """(H/2)^-1 from the exact Hessian.  For chi2 = ||r||^2, H = 2(J^T J + sum r d2r), so the
