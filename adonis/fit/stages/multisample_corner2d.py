@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from adonis.fit.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
 from adonis.fit.fitters import logdet_cov, lm_fit, trf_fit, parse_inject
 from adonis.fit import provenance
-from analysis.paper.physical_fit import PNAMES
+from adonis.analysis.knobs import PNAMES     # core copy; identical to the paper-side one
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.analysis import knobs as K
 

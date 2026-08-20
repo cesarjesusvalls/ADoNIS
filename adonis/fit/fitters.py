@@ -6,9 +6,7 @@ PHYSFIT_*/ADONIS_* variables AT MODULE LEVEL, so merely importing trf_fit execut
 how a fit layer that is meant to take its parameters from a config kept a live path to the
 environment.  The driver is gone; these are what sections 1-4 use.
 """
-import os, sys, time
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+import os, time
 import numpy as np
 
 from adonis.analysis import knobs as _K   # PHYS_BOUND / clip_phys: one source of truth for bounds
@@ -19,10 +17,13 @@ import jax.numpy as jnp
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
-from analysis.paper import info_content as IC
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from analysis.paper.physical_fit import (SPEC, NPAR, PNAMES, PRIOR, theta_nominal, knobs_of,
-                          build_physfit_datasets, N_BINS, SYST)
+# SPEC and theta_nominal from the CORE copy.  This block used to import nine names from
+# analysis.paper.physical_fit -- SPEC, NPAR, PNAMES, PRIOR, theta_nominal, knobs_of,
+# build_physfit_datasets, N_BINS, SYST -- plus info_content, and used exactly two of them.  The other
+# seven were dead, and each one made the package unimportable without the paper application beside it.
+# Verified before switching: SPEC/NPAR/PNAMES/PRIOR are identical between the two copies, and the two
+# theta_nominal/knobs_of implementations differ only by a docstring and one space.
+from adonis.analysis.knobs import SPEC, theta_nominal
 
 
 

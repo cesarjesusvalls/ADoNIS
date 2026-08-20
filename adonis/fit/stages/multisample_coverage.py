@@ -27,7 +27,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from adonis.fit.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
 from adonis.fit.fitters import lm_fit, trf_fit
-from analysis.paper.physical_fit import PNAMES
+from adonis.analysis.knobs import PNAMES     # core copy; identical to the paper-side one
 from adonis.analysis import knobs as K   # PHYS_BOUND / phys_lo: one source of truth for hard boundaries
 
 

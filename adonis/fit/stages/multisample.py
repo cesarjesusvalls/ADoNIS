@@ -45,7 +45,7 @@ from analysis.paper import info_content as IC
 from analysis.paper import fisher_engine as FE
 from adonis.analysis.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
 from adonis.analysis.sample import AnaSample
-from analysis.paper.physical_fit import SYST                      # env-driven error-model syst (kept)
+# (the SYST import lived here and was used only in comments; the live sigma policy is cfg.data.sigma)
 from analysis.paper.beams.beam_fisher import beam_model
 
 MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", "output/altgen/multisample_carbon.npz")
