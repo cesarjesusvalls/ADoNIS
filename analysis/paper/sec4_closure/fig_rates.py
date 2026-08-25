@@ -167,15 +167,14 @@ def main(label="sec4_P1"):
         fig.supylabel("differential cross-section  (a.u., peak normalised)", fontsize=11, x=0.005)
         # explicit padding: the per-panel titles carry two lines (name + chi2), and at the
         # default pad they collided with the axis above.
-        # STAMP THE MASK ON THE FIGURE.  Two renders that differ only in the sparse-bin cut are visually
-        # near-identical -- the bins that move are low-occupancy tails -- so an unlabelled pair is
-        # indistinguishable and invites comparing the wrong two images.
+        # The mask summary (MC-error cut, live/total bins) used to be stamped across the top of the
+        # figure, where it OVERPRINTED the legend -- one strip of the page was carrying the series key
+        # and the run's provenance at once, and neither read.  It goes to stdout and to the caption
+        # instead; the per-panel "n/N bins" text and the hollow markers still show the cut in place.
         _cut = float(z["mask_mcfrac"]) if "mask_mcfrac" in z.files else float("nan")
         _lv, _tt = int(live.sum()), int(live.size)
-        fig.text(0.5, 0.992,
-                 (f"MC-error cut {_cut:.0%} of central" if _cut == _cut else "MC-error cut: nominal")
-                 + f"   -   {_lv}/{_tt} bins used, {_tt - _lv} masked (open circles)",
-                 ha="center", va="top", fontsize=9.0, color="0.25")
+        print((f"  mask: MC-error cut {_cut:.0%} of central" if _cut == _cut else "  mask: nominal")
+              + f" - {_lv}/{_tt} bins used, {_tt - _lv} masked (open circles)")
         fig.tight_layout(pad=0.9, h_pad=1.0, w_pad=1.1, rect=(0.012, 0, 1, 0.968))
         # Named, not label-tagged, to match closure_demo.  A second study point would overwrite it.
         style.save(fig, "Asimov_xsec_samples")
