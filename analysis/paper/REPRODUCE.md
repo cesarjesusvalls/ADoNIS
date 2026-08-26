@@ -113,7 +113,7 @@ python -m analysis.oracle_tools.combine "output/achilles/nu_T2K_C/*.npz" \
 
 ## 3. Analysis runs
 
-**The Jacobian** (Sec. 3, and the parameter selection used by Sec. 4):
+**The Jacobian** — the gradient-information results, and the parameter selection the fit uses:
 
 ```bash
 python -m analysis.campaign.gate1 --label multisample_carbon
@@ -122,7 +122,8 @@ python -m analysis.campaign.gate1 --label multisample_carbon
 Writes `output/altgen/multisample_carbon.npz`: the stacked per-bin Jacobian over all samples and
 beams, plus the Fisher matrix and the resulting σ_post/σ_prior per parameter.
 
-**The fit** (Sec. 4). One stage per command; all read `configs/fits/sec4_P2.yaml`:
+**The fit** — closure and the four uncertainty constructions.  One stage per command, all
+reading `configs/fits/sec4_P2.yaml`:
 
 ```bash
 for stage in closure profile profile2d gradient2d toys nuts; do
@@ -137,7 +138,7 @@ The expensive stages shard. Pass `--shard k/N` to split the work across jobs —
 python -m analysis.campaign.run configs/fits/sec4_P2.yaml --stage toys --shard 7/40
 ```
 
-**The unfolding** (Sec. 5):
+**The unfolding**:
 
 ```bash
 python -m analysis.campaign.unfold_run configs/fits/sec5_unfold.yaml --label sec5f10
@@ -179,7 +180,8 @@ the paper uses.
 | MicroBooNE CC1p0π (appendix) | `fig10_uboone_cc1p0pi_noratio` | `validation.make --no-ratio fig10` |
 | e4ν (appendix) | `fig0456_e4nu_noratio` | `validation.make --no-ratio fig0456` |
 
-The optimiser comparison quoted in Sec. 4.1 comes from `analysis.benchmarks.bench_fair`; render it
+The optimiser timings quoted in the computational-cost section come from
+`analysis.benchmarks.bench_fair`; render them
 with `python -m analysis.paper.performance.make minimizers`.
 
 ---
