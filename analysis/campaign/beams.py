@@ -1,6 +1,6 @@
 """Tagged-beam samples (pi+/p/n on carbon): the model behind the beam half of the Gate-I stack.
 
-Moved from analysis/paper/beams/beam_fisher.py.  adonis.fit.stages.multisample constructs BeamSample
+Moved from analysis/paper/beams/beam_fisher.py.  analysis.campaign.stages.multisample constructs BeamSample
 from beam_model, so this is sample-layer machinery that happened to live next to the figure that first
 used it.  The Fisher driver and CLI stay on the paper side -- they are a figure, not a sample.
 """
@@ -25,7 +25,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
 
     So model(theta) = binned(w_of(theta)) for ANY theta, using the SAME 28-knob physical_fit basis every
     other sample uses.  beam_jacobian (below) is a thin wrapper over this; the multisample closure engine
-    (adonis.fit.stages.multisample) is the other consumer.  max_chunks caps the loaded statistics."""
+    (analysis.campaign.stages.multisample) is the other consumer.  max_chunks caps the loaded statistics."""
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
@@ -136,7 +136,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
                 n_events=len(ridx))
 
 
-# beam_jacobian moved here too: adonis.analysis.gate1 -- the Gate-I builder, now core -- calls it to
+# beam_jacobian moved here too: analysis.campaign.gate1 -- the Gate-I builder, now core -- calls it to
 # stack the beam half of the Jacobian.  It was left on the paper side as 'figure driver'; that was
 # wrong, and only showed up because the layering test forced the import to be named explicitly.
 def beam_jacobian(beam, nbins=15, syst=0.05, log=print):

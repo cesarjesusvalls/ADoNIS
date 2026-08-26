@@ -44,7 +44,7 @@ HOW THE TIMES ARE COMPARED
   recorded as not reaching it; a failure is never scored as a fast time.
 
 Usage:
-    srun --jobid=<ID> --overlap python -m adonis.fit.bench_fair --sig-cap 60000 --ndials 2,4,8,12,17
+    srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_fair --sig-cap 60000 --ndials 2,4,8,12,17
 """
 from __future__ import annotations
 
@@ -133,7 +133,7 @@ def main(argv=None):
     from adonis.fit.fitters import parse_inject
     from adonis.fit.kernels import FitKernel
     from adonis.fit.minimizers import dist_to, gn_fit, migrad_fit, time_to
-    from adonis.fit.stages import multisample as MS
+    from analysis.campaign.stages import multisample as MS
     from adonis.reweight.reweight_model import nominal_knobs
 
     log(f"jax {jax.__version__}  devices={jax.devices()}  x64={jax.config.jax_enable_x64}")

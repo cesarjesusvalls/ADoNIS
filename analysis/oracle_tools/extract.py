@@ -5,7 +5,7 @@ boilerplate (adonis.oracle.hepmc) is shared; each channel keeps its own
 selection + observable logic verbatim.  cc0pi cuts are parametrized by --experiment (T2K | MINERvA).
 
 Usage:
-  python -m adonis.oracle.extract <channel> <hepmc> [out.npz] [--experiment t2k|minerva] [--seed 0]
+  python -m analysis.oracle_tools.extract <channel> <hepmc> [out.npz] [--experiment t2k|minerva] [--seed 0]
     channel : cc0pi | cc1pi | cc1pi_rich | res_w
 """
 import argparse

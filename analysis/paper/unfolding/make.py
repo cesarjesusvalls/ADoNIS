@@ -6,7 +6,7 @@
 
 The run itself is produced by the core package, not here:
 
-    python -m adonis.unfold.run configs/fits/sec5_unfold.yaml --label sec5cfg
+    python -m analysis.campaign.unfold_run configs/fits/sec5_unfold.yaml --label sec5cfg
 
 which writes output/altgen/<label>_unfold.npz.  These figures are pure consumers of that npz -- every
 physics choice (signal definition, binning, detector model, priors, studies) is in the config, and the

@@ -27,14 +27,14 @@ from pathlib import Path
 
 from adonis.fit.config import FitConfig
 
-# Which module implements each stage.  All of them live in adonis.fit.stages.
+# Which module implements each stage.  All of them live in analysis.campaign.stages.
 STAGE_MODULE = {
-    "closure":    "adonis.fit.stages.multisample",
-    "profile":    "adonis.fit.stages.multisample_profile",
-    "profile2d":  "adonis.fit.stages.multisample_corner2d",
-    "gradient2d": "adonis.fit.stages.multisample_corner2d",
-    "toys":       "adonis.fit.stages.multisample_coverage",
-    "nuts":       "adonis.fit.nuts",
+    "closure":    "analysis.campaign.stages.multisample",
+    "profile":    "analysis.campaign.stages.multisample_profile",
+    "profile2d":  "analysis.campaign.stages.multisample_corner2d",
+    "gradient2d": "analysis.campaign.stages.multisample_corner2d",
+    "toys":       "analysis.campaign.stages.multisample_coverage",
+    "nuts":       "analysis.campaign.nuts_run",
 }
 
 # Per-job values the runner is allowed to set: which slice of the work this process does.  Everything

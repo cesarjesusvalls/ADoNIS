@@ -1,6 +1,6 @@
 """On-disk memo for an expensive reduction, fingerprinted on its inputs.  No physics.
 
-Was analysis/paper/plotcache.py.  It is a general utility, not a plotting one: adonis.analysis.beams
+Was analysis/paper/plotcache.py.  It is a general utility, not a plotting one: analysis.campaign.beams
 caches the per-beam Jacobian through it, which is why the layering test refused the module once
 beam_jacobian moved into the package.  Figures use it too -- that was simply its first caller.
 

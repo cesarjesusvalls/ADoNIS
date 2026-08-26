@@ -28,7 +28,7 @@ EVENT-PASS, which are portable.  Bulk AND tail ESS: a random walk can mix accept
 distribution while barely crossing its quantiles, and interval endpoints are what a physics result
 quotes.
 
-    srun ... python -m adonis.fit.bench_mcmc --ndials 8 --method mh --chain 0
+    srun ... python -m analysis.benchmarks.bench_mcmc --ndials 8 --method mh --chain 0
 """
 from __future__ import annotations
 
@@ -71,12 +71,12 @@ def main(argv=None):
     import dataclasses
     import jax
     from adonis.fit import nuts as NU
-    from adonis.fit.bench_fair import _dial_order, freeze_sample, throw
+    from analysis.benchmarks.bench_fair import _dial_order, freeze_sample, throw
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
     from adonis.fit.kernels import FitKernel
     from adonis.fit.minimizers import gn_fit
-    from adonis.fit.stages import multisample as MS
+    from analysis.campaign.stages import multisample as MS
     from adonis.reweight.reweight_model import nominal_knobs
 
     log(f"jax {jax.__version__} devices={jax.devices()} x64={jax.config.jax_enable_x64}")

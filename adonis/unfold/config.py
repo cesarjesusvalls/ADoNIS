@@ -17,7 +17,7 @@ warning, just a 9-cell answer where 58 were wanted.
 Unknown keys are an ERROR, not a warning, for the same reason FitConfig rejects them: the failure this
 replaces is a run that silently used a default.
 
-    cfg = UnfoldConfig.load("configs/fits/sec5_unfold.yaml")
+    cfg = UnfoldConfig.load("configs/fits/<study>.yaml")
     cfg.smear_spec()      # SmearSpec for the detector block
     cfg.grids()           # (truth_grid, reco_grid)
     cfg.as_dict()         # resolved config, stamped into the npz

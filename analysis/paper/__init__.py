@@ -16,7 +16,7 @@ Every sub-package exposes the SAME entry point, so there is exactly one way to b
                 information comes from).  Both are views of ONE Jacobian.
   inference     fitting and its statistical interpretation: closure, per-sample rates, coverage,
                 and the corner comparison of four constructions of the same uncertainty.
-  unfolding     the unfolding demonstration -- pure consumers of one npz from `adonis.unfold.run`.
+  unfolding     the unfolding demonstration -- pure consumers of one npz from `analysis.campaign.unfold_run`.
   performance   what the derivatives and the hardware actually cost: minimiser scaling with and
                 without gradients, and event-generation throughput on CPU against GPU.
 

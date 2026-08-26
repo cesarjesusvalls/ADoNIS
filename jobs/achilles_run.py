@@ -3,7 +3,7 @@
 analysis/utils/run_achilles.py's `docker run`).
 
 Reuses the tested image/binary selection (`_image_for`) and output-name parsing (`_output_name`) from
-adonis.oracle.run_achilles, and maps each docker image tag to its local .sif:
+analysis.oracle_tools.run_achilles, and maps each docker image tag to its local .sif:
 
     :oracle       -> achilles-oracle.sif        (no-cascade: inclusive, free-nucleon, res1pi, *_nofsi, T2K_H)
     :fullcascade  -> achilles-fullcascade.sif    (in-event QE+RES+FSI: run_T2K_*_fsi)
@@ -29,7 +29,7 @@ import yaml
 
 REPO = Path("/sdf/home/c/cjesus/DIFFGEN/ADoNIS")
 sys.path.insert(0, str(REPO))
-from adonis.oracle.run_achilles import _image_for, _output_name  # tested logic (P4: analysis.utils -> adonis.oracle)
+from analysis.oracle_tools.run_achilles import _image_for, _output_name  # tested logic (P4: analysis.utils -> adonis.oracle)
 
 IMG = "/sdf/data/neutrino/cjesus/software/images"
 SIF = {
@@ -93,7 +93,7 @@ def main():
     ap.add_argument("--nevents", type=int, default=None, help="override NEvents (default: card value)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", required=True, help="output dir (mounted as /out)")
-    ap.add_argument("--extract", help="run adonis.oracle.extract <channel> on the hepmc -> .npz")
+    ap.add_argument("--extract", help="run analysis.oracle_tools.extract <channel> on the hepmc -> .npz")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
@@ -153,7 +153,7 @@ def main():
     print(f"{'OK' if ok else 'FAIL'} rc={rc} -> {hp}  (log {log})", flush=True)
     if ok and a.extract:
         npz = str(hp).replace(".hepmc", ".npz")
-        r = subprocess.run([sys.executable, "-m", "adonis.oracle.extract", a.extract, str(hp), npz],
+        r = subprocess.run([sys.executable, "-m", "analysis.oracle_tools.extract", a.extract, str(hp), npz],
                            cwd=str(REPO))
         print(f"extract[{a.extract}] rc={r.returncode} -> {npz}", flush=True)
         ok = ok and r.returncode == 0

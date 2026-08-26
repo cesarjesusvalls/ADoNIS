@@ -56,3 +56,31 @@ def test_package_does_not_patch_sys_path(path):
         f"{path.relative_to(PKG)} patches sys.path at line(s) {offending}.  "
         "If an import needs this, the import is wrong."
     )
+
+
+# --------------------------------------------------------------------------------------------------
+# The package must not carry this project's campaign with it.  These three patterns are how the paper
+# leaked in the first time: an env var naming a shard, a config path naming a study point, and a
+# hardcoded artefact directory.  A module that needs any of them is a driver, and drivers live in
+# analysis/.
+CAMPAIGN_ENV = ("S4_", "PHYSFIT_", "ALTGEN_", "NUTS_")
+
+
+@pytest.mark.parametrize("path", PY_FILES, ids=lambda p: str(p.relative_to(PKG)))
+def test_package_reads_no_campaign_env(path):
+    src = path.read_text()
+    bad = [f"{p}*" for p in CAMPAIGN_ENV if f'"{p}' in src or f"'{p}" in src]
+    assert not bad, (f"{path.relative_to(PKG)} references campaign environment variables {bad}. "
+                     "Per-run values belong in a config the caller passes, or in analysis/.")
+
+
+@pytest.mark.parametrize("path", PY_FILES, ids=lambda p: str(p.relative_to(PKG)))
+def test_package_names_no_study_point(path):
+    """No module may hardcode a path into this paper's config or output tree."""
+    src = path.read_text()
+    # The directory CONVENTION is fine to mention; naming a study point in it is not, and neither is
+    # the artefact tree.  `configs/fits/<study>.yaml` documents the shape; `configs/fits/sec4_P1.yaml`
+    # wires the package to one run of one paper.
+    bad = [s for s in ("configs/fits/sec", "output/altgen") if s in src]
+    assert not bad, (f"{path.relative_to(PKG)} hardcodes {bad}. The package should take paths from "
+                     "its caller; naming this campaign's files makes it unusable for another.")

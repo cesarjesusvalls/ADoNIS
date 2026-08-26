@@ -30,7 +30,7 @@ so it is directly comparable to the 1-sigma scale of Delta chi2 = 1.  If A and B
 route is vindicated and the O(n^2) one is simply waste; if they do not, that is a correctness finding
 about the corner scans, not a benchmark.
 
-    srun ... python -m adonis.fit.bench_laplace --sig-cap 60000 --nodes 4
+    srun ... python -m analysis.benchmarks.bench_laplace --sig-cap 60000 --nodes 4
 """
 from __future__ import annotations
 
@@ -70,12 +70,12 @@ def main(argv=None):
     import jax
     from iminuit import Minuit
 
-    from adonis.fit.bench_fair import _dial_order, freeze_sample, throw
+    from analysis.benchmarks.bench_fair import _dial_order, freeze_sample, throw
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
     from adonis.fit.kernels import FitKernel
     from adonis.fit.minimizers import gn_fit
-    from adonis.fit.stages import multisample as MS
+    from analysis.campaign.stages import multisample as MS
     from adonis.reweight.reweight_model import nominal_knobs
 
     log(f"jax {jax.__version__} devices={jax.devices()} x64={jax.config.jax_enable_x64}")

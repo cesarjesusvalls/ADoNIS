@@ -25,7 +25,7 @@ mode through the same binning; agreement with a finite difference tests both of 
 function itself, which is the only check that would catch a binning map that is consistently wrong.
 
 Usage:
-    srun --jobid=<ID> --overlap python -m adonis.fit.verify_kernels [config] [--sig-cap N]
+    srun --jobid=<ID> --overlap python -m analysis.benchmarks.verify_kernels [config] [--sig-cap N]
 """
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def main(argv=None):
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
     from adonis.fit.kernels import FitKernel
-    from adonis.fit.stages import multisample as MS
+    from analysis.campaign.stages import multisample as MS
     from adonis.reweight.reweight_model import nominal_knobs
 
     # AFTER the imports: x64 is enabled by them, so reading the flag first would report False and the

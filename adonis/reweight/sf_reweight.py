@@ -95,7 +95,7 @@ def sf_reweight(grids, p_mag, E_removal, *, kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0
     #                      flat there and the gradient vanishes: an absorbing region a minimiser cannot
     #                      climb out of.  Since Eb_shift's nominal IS its floor (_EB_EPS = 0.01), every
     #                      fit starts on that edge, which is the documented failure mode.
-    #   mirror (S4_EB_MIRROR=1)  S(., E - |Eb|) -- the response is EVEN about zero, so below the boundary
+    #   mirror (ADONIS_EB_MIRROR=1)  S(., E - |Eb|) -- the response is EVEN about zero, so below the boundary
     #                      the gradient points back toward it with the right magnitude and the minimiser
     #                      is pushed out instead of stalling.  This is what T2K does for parameters whose
     #                      prior central value sits on a physical boundary (arXiv:2606.14015): "the

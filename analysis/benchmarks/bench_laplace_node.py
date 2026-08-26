@@ -16,7 +16,7 @@ rather than scaling the free-parameter HESSE number by hand, because fixing a di
 dimension (n-1, not n) and moves the point at which the Hessian is taken.
 
 Usage:
-    srun --jobid=<ID> --overlap python -m adonis.fit.bench_laplace_node [--sig-cap N] [--nodes K]
+    srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_laplace_node [--sig-cap N] [--nodes K]
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ import time
 
 import numpy as np
 
-from adonis.fit.bench_minimizers import _bounds
+from analysis.benchmarks.bench_minimizers import _bounds
 
 # The 1-D and 2-D profile scans this feeds, for the extrapolation at the end.
 N_NODES_1D = 221      # 17 dials x 13 grid nodes  (grids_sigma in sec4_P1_profile.npz)
@@ -54,7 +54,7 @@ def main(argv=None):
 
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject, trf_fit
-    from adonis.fit.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
+    from analysis.campaign.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
     from adonis.reweight.reweight_model import nominal_knobs
 
     cfg = FitConfig.load(a.config)

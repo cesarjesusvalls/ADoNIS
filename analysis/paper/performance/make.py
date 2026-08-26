@@ -6,7 +6,7 @@
 Two claims, two figures, both from artefacts the core package writes:
 
   minimizers   what gradients buy the OPTIMISER.  Reads output/altgen/bench_fair_*.npz, produced by
-               `python -m adonis.fit.bench_fair` -- Gauss-Newton against MIGRAD with and without a
+               `python -m analysis.benchmarks.bench_fair` -- Gauss-Newton against MIGRAD with and without a
                supplied gradient, over a grid of dial counts and statistical realisations.
   generation   what a GPU buys EVENT GENERATION.  Reads the `stage_seconds` block that
                adonis.workflow.generate_bank writes into every bank manifest, so the inputs are real

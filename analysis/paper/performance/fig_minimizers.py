@@ -1,6 +1,6 @@
 """Minimiser cost with and without gradients: Gauss--Newton against MIGRAD.
 
-Reads the workload surface written by `python -m adonis.fit.bench_fair` (output/altgen/bench_fair_*.npz),
+Reads the workload surface written by `python -m analysis.benchmarks.bench_fair` (output/altgen/bench_fair_*.npz),
 whose `rows` is one record per (n dials, statistical realisation, method) with the wall time and the
 number of full passes over the resident events.
 

@@ -10,7 +10,7 @@ Batches are tried UPWARD.  A device OOM poisons the CUDA context ("Recorded comm
 so anything attempted after a failure is unreliable; going up means the failure is the last thing that
 happens and everything reported before it was genuinely built.
 
-    srun ... python -m adonis.fit.probe_batch --sig-cap 250000 [--ndials 17]
+    srun ... python -m analysis.benchmarks.probe_batch --sig-cap 250000 [--ndials 17]
 """
 from __future__ import annotations
 import argparse, dataclasses, gc, sys, time
@@ -34,8 +34,8 @@ def main(argv=None):
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
     from adonis.fit.kernels import FitKernel
-    from adonis.fit.bench_fair import _dial_order, freeze_sample
-    from adonis.fit.stages import multisample as MS
+    from analysis.benchmarks.bench_fair import _dial_order, freeze_sample
+    from analysis.campaign.stages import multisample as MS
     from adonis.reweight.reweight_model import nominal_knobs
 
     log(f"jax {jax.__version__} devices={jax.devices()} x64={jax.config.jax_enable_x64}")

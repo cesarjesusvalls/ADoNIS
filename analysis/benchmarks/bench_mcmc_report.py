@@ -16,7 +16,7 @@ Only then the efficiency table, and it separates:
   ESS per EVENT-PASS         portable across hardware AND model implementations; the unit the optimiser
                              report uses, so the two studies can be read together
 
-    python -m adonis.fit.bench_mcmc_report [--glob 'output/altgen/mcmc_*.npz']
+    python -m analysis.benchmarks.bench_mcmc_report [--glob 'output/altgen/mcmc_*.npz']
 """
 from __future__ import annotations
 

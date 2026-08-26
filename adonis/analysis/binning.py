@@ -1,7 +1,7 @@
 """The binning primitive: per-event weights -> per-bin observables, for every sample type.
 
 Moved verbatim out of analysis/paper/info_content.py.  It lived in the application layer while
-adonis.fit.stages.multisample, adonis.fit.verify_chunk and the Fisher machinery all imported it, which
+analysis.campaign.stages.multisample, analysis.benchmarks.verify_chunk and the Fisher machinery all imported it, which
 is what made the package unusable without the paper application beside it.  Nothing here references any
 of that module's globals -- the study-basis PSETS, its argv parsing, its figure code -- so the move is
 an extraction, not a rewrite.

@@ -1,6 +1,6 @@
 """Fit and uncertainty machinery: one config, one entry point.
 
-    python -m adonis.fit configs/fits/sec4_P1.yaml --stage profile2d --shard 3/36
+    python -m adonis.fit configs/fits/<study>.yaml --stage profile2d --shard 3/36
 
   config   FitConfig -- the typed run definition (configs/fits/*.yaml)
   stages   the closure fit and the uncertainty estimators

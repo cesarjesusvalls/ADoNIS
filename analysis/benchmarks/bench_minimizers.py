@@ -26,7 +26,7 @@ not a spread in results; the script asserts the results are in fact identical ac
 median and min-max of the wall time.  Anything else would be a bug in the timing, not physics.
 
 Usage:
-    srun --jobid=<ID> --overlap python -m adonis.fit.bench_minimizers [config] [--reps N] [--methods ...]
+    srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_minimizers [config] [--reps N] [--methods ...]
 """
 from __future__ import annotations
 
@@ -153,7 +153,7 @@ def main(argv=None):
     # ---- setup: banks, closure data, dial subset.  NONE of this is timed. ------------------------- #
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
-    from adonis.fit.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
+    from analysis.campaign.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
     from adonis.reweight.reweight_model import nominal_knobs
 
     cfg = FitConfig.load(a.config)
@@ -226,7 +226,7 @@ def main(argv=None):
     # Every check below failed silently at least once during development, so each one is now asserted
     # rather than assumed, and the configuration that produced a number is printed beside it.
     import os as _os
-    from adonis.fit.stages import multisample as _MS
+    from analysis.campaign.stages import multisample as _MS
     audit, fatal = {}, []
 
     # (1) BINNING PATH.  GN reaches the model through eng.model/eng.jac; MIGRAD through model_blocks_jax.

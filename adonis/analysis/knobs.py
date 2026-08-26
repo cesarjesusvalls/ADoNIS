@@ -83,7 +83,7 @@ def _base(name):
     return name.split("[", 1)[0]
 
 
-# With S4_EB_MIRROR=1 the SF response is EVEN in Eb_shift (see sf_reweight), so negative values are
+# With ADONIS_EB_MIRROR=1 the SF response is EVEN in Eb_shift (see sf_reweight), so negative values are
 # meaningful -- they denote the same physical shift |Eb|.  Bounding the fit at zero would then re-impose
 # the very wall the mirroring exists to remove, so Eb_shift becomes unbounded in that mode.
 # ONE owner for this flag.  It was read from the environment independently HERE and in

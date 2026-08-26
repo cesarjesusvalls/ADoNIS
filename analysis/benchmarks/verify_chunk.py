@@ -10,7 +10,7 @@ still returns a plausible number, it is just wrong for some events.  So this com
   2. the BINNED model through the real BinSpec, chunked vs unchunked
   3. wall time per model evaluation as a function of chunk size -- the cost of the extra dispatches
 
-Usage:  srun ... python -m adonis.fit.verify_chunk [--sig-cap N] [--chunks 20000,50000,0]
+Usage:  srun ... python -m analysis.benchmarks.verify_chunk [--sig-cap N] [--chunks 20000,50000,0]
 """
 from __future__ import annotations
 import argparse, sys, time
@@ -30,7 +30,7 @@ def main(argv=None):
     import dataclasses, jax, jax.numpy as jnp
     from adonis.fit.config import FitConfig
     from adonis.fit.kernels import bank_windows, bank_weight_window
-    from adonis.fit.stages import multisample as MS
+    from analysis.campaign.stages import multisample as MS
     from adonis.reweight import bank_reweight as BR
     from adonis.reweight.reweight_model import nominal_knobs
     from adonis.analysis.knobs import knobs_of, theta_nominal

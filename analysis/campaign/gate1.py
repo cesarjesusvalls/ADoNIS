@@ -1,10 +1,10 @@
 """Assemble output/altgen/multisample_carbon.npz -- the shared sec2 (Fisher) + sec3 (gradient) input --
 from the AnaSample samples + the FSI beam Jacobians.  A THIN caller: it composes the samples through the
-core object (adonis.analysis.sample.SampleSet) and stacks the cached beam jvps; no selection/binning lives
+core object (analysis.campaign.sample.SampleSet) and stacks the cached beam jvps; no selection/binning lives
 here.  This replaces grad_info/build_multisample.py (the per-sample physfit_*.npz drivers are gone).
 
-    python -m adonis.analysis.gate1                       # full banks (a GPU/big-node job)
-    ADONIS_MS_MAXCHUNKS=4 python -m adonis.analysis.gate1 # smoke (subsampled banks)
+    python -m analysis.campaign.gate1                       # full banks (a GPU/big-node job)
+    ADONIS_MS_MAXCHUNKS=4 python -m analysis.campaign.gate1 # smoke (subsampled banks)
 
 dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) + the beam keys (pip_react, ...); sec2/sec3 read them.
 The CH T2K CC1pi+ sample (t2k_cc1pi_ch) is used -- the non-pure-target demonstration.
@@ -23,9 +23,9 @@ import numpy as np
 # path.  Same default, owned here.
 ALTGEN = Path(os.environ.get('ADONIS_OUT', 'output')) / 'altgen'
 
-from adonis.analysis.sample import SampleSet, gate1_from     # noqa: E402
+from analysis.campaign.sample import SampleSet, gate1_from     # noqa: E402
 from adonis.analysis import knobs as K                        # noqa: E402
-from adonis.analysis import beams as BF   # beam_model/BEAM_DIRS; the figure driver stays on
+from analysis.campaign import beams as BF   # beam_model/BEAM_DIRS; the figure driver stays on
                                           # the paper side
 
 # minerva_cc1pip_{tpi,q2} (arXiv:2605.24224) add the RES Q2 lever arm: the RES axial block enters as

@@ -5,14 +5,14 @@ the two do not see the same sample.  The engine caps selected events per sample 
 sec4_P1) while the Jacobian streams the whole bank, so the same 5% cut drops 4 bins on the Jacobian and
 43 in the fit.  Recomputing it downstream produces a figure that looks masked and is not.
 
-    python -m adonis.fit.dump_live_mask [config]   ->  output/altgen/sec4_live_mask.npz
+    python -m analysis.benchmarks.dump_live_mask [config]   ->  output/altgen/sec4_live_mask.npz
 
 Read by analysis/paper/grad_info/make.py.  Re-run whenever the sample list, the bank caps or
 data.sigma.mask_mcfrac change.
 """
 import numpy as np
 from adonis.fit.config import FitConfig
-from adonis.fit.stages.multisample import build_multisample_engine
+from analysis.campaign.stages.multisample import build_multisample_engine
 import sys
 cfg = FitConfig.load(sys.argv[1] if len(sys.argv) > 1 else "configs/fits/sec4_P1.yaml")
 eng = build_multisample_engine(lambda m: None, cfg)

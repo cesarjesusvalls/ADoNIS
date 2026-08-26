@@ -21,7 +21,7 @@ internally.  Timing rules are bench_minimizers': only the minimisation is clocke
 compiled and warmed outside it, and each dial count gets its own compiled objectives.
 
 Usage:
-    srun --jobid=<ID> --overlap python -m adonis.fit.bench_scaling --sig-cap 60000 --dials 4,8,12,17
+    srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_scaling --sig-cap 60000 --dials 4,8,12,17
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ import time
 
 import numpy as np
 
-from adonis.fit.bench_minimizers import _bounds, _gn, _migrad
+from analysis.benchmarks.bench_minimizers import _bounds, _gn, _migrad
 
 
 def main(argv=None):
@@ -59,7 +59,7 @@ def main(argv=None):
 
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
-    from adonis.fit.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
+    from analysis.campaign.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
     from adonis.reweight.reweight_model import nominal_knobs
 
     cfg = FitConfig.load(a.config)

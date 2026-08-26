@@ -1,7 +1,7 @@
 """Parsers for published measurement releases (T2K STV, via the NUISANCE data tree).
 
 Format knowledge -- a ROOT histogram layout, a text covariance layout -- which the fit layer needs to
-build real-data fits (adonis.fit.stages.build_fakedata already loads CC1pi from here).  It belongs in
+build real-data fits (analysis.campaign.stages.build_fakedata already loads CC1pi from here).  It belongs in
 the package for the same reason the fit does; what does NOT belong in the package is an assumption
 about where the files sit on disk, so the data root is a parameter with the previous hardcoded relative
 path as its default.

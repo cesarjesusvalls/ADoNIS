@@ -19,7 +19,7 @@ analytic censoring rate P(e + N(0,sigma_post) < lo) averaged over the thrown tru
 are separated rather than conflated.
 
 Usage:
-    srun --jobid=<ID> --overlap python -m adonis.fit.bench_tol_boundary [config] \
+    srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_tol_boundary [config] \
         [--toys N] [--tols 0.1,0.01,1e-3] [--noise] [--sig-cap N]
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ def _throw(eng, subset, real_prior, rng, wall_dial=EB):
     """
     # Imported here rather than at module scope: the stages package pulls in jax and the
     # bank machinery, which this module's --help must not pay for.
-    from adonis.fit.stages.multisample_coverage import _throw_truth
+    from analysis.campaign.stages.multisample_coverage import _throw_truth
     star = _throw_truth(eng, subset, real_prior, rng)
     k = eng.pnames.index(wall_dial)
     lo = K.phys_lo(wall_dial)
@@ -110,8 +110,8 @@ def main(argv=None):
     import dataclasses
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import trf_fit
-    from adonis.fit.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
-    from adonis.fit.bench_minimizers import _bounds, _migrad
+    from analysis.campaign.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
+    from analysis.benchmarks.bench_minimizers import _bounds, _migrad
     from adonis.fit.fitters import parse_inject
     from adonis.reweight.reweight_model import nominal_knobs
 

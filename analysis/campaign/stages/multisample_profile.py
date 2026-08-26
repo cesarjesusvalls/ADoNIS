@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from adonis.fit.stages.multisample import build_multisample_engine
+from analysis.campaign.stages.multisample import build_multisample_engine
 from adonis.fit.fitters import logdet_cov, lm_fit, trf_fit
 from adonis.fit import provenance
 from adonis.analysis.knobs import PNAMES     # core copy; identical to the paper-side one

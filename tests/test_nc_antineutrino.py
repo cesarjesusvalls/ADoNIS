@@ -90,7 +90,7 @@ def test_the_nc_fsi_card_name_routes_correctly_and_the_obvious_name_does_not():
     latent bug or those cards are simply never driven through this runner is NOT established here,
     so it is recorded in the plan rather than asserted as a test.
     """
-    from adonis.oracle.run_achilles import _image_for
+    from analysis.oracle_tools.run_achilles import _image_for
     good_img, good_native, _ = _image_for("run_MicroBooNE_Ar_fsi_nc")
     bad_img, bad_native, _ = _image_for("run_MicroBooNE_Ar_nc_fsi")
     assert good_img == "achilles:fullcascade" and good_native, \
@@ -100,7 +100,7 @@ def test_the_nc_fsi_card_name_routes_correctly_and_the_obvious_name_does_not():
 
 
 def test_the_nc_cards_route_to_the_no_cascade_oracle():
-    from adonis.oracle.run_achilles import _image_for
+    from analysis.oracle_tools.run_achilles import _image_for
     for stem in ("run_freenucleon_nc_res_H", "run_freenucleon_nc_res_N",
                  "run_freenucleon_nc_qe_H", "run_freenucleon_nc_qe_N"):
         image, native, entry = _image_for(stem)

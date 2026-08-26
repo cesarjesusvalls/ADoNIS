@@ -1,4 +1,4 @@
-"""Typed fit configuration, loaded from `configs/fits/*.yaml`.
+"""Typed fit configuration, loaded from YAML.
 
 ONE object describes a run: which samples, what data, how to fit it, and which uncertainties to compute.
 Everything a stage needs comes from here -- no stage reads the environment.
@@ -7,7 +7,7 @@ The schema is deliberately small and closed.  Unknown keys are an error, not a w
 replaces is a run that silently used a default because a variable was set in three job scripts and
 missing from the fourth (the 2-D corner ran MAP while everything else ran MLE for exactly that reason).
 
-    cfg = FitConfig.load("configs/fits/sec4_P1.yaml")
+    cfg = FitConfig.load("<study>.yaml")
     cfg.inject_string()        # the PHYSFIT_INJECT form parse_inject expects
     cfg.stage("profile2d")     # one uncertainty block by name
 """

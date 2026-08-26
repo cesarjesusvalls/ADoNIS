@@ -6,7 +6,7 @@
 
 Both figures are views of ONE object: the 28-knob Jacobian in output/altgen/<label>.npz, produced by
 
-    python -m adonis.analysis.gate1
+    python -m analysis.campaign.gate1
 
 `fisher` (constraints_per_subset) asks which knobs the data can constrain, per sample subset;
 `gradients` (multisample_grad_per_bin) shows where in the binned spectra each constrainable knob pulls.

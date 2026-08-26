@@ -9,7 +9,7 @@ does not have, so the min-max across seeds is carried alongside every median.
 Asimov is reported separately and never pooled with the noise cells: on a perfect closure the dropped
 term vanishes and Gauss-Newton *becomes* Newton, so mixing the two would flatter it.
 
-    python -m adonis.fit.bench_report [--glob output/altgen/bench_fair_amp_N*.npz]
+    python -m analysis.benchmarks.bench_report [--glob output/altgen/bench_fair_amp_N*.npz]
 """
 from __future__ import annotations
 import argparse, glob as globmod, sys

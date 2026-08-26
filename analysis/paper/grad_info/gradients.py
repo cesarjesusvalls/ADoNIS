@@ -117,7 +117,7 @@ def main(label="multisample_carbon"):
 
     # mcerr is RECOVERED from what the npz already stores rather than requiring a rebuild:
     #     sigma = sqrt((syst*central)^2 + mcerr^2)   =>   mcerr = sqrt(sigma^2 - (syst*central)^2)
-    # (adonis.analysis.sample._bin_sigma / fisher_engine.bin_sigma).  Exact, not an approximation.  An
+    # (analysis.campaign.sample._bin_sigma / fisher_engine.bin_sigma).  Exact, not an approximation.  An
     # observable with no stored central -- the beam blocks -- keeps all its bins: it has no MC error to
     # test, and inventing one would silently drop bins for the wrong reason.
     sig_all = np.asarray(sigma, float)

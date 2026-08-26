@@ -81,5 +81,5 @@ def weight_to_nb_of(npz):
     convert ACHILLES event weights to nb -- no hardcoded constants)."""
     if "weight_to_nb" not in npz.files:
         raise KeyError("ACHILLES npz lacks 'weight_to_nb' (GenCrossSection/sum_w from the hepmc header); "
-                       "re-extract with python -m adonis.oracle.extract")
+                       "re-extract with python -m analysis.oracle_tools.extract")
     return float(np.asarray(npz["weight_to_nb"]))

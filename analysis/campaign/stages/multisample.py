@@ -1,7 +1,7 @@
 """Section 4 (closure) over the SAME dials + samples as sections 2/3.
 
 Section 2 (Fisher/Gate-I) and section 3 (per-bin gradients) both read ONE stacked-Jacobian object,
-`output/altgen/multisample_carbon.npz` (built by `python -m adonis.analysis.gate1`):
+`output/altgen/multisample_carbon.npz` (built by `python -m analysis.campaign.gate1`):
 
   * 16 DIALS  -- the knobs with combined marginalized shrinkage < 0.5 (Gate I).
   * 20 SAMPLE blocks -- T2K CC0pi/CC1pi STV+muon (7) + MINERvA CC0pi-Np STV (3) + MINERvA qelike pT/p||
@@ -20,7 +20,7 @@ Every sample shares the one 28-knob `physical_fit` basis (`theta_nominal`/`knobs
 `bank_reweight.bank_weight` for the nu/electron banks and `cascade.pool_fsi_reweight` for the beams (via
 `beams.beam_fisher.beam_model`) -- both pure-JAX and differentiable, so the per-knob Jacobian is exact.
 
-    python -m adonis.fit.stages.multisample            # closure at the default injection
+    python -m analysis.campaign.stages.multisample            # closure at the default injection
 Env: ADONIS_LABEL (default sec4_closure_multisample), PHYSFIT_INJECT, ALTGEN_NIT (default 12),
      S4_NU_CHUNKS / S4_BEAM_CHUNKS / S4_E_CHUNKS (bank subsample sizes; the full banks are ~40M events,
      far more MC precision than a closure needs).
@@ -44,9 +44,9 @@ from adonis.analysis import binning as IC   # BinSpec/bin_w* -- core copy, was a
 from adonis.stats import fisher as _FI            # vif_from_fisher
 from adonis.stats.gaussian import bin_sigma as _bin_sigma
 from adonis.analysis.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
-from adonis.analysis.sample import AnaSample
+from analysis.campaign.sample import AnaSample
 # (the SYST import lived here and was used only in comments; the live sigma policy is cfg.data.sigma)
-from adonis.analysis.beams import beam_model
+from analysis.campaign.beams import beam_model
 
 MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", "output/altgen/multisample_carbon.npz")
 # Jacobian dial-batch: how many tangents go through ONE vmapped jvp.  Default = all dials in one call.

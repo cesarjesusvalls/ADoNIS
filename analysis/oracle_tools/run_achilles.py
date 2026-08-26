@@ -15,10 +15,10 @@ overrides top-level 'KickMomentum'.  ACHILLES can SIGSEGV mid-run deterministica
 batch and keep whatever each batch produced (partial hepmc is valid).
 
 Usage (run on the host with docker; this module shells out to `docker run`):
-  python -m adonis.oracle.run_achilles configs/achilles/run_inclusive_ee_C_qe.yml
-  python -m adonis.oracle.run_achilles configs/achilles/run_freenucleon_res_H.yml --scan-energy 500,700,1000,1500,2000
-  python -m adonis.oracle.run_achilles configs/achilles/run_cascade_pip_C.yml --scan-kick 100,150,200,300,500
-  python -m adonis.oracle.run_achilles configs/achilles/run_T2K_C_fsi_gauss.yml --seeds 4 --extract cc1pi_rich
+  python -m analysis.oracle_tools.run_achilles configs/achilles/run_inclusive_ee_C_qe.yml
+  python -m analysis.oracle_tools.run_achilles configs/achilles/run_freenucleon_res_H.yml --scan-energy 500,700,1000,1500,2000
+  python -m analysis.oracle_tools.run_achilles configs/achilles/run_cascade_pip_C.yml --scan-kick 100,150,200,300,500
+  python -m analysis.oracle_tools.run_achilles configs/achilles/run_T2K_C_fsi_gauss.yml --seeds 4 --extract cc1pi_rich
 """
 import argparse
 import os
@@ -127,7 +127,7 @@ def main(argv=None):
     ap.add_argument("--seeds", type=int, default=1, help="batches with distinct seeds (SIGSEGV resilience)")
     ap.add_argument("--scan-energy", help="comma list of beam energies [MeV] -> free-nucleon sigma(E)")
     ap.add_argument("--scan-kick", help="comma list of pi |p| [MeV] -> cascade sigma(p_pi)")
-    ap.add_argument("--extract", help="run `python -m adonis.oracle.extract <channel>` on each hepmc")
+    ap.add_argument("--extract", help="run `python -m analysis.oracle_tools.extract <channel>` on each hepmc")
     ap.add_argument("--dry-run", action="store_true", help="print docker commands, do not run")
     a = ap.parse_args(argv)
     scan = [("Energy", v) for v in (a.scan_energy.split(",") if a.scan_energy else [])] + \
@@ -143,7 +143,7 @@ def main(argv=None):
                 produced.append(hp)
                 if a.extract:
                     out = str(hp).replace(".hepmc", ".npz")
-                    subprocess.run([sys.executable, "-m", "adonis.oracle.extract", a.extract, str(hp), out],
+                    subprocess.run([sys.executable, "-m", "analysis.oracle_tools.extract", a.extract, str(hp), out],
                                    check=False)
     print(f"DONE: {len(produced)} hepmc -> {a.out_dir}", flush=True)
 

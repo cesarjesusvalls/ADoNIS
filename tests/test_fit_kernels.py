@@ -1,7 +1,7 @@
 """FitKernel algebra, on a synthetic engine so it runs in seconds without banks or a GPU.
 
 This is NOT the acceptance test for the fused binning -- that needs the real engine and lives in
-`adonis.fit.verify_kernels`, which compares against the host np.bincount path.  What is checked here is
+`analysis.benchmarks.verify_kernels`, which compares against the host np.bincount path.  What is checked here is
 everything AROUND the binning, which is where the arithmetic mistakes live: the prior block, the
 whitening, the dead-bin mask, reverse-vs-forward consistency, batch invariance, and the event-pass
 counters.  Those are exactly the parts that a big GPU run would only reveal as a wrong number hours in.
