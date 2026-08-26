@@ -26,7 +26,7 @@ def test_dcc_scatter_delta_peaked():
     """pi+ total scatter sigma(W) is sharply peaked at the Delta (W~1232) and falls off fast
     above it (the resonance shape -- unlike the broad Oset QE)."""
     Ts = np.array([44, 121, 164, 210, 284, 330])
-    tot = np.array([cm.channel_sigmas(_W_of_T(T), 0).sum() for T in Ts])
+    tot = np.array([cm.channel_sigmas_pn_avg(_W_of_T(T), 0).sum() for T in Ts])
     assert np.all(tot >= 0)
     pk = Ts[int(tot.argmax())]
     assert 120 <= pk <= 200, pk                              # peaks in the Delta region
@@ -37,7 +37,7 @@ def test_dcc_scatter_delta_peaked():
 def test_charge_exchange_present():
     """pi+ scatters elastically (-> pi+) AND charge-exchanges (-> pi0, on neutrons); no
     double charge flip (pi+ -> pi-)."""
-    sig = cm.channel_sigmas(_W_of_T(164), 0).ravel()         # (3,) to pi+/pi0/pi-
+    sig = cm.channel_sigmas_pn_avg(_W_of_T(164), 0).ravel()         # (3,) to pi+/pi0/pi-
     assert sig[0] > 0 and sig[1] > 0                          # elastic + charge exchange
     assert sig[2] == 0.0                                     # no pi+ -> pi-
     assert sig[1] / sig[0] < 0.5                              # cex sub-dominant to elastic
@@ -47,6 +47,6 @@ def test_jax_matches_numpy():
     """The JAX cascade interface reproduces the numpy channel_sigmas."""
     import jax.numpy as jnp
     W = _W_of_T(164)
-    npv = cm.channel_sigmas(W, 0).ravel()
-    jxv = np.asarray(cm.jax_channel_sigmas(jnp.array([W]), jnp.array([0]))[0])
+    npv = cm.channel_sigmas_pn_avg(W, 0).ravel()
+    jxv = np.asarray(cm.jax_channel_sigmas_pn_avg(jnp.array([W]), jnp.array([0]))[0])
     assert np.allclose(npv, jxv, rtol=1e-4), (npv, jxv)

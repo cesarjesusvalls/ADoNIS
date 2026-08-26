@@ -462,7 +462,7 @@ class CascadeConfig:
                              # identity), gated in tests/test_cascade_early_exit.py.  max_steps
                              # then acts as a pure safety bound.  False = the reference lax.scan.
     track_steps: bool = False  # MC-truth: also stack the per-step (pos, p4, alive) trajectory from the
-                             # scan -> returns traj for viz/diagnostics (adonis/fsi/tracking).  Forces the
+                             # scan -> returns traj for viz/diagnostics.  Forces the
                              # reference scan (not early_exit).  DEFAULT OFF -> production path unchanged.
     engine: str = "pool"     # cascade structure: "pool" = single per-step-reconciled particle stack
                              # (DEFAULT, validated single core); "bfs" = legacy generation-synchronized; true step-order
@@ -1218,7 +1218,7 @@ def empty_batch(n, P):
                 #   at beam init; cleared on the first realized interaction.  Default False = sphere (all else).
                 alive=jnp.zeros((n, P), bool), w=jnp.ones((n, P)), fate=jnp.zeros((n, P), jnp.int32),
                 origin=jnp.zeros((n, P), jnp.int32), gen=jnp.zeros((n, P), jnp.int32),
-                track_id=jnp.zeros((n, P), jnp.int32),                # MC-truth: unique id (tracking.py)
+                track_id=jnp.zeros((n, P), jnp.int32),                # MC-truth: unique id per particle
                 parent_id=jnp.full((n, P), -1, jnp.int32),            # MC-truth: spawning track (-1 = primary)
                 pkey=jnp.zeros((n, P, 2), jnp.uint32),                # P-INVARIANT per-particle RNG key (lineage-derived)
                 lstep=jnp.zeros((n, P), jnp.int32),                   # per-particle local step counter (RNG fold + safety cap)

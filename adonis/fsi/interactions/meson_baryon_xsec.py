@@ -49,10 +49,14 @@ def _build_table():
     return _TABLE
 
 
-def channel_sigmas(W, pion_in_idx):
+def channel_sigmas_pn_avg(W, pion_in_idx):
     """sigma [mb] to each out-pion (pi+,pi0,pi-) for an incoming pion of charge `pion_in_idx`,
-    ISOSPIN-AVERAGED over a proton/neutron target (12C: equal p/n).  W [MeV] array.
-    Returns (3,)+W array sig_out[out_idx, ...]."""
+    W [MeV] array.  Returns (3,)+W array sig_out[out_idx, ...].
+
+    AVERAGED over an equal-parts proton/neutron target, i.e. this assumes N=Z and is wrong for any
+    other nucleus.  The cascade calls jax_channel_sigmas_resolved, which takes the struck nucleon;
+    the averaged variants exist for the numpy/JAX consistency test.
+    """
     t = _build_table(); Wt = t["W"]; grid = t["grid"]
     W = np.atleast_1d(np.asarray(W, float))
     out = np.zeros((3,) + W.shape)
@@ -69,7 +73,7 @@ import jax.numpy as _jnp
 _JGRID = {}
 
 
-def _jax_grids():
+def _jax_grids_pn_avg():
     """Precompute, as jnp arrays: W grid and sig_out[pion_in, pion_out](W) averaged over a
     p/n target (12C).  Shape: jW (nW,), jsig (3 in, 3 out, nW)."""
     # numpy cache + per-call asarray (tracer-leak safe, cf. _jax_grids_resolved)
@@ -177,10 +181,10 @@ def jax_sample_cos_cm(W, u, chan=0):
     return _jnp.clip(c0 * (1 - fw) + c1 * fw, -1.0, 1.0)
 
 
-def jax_channel_sigmas(W, pion_in_idx_arr):
+def jax_channel_sigmas_pn_avg(W, pion_in_idx_arr):
     """sig_out (N,3) [mb] for a batch of pions: W (N,), pion_in_idx_arr (N,) in {0,1,2}.
     Isospin-averaged over a p/n target.  Pure jnp (interp); the amplitudes are constants."""
-    jW, jsig = _jax_grids()                          # (nW,), (3,3,nW)
+    jW, jsig = _jax_grids_pn_avg()                          # (nW,), (3,3,nW)
     # interp each (in,out) channel, then select the row for each pion's incoming charge
     all_io = _jnp.stack([_jnp.stack([_jnp.interp(W, jW, jsig[i, o], left=0.0, right=0.0)
                                      for o in range(3)], axis=-1)
