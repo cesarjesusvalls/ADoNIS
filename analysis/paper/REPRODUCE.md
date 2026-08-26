@@ -61,13 +61,13 @@ One config per sample in `configs/banks/`. The config carries the physics (probe
 channels, FSI); the command line carries only scale.
 
 ```bash
-python -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml --out output/banks/nu_T2K_C/part_0 \
-    --n-per-seed 250000 --n-seeds 4 --seed0 0
+python -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml \
+    --out output/banks/nu_T2K_C/part_$TASK --seed0 $TASK --n-per-seed 250000 --n-seeds 1
 ```
 
 `--n-per-seed` is **per channel**, so a two-channel config produces more events than that number.
-One seed produces one chunk. Shards are independent — run them as a job array with a different
-`--seed0` and `--out` per task, then merge:
+One seed produces one chunk. Shards are independent, so run that command as a job array with `$TASK`
+the array index, then merge the shards into one bank:
 
 ```bash
 python -m adonis.workflow.merge_bank --parts output/banks/nu_T2K_C --out output/banks/nu_T2K_C/merged
