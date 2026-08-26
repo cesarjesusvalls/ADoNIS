@@ -1,6 +1,6 @@
 # ACHILLES free-nucleon NEUTRAL-CURRENT QE elastic sigma(E_nu) -- nu_mu NC on a FREE NEUTRON (Name: 1N => Z=0,A=1 via ZToName):
 #   nu n -> nu n.
-# The ABSOLUTE free-nucleon oracle that gates G5 (RES) / G6 (QE) of docs/nc_implementation_plan.md.
+# The absolute free-nucleon reference the NC vertex is validated against.
 # Those gates report mean(ACH/ADO) and spread(ACH/ADO) SEPARATELY -- a constant offset is a coupling
 # or _NORM error, an energy slope is a propagator error -- so this card must never be normalised to
 # ADoNIS.  Bridge constants are forbidden as gate closers.

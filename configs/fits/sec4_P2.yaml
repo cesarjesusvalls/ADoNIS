@@ -1,46 +1,21 @@
-# Section 4, study point P2 -- the closure + uncertainty campaign behind figures A-D, at the NEW NOMINAL
-# statistics of 125,000 events per sample (1.25M resident), down from P1's 250,000.
-#
-# WHY 125k.  Measured in docs/bench_fair_report.md: at 250k/sample the fused device-resident jacobian
-# cannot load its compiled CUBIN on a 40 GB card at ANY dial batch, so the fit is forced back onto a host
-# round trip that costs ~77 MB per sample per iteration.  At 125k it runs in a single dispatch.  The cost
-# of the move is bins: the sparse-bin cut (mcerr > 5% of central) bites harder with fewer events, so the
-# live-bin count -- and hence ndf -- drops.  That number is measured, not assumed; see the comment on
-# data.sigma below.
-#
-# EVERYTHING ELSE IS UNCHANGED FROM P1 and deliberately so: same samples, same 17 Gate-I dials, same MLE
-# estimator, same injection.  The only differences that should appear in any figure are those that follow
-# from the statistics.
-#
-# THIS FILE IS NOT YET READ BY ANY CODE.  It is a faithful transcription of the environment the P1 jobs
-# actually ran with, recovered from the SLURM submitters in the session scratchpad, which is the only
-# place those parameters existed.  It is committed now so the run is reproducible before the loader
-# exists (P0.3 of docs/consolidation_plan.md); P2 makes `python -m adonis.fit` consume it, and the
-# acceptance test for that work is that it reproduces sec4_P1.npz bit-for-bit.
-#
-# Every value below is transcribed, not chosen.  Where the jobs disagreed with each other the
-# discrepancy is called out rather than silently resolved -- those disagreements were bugs.
+# The closure fit and its four uncertainty constructions: 17 parameters, 21 observables.
 
 name: sec4_P2
 
-# ---- what is fitted ------------------------------------------------------------------------------ #
 samples: [t2k_cc0pi, t2k_cc1pi_ch, minerva_stv, minerva_ptpz, ee_omega,
-          minerva_cc1pip_tpi, minerva_cc1pip_q2]     # configs/samples/*.yaml
-beams:   [pip, prot, neut]                            # 15 bins each, 2 observables each (BEAM_OBS)
+          minerva_cc1pip_tpi, minerva_cc1pip_q2]
+beams:   [pip, prot, neut]
 
-# bank chunk caps -- these set how many events are resident, and hence the MC error per bin, so they
-# are part of the physics definition and not a performance knob
+# How many events are resident, which sets the MC error per bin and so the sparse-bin mask.
 banks:
-  sig_cap:      125000        # NEW NOMINAL (was 250000) -- see docs/bench_fair_report.md
-  nu_chunks:    120           # S4_NU_CHUNKS
-  e_chunks:     40            # S4_E_CHUNKS
-  beam_chunks:  10            # S4_BEAM_CHUNKS
+  sig_cap:      125000
+  nu_chunks:    120
+  e_chunks:     40
+  beam_chunks:  10
 
-# ---- the data ------------------------------------------------------------------------------------ #
 data:
-  mode: closure               # Asimov: data = exact nonlinear reweight at `inject`, no noise
-  # PHYSFIT_INJECT.  37 sigma from nominal across the 17 dials -- deliberately far, so the fit is blind.
-  inject:
+  mode: closure               # Asimov: data is the exact nonlinear reweight at `inject`, no noise
+  inject:                     # the truth the fit has to recover, starting blind from nominal
     M_A_qe: 1.12
     M_A_res: 0.85
     axial_strength: 1.1
@@ -49,92 +24,64 @@ data:
     sabs: 1.18
     s_piN_elastic: 0.88
     s_conv: 1.15
-    s_NN_elastic: [0.82, 1.25, 0.9]        # [0],[1],[2]
-    s_NN_inelastic: {0: 1.2, 2: 0.86}      # [1] left at nominal
+    s_NN_elastic: [0.82, 1.25, 0.9]        # pp, pn, nn
+    s_NN_inelastic: {0: 1.2, 2: 0.86}      # pn left at nominal
     f_NN_cex: 0.4
     kF_sf: 1.1
     Eb_shift: 0.5
     src_tail: 0.92
   sigma:
-    syst: 0.05                # sigma = 5% of the NOMINAL central value
-    mc_term: false            # S4_SIGMA_SYST_ONLY=1 -- the MC error is NOT added in quadrature
-    mask_mcfrac: 0.10         # DECIDED: drop bins whose MC error exceeds 10% of central (was 5%).
-                              # At 125k this keeps 294/325 bins against 263 at the 5% cut -- +31, and they
-                              # are the MINERvA STV tails (delta-p_T +8, p_n +7) and the p|| tail (+5),
-                              # i.e. exactly where the nucleon-FSI and SRC information sits.
-                              # THE ASYMMETRY, recorded rather than left implicit: sigma stays at
-                              # syst = 5% of central, so a bin admitted between 5% and 10% carries an MC
-                              # error LARGER than the error it is fitted with.  In a closure that is
-                              # harmless -- the MC fluctuation is common-mode between data and prediction
-                              # and cancels exactly -- but on real data those bins are over-weighted
-                              # relative to what their true uncertainty warrants.  The clean alternative,
-                              # if that ever matters, is data.sigma.mc_term: true rather than a looser cut.
-    freeze_at: nominal        # sigma and the mask are frozen at nominal, not recomputed per toy
-    # At P1 (250k/sample) 282 of 325 bins survived.  At 125k the count is LOWER -- measured by
-    # adonis.fit.dump_live_mask against this config -- and ndf moves with it, so every chi2/ndf quoted
-    # from P2 differs from P1 for that reason before any other.  mcerr is used ONLY for the mask; it
-    # never enters sigma.
+    syst: 0.05                # sigma is 5% of the nominal central value
+    mc_term: false            # the MC error is not added to it in quadrature
+    mask_mcfrac: 0.10         # drop bins whose MC error exceeds this fraction of central
+    freeze_at: nominal        # sigma and the mask are fixed at nominal, not recomputed per toy
 
-# ---- the fit ------------------------------------------------------------------------------------- #
 fit:
-  dials: gate1                # shrink < 0.5 on the Gate-I Fisher -> 17 dials
-  estimator: mle              # S4_PRIOR_SCALE=0.0 -> prior widened by 1e6
+  dials: gate1                # the parameters with sigma_post/sigma_prior < 0.5 on the Fisher: 17
+  estimator: mle              # no parameter priors; the physical ranges still apply
   minimizer:
-    method: trf               # S4_FITTER / S4_PROF_FITTER = trf
-    max_nfev: 200             # ALTGEN_NIT=200 -> max(nit, 8)
-    gtol: 1.0e-8              # S4_TRF_GTOL; xtol/ftol stay tight on purpose
+    method: trf
+    max_nfev: 200
+    gtol: 1.0e-8
     xtol: 1.0e-14
     ftol: 1.0e-14
     x_scale: jac
-    start: nominal            # blind: the fit starts at nominal, 37 sigma from the truth
+    start: nominal
 
-# ---- uncertainty ---------------------------------------------------------------------------------- #
 uncertainty:
-  - method: gaussian          # (J^T W J)^-1 at the best fit; falls out of the fit
+  - method: gaussian          # (J^T W J)^-1 at the best fit
 
-  - method: profile           # 1-D, per dial
-    n: 13                     # S4_PROF_N per shard x 17 shards
-    reach: adaptive           # per-dial span; bounded dials scanned FROM the wall upward
-    max_nfev: 60              # ALTGEN_NIT=60 for the profile jobs -- NOTE: differs from the fit's 200
+  - method: profile           # 1-D, per parameter
+    n: 13
+    reach: adaptive           # extend each side until dchi2 > 25 or a physical boundary
+    max_nfev: 60
     stores: [prof_dobj, grids_sigma, logdet_Vnuis]
 
-  - method: profile2d         # figure B
+  - method: profile2d
     dials: [M_A_res, delta_strength, res_axial_strength, Eb_shift]
     n: 41
-    axes_from: profile        # S4_CORNER_FROM_PROFILE=1 -- same domain as the 1-D scan
-    max_nfev: 8               # ALTGEN_NIT=3 -> max(nit, 8); warm-started along a snake path
+    axes_from: profile        # the same domain as the 1-D scan
+    max_nfev: 8               # warm-started along a snake path, so few steps per node
     stores: [chi2_abs, logdet_Vnuis]
 
-  - method: gradient2d        # figure C
-    range: 3.0                # unused when axes: physical, but read by the shared grid walk
+  - method: gradient2d
+    range: 3.0                # read by the shared grid walk; unused when axes are physical
     dials: [M_A_res, delta_strength, res_axial_strength, Eb_shift]
     n: 25
-    axes: physical            # each dial's FULL allowed range, not a sigma window
-    jacobian: per_node        # recomputed at every node, not frozen at the BFP
+    axes: physical            # each parameter's full allowed range, not a sigma window
+    jacobian: per_node        # recomputed at every node, not frozen at the best fit
 
-  - method: nuts              # figure B / A; adonis.fit.nuts
+  - method: nuts
     chains: 20
-    samples: 1250             # 25,000 total (was 16 x 1500 = 24,000)
-    # 20 x 1250 rather than 16 x 1563: an exact 25,000, and more chains means better between-chain
-    # diagnostics.  The trade is setup -- bank load plus XLA compile is paid ONCE PER CHAIN and was
-    # already ~40% of this stage's GPU-time at 16 chains.
+    samples: 1250
     warmup: 150
     max_depth: 8
-    mass_matrix: fit_V        # from the closure covariance, in sigma_post units
-    truncate: physical_box    # -inf outside; ~200-270 rejections per chain
+    mass_matrix: fit_V        # the closure covariance, in sigma_post units
+    truncate: physical_box    # -inf outside the physical ranges
 
-  - method: toys              # figure A panel (b)
+  - method: toys
     n: 2000
-    shard_size: 50            # toys per shard -> 40 shards; the runner turns --shard k/40 into S4_TOY_BASE
-    fixed_truth: true         # S4_FIXED_TRUTH == inject: statistics-only ensemble
+    shard_size: 50            # --shard k/40
+    fixed_truth: true         # a statistics-only ensemble around `inject`
     seed: {base: 0, stride: 50, formula: "default_rng(1_000_000 + seed)"}
     noise: per_bin_gaussian   # at the fit's own sigma
-
-# ---- known discrepancies in the run as executed --------------------------------------------------- #
-# Recorded because a future reproduction will otherwise "fix" them and not match:
-#   * the profile jobs ran ALTGEN_NIT=60 while the closure and toys ran 200.  Both converge (median
-#     Newton decrement 4e-5) so it does not change the result, but it is not intentional design.
-#   * the 2-D corner was originally run WITHOUT S4_PRIOR_SCALE (so MAP, not MLE) and with lm_fit
-#     instead of trf.  Both were fixed and the scan re-run; the committed shards are the corrected ones.
-#   * the toy shards for bases 500-950 were written as sec4_P1ens_* (missing underscore) and renamed to
-#     sec4_P1_ens_*.  A glob on the old name silently found only 1500 of the 2000 toys.

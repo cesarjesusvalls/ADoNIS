@@ -2,7 +2,7 @@
 # Mirror of run_cascade_prot_C.yml with the 40Ar nucleus block (rho_Ar_p/n densities + AR40 configs) from
 # run_cascade_pip_Ar.yml.  CrossSection mode; sigma(p) by binning the incoming |p|.  ACHILLES SIGSEGVs
 # mid-run -> use --seeds N.
-#   python -m analysis.utils.run_achilles configs/achilles/run_cascade_prot_Ar.yml --seeds 8
+#   python -m analysis.oracle_tools.run_achilles configs/achilles/run_cascade_prot_Ar.yml --seeds 8
 Initialize:
   seed: 123456789
 

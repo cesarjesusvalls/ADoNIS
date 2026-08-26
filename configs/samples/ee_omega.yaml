@@ -1,8 +1,7 @@
 # Inclusive (e,e') energy-transfer spectrum on 12C @ 2.222 GeV (JLab E12-14-012), EM probe.
-# ONE inclusive omega observable -- QE+RES summed, as a measurement reports it (NOT the truth-level QE/RES
-# split the old electron_fit once used).  The scattered-electron theta window is the only cut; the
-# generation acceptance is baked into the beam_e_C_hv bank.  omega edges in MeV (bank units); fig01 plots
-# the same spectrum on a GeV axis.
+# One inclusive omega observable, QE+RES summed as a measurement reports it.  The scattered-electron
+# theta window is the only cut; the generation acceptance is already in the bank.  omega edges are in
+# MeV, the bank's units; the figure plots the same spectrum on a GeV axis.
 render: multiobs
 name: ee_omega
 probe: electron

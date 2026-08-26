@@ -2,7 +2,7 @@
 # achilles:cascade image, /achilles/bin/achilles-cascade, Mode: CrossSection.  Same setup as the 12C card
 # (run_cascade_pip_C.yml): uniform-momentum range beam [80,500], sigma(p) by binning; VirtRes interactions;
 # ProtonFile/NeutronFile densities (40Ar.yml).  ACHILLES SIGSEGVs mid-run -> use --seeds N.
-#   python -m analysis.utils.run_achilles configs/achilles/run_cascade_pip_Ar.yml --seeds 8
+#   python -m analysis.oracle_tools.run_achilles configs/achilles/run_cascade_pip_Ar.yml --seeds 8
 Initialize:
   seed: 123456789
 

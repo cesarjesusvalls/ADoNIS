@@ -1,31 +1,15 @@
-# NEUTRAL-CURRENT nu_mu on 40Ar, BNB (MicroBooNE) flux -- the bank behind paper figures 11 and 12
-# (fig:NCpi0Xpdoublediff and fig:NCpi0Xpcospi).  See docs/nc_implementation_plan.md.
+# Neutral-current nu_mu on 40Ar in the BNB flux.
 #
-# channels: [qe, res] -- NC quasi-elastic AND resonance.  NC QE was ADDED once its nuclear sampler
-# (adonis/channels/qe_nc.generate) landed and was validated: flux-averaged nuclear NC-QE sigma on 12C
-# agrees with the ACHILLES oracle (configs/achilles/run_inclusive_nc_C_qe.yml) to 0.3%
-# (test_nc_qe_nuclear).  Before it existed this bank was RES-only, which cost a KNOWN ~1.8% deficit:
+# Both channels are generated.  NC QE produces no pion at the vertex but still enters an NC1pi0
+# selection, because the cascade can make the pion by charge exchange on the recoiling nucleon.
 #
-# NC QE produces no pion at the vertex, but the ACHILLES reference shows it STILL enters NC1pi0 -- of
-# 29194 selected NC1pi0 events, 516 (1.77%) are proc 250/251 (NC ELASTIC), where the CASCADE makes the
-# pion via charge exchange on the recoiling nucleon.  Real physics; the old [res]-only bank missed it,
-# leaving ADoNIS ~1.8% LOW vs ACHILLES on the NC1pi0 rate.  Adding QE closes that -- figs 11/12 must be
-# RE-VALIDATED against ACHILLES after this regen.  (The 12C NC-QE sigma is oracle-checked; an Ar NC-QE
-# oracle would confirm the argon absolute scale, same as CC QE is checked on both C and Ar.)
-#
-# theta_acc is absent, i.e. the (0,180) default.  GenConfig REJECTS anything else for probe=NC: a
-# polar acceptance on an invisible outgoing neutrino is meaningless and would silently bias the
-# sample with nothing downstream able to notice.
-#
-# achilles_coupl1_quirk: TRUE.  This bank exists to be compared against ACHILLES, so the NC QE coupling
-# must use ACHILLES's coupl1 convention (the 1.0396 F1/F2 factor) to be like-for-like -- exactly the
-# quirk=True the free-nucleon G6(2) gate and the nuclear-sigma validation both use.  It was OMITTED
-# while the bank had no QE channel (would have been a meaningless no-op in the manifest); added now.
+# There is no theta_acc: a polar acceptance on an invisible outgoing neutrino is meaningless, and
+# GenConfig rejects one for probe NC rather than let it silently bias the sample.
 name: nc_uBooNE_Ar
 probe: NC
 beam: spectrum
 flux: microboone
 material: Ar
 channels: [qe, res]
-achilles_coupl1_quirk: true      # QE channel now present -> match ACHILLES's coupl1 NC convention
+achilles_coupl1_quirk: true      # match ACHILLES's NC coupling convention, so the two are comparable
 fsi: true

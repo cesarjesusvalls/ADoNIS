@@ -1,6 +1,6 @@
-# MINERvA CC0pi-Np TKI on 12C (Cai et al., PRD 101 092001; MINERvA:2018hba).  Migrated from sec1
-# fig09_minerva_cc0pi.yaml.  dalphat/pn/dpt are the release STV (enter the Fisher); dphit/lp_p/th_lp/
-# pmu/th_mu are final-state-kinematics validation panels (plot-only, fit: false).
+# MINERvA CC0pi-Np TKI on 12C (Cai et al., PRD 101 092001; MINERvA:2018hba).  dalphat/pn/dpt are the
+# published STV and enter the Fisher; dphit/lp_p/th_lp/pmu/th_mu are validation panels only
+# (fit: false).
 render: multiobs
 name: minerva_stv
 inputs:

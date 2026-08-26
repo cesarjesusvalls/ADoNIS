@@ -1,6 +1,5 @@
-# T2K CC1pi+Np TKI on 12C (PRD 103 112009 signal).  Migrated from sec1 fig08_t2k_cc1pi.yaml.
-# pn/dptt/dalphat are the NUISANCE T2K_CC1pipNp release STV (they enter the Gate-I Fisher); ppi/cos_pi are
-# ADoNIS validation extras (plot-only, fit: false -- not in the release, so out of the gradient).
+# T2K CC1pi+Np TKI on 12C (PRD 103 112009 signal).  pn/dptt/dalphat are the published STV and enter
+# the Fisher; ppi/cos_pi are validation panels only (fit: false), being outside the release.
 render: multiobs
 name: t2k_cc1pi
 inputs:

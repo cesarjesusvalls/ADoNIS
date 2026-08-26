@@ -1,13 +1,10 @@
 # Beam-scattering samples: pi+, proton and neutron on carbon.
 #
-# These are FSI-ONLY: a beam particle is fired at the nucleus and the cascade decides what comes out, so
-# they constrain the FSI block and nothing else.  They enter Gate I and the sec4 engine as fixed-width
-# blocks appended after the experiment samples, and their observable KEYS are what the dskeys ordering
-# assertion checks against.
+# FSI only: a beam particle is fired at the nucleus and the cascade decides what comes out, so these
+# constrain the cascade parameters and nothing else.  They append to the Jacobian as fixed-width blocks
+# after the experiment samples, and their observable keys are what the dskeys ordering check uses.
 #
-# This file exists because the same dict was hardcoded in two places -- gate1_multisample.py and the
-# (now removed) sec3_gradients/build_multisample.py -- and the two had to be edited in step.  The block
-# structure is fixed by beam_fisher.beam_jacobian, which returns `nbins` reaction bins followed by
+# The block structure is fixed by beam_jacobian, which returns `nbins` reaction bins followed by
 # `nbins` of a second observable, so the two keys per beam are ordered and must stay that way.
 
 nbins: 15          # per observable; beam_jacobian returns 2 x nbins rows per beam

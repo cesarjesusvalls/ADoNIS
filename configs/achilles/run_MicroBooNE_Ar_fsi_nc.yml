@@ -1,5 +1,5 @@
 # ACHILLES NEUTRAL-CURRENT nu_mu on 40Ar with the FULL cascade, BNB (MicroBooNE) flux -- the
-# reference for paper figures 11 and 12 (NC 1pi0 Xp).  See docs/nc_implementation_plan.md.
+# reference for the NC 1pi0 Xp comparison.
 #
 # THE NAME IS LOAD-BEARING.  adonis/oracle/run_achilles.py::_RULES routes by card-name PREFIX, and
 # `run_MicroBooNE_Ar_fsi` is the rule that selects the native-arm64 :fullcascade image.  The obvious

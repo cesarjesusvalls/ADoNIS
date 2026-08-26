@@ -1,9 +1,6 @@
-# T2K CC0pi-Np TKI on 12C (arXiv:1802.05078 signal).  ONE sample definition, three consumers:
-#   plot     -> analysis/paper sec1 validation (ADoNIS vs ACHILLES)
-#   gradient -> AnaSample.jacobian()/.gate1()  (Gate-I informativeness)
-#   fit      -> sec4/5
-# Migrated verbatim from analysis/paper/sec1_validation/fig07_t2k_cc0pi.yaml -- the render/out_path/ratio
-# keys are plot hints (the AnalysisConfig loader ignores what it does not own).
+# T2K CC0pi-Np TKI on 12C (arXiv:1802.05078 signal).  One definition, three consumers: the validation
+# figure, the Jacobian, and the fit.  The render/out_path/ratio keys are plot hints; the config loader
+# ignores what it does not own.
 render: multiobs
 name: t2k_cc0pi
 inputs:

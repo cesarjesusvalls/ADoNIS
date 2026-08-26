@@ -4,7 +4,7 @@
 # extracted by BINNING the incoming |p| (analysis/paper/fig3 make.py), NOT a per-point scan.  Only
 # REACTED events are written; GenCrossSection's 4th field = n_tried (uniform in p) gives the bin
 # normalization.  radius=10 fm beam disk -> piR^2=3141.6 mb.  ACHILLES SIGSEGVs mid-run -> use --seeds N.
-#   python -m analysis.utils.run_achilles configs/achilles/run_cascade_pip_C.yml --seeds 8
+#   python -m analysis.oracle_tools.run_achilles configs/achilles/run_cascade_pip_C.yml --seeds 8
 Initialize:
   seed: 123456789
 
@@ -28,9 +28,8 @@ Nucleus:
 
 Cascade:
   Mode: CrossSection
-  # Virtual-Resonances interaction set (the validated transparency cascade, docs/logbook/
-  # cascade_transport_residual.md): NucleonNucleon GiBUU/Decay + PionInteraction (MesonBaryon DCC
-  # hard-scatter + PionAbsorptionOneStep Oset) + ConstantInteraction (strange-baryon zeros).
+  # NucleonNucleon GiBUU/Decay + PionInteraction (MesonBaryon DCC hard scatter +
+  # PionAbsorptionOneStep Oset) + ConstantInteraction (strange-baryon zeros).
   # hA_Rules.yml REQUIRES NucleonNucleon ResonanceMode:Decay when MesonBaryon/PionAbsorptionOneStep
   # are present -- the GeantInteraction set the image rejects.
   Interactions: !include "data/default/VirtResInteractions.yml"

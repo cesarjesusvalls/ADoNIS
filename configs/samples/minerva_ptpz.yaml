@@ -1,9 +1,7 @@
 # MINERvA "qelike" muon pT / p|| double-differential on 12C (Ruterbories et al., PRD 99 012004,
 # arXiv:1811.12569).  Hadron-inclusive: 0 mesons, theta_mu < 20 deg, p|| in [1.5,15] GeV, pT < 2.5 GeV,
-# NO proton requirement.  This is the isCC0pi_MINERvAPTPZ phase space -- a new NuSignalDef mode (mu box,
-# require_proton: false).  No sec1 figure; a gradient-only sample.  Edges are the muon box (the NUISANCE
-# ptpz release is not loaded, so no experimental edge table -- the box at 20 bins reproduces the old
-# minerva_ptpz_fit design binning intent).
+# NO proton requirement.  A gradient-only sample: there is no validation figure for it.  The edges are
+# the muon acceptance box at 20 bins, the published release not being loaded here.
 render: multiobs
 name: minerva_ptpz
 inputs:
