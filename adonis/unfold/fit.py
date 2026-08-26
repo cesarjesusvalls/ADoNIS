@@ -34,11 +34,12 @@ class UnfoldEngine:
     """Everything the fit needs, resident: the response, the background bank, and the priors."""
 
     def __init__(self, inp, prior_scale=1.0, det_prior=0.05, flux_sigma=None, flux_corr=None,
-                 knob_prior=None):
+                 knob_prior=None, flux_edges=None):
         self.A = np.asarray(inp["A"], float)
         self.n_true_mc = np.asarray(inp["n_true"], float)     # generator truth per bin, the c = 1 reference
         self.bkg_bin = np.asarray(inp["bkg_bin"], np.int64)
-        self.nflux = int(inp.get("nflux", FX.n_flux()))
+        self.flux_edges = flux_edges
+        self.nflux = int(inp.get("nflux", FX.n_flux(flux_edges)))
         self.bkg_fbin = np.asarray(inp["bkg_fbin"], np.int64)
         self.bkg_flat = self.bkg_bin * self.nflux + self.bkg_fbin      # (reco, flux) -> one bincount
         # SOFT assignment stores a distribution over reco bins per background event instead of one
@@ -51,7 +52,7 @@ class UnfoldEngine:
         # npz could not state which width produced it.  None keeps the module default.
         self.flux_sigma = FX.SIGMA if flux_sigma is None else float(flux_sigma)
         self.flux_corr = FX.CORR_LENGTH if flux_corr is None else float(flux_corr)
-        self.flux_L = FX.prior_chol(self.flux_sigma, self.flux_corr)   # correlated prior, whitened below
+        self.flux_L = FX.prior_chol(self.flux_sigma, self.flux_corr, flux_edges)   # correlated prior, whitened below
         self.det_prior = float(det_prior)      # per-reco-bin detector normalisation, uncorrelated
         self.JB = BR.to_jax(inp["bkg_bank"])
         self.grids = BR.default_grids()

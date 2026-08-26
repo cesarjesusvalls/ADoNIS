@@ -69,7 +69,8 @@ def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
     TG, RG = cfg.grids()
     inp = build(s.bank, s.cfg.signal, spec=spec, norm_events=cfg.norm_events,
                 max_chunks=cfg.max_chunks, log=log, obs_mode=cfg.binning.observables, TG=TG, RG=RG)
-    eng = UnfoldEngine(inp, knob_prior=K.PRIOR, det_prior=cfg.priors.detector,
+    _edges = cfg.flux.edges if cfg.flux.edges else None
+    eng = UnfoldEngine(inp, knob_prior=K.PRIOR, det_prior=cfg.priors.detector, flux_edges=_edges,
                        flux_sigma=cfg.flux.sigma, flux_corr=cfg.flux.corr_length)
     d0, s0 = eng.asimov()
     idx, imp = eng.select_dials(s0, threshold=cfg.priors.dial_threshold, log=log)
@@ -90,8 +91,8 @@ def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
                sigma_theta_deg=spec.sigma_theta_deg, pi_eff=spec.pi_eff,
                pi_eff_p_max=spec.pi_eff_p_max, cfg_json=cfg.as_json(), cfg_name=cfg.name,
                **_grid_arrays(TG, "true"), **_grid_arrays(RG, "reco"),
-               flux_edges=np.array(cfg.flux.edges if cfg.flux.edges else FX.FLUX_EDGES),
-               flux_cov=FX.prior_cov(cfg.flux.sigma, cfg.flux.corr_length),
+               flux_edges=np.array(_edges if _edges else FX.FLUX_EDGES),
+               flux_cov=FX.prior_cov(cfg.flux.sigma, cfg.flux.corr_length, _edges),
                det_prior=eng.det_prior, nflux=eng.nflux)
 
     # PARAMETER LAYOUT of the fitted vector, so the covariance can be read without re-deriving it:

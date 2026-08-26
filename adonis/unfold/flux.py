@@ -38,35 +38,39 @@ SIGMA = 0.10          # per-bin prior width
 CORR_LENGTH = 400.0   # MeV; roughly two bins across the peak
 
 
-def n_flux() -> int:
-    return len(FLUX_EDGES) - 1
+# EDGES ARE A PARAMETER.  UnfoldConfig has always had a `flux.edges` field; nothing read it, so a run
+# that set it recorded one binning in its npz and built the prior covariance from another.  None keeps
+# the module default, which is the T2K binning these studies use.
+def n_flux(edges=None) -> int:
+    return len(FLUX_EDGES if edges is None else edges) - 1
 
 
-def flux_index(e_nu):
+def flux_index(e_nu, edges=None):
     """Flat flux-bin index per event.  The last bin is open, so nothing falls outside."""
-    return np.clip(np.digitize(np.asarray(e_nu, dtype=float), FLUX_EDGES) - 1, 0, n_flux() - 1)
+    e = FLUX_EDGES if edges is None else edges
+    return np.clip(np.digitize(np.asarray(e_nu, dtype=float), e) - 1, 0, n_flux(e) - 1)
 
 
-def bin_centres():
+def bin_centres(edges=None):
     """Representative energy per bin.  The open top bin is given a finite centre so it has a defined
     distance to its neighbours in the correlation kernel; without one the kernel would put it at
     infinite separation, i.e. uncorrelated with everything, which is the opposite of the truth."""
-    e = np.array(FLUX_EDGES, dtype=float)
+    e = np.array(FLUX_EDGES if edges is None else edges, dtype=float)
     c = 0.5 * (e[:-1] + e[1:])
     c[-1] = e[-2] + 0.5 * (e[-2] - e[-3])          # top bin: extrapolate the last finite width
     return c
 
 
-def prior_cov(sigma=SIGMA, corr_length=CORR_LENGTH):
+def prior_cov(sigma=SIGMA, corr_length=CORR_LENGTH, edges=None):
     """The flux prior covariance: 10% diagonal, neighbours correlated over `corr_length` in true E_nu."""
-    c = bin_centres()
+    c = bin_centres(edges)
     rho = np.exp(-np.abs(c[:, None] - c[None, :]) / float(corr_length))
-    s = np.full(n_flux(), float(sigma))
+    s = np.full(n_flux(edges), float(sigma))
     return (s[:, None] * s[None, :]) * rho
 
 
-def prior_chol(sigma=SIGMA, corr_length=CORR_LENGTH):
+def prior_chol(sigma=SIGMA, corr_length=CORR_LENGTH, edges=None):
     """Lower Cholesky factor L of the prior covariance, so the fit's prior residual is
     solve(L, f - 1): a whitening transform that turns the correlated Gaussian prior into a plain
     sum of squares, which is what a least-squares solver needs."""
-    return np.linalg.cholesky(prior_cov(sigma, corr_length))
+    return np.linalg.cholesky(prior_cov(sigma, corr_length, edges))
