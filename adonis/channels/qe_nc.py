@@ -58,11 +58,11 @@ def _two_body_cm(k_nu, m_N, u):
     return k_lep, p_out, phi2
 
 
-def sigma_free_nucleon_nc_qe(Enu_MeV, is_proton, n=200_000, seed=0, quirk=False, chunk=100_000):
+def sigma_free_nucleon_nc_qe(Enu_MeV, is_proton, n=200_000, seed=0, use_achilles_nc_coupling=False, chunk=100_000):
     """Free-nucleon NC elastic sigma(E_nu) [nb] + standard error, nucleon at rest.
 
-    `quirk` selects the D1 convention: False = correct physics (the SM coupling), True = ACHILLES's
-    coupl1 verbatim.  The ACHILLES comparison above must be made with quirk=True to be like-for-like;
+    `use_achilles_nc_coupling` selects the D1 convention: False = correct physics (the SM coupling), True = ACHILLES's
+    coupl1 verbatim.  The ACHILLES comparison above must be made with use_achilles_nc_coupling=True to be like-for-like;
     the difference between the two is the measured 1.0396 on both nucleons' F1/F2.
     """
     m_N = MASS_PDG_PROTON if is_proton else MASS_PDG_NEUTRON
@@ -77,13 +77,13 @@ def sigma_free_nucleon_nc_qe(Enu_MeV, is_proton, n=200_000, seed=0, quirk=False,
     for i in range(0, n, chunk):
         sl = slice(i, min(i + chunk, n))
         d = me_cross_section(k_nu[sl], k_lep[sl], p_in[sl], p_out[sl], spin_avg=SPIN_AVG_NC,
-                             had_mass=m_N, probe="NC", is_proton=isp[sl], coupl1_quirk=quirk)
+                             had_mass=m_N, probe="NC", is_proton=isp[sl], use_achilles_nc_coupling=use_achilles_nc_coupling)
         w[sl] = np.asarray(d["me_xsec"]) * phi2[sl]
     w = np.where(np.isfinite(w) & (w > 0), w, 0.0)
     return float(w.mean()), float(w.std() / np.sqrt(n))
 
 
-def _sample_species_nc(n, rng, flux, minE, m_species, is_proton, sf, n_target, quirk):
+def _sample_species_nc(n, rng, flux, minE, m_species, is_proton, sf, n_target, use_achilles_nc_coupling):
     """One struck-nucleon species: flux beam + SF-importance-sampled struck nucleon + isotropic
     nu' + N_out (NC weak vertex).  Returns per-event RAW weight w (mean over n_target-weighted draws ->
     sigma_species) and lab momenta.  Massless outgoing neutrino (m1=0), elastic nucleon (m2 = m_species),
@@ -108,7 +108,7 @@ def _sample_species_nc(n, rng, flux, minE, m_species, is_proton, sf, n_target, q
     emax = np.minimum(np.minimum(emax, _MN - mom_s), 400.0)
     valid = (s > Smin) & (lam > 0) & (E_rm > sf.energy[0]) & (E_rm < emax)
     d = me_cross_section(k_nu, k_lep, p_struck, p_out, spin_avg=SPIN_AVG_NC, had_mass=m_species,
-                         probe="NC", is_proton=bool(is_proton), coupl1_quirk=quirk)
+                         probe="NC", is_proton=bool(is_proton), use_achilles_nc_coupling=use_achilles_nc_coupling)
     me = np.asarray(d["me_xsec"])
     w = np.where(valid, me * n_target * J_2body * J_beam, 0.0)
     w = np.where(np.isfinite(w), w, 0.0)
@@ -117,7 +117,7 @@ def _sample_species_nc(n, rng, flux, minE, m_species, is_proton, sf, n_target, q
                 pid=np.full(n, pid, np.int32))
 
 
-def generate(n, material="C", seed=0, chunk=500_000, return_events=False, quirk=False, theta_acc=None):
+def generate(n, material="C", seed=0, chunk=500_000, return_events=False, use_achilles_nc_coupling=False, theta_acc=None):
     """Nuclear NC-QE generator: nu N -> nu N' on `material`, n draws SPLIT across BOTH struck species
     (protons AND neutrons -- NC is elastic on either, unlike CC nu n -> mu p).  Flux-averaged over the
     beam (ADONIS_FLUX_FILE, set per-bank by generate_bank).  Per-event weight w already carries the MC
@@ -140,7 +140,7 @@ def generate(n, material="C", seed=0, chunk=500_000, return_events=False, quirk=
         while done < n_s:
             m = min(chunk, n_s - done)
             rng = np.random.default_rng(sd); sd += 1
-            r = _sample_species_nc(m, rng, flux, minE, m_sp, is_p, sf, n_tgt, quirk)
+            r = _sample_species_nc(m, rng, flux, minE, m_sp, is_p, sf, n_tgt, use_achilles_nc_coupling)
             r["w"] = r["w"] / n_s                             # per-species MC norm -> sum(w) = sigma_species
             for k in cols:
                 acc[k].append(r[k])

@@ -3,8 +3,8 @@
 The centrepiece is the D1 gate.  Whether ACHILLES's `coupl1` is a typo is an INFERENCE, not a fact,
 so ADoNIS implements BOTH conventions and MEASURES the difference instead of betting on one:
 
-  quirk=True  must reproduce ACHILLES verbatim;
-  quirk=False must differ from it by EXACTLY 1.0396 on the F1/F2 terms of BOTH nucleons, and by
+  use_achilles_nc_coupling=True  must reproduce ACHILLES verbatim;
+  use_achilles_nc_coupling=False must differ from it by EXACTLY 1.0396 on the F1/F2 terms of BOTH nucleons, and by
               nothing else -- FA/FAP untouched, CC and EM untouched.
 
 Two-sided is strictly stronger than either single choice: it pins the bug reproduction AND the
@@ -31,23 +31,23 @@ def _kin(n=4):
     return k, kp, p, po
 
 
-def _H(is_proton, quirk=False, **kw):
+def _H(is_proton, use_achilles_nc_coupling=False, **kw):
     k, kp, p, po = _kin()
     return np.asarray(hadron_current_qe_dirac(k, kp, p, po, probe="NC",
                                               is_proton=np.full(len(k), is_proton),
-                                              coupl1_quirk=quirk, **kw))
+                                              use_achilles_nc_coupling=use_achilles_nc_coupling, **kw))
 
 
 # ------------------------------------------------------------------------------ D1: the two-sided gate
 def test_the_quirk_factor_is_exactly_1_0396():
-    assert nc_coupl1(quirk=True) / nc_coupl1(quirk=False) == pytest.approx(QUIRK_FACTOR, rel=1e-12)
+    assert nc_coupl1(use_achilles_nc_coupling=True) / nc_coupl1(use_achilles_nc_coupling=False) == pytest.approx(QUIRK_FACTOR, rel=1e-12)
     assert QUIRK_FACTOR == pytest.approx(1.0396, abs=5e-4)
 
 
 def test_quirk_true_is_the_achilles_expression_verbatim():
     """LeptonicCurrent.cc:94 -- (ee*i/(4*sin2w*cw)) * (0.5 - 2*sin2w)."""
     want = (C.ee * 1j / (4 * C.sin2w * C.cw)) * (0.5 - 2 * C.sin2w)
-    assert nc_coupl1(quirk=True) == pytest.approx(want, rel=1e-14)
+    assert nc_coupl1(use_achilles_nc_coupling=True) == pytest.approx(want, rel=1e-14)
 
 
 def test_quirk_false_is_the_standard_model_coupling():
@@ -55,8 +55,8 @@ def test_quirk_false_is_the_standard_model_coupling():
     coupling is ee*i/(2*sw*cw) * (0.5 - 2*sin2w).  Guards the factor-2 error that a single-expression
     switch invites: writing X=sw instead of X=sw/2 would make the DEFAULT half the right coupling."""
     want = (C.ee * 1j / (2 * C.sw * C.cw)) * (0.5 - 2 * C.sin2w)
-    assert nc_coupl1(quirk=False) == pytest.approx(want, rel=1e-14)
-    assert nc_coupl1(quirk=False) != pytest.approx(
+    assert nc_coupl1(use_achilles_nc_coupling=False) == pytest.approx(want, rel=1e-14)
+    assert nc_coupl1(use_achilles_nc_coupling=False) != pytest.approx(
         (C.ee * 1j / (4 * C.sw * C.cw)) * (0.5 - 2 * C.sin2w), rel=1e-6), \
         "coupl1 is half the SM value -- the X=sw factor-2 error"
 
@@ -74,8 +74,8 @@ def test_the_quirk_scales_BOTH_nucleons_F1F2_and_nothing_else(is_proton):
     # ff_scale keys are the SACHS components; zeroing gen+gmn kills F1n and F2n together (and
     # gep+gmp kills F1p,F2p), which is exactly "switch off the -coupl2 partner".
     ff_off = {"gen": 0.0, "gmn": 0.0} if is_proton else {"gep": 0.0, "gmp": 0.0}
-    a = _H(is_proton, quirk=False, axial_scale=0.0, ff_scale=ff_off)
-    b = _H(is_proton, quirk=True, axial_scale=0.0, ff_scale=ff_off)
+    a = _H(is_proton, use_achilles_nc_coupling=False, axial_scale=0.0, ff_scale=ff_off)
+    b = _H(is_proton, use_achilles_nc_coupling=True, axial_scale=0.0, ff_scale=ff_off)
     nz = np.abs(a) > 1e-12
     assert nz.any(), "the isolated coupl1 current is identically zero -- test is vacuous"
     ratio = b[nz] / a[nz]
@@ -86,17 +86,17 @@ def test_the_quirk_scales_BOTH_nucleons_F1F2_and_nothing_else(is_proton):
 def test_the_quirk_leaves_the_axial_alone():
     """FA carries coupl2, which is identical in both branches, so a pure-axial current must not move."""
     ff_zero_vec = {"gep": 0.0, "gen": 0.0, "gmp": 0.0, "gmn": 0.0}   # F1p=F1n=F2p=F2n=0
-    a = _H(True, quirk=False, ff_scale=ff_zero_vec)
-    b = _H(True, quirk=True, ff_scale=ff_zero_vec)
-    assert np.allclose(a, b, atol=0), "the quirk leaked into the axial current"
+    a = _H(True, use_achilles_nc_coupling=False, ff_scale=ff_zero_vec)
+    b = _H(True, use_achilles_nc_coupling=True, ff_scale=ff_zero_vec)
+    assert np.allclose(a, b, atol=0), "the use_achilles_nc_coupling leaked into the axial current"
 
 
 def test_the_quirk_cannot_touch_cc_or_em():
     k, kp, p, po = _kin()
     for probe, kw in (("CC", {}), ("EM", dict(is_proton=np.full(len(k), True)))):
-        a = np.asarray(hadron_current_qe_dirac(k, kp, p, po, probe=probe, coupl1_quirk=False, **kw))
-        b = np.asarray(hadron_current_qe_dirac(k, kp, p, po, probe=probe, coupl1_quirk=True, **kw))
-        assert np.array_equal(a, b), f"{probe} moved when the NC quirk flag changed"
+        a = np.asarray(hadron_current_qe_dirac(k, kp, p, po, probe=probe, use_achilles_nc_coupling=False, **kw))
+        b = np.asarray(hadron_current_qe_dirac(k, kp, p, po, probe=probe, use_achilles_nc_coupling=True, **kw))
+        assert np.array_equal(a, b), f"{probe} moved when the NC use_achilles_nc_coupling flag changed"
 
 
 # --------------------------------------------------------------------- proton / neutron differential

@@ -129,7 +129,7 @@ def main(argv=None):
     # POOL FRACTION BEFORE JAX.  XLA reads XLA_PYTHON_CLIENT_MEM_FRACTION once, at backend init, so it
     # has to be set before the stage module (which imports jax) is loaded.  Doing it here means the
     # device plan lives in the CONFIG rather than in whichever wrapper script happened to export it.
-    from adonis.fit.compute import apply_env
+    from adonis.fit.device_plan import apply_env
     apply_env(cfg, log=lambda m: print(f"             {m}", flush=True))
 
     sys.argv = [STAGE_MODULE[a.stage], a.config]

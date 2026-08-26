@@ -92,7 +92,7 @@ def subset_degeneracy(F, prior, idx):
     return dict(sigma=s, vif=vif, rmulti=np.sqrt(np.maximum(1.0 - 1.0 / np.maximum(vif, 1.0), 0.0)),
                 corr=D @ V @ D)
 
-def gate1_prune(F, prior, idx, vif_cut=20.0, names=None, log=None):
+def prune_by_vif(F, prior, idx, vif_cut=20.0, names=None, log=None):
     """Drop the most degenerate knob, RECOMPUTE, repeat until every survivor has VIF < vif_cut.
 
     Iteration is required, not cosmetic: each drop re-freezes a direction and changes every remaining
@@ -108,7 +108,7 @@ def gate1_prune(F, prior, idx, vif_cut=20.0, names=None, log=None):
             break
         if log:
             nm = names[cur[a]] if names is not None else cur[a]
-            log(f"  gate1_prune: drop {nm} (VIF {d['vif'][a]:.0f}, R_multi {d['rmulti'][a]:.4f}) "
+            log(f"  prune_by_vif: drop {nm} (VIF {d['vif'][a]:.0f}, R_multi {d['rmulti'][a]:.4f}) "
                 f"-> {len(cur)-1} knobs")
         cur.pop(a)
     return cur

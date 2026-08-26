@@ -54,9 +54,9 @@ _COUPL1_NC_TRUE = (C.ee * _I / (2 * C.sw * C.cw)) * (0.5 - 2 * C.sin2w)       # 
 _COUPL2_NC = C.ee * _I / (4 * C.sw * C.cw)                                    # both branches
 
 
-def nc_coupl1(quirk=False):
-    """The NC QE vector coupling; `quirk=True` reproduces the ACHILLES sin2w/sw discrepancy."""
-    return _COUPL1_NC_QUIRK if quirk else _COUPL1_NC_TRUE
+def nc_coupl1(use_achilles_nc_coupling=False):
+    """The NC QE vector coupling; `use_achilles_nc_coupling=True` reproduces the ACHILLES sin2w/sw discrepancy."""
+    return _COUPL1_NC_QUIRK if use_achilles_nc_coupling else _COUPL1_NC_TRUE
 
 # Pauli matrices
 _SIG = np.stack([
@@ -126,7 +126,7 @@ def _ubar_vtx_u(vtx, u_in, ubar_out):
 
 
 def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scale=1.0, vector_scale=1.0,
-                            ff_scale=None, probe="CC", is_proton=None, coupl1_quirk=False,
+                            ff_scale=None, probe="CC", is_proton=None, use_achilles_nc_coupling=False,
                             return_structures=False):
     """All (...,4) MeV.  p_in_nuc OFF-SHELL struck nucleon (E=mN-removal); p_out_nuc outgoing
     (mp-on-shell energy).  Returns H (...,4combo,4mu) matching ACHILLES cur(i+2*(j-1)).
@@ -168,7 +168,7 @@ def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scal
             raise ValueError("probe='NC' needs is_proton: the NC QE couplings are PER NUCLEON "
                              "(LeptonicCurrent.cc:97-115), unlike CC's single isovector combination")
         isp = jnp.asarray(is_proton)
-        c1 = nc_coupl1(coupl1_quirk)
+        c1 = nc_coupl1(use_achilles_nc_coupling)
         # struck nucleon's own F1/F2 carry coupl1; the OTHER nucleon's carry -coupl2
         f1_own = jnp.where(isp, ff["F1p"], ff["F1n"]); f1_oth = jnp.where(isp, ff["F1n"], ff["F1p"])
         f2_own = jnp.where(isp, ff["F2p"], ff["F2n"]); f2_oth = jnp.where(isp, ff["F2n"], ff["F2p"])

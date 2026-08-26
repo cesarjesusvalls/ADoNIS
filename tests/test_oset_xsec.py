@@ -9,7 +9,7 @@ import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
 
-from adonis.fsi import oset_xsec as ox
+from adonis.fsi import pion_nuclear_xsec as ox
 
 M_PI = ox.M_PIP
 KF = float(np.cbrt(0.085 * 3 * np.pi ** 2) * ox.HBARC)   # symmetric matter, one species
@@ -51,7 +51,7 @@ def test_qe_charge_exchange_structure():
 def test_differentiable_in_oset_coeff():
     """The absorption cross section is differentiable in the Oset 2N-absorption coefficient."""
     def f(c0):
-        import adonis.fsi.oset_xsec as o
+        import adonis.fsi.pion_nuclear_xsec as o
         ca2 = o.C_A2.at[0].set(c0)
         x = (200.0) / M_PI; beta = o._quad(x, o.C_BETA)
         # rebuild via the public path: perturb the module constant through a closure

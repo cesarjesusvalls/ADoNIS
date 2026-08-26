@@ -68,7 +68,7 @@ def fit_kernel(eng, subset, mask=None):
            None if mask is None else np.asarray(mask, bool).tobytes())
     k = _KCACHE.get(key)
     if k is None:
-        from adonis.fit.compute import resolve
+        from adonis.fit.device_plan import resolve
         from adonis.fit.kernels import FitKernel
         nev = max([int(getattr(s_, "n_events", 0) or 0) for s_ in eng.samples] or [0])
         plan = resolve(getattr(eng, "cfg", None), len(subset), nev, log=log)
@@ -295,7 +295,7 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
 
 
 
-def gate2_Q(eng, th, subset, J, m, mask=None):
+def cochran_q(eng, th, subset, J, m, mask=None):
     """Per-knob Cochran's Q on per-bin demands at the BFP. Returns dict knob->(Q,ndf,p,I2,nresp)."""
     data, sigma = eng.data_sigma()
     if mask is None:
@@ -319,7 +319,7 @@ def gate2_Q(eng, th, subset, J, m, mask=None):
 
 
 
-def gate2_split(eng, th, subset, J, m, mask=None):
+def split_half_consistency(eng, th, subset, J, m, mask=None):
     """Vector split-fit: one-step GN estimates on low/high-half regions (per observable), prior-anchored."""
     data, sigma = eng.data_sigma()
     if mask is None:

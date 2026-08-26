@@ -7,7 +7,7 @@ refill), differentiable via kind-1 reweighting, and jit-able end to end.
 Merged verbatim (2026-07-26, branch cascade-unify) from the retired
 cascade_full.py (pool orchestration) + cascade_discrete.py (step physics + reweight
 math) + cascade_real.py (density/kinematics helpers) + nucleon_cascade.nn_elastic_sigma.
-Cross-section source-of-truth stays in the imported libs (oset_xsec, interactions.meson_baryon_xsec,
+Cross-section source-of-truth stays in the imported libs (pion_nuclear_xsec, interactions.meson_baryon_xsec,
 nn_inelastic, absorption_modes). Public entry: cascade_nucleus (eager core) and
 cascade_nucleus_jit (jitted). Config: CascadeConfig (DiscreteCascadeConfig = alias).
 """
@@ -23,7 +23,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.fsi import oset_xsec as ox
+from adonis.fsi import pion_nuclear_xsec as ox
 from adonis.fsi.interactions import meson_baryon_xsec
 from adonis.fsi.absorption_modes import kernel_tables as _abs_kernel_tables
 from adonis.fsi import nn_inelastic as nni

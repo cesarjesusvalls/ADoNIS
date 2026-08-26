@@ -586,7 +586,7 @@ def main():
     NIT = cfg.fit.minimizer.max_nfev
     log(f"config {cfg.path}  digest {cfg.digest()}")
 
-    from adonis.fit.fitters import lm_fit, gate2_Q, gate2_split, flags, parse_inject
+    from adonis.fit.fitters import lm_fit, cochran_q, split_half_consistency, flags, parse_inject
 
     eng = build_multisample_engine(log, cfg)
 

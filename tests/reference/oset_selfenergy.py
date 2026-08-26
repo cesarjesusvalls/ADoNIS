@@ -1,4 +1,4 @@
-"""NUMPY VALIDATION REFERENCE -- frozen twin of the LIVE code in adonis/fsi/oset_xsec.py.
+"""NUMPY VALIDATION REFERENCE -- frozen twin of the LIVE code in adonis/fsi/pion_nuclear_xsec.py.
 Exercised ONLY by tests/test_oset.py (the oracle the live path is checked against).  Do NOT modify,
 wire into production, or consolidate its constants/helpers -- its value is being independent.
 

@@ -136,7 +136,7 @@ class FitConfig:
     uncertainty: tuple           # ordered blocks, each a dict with a "method" key
     # DEFAULTED FIELDS LAST -- a dataclass rejects a non-default field after a defaulted one, and putting
     # `compute` above `uncertainty` made every FitConfig.load() raise at import time.
-    compute: dict = field(default_factory=dict)   # device-memory plan; see adonis.fit.compute
+    compute: dict = field(default_factory=dict)   # device-memory plan; see adonis.fit.device_plan
     path: Path = None
 
     # ---- loading ---------------------------------------------------------------------------------- #

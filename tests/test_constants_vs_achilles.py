@@ -55,15 +55,15 @@ def test_decentralized_constants_still_match():
     # eta mass is centralized as _M_ETA_PHYS (PDG 547.862).  NOTE: ACHILLES Constant::meta = 548.0;
     # the 0.14 MeV PDG-vs-ACHILLES divergence in the eta channel is a separate open decision.
     assert "_M_ETA_PHYS = 547.862" in txt, "eta mass constant missing/changed in cascade.py"
-    oset = (REPO / "adonis/fsi/oset_xsec.py").read_text()
-    assert "0.17" in oset, "normal density 0.17 (Constant::rho0) missing from oset_xsec"
+    oset = (REPO / "adonis/fsi/pion_nuclear_xsec.py").read_text()
+    assert "0.17" in oset, "normal density 0.17 (Constant::rho0) missing from pion_nuclear_xsec"
 
 
 # --- use-site guard: no avg-mass at a threshold/clip beyond the verified-correct whitelist ----------
 # Each whitelisted site was checked in the audit to match ACHILLES's OWN average-mass choice:
 #   Particle.cc:10  (formation zone uses Constant::mN)   -> cascade_discrete _formation_zone
 #   Cascade.cc:638  (recap threshold subtracts Constant::mN) -> cascade_discrete recap
-# Oset uses Constant::mN by design throughout (OsetCrossSections.cc) -> whole oset_xsec.py exempt.
+# Oset uses Constant::mN by design throughout (OsetCrossSections.cc) -> whole pion_nuclear_xsec.py exempt.
 _DANGER = re.compile(r"\(\s*2\s*\*\s*M_N\s*\)\s*\*\*\s*2|/\s*4\.?0?\s*-\s*M_N\s*\*\*\s*2")
 _WHITELIST_SUBSTR = (
     "M_N ** 2 - dot4",                       # formation zone (ACHILLES Particle.cc:10, avg by design)
