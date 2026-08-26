@@ -136,7 +136,13 @@ The expensive stages shard. Pass `--shard k/N` to split the work across jobs —
 
 ```bash
 python -m analysis.campaign.run configs/fits/sec4_P2.yaml --stage toys --shard 7/40
+python -m analysis.campaign.run configs/fits/sec4_P2.yaml --stage profile --shard 3/17
 ```
+
+Shard the profile even when the work would fit: it compiles a kernel per parameter and holds them
+all, so an unsharded run exhausts a smaller card partway through. One parameter per process keeps
+that bounded. `compute.mem_fraction` in the config moves the pool/outside-pool split if a stage still
+runs out of room.
 
 **The unfolding**:
 
