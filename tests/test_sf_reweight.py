@@ -13,7 +13,7 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
 from adonis.channels import qe as qe_xsec
-from adonis.workflow.materials import resolve_targets
+from adonis.nuclear.targets import resolve_targets
 from adonis.nuclear.spectral import SpectralFunction
 from adonis.reweight.sf_reweight import sf_grids, sf_reweight, removal_from_struck
 

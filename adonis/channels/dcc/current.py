@@ -22,12 +22,28 @@ from adonis.channels.dcc.assembly import build_zmtx
 from adonis.channels.dcc.amplitudes import DCCAmplitudes, DCCKnobs
 from adonis.channels.dcc.loader import load_cached
 
-_AMP = DCCAmplitudes()
-_T = load_cached()
-_PW_2J = np.asarray(_T.pw_2J); _PW_2L = np.asarray(_T.pw_2L); _PW_2I = np.asarray(_T.pw_2I)
-_NPW = len(_PW_2J)
+# The DCC amplitude table is ~38 MB and was parsed AT IMPORT, so `import adonis.channels.dcc.current`
+# read it -- and failed outright wherever the ACHILLES inputs are not installed, including when the
+# only intent was to inspect the module.  Built on first use instead, then cached.
+class _Tables:
+    __slots__ = ("amp", "T", "pw_2J", "pw_2L", "pw_2I", "npw", "jmax")
+
+
+_TBL = None
+
+
+def _tbl():
+    global _TBL
+    if _TBL is None:
+        t = load_cached()
+        n = _Tables()
+        n.amp = DCCAmplitudes(t); n.T = t
+        n.pw_2J = np.asarray(t.pw_2J); n.pw_2L = np.asarray(t.pw_2L); n.pw_2I = np.asarray(t.pw_2I)
+        n.npw = len(n.pw_2J); n.jmax = int(n.pw_2J.max())
+        _TBL = n
+    return _TBL
+
 _DELTA_WAVE = 5              # DCC partial-wave index of the P33 Delta(1232) (matches reweight_model._DELTA_WAVE)
-_JMAX = int(_PW_2J.max())
 _LMAX = 5
 _ISP = {-1: 1, 1: 0}                      # spin index: up(+1)->0, down(-1)->1  (0-based)
 _EPS_TPIN = 1e-3
@@ -132,12 +148,12 @@ def exclusive_H(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, mode=1, tcrz=1.0, tpi
     xz_q, zphi_q = _ang(qx2[1:])
     wcm = np.sqrt(max(pcm[0] ** 2 - pcm[1:] @ pcm[1:], 1.0))
     Q2 = qsh[1:] @ qsh[1:] - qsh[0] ** 2
-    dfun, off = setdfun(xz_q, _JMAX)
+    dfun, off = setdfun(xz_q, _tbl().jmax)
     bleg = np.asarray(legendre_ylm(_LMAX, xz_pin))           # (L+1, 2L+1)
     zphi_pins = {l: zphi_pin ** l for l in range(-_LMAX, _LMAX + 1)}
 
-    vec, isv, axial = _AMP.amplitudes_spline(jnp.array([wcm]), jnp.array([Q2]), DCCKnobs())
-    zmtx = np.asarray(build_zmtx(vec[0], isv[0], axial[0], wcm, Q2, _PW_2J, _PW_2L, _PW_2I,
+    vec, isv, axial = _tbl().amp.amplitudes_spline(jnp.array([wcm]), jnp.array([Q2]), DCCKnobs())
+    zmtx = np.asarray(build_zmtx(vec[0], isv[0], axial[0], wcm, Q2, _tbl().pw_2J, _tbl().pw_2L, _tbl().pw_2I,
                                  mode=mode, itiz=itiz, m_N=mN, m_pi=_conv.amp_m_pi()))   # (8, npw); centralized convention
     tiz = itiz / 2.0; tpinz = tcrz + tiz
     tmax = tm_f + 0.5 + _EPS_TPIN
@@ -148,8 +164,8 @@ def exclusive_H(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, mode=1, tcrz=1.0, tpi
         igm1 = int(ISMI[ixi1]); igm1x = int(ISMIX[ixi1]); lambda_N = -int(ISBI[ixi1])
         lam_idx = _ISP[lambda_N]; Lambda_i = 2 * igm1x - lambda_N
         ig_idx = IGM1.index(igm1)
-        for pw in range(_NPW):
-            jpin = int(_PW_2J[pw]); Lpin = int(_PW_2L[pw]); itpin = int(_PW_2I[pw])
+        for pw in range(_tbl().npw):
+            jpin = int(_tbl().pw_2J[pw]); Lpin = int(_tbl().pw_2L[pw]); itpin = int(_tbl().pw_2I[pw])
             tpin = itpin / 2.0; xlpin = Lpin / 2.0; xjpin = jpin / 2.0; llpin = Lpin // 2
             if not (tpin + _EPS_TPIN > abs(tpinz) and tmax > tpin and jpin >= abs(Lambda_i)):
                 continue
@@ -209,7 +225,7 @@ def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None, pion_po
     r_axial (N,) scales the axial amplitudes (M_A reweight hook; None = nominal).
     mode: 1 CC (default) | 10 EM (e,e': axial off, EM isospin) | -1 NC."""
     from adonis.channels.dcc.differential import build_zmtx_batched as _bzb
-    return _bzb(vec, isv, axial, W, Q2, _PW_2J, _PW_2L, _PW_2I,
+    return _bzb(vec, isv, axial, W, Q2, _tbl().pw_2J, _tbl().pw_2L, _tbl().pw_2I,
                 mode=mode, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial, pion_pole=pion_pole)
 
 
@@ -222,8 +238,8 @@ def _zmtx_to_zjx(zmtx, N, itiz, tcrz, tm_f, tpiz, bleg, zphi_pin, dfun, off, zph
     for ixi1 in range(1, 9):
         igm1 = int(ISMI[ixi1]); igm1x = int(ISMIX[ixi1]); lambda_N = -int(ISBI[ixi1])
         lam_idx = _ISP[lambda_N]; Lambda_i = 2 * igm1x - lambda_N; ig_idx = IGM1.index(igm1)
-        for pw in range(_NPW):
-            jpin = int(_PW_2J[pw]); Lpin = int(_PW_2L[pw]); itpin = int(_PW_2I[pw])
+        for pw in range(_tbl().npw):
+            jpin = int(_tbl().pw_2J[pw]); Lpin = int(_tbl().pw_2L[pw]); itpin = int(_tbl().pw_2I[pw])
             tpin = itpin / 2.0; xlpin = Lpin / 2.0; xjpin = jpin / 2.0; llpin = Lpin // 2
             if not (tpin + _EPS_TPIN > abs(tpinz) and tmax > tpin and jpin >= abs(Lambda_i)):
                 continue
@@ -294,15 +310,15 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     xz_pin, zphi_pin = ang(xk2[:, 1:]); xz_q, zphi_q = ang(qx2[:, 1:])
     wcm = np.sqrt(np.clip(pcm[:, 0] ** 2 - np.sum(pcm[:, 1:] ** 2, axis=1), 1.0, None))
     Q2 = np.sum(qsh[:, 1:] ** 2, axis=1) - qsh[:, 0] ** 2
-    dfun, off = setdfun_batch(xz_q, _JMAX)
+    dfun, off = setdfun_batch(xz_q, _tbl().jmax)
     bleg = legendre_ylm_batch(_LMAX, xz_pin)                                  # (N, L+1, 2L+1)
     # interp switch (default "spline" = bit-matches ACHILLES interpolate_amp).  "bilinear" is NOT
     # W-faithful (W-SHAPE offender, >1% in the high-W tail) -- NEVER use unless explicitly requested.
     _kn = knobs if knobs is not None else DCCKnobs()    # pw_norm / axial_strength reweight hook (record-build)
     if BATCH_INTERP == "spline":
-        vec, isv, axial = _AMP.amplitudes_spline_np(wcm, Q2, _kn)
+        vec, isv, axial = _tbl().amp.amplitudes_spline_np(wcm, Q2, _kn)
     else:
-        vec, isv, axial = _AMP.amplitudes_bilinear_np(wcm, Q2, _kn)
+        vec, isv, axial = _tbl().amp.amplitudes_bilinear_np(wcm, Q2, _kn)
     amp_mpi = AMP_MPI_OVERRIDE if AMP_MPI_OVERRIDE is not None else mpi
     r_ax = None if r_axial is None else jnp.asarray(r_axial)
     zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, amp_mpi,
@@ -314,12 +330,12 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
         # zj is LINEAR in zmtx and zmtx is LINEAR in the amplitude blocks, so build the block/wave-split zmtx
         # and map each to a zj.  Atoms {V,A,P} x {rest, wave5}: V=vector, A=axial(r=1,pole=0), P=pole only
         # (=[axial+pole]-axial); wave5 split out for delta_strength.  Shared angular kernel `ang` is reused.
-        w5 = _DELTA_WAVE if _DELTA_WAVE < _NPW else None
+        w5 = _DELTA_WAVE if _DELTA_WAVE < _tbl().npw else None
         def _wmask(a, keep5):                                    # keep only wave 5 (keep5) or all-but-5
             out = np.array(a)
             if w5 is not None:
                 if keep5:
-                    out[:, :, [i for i in range(_NPW) if i != w5]] = 0   # assignment (fancy index copy -> can't .fill)
+                    out[:, :, [i for i in range(_tbl().npw) if i != w5]] = 0   # assignment (fancy index copy -> can't .fill)
                 else:
                     out[:, :, w5] = 0
             return out

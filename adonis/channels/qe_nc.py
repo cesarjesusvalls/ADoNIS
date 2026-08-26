@@ -36,7 +36,7 @@ from adonis.channels import constants as C
 from adonis.channels.twobody import isotropic_two_body_cm
 from adonis.channels.currents.matrix_element import (me_cross_section, MASS_PDG_PROTON,
                                                      MASS_PDG_NEUTRON)
-from adonis.channels.ee import MATERIALS as _MATERIALS   # {material: (Z, N, sf_p_path, sf_n_path)}
+from adonis.nuclear.targets import spectral_inputs
 from adonis.flux.spectrum import SpectrumFlux
 from adonis.nuclear.spectral import SpectralFunction, SpectralImportanceSampler
 
@@ -127,7 +127,7 @@ def generate(n, material="C", seed=0, chunk=500_000, return_events=False, quirk=
     NO theta_acc: a polar cut on the INVISIBLE outgoing neutrino is meaningless (refused, like res_nc)."""
     if theta_acc is not None and tuple(float(x) for x in theta_acc) != (0.0, 180.0):
         raise ValueError("NC QE: refusing a polar-angle cut on the invisible outgoing neutrino")
-    Z, N, sf_p_path, sf_n_path = _MATERIALS[material]
+    Z, N, sf_p_path, sf_n_path = spectral_inputs(material)
     sf_p = SpectralFunction(sf_p_path); sf_n = SpectralFunction(sf_n_path)
     flux = SpectrumFlux()
     minE = flux.seed_min_GeV(m_lep=0.0)                       # massless outgoing lepton -> no muon threshold

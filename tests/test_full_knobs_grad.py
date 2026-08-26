@@ -14,7 +14,7 @@ jax.config.update("jax_enable_x64", True)
 
 import analysis.campaign.tune as T
 from adonis.reweight.reweight_model import (nominal_knobs, build_hv_sf, model_hist_full)
-from adonis.workflow.materials import resolve_targets
+from adonis.nuclear.targets import resolve_targets
 from adonis.nuclear.spectral import SpectralFunction
 
 T.NQE = T.NRES = 5000

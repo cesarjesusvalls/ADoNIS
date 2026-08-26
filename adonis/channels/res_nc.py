@@ -115,10 +115,6 @@ def sigma_free_nucleon_nc_total(Enu_MeV, is_proton, n=80_000, seed=0):
 
 
 # =========================================================================== nucleus-level generator
-MATERIALS = {
-    "C":  (6, 6,   "data/Spectral_Functions/pke12p_tot.data", "data/Spectral_Functions/pke12n_tot.data"),
-    "Ar": (18, 22, "data/Spectral_Functions/pke40p_tot.data", "data/Spectral_Functions/pke40n_tot.data"),
-}
 
 
 def _sample_channel_nc(n, rng, flux, minE, maxE, m_pi, m_Nf, had_mass, imp):
@@ -155,11 +151,12 @@ def generate(n=20000, material="C", seed=0, return_events=False, chunk=250_000,
     is meaningless, and silently applying one would bias the sample with nothing to notice it.
     """
     from adonis.flux.spectrum import SpectrumFlux
+    from adonis.nuclear.targets import spectral_inputs
     from adonis.nuclear.spectral import SpectralFunction, SpectralImportanceSampler
     if theta_acc is not None and not (theta_acc[0] <= 0.0 and theta_acc[1] >= 180.0):
         raise ValueError(f"probe=NC cannot honour theta_acc={theta_acc}: the outgoing lepton is a "
                          "neutrino, so a polar acceptance on it is meaningless")
-    Z, N, sf_p_path, sf_n_path = MATERIALS[material]
+    Z, N, sf_p_path, sf_n_path = spectral_inputs(material)
     n_proton = Z if n_proton is None else n_proton
     n_neutron = N if n_neutron is None else n_neutron
     imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))

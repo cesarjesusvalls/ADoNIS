@@ -16,7 +16,7 @@ jax.config.update("jax_enable_x64", True)
 
 from adonis.channels import res as res_xsec
 from adonis.nuclear.spectral import SpectralFunction
-from adonis.workflow.materials import resolve_targets
+from adonis.nuclear.targets import resolve_targets
 from adonis.channels.dcc import current as dcc
 from adonis.channels.dcc.form_factors import axial_reweight_dipole
 from adonis.core.params import DCCKnobs, nominal_knobs

@@ -7,7 +7,7 @@ Generation is ONE backbone: `generate_bank(cfg, outdir)` builds every bank (weak
 single GenConfig, driven by config fields not code paths (adonis.workflow.cli is the thin CLI shell).
 Analysis describes input banks, a signal topology, observables+binning, and an optional data overlay.
 """
-from adonis.workflow.materials import (NuclearTarget, REGISTRY, UnsupportedMaterial,  # noqa: F401
+from adonis.nuclear.targets import (NuclearTarget, REGISTRY, UnsupportedMaterial,  # noqa: F401
                                        parse_formula, resolve_targets, stoichiometric_weights)
 from adonis.workflow.config import load_gen_config, load_analysis_config  # noqa: F401
 

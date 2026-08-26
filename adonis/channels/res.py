@@ -22,14 +22,21 @@ from adonis.channels.dcc.current import exclusive_amps2_batch
 from adonis.nuclear.spectral import SpectralImportanceSampler
 
 _MN = C.mN
-_SF_N = SpectralFunction("data/Spectral_Functions/pke12n_tot.data")   # default = carbon
-_SF_P = SpectralFunction("data/Spectral_Functions/pke12p_tot.data")
-_IMP = SpectralImportanceSampler(_SF_N)          # struck nucleon proposal ~ |p|^2 S_n for ALL channels
+# Callers thread the target's spectral functions in; these carbon defaults serve a call that passes
+# none.  Built ON FIRST USE, not at import: reading a data file to import a module makes the package
+# un-importable wherever the ACHILLES tables are not installed, including to inspect it.
+_SF_CACHE = {}
 
-# Spectral functions are threaded per-nucleus (generate.py passes the target's pke{n,p}); the carbon
-# globals above are the defaults so any caller without sf args stays bit-identical.  The |p|^2 S_n
-# importance sampler is cached per SpectralFunction object (built once, reused across seeds).
-_IMP_CACHE = {id(_SF_N): _IMP}
+
+def _default_sf(which):
+    key = f"pke12{which}_tot.data"
+    if key not in _SF_CACHE:
+        _SF_CACHE[key] = SpectralFunction(f"data/Spectral_Functions/{key}")
+    return _SF_CACHE[key]
+
+
+# The |p|^2 S_n importance proposal, cached per SpectralFunction object (built once, reused across seeds).
+_IMP_CACHE = {}
 def _imp_for(sf_n):
     k = id(sf_n)
     if k not in _IMP_CACHE:
@@ -308,7 +315,7 @@ def sigma_free_nucleon(Enu_MeV, channel, n=80_000, seed=0):
 
 def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None, defensive=0.0):
     """One RES channel for the importance estimator: spectrum beam + importance struck nucleon
-    (imp = the nucleus's |p|^2 S_n sampler; defaults to carbon _IMP) + the shared 3-body core.
+    (imp = the nucleus's |p|^2 S_n sampler; defaults to carbon) + the shared 3-body core.
 
     Optional frozen VegasGrid remaps the 6 hypercube dims [beam u[4] + 3-body u[5:10]] (the struck-
     nucleon |p|^2 S sampler stays OUTSIDE the grid); its Jacobian is folded into J and the mapped grid
@@ -318,7 +325,7 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None, d
     `defensive` of events is drawn uniformly (covering the regions the grid under-samples); EVERY event
     is weighted by the mixture density 1/q -> the grid Jacobian is bounded by 1/defensive, capping the
     grid-induced weight tail.  Unbiased (same expectation), 0.0 -> pure Vegas."""
-    imp = imp or _IMP
+    imp = imp or _imp_for(_default_sf('n'))
     u = rng.random((n, 10))
     jac_grid = 1.0; x_grid = u[:, 4:10]
     if grid is not None and defensive > 0.0:                    # defensive mixture over the 6 active dims
@@ -360,12 +367,6 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None, d
 # reweight trick (that only arises from an S_n importance proposal).
 _M_SHARED_NF, _M_SHARED_PI = M_P, M_PI0
 _SMIN0 = (M_MU + M_P + M_PI0) ** 2
-# (initial-nucleon pid, itiz, pion pid, spectral fn, N_nucleon, flux had_mass)
-_GROUP_CHANNELS = [
-    (2112, -1, 111, _SF_N, N_NUC, MASS_PDG_NEUTRON),    # [0] n -> p pi0  (= process[0])
-    (2112, -1, 211, _SF_N, N_NUC, MASS_PDG_NEUTRON),    # [1] n -> n pi+
-    (2212, +1, 211, _SF_P, N_NUC, MASS_PDG_PROTON),     # [2] p -> p pi+
-]
 
 
 def _sample_shared(n, rng, flux, maxE):
@@ -420,9 +421,9 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
                       n_neutron=N_NUC, n_proton=N_NUC):
     """ACHILLES-faithful: ONE shared (process[0]) point per draw; sum the 3 channels' amps2 with
     EXPLICIT per-channel initwgt = N*S_channel and per-channel flux, on the shared momenta.
-    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P);
+    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon);
     n_neutron/n_proton = target species counts (A-Z / Z) for the N*S scaling."""
-    sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P
+    sf_n = sf_n or _default_sf('n'); sf_p = sf_p or _default_sf('p')
     group = [(2112, -1, 111, sf_n, n_neutron, MASS_PDG_NEUTRON),  # [0] n -> p pi0
              (2112, -1, 211, sf_n, n_neutron, MASS_PDG_NEUTRON),  # [1] n -> n pi+
              (2212, +1, 211, sf_p, n_proton, MASS_PDG_PROTON)]    # [2] p -> p pi+
@@ -505,7 +506,7 @@ def warmup_vegas(n=100000, iters=6, nbins=50, alpha=1.5, seed=987654321, sf_n=No
     One shared grid across the 3 (kinematically similar) channels.  Returns the frozen VegasGrid.
     `progress` shows a tqdm-style bar (iters x channels steps) with ETA for the integration phase."""
     from adonis.vegas_grid import VegasGrid
-    sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
+    sf_n = sf_n or _default_sf('n'); sf_p = sf_p or _default_sf('p'); imp = _imp_for(sf_n)
     flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     grid = VegasGrid(6, nbins)
     pbar = _warmup_pbar(iters * len(CHANNELS), "vegas warm-up") if progress else None
@@ -528,7 +529,7 @@ def generate(n=20000, seed=0, return_events=False, method=None, sf_n=None, sf_p=
              n_neutron=N_NUC, n_proton=N_NUC, grid=None, defensive=0.0):
     """Dispatch to the faithful (transliteration) or importance RES estimator.  Both estimate the
     same sigma; faithful mirrors ACHILLES operation-for-operation, importance is lower variance.
-    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon _SF_N/_SF_P).
+    sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon).
     n_neutron/n_proton = # of target neutrons (A-Z) / protons (Z) for the initwgt = N*S scaling
     (default 6 = carbon; n-initiated channels use n_neutron, the p-initiated channel n_proton).
     grid = optional frozen VegasGrid (importance method only) over the 6 final-state hypercube dims."""
@@ -542,7 +543,7 @@ def generate(n=20000, seed=0, return_events=False, method=None, sf_n=None, sf_p=
 
 def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None,
                         n_neutron=N_NUC, n_proton=N_NUC, grid=None, defensive=0.0):
-    sf_n = sf_n or _SF_N; sf_p = sf_p or _SF_P; imp = _imp_for(sf_n)
+    sf_n = sf_n or _default_sf('n'); sf_p = sf_p or _default_sf('p'); imp = _imp_for(sf_n)
     rng = np.random.default_rng(seed)
     flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     out = {}; sig = 0.0

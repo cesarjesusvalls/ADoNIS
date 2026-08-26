@@ -15,7 +15,7 @@ jax.config.update("jax_enable_x64", True)
 
 from adonis.channels import ee as ee_x, res_ee as res_ee_x
 from adonis.nuclear.spectral import SpectralFunction
-from adonis.workflow.materials import resolve_targets
+from adonis.nuclear.targets import resolve_targets
 from adonis.reweight.reweight_model import build_hv_sf
 
 _ALL = (0.0, 180.0)                      # accept every polar angle (the generate_bank _ALL sentinel)

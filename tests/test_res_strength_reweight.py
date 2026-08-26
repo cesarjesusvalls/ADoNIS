@@ -15,7 +15,7 @@ jax.config.update("jax_enable_x64", True)
 
 from adonis.channels import res as res_xsec
 from adonis.nuclear.spectral import SpectralFunction
-from adonis.workflow.materials import resolve_targets
+from adonis.nuclear.targets import resolve_targets
 from adonis.reweight.amps2_records import (build_res_ma_records, build_res_pw_records,
                                         build_res_pionpole_records, strength_reweight, RES_ITIZ)
 from adonis.channels.dcc import current as dcc

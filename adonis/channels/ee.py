@@ -26,6 +26,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from adonis.channels import constants as C
+from adonis.nuclear.targets import spectral_inputs
 from adonis.nuclear.spectral import SpectralFunction, SpectralImportanceSampler
 from adonis.channels.currents.matrix_element import me_cross_section
 from adonis.constants import MASS_PDG_PROTON, MASS_PDG_NEUTRON
@@ -36,10 +37,6 @@ _TWO_PI = 2 * np.pi
 THETA_ACC = (14.0, 17.0)        # outgoing-e- polar-angle HardCut [deg] (run_inclusive_ee_C_*.yml)
 
 # per-material target: (Z protons, N neutrons, proton SF, neutron SF)
-MATERIALS = {
-    "C":  (6, 6,  "data/Spectral_Functions/pke12p_tot.data", "data/Spectral_Functions/pke12n_tot.data"),
-    "Ar": (18, 22, "data/Spectral_Functions/pke40p_tot.data", "data/Spectral_Functions/pke40n_tot.data"),
-}
 
 
 from adonis.channels.twobody import isotropic_two_body_cm   # shared isotropic 2-body CM->lab (qe/ee/qe_nc)
@@ -106,7 +103,7 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000, records
     records=True also keeps the per-event kinematics (k_e, k_lep, p_struck, p_out, me, had_mass,
     n_target) for the theta-ACCEPTED events only -- the inputs a knob reweight needs to recompute the
     EM matrix element (adonis/channels/ee_xsec + analysis/beams/ee_fisher)."""
-    Z, N, sf_p_path, sf_n_path = MATERIALS[material]
+    Z, N, sf_p_path, sf_n_path = spectral_inputs(material)
     sf_p = SpectralFunction(sf_p_path); sf_n = SpectralFunction(sf_n_path)
     lo, hi = theta_acc
     keep = list(_SCALAR) + (list(_VEC) + list(_REC_EXTRA) if records else [])

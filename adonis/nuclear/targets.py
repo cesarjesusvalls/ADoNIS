@@ -1,4 +1,4 @@
-"""Material / target resolution for the ADoNIS workflow API.
+"""Nuclear targets: which nuclei ADoNIS has inputs for, and how a chemical formula resolves to them.
 
 A generation config names a target by chemical formula (e.g. "C", "CH", "H2O").  This module parses
 the formula into element stoichiometry and resolves each element against a REGISTRY of nuclei for
@@ -103,3 +103,18 @@ def stoichiometric_weights(formula: str) -> dict[str, float]:
     """Per-element multiplicities as floats, e.g. 'CH' -> {'C':1.0,'H':1.0}.  These weight the
     per-element banks when combining a compound target at analysis time."""
     return {el: float(n) for el, n in parse_formula(formula).items()}
+
+
+def spectral_inputs(material: str) -> tuple[int, int, str, str]:
+    """(Z, N, proton-SF path, neutron-SF path) for a single-nucleus target.
+
+    The hard-vertex channels each carried their own copy of this table.  Four copies of two nuclei is
+    survivable; the failure mode is that adding a nucleus means finding all four, and a channel that
+    was missed accepts the material name and then reads the wrong spectral function.
+    """
+    t = REGISTRY.get(material)
+    if t is None or t.free_nucleon:
+        raise UnsupportedMaterial(
+            f"{material!r} has no spectral-function inputs; known: "
+            + ", ".join(k for k, v in REGISTRY.items() if not v.free_nucleon))
+    return t.Z, t.A - t.Z, t.spectral_p, t.spectral_n

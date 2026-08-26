@@ -62,7 +62,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
     from adonis.reweight import tune as T
-    from adonis.workflow.materials import resolve_targets
+    from adonis.nuclear.targets import resolve_targets
     from adonis.nuclear.spectral import SpectralFunction
     import adonis.fsi.cascade as CF
 
@@ -277,7 +277,7 @@ def _generate_hadron(cfg, outdir, log, t0):
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
-    from adonis.workflow.materials import resolve_targets
+    from adonis.nuclear.targets import resolve_targets
     from adonis.flux.hadron import BEAMS, R_DISK, PIR2_MB, HadronBeam
     from adonis.fsi.cascade import (DiscreteCascadeConfig, _load_density, sample_nucleons, _CH_MASS,
                                     _MP_PHYS, _MN_PHYS)

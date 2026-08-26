@@ -16,6 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from adonis.channels import constants as C
+from adonis.nuclear.targets import spectral_inputs
 from adonis.nuclear.spectral import SpectralFunction, SpectralImportanceSampler
 from adonis.channels.currents.matrix_element import flux_factor, MASS_PDG_PROTON, MASS_PDG_NEUTRON
 from adonis.channels.dcc.current import exclusive_amps2_batch
@@ -36,10 +37,6 @@ EM_CHANNELS = [
 ]
 _M_PI = {111: M_PI0, 211: M_PIP, -211: M_PIP}
 
-MATERIALS = {
-    "C":  (6, 6,  "data/Spectral_Functions/pke12p_tot.data", "data/Spectral_Functions/pke12n_tot.data"),
-    "Ar": (18, 22, "data/Spectral_Functions/pke40p_tot.data", "data/Spectral_Functions/pke40n_tot.data"),
-}
 
 
 def _sample_3body_ee(k_e, p_struck, m_pi, m_Nf, m_lep, u):
@@ -97,7 +94,7 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
     theta_acc=(lo,hi) [deg] applies the SAME outgoing-e- angular acceptance the QE channel (ee.generate)
     applies -- both EM channels then honor the config's acceptance identically (default None = all angles,
     kept for the raw dsigma/domega estimator; the bank generator always passes cfg.theta_acc)."""
-    Z, N, sf_p_path, sf_n_path = MATERIALS[material]
+    Z, N, sf_p_path, sf_n_path = spectral_inputs(material)
     imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))
     imp_n = SpectralImportanceSampler(SpectralFunction(sf_n_path))
     keys = ["c", "omega", "theta"] + (["k_e", "k_lep", "p_struck", "p_N", "p_pi",
