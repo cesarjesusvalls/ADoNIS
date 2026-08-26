@@ -1,8 +1,8 @@
-# Section 3 (Fisher information per subset) -- WHICH bins go in each column of each figure.
+# Fisher information per subset: which bins go in each column of the figure.
 #
-# Everything sec3 plots is a ROW SLICE of one persisted Jacobian, so a "subset" is just a set of
-# dataset keys (`dskeys` in the npz).  This file is the single place that names them, so changing the
-# sample composition or the binning of the input npz is a CONFIG edit, not a code edit.
+# Every column is a row slice of one persisted Jacobian, so a "subset" is just a set of dataset keys
+# (`dskeys` in the npz).  This file is the single place that names them, so changing the sample
+# composition or the binning is a config edit, not a code edit.
 #
 # Group entries accept three kinds of item, mixed freely:
 #   * a literal dskey            ->  pmu
@@ -11,27 +11,21 @@
 # The reference form is what makes a cumulative ladder cheap: each rung is the previous rung plus one
 # sample, with no repetition, so adding a sample means adding one line.
 #
-# Resolution is tolerant by design (see sec2_fisher/subsets.py): a pattern that matches nothing is
-# reported and dropped, a group left with no keys is dropped as a column, and any dskey in the npz that
-# NO group in an axis picks up is reported as `uncovered` -- so a newly added sample is never silently
-# ignored.
+# Resolution is tolerant by design: a pattern matching nothing is reported and dropped, a group left
+# with no keys is dropped as a column, and any dskey no group picks up is reported as `uncovered`, so
+# a newly added sample is never silently ignored.
 
-# Default input under output/altgen/ (override: CLI arg or ADONIS_SEC2_NPZ).  An axis MAY set its own
-# `npz:`, but none do now.  This is the SAME multi-sample npz section 2 plots, so every sec3 figure uses
-# the SAME samples + signal defs as sec2: T2K keep-filtered to its 7 STV + CC0pi-muon observables,
-# MINERvA (STV + 1D pT/p||), (e,e'), and the pi+/p/n beams.
+# The input npz under output/altgen/; an axis may override it with its own `npz:`.  It is the same
+# multi-sample Jacobian the per-bin gradient figure uses, so the two show the same samples and signal
+# definitions: T2K, MINERvA, (e,e'), and the pi+/p/n beams.
 npz: multisample_carbon
 fit_cut: 0.5                   # a knob is FIT when shrinkage sigma_post/sigma_prior < this
 
 axes:
 
-  # ---- What does each PROBE TYPE buy you?  (neutrino / electron / hadron beams) ------------------ #
-  # The ONLY axis kept: it makes constraints_per_subset, the paper's "constraining power per probe"
-  # figure.  (The per-sample / cumulative-ladder axes and the failure-mode + degeneracy reference
-  # figures were pruned -- they are not paper figures.)
+  # What each probe type constrains: neutrino, electron, hadron beams.
   by_probe:
-    figure: constraints_per_subset       # renamed 2026-08-14 (was sec2_shrinkage_subsets, then the
-    #                                      misspelled constrains_per_subset)
+    figure: constraints_per_subset
     title: Gate I per probe type
     marginalized_only: true              # single panel: what the joint fit delivers (no raw/degeneracy panel)
     groups:                              # all samples, grouped by beam particle (uses the default npz)
