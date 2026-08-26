@@ -34,6 +34,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from adonis import io as io_paths
 from adonis.io import achilles_data_root
 
 DEFAULT_PATH = str(achilles_data_root() / "dcc_EW.dat")
@@ -77,7 +78,8 @@ def _read_block(lines, start, count, dims):
     return arr, start + count
 
 
-def parse_dcc_ew(path=DEFAULT_PATH) -> DCCTable:
+def parse_dcc_ew(path=None) -> DCCTable:
+    path = io_paths.require("dcc_EW.dat") if path is None else path
     with open(path) as f:
         lines = f.readlines()
 
@@ -110,8 +112,9 @@ def parse_dcc_ew(path=DEFAULT_PATH) -> DCCTable:
     return DCCTable(pw[:, 0], pw[:, 1], pw[:, 2], pw[:, 3], W, Q2, vec, isv, axial)
 
 
-def load_cached(path=DEFAULT_PATH, cache=None) -> DCCTable:
+def load_cached(path=None, cache=None) -> DCCTable:
     """Parse once and cache to .npz next to this module for fast reload."""
+    path = io_paths.require("dcc_EW.dat") if path is None else path
     cache = cache or os.path.join(os.path.dirname(__file__), "_dcc_ew_cache.npz")
     if os.path.exists(cache) and os.path.getmtime(cache) >= os.path.getmtime(path):
         d = np.load(cache)

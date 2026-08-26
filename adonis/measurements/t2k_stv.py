@@ -32,10 +32,21 @@ def load_cc0pi(obs):
     cov = np.asarray(r["Covariance_Matrix"].values())
     return edges, conv, data, cov
 
-def load_cc1pi(name):
-    """T2K CC1pi+Np STV data (edges, data[nb/unit per CH], cov) -- as in make_plots.block_cc1pi_stv."""
+NB_PER_CM2 = 1e33          # 1 cm^2 in nb
+NUCLEONS_CH = 13           # a CH unit: 12 C + 1 H.  The CC0pi release above is quoted on carbon and
+                           # uses 12 instead -- the two T2K releases do not share a convention.
+
+
+def load_cc1pi(name, nucleons=NUCLEONS_CH):
+    """T2K CC1pi+Np STV data: (edges, data, cov).
+
+    The release is per nucleon in cm^2; `nucleons` converts it to the per-CH nb units the CC1pi
+    model side works in.  Pass the count your model is normalised to -- it is not a property of
+    the file.
+    """
+    scale = NB_PER_CM2 * nucleons
     lines = open(f"{DATA_ROOT}/T2K/CC1pipNp_STV/xsec_{name}.txt").read().splitlines()
     edges = np.array([float(x) for x in lines[0].split(":")[1].split()])
     vals = np.array([float(x) for x in lines[1].split(":")[1].split()]); nb = len(vals)
     cov = np.array([[float(x) for x in lines[3 + i].split()] for i in range(nb)])
-    return edges, vals * NB_PER_CM2 * A_CH, cov * (NB_PER_CM2 * A_CH) ** 2
+    return edges, vals * scale, cov * scale ** 2

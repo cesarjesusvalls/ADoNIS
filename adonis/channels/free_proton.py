@@ -9,8 +9,6 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-import adonis.channels.dcc.current as dcc
-dcc.BATCH_INTERP = "spline"
 from adonis.flux.spectrum import SpectrumFlux, M_MU, M_P
 from adonis.channels.res import free_nucleon_weights, _pi_kin_mass, M_PIP
 from adonis.channels.currents.matrix_element import MASS_PDG_PROTON

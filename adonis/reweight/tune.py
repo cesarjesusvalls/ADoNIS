@@ -16,7 +16,6 @@ import numpy as np, uproot
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
-import adonis.channels.dcc.current as dcc; dcc.BATCH_INTERP = "spline"
 from adonis.channels import qe as qe_xsec, res as res_xsec
 from adonis.fsi.cascade import DiscreteCascadeConfig
 

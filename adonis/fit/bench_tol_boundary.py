@@ -50,7 +50,10 @@ def _throw(eng, subset, real_prior, rng, wall_dial=EB):
     of width 4.0 about a nominal of 0.01 puts half its mass below the wall and piles those toys onto one
     identical clamped truth -- the pathology that motivated the branch in the first place.
     """
-    star = _throw_truth_upstream(eng, subset, real_prior, rng)
+    # Imported here rather than at module scope: the stages package pulls in jax and the
+    # bank machinery, which this module's --help must not pay for.
+    from adonis.fit.stages.multisample_coverage import _throw_truth
+    star = _throw_truth(eng, subset, real_prior, rng)
     k = eng.pnames.index(wall_dial)
     lo = K.phys_lo(wall_dial)
     star[k] = rng.uniform(lo, lo + 2.0 * real_prior[k])
@@ -108,8 +111,6 @@ def main(argv=None):
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import trf_fit
     from adonis.fit.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
-    from adonis.fit.stages.multisample_coverage import _throw_truth as _tu
-    globals()['_throw_truth_upstream'] = _tu
     from adonis.fit.bench_minimizers import _bounds, _migrad
     from adonis.fit.fitters import parse_inject
     from adonis.reweight.reweight_model import nominal_knobs
