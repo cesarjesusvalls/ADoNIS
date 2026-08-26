@@ -69,7 +69,7 @@ def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
     TG, RG = cfg.grids()
     inp = build(s.bank, s.cfg.signal, spec=spec, norm_events=cfg.norm_events,
                 max_chunks=cfg.max_chunks, log=log, obs_mode=cfg.binning.observables, TG=TG, RG=RG)
-    eng = UnfoldEngine(inp, det_prior=cfg.priors.detector,
+    eng = UnfoldEngine(inp, knob_prior=K.PRIOR, det_prior=cfg.priors.detector,
                        flux_sigma=cfg.flux.sigma, flux_corr=cfg.flux.corr_length)
     d0, s0 = eng.asimov()
     idx, imp = eng.select_dials(s0, threshold=cfg.priors.dial_threshold, log=log)

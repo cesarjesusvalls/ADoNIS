@@ -33,7 +33,8 @@ from adonis.unfold import flux as FX
 class UnfoldEngine:
     """Everything the fit needs, resident: the response, the background bank, and the priors."""
 
-    def __init__(self, inp, prior_scale=1.0, det_prior=0.05, flux_sigma=None, flux_corr=None):
+    def __init__(self, inp, prior_scale=1.0, det_prior=0.05, flux_sigma=None, flux_corr=None,
+                 knob_prior=None):
         self.A = np.asarray(inp["A"], float)
         self.n_true_mc = np.asarray(inp["n_true"], float)     # generator truth per bin, the c = 1 reference
         self.bkg_bin = np.asarray(inp["bkg_bin"], np.int64)
@@ -57,7 +58,11 @@ class UnfoldEngine:
         self.nom = nominal_knobs()
         self.nreco, self.ntrue, _nf = self.A.shape
         self.th0 = np.asarray(K.theta_nominal(self.nom), float)
-        self.prior = np.asarray(K.PRIOR, float) * float(prior_scale)
+        # Prior widths on the cross-section knobs are the CALLER's: they express how well the
+        # analyst claims to know each knob, which is not a property of the generator.  None
+        # falls back to the registry's own widths so an exploratory call still runs.
+        _kp = K.PRIOR if knob_prior is None else knob_prior
+        self.prior = np.asarray(_kp, float) * float(prior_scale)
         self.npar = self.ntrue + K.NPAR
         self._jvp = None
 

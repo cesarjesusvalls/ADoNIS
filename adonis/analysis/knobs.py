@@ -1,11 +1,18 @@
-"""The 28-knob reweight basis shared by every Gate-I gradient / fit.
+"""The reweight parameter vector: which knobs exist, their order, and where they are physical.
 
-The SINGLE source of the knob ORDER, the fit-local PRIOR policy, and the theta<->PhysicsParams maps.
-Relocated from analysis/paper/physical_fit.py into the reusable core so AnaSample, the reweight engine,
-and the section drivers all import ONE definition instead of re-deriving it.  The knob set itself comes
-from adonis.reweight.reweight_model.knob_specs (which drops the dead sscat / dormant pw_norm knobs and
-expands the tuple knobs); here we only attach the fit priors: 20% multiplicative by default, natural
-units for the non-multiplicative knobs (Eb_shift +/-4 MeV, f_NN_cex +/-0.1).
+Two different things live here, and only one of them belongs to the generator:
+
+  THE PARAMETERISATION -- the knob order (PNAMES, NPAR), the theta <-> PhysicsParams maps, and the
+  physical bounds (PHYS_BOUND, phys_lo/phys_hi/clip_phys).  These are properties of the model: a
+  negative axial mass is unphysical no matter who is fitting it.  The knob set itself comes from
+  adonis.reweight.reweight_model.knob_specs; this module fixes the ORDER, which the Jacobian, the
+  covariance and every saved npz index by.
+
+  PRIOR -- how well an analyst claims to know each knob, defaulting to 20% multiplicative with
+  natural units where that is meaningless (Eb_shift 4 MeV, f_NN_cex 0.1).  That is an analysis
+  choice, not a property of the generator, and callers should pass their own: UnfoldEngine takes
+  knob_prior for exactly this reason.  It stays here only because it must line up with the knob
+  order above, and splitting the two invites them to disagree.
 """
 import os
 
