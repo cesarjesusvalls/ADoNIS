@@ -7,6 +7,10 @@ samples: [t2k_cc0pi, t2k_cc1pi_ch, minerva_stv, minerva_ptpz, ee_omega,
 beams:   [pip, prot, neut]
 
 # How many events are resident, which sets the MC error per bin and so the sparse-bin mask.
+#
+# sig_cap is also bounded from above by the GPU: at 250000 the fused Jacobian's compiled kernel will
+# not load on a 40 GB card at any dial batch, and the fit falls back to a host round trip every
+# iteration.  At 125000 it runs in a single dispatch.  Raising it needs the compute block below.
 banks:
   sig_cap:      125000
   nu_chunks:    120

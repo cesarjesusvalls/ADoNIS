@@ -14,6 +14,11 @@ banks:
   e_chunks:     4
   beam_chunks:  2
 
+# Leaves room outside the XLA pool for the compiled kernels, which the profile stage accumulates one
+# per node.  Without it this fits on a large card but runs out of memory on a small one.
+compute:
+  mem_fraction: 0.5
+
 data:
   mode: closure
   inject:

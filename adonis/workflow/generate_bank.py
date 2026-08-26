@@ -52,6 +52,10 @@ def generate_bank(cfg, outdir=None, log=None):
     os.makedirs(outdir, exist_ok=True)
     if cfg.probe == "hadron":
         return _generate_hadron(cfg, outdir, log, t0)
+    from adonis.nuclear.targets import resolve_targets
+    if resolve_targets(cfg.material)[0][0].free_nucleon:
+        from adonis.workflow import generate_h_bank
+        return generate_h_bank.generate(cfg, outdir, log)
     return _generate_hardvertex(cfg, outdir, log, t0)
 
 

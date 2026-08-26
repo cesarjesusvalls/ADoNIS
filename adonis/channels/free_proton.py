@@ -19,11 +19,14 @@ MU_LO = 250.0; COSMU = -0.6; P_LO, P_HI = 450.0, 1000.0; COSP = 0.4
 _CFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=600, engine="pool", **k)
 
 
-def generate_H(n, seed=0):
-    """T2K-flux-averaged nu_mu p -> mu- p pi+ on a FREE proton at rest (thin caller over the shared
-    res.free_nucleon_weights primitive: multiply the per-event weight by the flux-sampling J_beam, sum)."""
+def generate_H(n, seed=0, flux=None):
+    """Flux-averaged nu_mu p -> mu- p pi+ on a FREE proton at rest (thin caller over the shared
+    res.free_nucleon_weights primitive: multiply the per-event weight by the flux-sampling J_beam, sum).
+
+    `flux` is a spectrum table relative to the ACHILLES data root; None takes SpectrumFlux's default.
+    """
     rng = np.random.default_rng(seed)
-    flux = SpectrumFlux()
+    flux = SpectrumFlux(flux)
     m_pi = _pi_kin_mass(M_PIP); m_Nf = M_P
     Smin = (M_MU + m_Nf + m_pi) ** 2
     minE = max((Smin - m_Nf ** 2) / (2 * m_Nf) / 1000.0, flux.min_energy)
