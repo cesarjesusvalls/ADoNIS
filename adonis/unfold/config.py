@@ -1,21 +1,10 @@
 """Typed unfolding configuration, loaded from `configs/fits/*.yaml`.
 
-ONE object describes a section-5 run: which sample, what detector, which binning, what priors, which
-studies.  Nothing in the unfolding path reads the environment.
+One object describes a run: which sample, what detector, which binning, what priors, which studies.
+Nothing in the unfolding path reads the environment.
 
-WHY THIS EXISTS.  Section 5 was configured three ways at once -- three environment variables read at
-module IMPORT time, three positional CLI arguments, and physics constants spread over five modules.
-Every change made during the campaign (signal definition, overflow edges, pion efficiency, flux width,
-exposure) was a source edit, so the only record of what distinguished one run from another was the run
-LABEL, and a saved npz could not state the configuration that produced it.
-
-The import-time environment reads were the sharp end: `ADONIS_UNFOLD_OBS` selected the truth binning
-when `adonis.unfold.binning` was first imported, so an importer that had not already exported it got
-the STV grid and produced a complete, plausible result on the wrong binning -- no exception, no
-warning, just a 9-cell answer where 58 were wanted.
-
-Unknown keys are an ERROR, not a warning, for the same reason FitConfig rejects them: the failure this
-replaces is a run that silently used a default.
+Unknown keys are an error, not a warning: a config typo must fail loudly rather than silently fall
+back to a default.
 
     cfg = UnfoldConfig.load("configs/fits/<study>.yaml")
     cfg.smear_spec()      # SmearSpec for the detector block

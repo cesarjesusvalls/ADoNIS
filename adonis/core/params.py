@@ -1,14 +1,13 @@
-"""Centralised parameters for ADoNIS -- the SINGLE SOURCE OF TRUTH for the physics knobs.
+"""Centralised parameters for ADoNIS: the physics knobs and the static run configuration.
 
-`PhysicsParams` holds ALL the TUNABLE physics knobs that are differentiated and fit via
-gradient information.  It is a `typing.NamedTuple`, so JAX automatically registers it as a
-pytree (its fields are the leaves) -- `jax.grad`/`jax.jvp` flow through it cleanly, and the
-fit differentiates w.r.t. any subset.  Every consumer (reweight, DCC amplitudes, cascade FSI,
-the physical fit) reads these fields BY NAME (attribute access) -- there is no parallel knob
-dict.  `nominal_knobs()` returns the nominal instance; `knob_specs()` is the ordered metadata
-(labels, tuple expansion) every bank label / scan / fit enumerates through.
+`PhysicsParams` holds all tunable physics knobs that are differentiated and fit via gradient
+information.  It is a `typing.NamedTuple`, so JAX registers it as a pytree (its fields are the
+leaves) -- `jax.grad`/`jax.jvp` flow through it cleanly.  Every consumer (reweight, DCC
+amplitudes, cascade FSI, the fit) reads these fields by name; there is no parallel knob dict.
+`nominal_knobs()` returns the nominal instance; `knob_specs()` is the ordered metadata every
+bank label / scan / fit enumerates through.
 
-`ChainConfig` holds the STATIC (non-differentiated) configuration of a generation run.
+`ChainConfig` holds the static (non-differentiated) configuration of a generation run.
 `DCCKnobs` is an alias of `PhysicsParams` (the DCC modules refer to it by that name).
 """
 from __future__ import annotations
@@ -27,12 +26,12 @@ _ISO = {0: "pp", 1: "pn", 2: "nn"}     # s_NN_* tuple-component labels
 
 
 class PhysicsParams(NamedTuple):
-    """All tunable, differentiable physics knobs (pytree leaves).  Defaults ARE the nominal values
+    """All tunable, differentiable physics knobs (pytree leaves).  Defaults are the nominal values
     (so `PhysicsParams()` is nominal, except pw_norm -- see below).  Grouped by the reweight stage
-    each knob enters (differentiable_knobs.md)."""
+    each knob enters."""
     # --- hard vertex (amps2 quadratic): QE + RES leptonic/hadronic current knobs ---
     M_A_qe: float = 1.0            # QE axial dipole mass [GeV] (reweights the QE amps2 record)
-    M_A_res: float = 1.0           # RES/DCC axial dipole mass [GeV] (was DCCKnobs.axial_MA)
+    M_A_res: float = 1.0           # RES/DCC axial dipole mass [GeV]
     axial_strength: float = 1.0    # QE axial-current scale
     vector_strength: float = 1.0   # QE vector-current scale
     mu_p: float = 1.0              # proton magnetic form-factor (G_Mp) scale
@@ -43,12 +42,12 @@ class PhysicsParams(NamedTuple):
     pion_pole: float = 1.0         # RES pion-pole term scale
     delta_strength: float = 1.0    # P33 Delta(1232) partial-wave strength
     pw_norm: tuple = ()            # DCC per-partial-wave rescale: () = no rescale (the generation
-    #                                default), else length-14 (1+pw_norm).  nominal_knobs() sets 14 zeros
-    #                                (the fit path indexes all 14); the bare default stays () so the DCC
-    #                                amplitude generation skip-branch (`if pw_norm != ()`) is unchanged.
+    #                                default), else length-14 (1+pw_norm).  nominal_knobs() sets 14
+    #                                zeros so the fit path can index all 14; the bare default stays ()
+    #                                so the DCC generation skip-branch (`if pw_norm != ()`) still fires.
     # --- FSI (kind-1 cascade record) reweight knobs ---
     sabs: float = 1.0              # pion absorption rate (s_pi_abs)
-    sscat: float = 1.0             # legacy total pi-N scatter (superseded by the granular s_piN_* below)
+    sscat: float = 1.0             # total pi-N scatter rate (superseded by the granular s_piN_* below)
     s_piN_elastic: float = 1.0     # pi-N elastic rate
     s_piN_cex: float = 1.0         # pi-N charge-exchange rate
     s_conv: float = 1.0            # piN -> eta N conversion rate
@@ -65,21 +64,21 @@ class PhysicsParams(NamedTuple):
     res_norm: float = 1.0
 
 
-# Back-compat alias: the DCC modules import/accept `DCCKnobs`.
+# Alias: the DCC modules import/accept `DCCKnobs`.
 DCCKnobs = PhysicsParams
 
 
 def nominal_knobs() -> PhysicsParams:
-    """The nominal knob instance.  Identical to the bare default EXCEPT pw_norm is materialised to 14
+    """The nominal knob instance.  Identical to the bare default except pw_norm is materialised to 14
     zeros (the fit/reweight path indexes all 14 partial waves; the DCC generation default keeps pw_norm=())."""
     return PhysicsParams(pw_norm=tuple([0.0] * _NPW))
 
 
 def knob_specs(NOM: PhysicsParams):
-    """Ordered (knob_name, component_idx|None, display_label, nominal_value) for the PLOTTED/FITTED knobs.
-    pw_norm is excluded (cost); sscat is excluded (dead: superseded by the granular s_piN_*/s_NN_* knobs).
-    Tuple knobs are expanded per component (s_NN_elastic -> [pp]/[pn]/[nn]).  SINGLE SOURCE OF TRUTH for
-    knob metadata -- everything (bank labels, arrow grids, scans, fits) enumerates knobs through this."""
+    """Ordered (knob_name, component_idx|None, display_label, nominal_value) for the plotted/fitted knobs.
+    pw_norm is excluded (cost); sscat is excluded (superseded by the granular s_piN_*/s_NN_* knobs).
+    Tuple knobs are expanded per component (s_NN_elastic -> [pp]/[pn]/[nn]).  The single source of
+    knob metadata -- bank labels, scan grids, and fits all enumerate knobs through this."""
     out = []
     for name, val in NOM._asdict().items():
         if name in ("pw_norm", "sscat"):
@@ -104,7 +103,7 @@ class ChainConfig:
     m_pi: float = M_PI                # final-state pion mass [MeV]
     m_N: float = MQE                  # final-state nucleon mass [MeV]
     m_lep: float = 0.0                # outgoing charged-lepton mass [MeV] (0=massless e/nu_e; muon=105.658)
-    spline: bool = True               # amp interp: True=FMM spline (faithful, DEFAULT). False=bilinear:
-                                      # NOT W-faithful (>1% dsigma/dW tail) -- explicit-awareness only
+    spline: bool = True               # amp interp: True=FMM spline (faithful, default). False=bilinear,
+                                      # not W-faithful (>1% dsigma/dW tail) -- use only knowingly
     n_theta: int = 16                 # angular-quadrature grid (for the integrated reference)
     n_phi: int = 16

@@ -1,7 +1,7 @@
 """Exact JAX port of ACHILLES `OsetCrossSections.cc` -- the in-medium pion-nucleus QE and
 absorption cross sections (Oset et al., Nucl. Phys. A468 (1987) 631; A484 (1988) 557).
 
-These are the REAL cross sections the ACHILLES cascade uses for pion FSI (the Virtual
+These are the physical cross sections the ACHILLES cascade uses for pion FSI (the Virtual
 Resonances mode) -- absolute, in millibarn, no tuned knobs.  Every line maps 1:1 to the C++
 (`src/Achilles/OsetCrossSections.cc`, `include/.../OsetCrossSections.hh`); all arithmetic is
 JAX so the cross sections (and anything downstream) are differentiable in the pion/nucleon

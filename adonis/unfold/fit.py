@@ -2,20 +2,20 @@
 
     mu_i(theta, c) = sum_j A_ij c_j  +  B_i(theta)
 
-The two halves are differentiated in completely different ways, because they ARE completely different:
+The two halves differentiate differently because they are different:
 
-  * the signal term is exactly linear in c, so its Jacobian is the response matrix A itself.  No autodiff,
-    no finite differences, no approximation -- d mu_i / d c_j = A_ij, exactly, at every point.
-  * the background term needs the per-event weight w(theta), so its Jacobian comes from one jvp per knob
-    over the compact background bank -- the same machinery the Gate-I Jacobian uses.
+  * the signal term is exactly linear in c, so its Jacobian is A itself: no autodiff, no finite
+    differences -- d mu_i / d c_j = A_ij exactly, at every point.
+  * the background term needs the per-event weight w(theta), so its Jacobian comes from one jvp per
+    knob over the compact background bank -- the same machinery the Gate-I Jacobian uses.
 
-Templates carry NO prior: an unfolded spectrum that has been pulled toward the generator's prediction is
-not a measurement.  The knobs carry the Gate-I priors (20% multiplicative, 4 MeV on E_b), which is what
-makes them a systematic rather than a second signal model.
+Templates carry no prior: an unfolded spectrum pulled toward the generator's prediction is not a
+measurement. The knobs carry the Gate-I priors (20% multiplicative, 4 MeV on E_b), making them a
+systematic rather than a second signal model.
 
-Uncertainties are Poisson on the reco bins, frozen at the DATA, not recomputed from the current
+Uncertainties are Poisson on the reco bins, frozen at the data rather than recomputed from the current
 prediction: a sigma that moves with the model biases the fit toward whichever direction inflates the
-error, and at these occupancies (min 11.5 signal events per bin) that bias is not negligible.
+error, non-negligible at these occupancies (min 11.5 signal events per bin).
 """
 from __future__ import annotations
 
@@ -47,9 +47,8 @@ class UnfoldEngine:
         self.bkg_M = inp.get("bkg_M", None)
         if isinstance(self.bkg_M, np.ndarray) and self.bkg_M.dtype == object:
             self.bkg_M = self.bkg_M.item()
-        # PRIOR WIDTHS ARE ARGUMENTS.  These were literals -- 0.05 here, FX.SIGMA inside prior_chol --
-        # so the only way to change the section's dominant systematic was to edit a module, and a saved
-        # npz could not state which width produced it.  None keeps the module default.
+        # Prior widths are constructor arguments, not hardcoded: a run can override the module
+        # defaults (FX.SIGMA, FX.CORR_LENGTH) without editing this file.  None keeps the default.
         self.flux_sigma = FX.SIGMA if flux_sigma is None else float(flux_sigma)
         self.flux_corr = FX.CORR_LENGTH if flux_corr is None else float(flux_corr)
         self.flux_L = FX.prior_chol(self.flux_sigma, self.flux_corr, flux_edges)   # correlated prior, whitened below
@@ -164,7 +163,7 @@ class UnfoldEngine:
     def fit(self, data, sigma, knob_idx=None, free_flux=True, free_det=True, max_nfev=200, log=print):
         """Minimise chi2_data + priors over [c | f | theta_subset | d].
 
-        FOUR blocks, four prior treatments -- which is the section in one function:
+        Four blocks, four prior treatments:
 
             c      templates, in TRUTH space, NO prior.  An unfolded spectrum pulled toward the
                    generator is not a measurement.

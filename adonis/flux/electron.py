@@ -1,6 +1,5 @@
 """Monochromatic electron beam for (e,e') -- a fixed-energy e- probe fired along +z, J_beam = 1
 (no flux weight).  The incoming-particle description for the electron-scattering studies.
-(Extracted 2026-07-26 from adonis/channels/ee_xsec.py.)
 """
 import numpy as np
 

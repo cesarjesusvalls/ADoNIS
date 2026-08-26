@@ -1,12 +1,8 @@
 """Differentiable Monte-Carlo kernel: the score-function weight, parameter
 bijections, and a pytree Adam.
 
-This is the reusable core of the project (Strategy §0, §2). It is a lightly
-extended port of the reference `differentiable.py` from `differentiable-sampling/`.
-
-The one substantive change is that we enable float64 globally: finite-difference
-gradient validation (harness.py) and physics parameter fits are far better
-conditioned in double precision than the float32 used by the demo.
+Enables float64 globally: finite-difference gradient validation and physics
+parameter fits are far better conditioned in double precision than float32.
 """
 from __future__ import annotations
 

@@ -3,12 +3,11 @@
 ONE object describes a run: which samples, what data, how to fit it, and which uncertainties to compute.
 Everything a stage needs comes from here -- no stage reads the environment.
 
-The schema is deliberately small and closed.  Unknown keys are an error, not a warning: the failure this
-replaces is a run that silently used a default because a variable was set in three job scripts and
-missing from the fourth (the 2-D corner ran MAP while everything else ran MLE for exactly that reason).
+The schema is deliberately small and closed.  Unknown keys are an error, not a warning: a config that
+silently falls back to a default on a typo is how a run ends up using different settings than intended.
 
     cfg = FitConfig.load("<study>.yaml")
-    cfg.inject_string()        # the PHYSFIT_INJECT form parse_inject expects
+    cfg.inject_string()        # the flat inject-string form parse_inject expects
     cfg.stage("profile2d")     # one uncertainty block by name
 """
 from __future__ import annotations
@@ -81,12 +80,12 @@ class Data:
 class Minimizer:
     method: str = "trf"
     max_nfev: int = 200
-    gtol: float = 1e-8      # the ONLY tolerance allowed to stop the fit early: stopping on a small step
-    xtol: float = 1e-14     # or a small chi2 change is how the old LM false-converged on the
-    ftol: float = 1e-14     # degenerate direction
+    gtol: float = 1e-8      # the ONLY tolerance allowed to stop the fit early (projected gradient)
+    xtol: float = 1e-14     # kept tight so a small step alone is never mistaken for convergence
+    ftol: float = 1e-14     # kept tight so a small chi2 change alone is never mistaken for convergence
     x_scale: str = "jac"
     start: str = "nominal"  # nominal | truth  (blind fits start at nominal)
-    newton_tol: float = 1e-6   # Newton-decrement stop: the predicted remaining chi2 gap  # nominal | truth  (blind fits start at nominal)
+    newton_tol: float = 1e-6   # Newton-decrement stop: the predicted remaining chi2 gap
 
     @classmethod
     def parse(cls, d):
@@ -134,8 +133,8 @@ class FitConfig:
     data: Data
     fit: Fit
     uncertainty: tuple           # ordered blocks, each a dict with a "method" key
-    # DEFAULTED FIELDS LAST -- a dataclass rejects a non-default field after a defaulted one, and putting
-    # `compute` above `uncertainty` made every FitConfig.load() raise at import time.
+    # DEFAULTED FIELDS LAST -- a dataclass rejects a non-default field after a defaulted one, so
+    # `compute` (defaulted) must stay after `uncertainty` (required).
     compute: dict = field(default_factory=dict)   # device-memory plan; see adonis.fit.device_plan
     path: Path = None
 
@@ -203,7 +202,7 @@ class FitConfig:
 
 
 def _num(x) -> str:
-    """Render a number the way the original PHYSFIT_INJECT strings did: no trailing zeros, no exponent
-    for the magnitudes these dials take."""
+    """Render a number for the flat inject-string form: no trailing zeros, no exponent for the
+    magnitudes these dials take."""
     s = f"{float(x):g}"
     return s

@@ -1,7 +1,8 @@
-"""EXACT per-event reweight from the full-record event bank: w(theta) for any knob vector, no Taylor.
-Reproduces model_hist_full's per-event weight (hard-vertex amps2 x FSI kind-1 x spectral-function x norms),
-using the identity-padded amps2 records so QE/RES are handled channel-correctly with no masking.
-JAX-differentiable -> gradients at plot time are jax.grad(sum of bank_weight); ratios are exact at any theta.
+"""Exact per-event reweight from the full-record event bank: w(theta) for any knob vector, no Taylor.
+Reproduces model_hist_full's per-event weight (hard-vertex amps2 x FSI kind-1 x spectral-function x
+norms), using the identity-padded amps2 records so QE/RES are handled channel-correctly with no
+masking.  JAX-differentiable, so gradients at plot time are jax.grad(sum of bank_weight); ratios are
+exact at any theta.
 """
 import numpy as np
 import jax
@@ -14,7 +15,7 @@ from adonis.nuclear.spectral import SpectralFunction
 from adonis.nuclear.targets import resolve_targets
 
 # RAGGED kind-1 FSI record (see cascade.compact_fsi_record): flat per-slot arrays + a per-slot event
-# index.  The dense (n, K) layout was ~97% padding; this is ~40x fewer slots to store AND to reweight.
+# index.  A dense (n, K) layout would be ~97% padding; this is ~40x fewer slots to store and reweight.
 _FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "p_eidx",
           "hh", "a", "iso", "finel", "inel", "swap", "n_eidx")
 
@@ -28,9 +29,9 @@ def bank_weight(B, knobs, grids):
     k = knobs
     if "hv_qe_ma_a" not in B and "hv_qe_mij" not in B:
         # Fail loud, not with a cryptic deep KeyError.  NC RES-only banks (channels=[res]) never write
-        # hard-vertex records, and NC QE nuclear generation is not implemented, so their differentiable
-        # weight is undefined -- the sec2/sec3 gradient machinery does not yet support NC.  NC selections
-        # go through bank_signal_nc / oracle_signal_nc, which read w0 directly and never call this.
+        # hard-vertex records, and NC QE nuclear generation is not implemented, so the differentiable
+        # weight is undefined for NC -- the sec2/sec3 gradient machinery does not support it.  NC
+        # selections go through bank_signal_nc / oracle_signal_nc, which read w0 directly.
         raise KeyError("bank_weight: bank carries no hard-vertex (hv_*) records; NC banks are not "
                        "reweightable through this path (see adonis/workflow NC selection helpers).")
     def ma(name): return (B[f"hv_{name}_a"], B[f"hv_{name}_b"], B[f"hv_{name}_c"], B[f"hv_{name}_Q2"])

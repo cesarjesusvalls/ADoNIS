@@ -1,27 +1,26 @@
-"""Full DCC hadron-tensor assembly (Phase-2.5, milestone 6c) -- the faithful port of
-amp_dcc_sl.f::amplitude() + interpolate_amp, replacing the angle-integrated diagonal
-bilinear (dcc_xsec) with the real helicity current zj_mu and hadron tensor W^{mu,nu}.
+"""Full DCC hadron-tensor assembly -- the port of amp_dcc_sl.f::amplitude() + interpolate_amp,
+replacing the angle-integrated diagonal bilinear approximation (dcc_xsec) with the real
+helicity current zj_mu and hadron tensor W^{mu,nu}.
 
-Frame choice (justified in hadron_tensor.py docstring): we work entirely in the piN
-centre-of-mass with the momentum transfer q along +z (the Fortran `irot_q=0` branch).
-For the spin-summed, angle-integrated response this is exact:
-  * the nucleon spin rotations (rspin, irot_spin) are UNITARY on the spin indices and
+Frame choice: this works entirely in the piN centre-of-mass with the momentum transfer q
+along +z (the Fortran `irot_q=0` branch). For the spin-summed, angle-integrated response
+this is exact:
+  * the nucleon spin rotations (rspin, irot_spin) are unitary on the spin indices and
     cancel in sum_{spins}|zj|^2 -> skipped;
   * dsigma/dW,dQ^2 is a Lorentz scalar, so the 2CM->lab boost (lorentz_trans, xlr) is
-    unneeded as long as the lepton tensor is contracted in the SAME 2CM frame.
+    unneeded as long as the lepton tensor is contracted in the same 2CM frame.
 
 The knob-dependent physics lives entirely in `zmtx[ixi1, pw]` (the interpolated DCC
 amplitude, with the form-factor / pw-norm knobs). The angular assembly (isospin CG,
-spin-orbit CG, Legendre, azimuth) is a knob- AND (W,Q^2)-INDEPENDENT linear map,
+spin-orbit CG, Legendre, azimuth) is a knob- and (W,Q^2)-independent linear map,
 precomputed once as the kernel K so that
 
     zcrnt[g, isf, igm1, lam] = sum_pw  K[g, isf, igm1, lam, pw] * zmtx[ixi1(igm1,lam), pw]
 
 and the hadron tensor is the bilinear  W^{mu,nu} = sum_g w[g] sum_{isf,lam} zj*_mu zj_nu,
-which JAX differentiates exactly (the grid is fixed quadrature, zero variance).
+which JAX differentiates exactly (fixed quadrature grid, zero variance).
 
-See hadron_tensor.py for the validated angular primitives (cbg, legendre_ylm) and the
-full decode of the index conventions.
+See angular.py for the angular primitives (cbg, legendre_ylm) and the index-convention decode.
 """
 from __future__ import annotations
 
@@ -45,7 +44,7 @@ IGM1_LIST = (-1, 0, 1, 2)          # spherical photon pol: -1,+1 transverse; 0 t
 LAM_LIST = (-1, 1)                  # nucleon helicity (2*lambda)
 ISF_LIST = (-1, 1)                  # 2*(final nucleon spin z)
 
-# --- DEBUG localization knobs (default = faithful; set to probe the low-Q^2 deficit) --- #
+# --- diagnostic scale knobs (default = 1.0, faithful reproduction) --- #
 DBG = {
     "pion_pole": 1.0,   # scale the induced-pseudoscalar (pion-pole) longitudinal term
     "axial_z": 1.0,     # scale the axial Z component (zmtx 7,8 from table, idxp=4 pair)
@@ -82,10 +81,9 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
     r_axial : optional (n_pw,) or scalar real reweight of the axial block (M_A knob,
               applied as amplitude factor so it squares into the rate downstream).
     """
-    # `mode` is a static Python int, so this guard is a plain call, not a traced branch.  Without it
-    # `mode = -1` (NC) satisfies every `mode < 10` test below and silently takes the CC path -- no
-    # VFAC, no VVFAC, no sw2.  That is how HadronStructure(channels=NC_CHANNELS) runs today and
-    # returns charged-current numbers.  probe_for_mode raises instead.
+    # `mode` is a static Python int, so this guard is a plain call, not a traced branch. Without it,
+    # mode=-1 (NC) satisfies every `mode < 10` check below and silently takes the CC path (no VFAC,
+    # no VVFAC, no sw2) instead of raising. probe_for_mode raises instead.
     probe_for_mode(mode)
     npw = vec.shape[1]
     phv = jnp.asarray([pw_phase(int(two_J[i]), int(two_L[i])) for i in range(npw)])
@@ -125,12 +123,10 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
             zmtx = zmtx.at[7].add(-qc * zm)
 
     # ---- vector current: idxp=1,2,3 (idx 1,2,3) + current conservation ------ #
-    # EW isospin rotation.  The rotation is at amp_dcc_sl_module.f:675-691 -- ONCE at table
-    # read, IN PLACE, `if(mode.lt.10)` so weak only, and `if(itpind(ipw)==3)goto 510` so
-    # I=3/2 is skipped:  zampv <- 0.5*(zampv-zampv_is) [isovector],  zampv_is <- 0.5*(...+...)
-    # [isoscalar].  ADoNIS keeps the loader blocks RAW and rotates here, at use time.
-    # (The previous citation, "interpolate_amp lines 585-604", pointed at the nLsdt L-S
-    # table setup and found nothing -- which made this form look invented.  It is not.)
+    # EW isospin rotation, at amp_dcc_sl_module.f:675-691 -- once at table read, in place,
+    # `if(mode.lt.10)` so weak only, and `if(itpind(ipw)==3)goto 510` so I=3/2 is skipped:
+    # zampv <- 0.5*(zampv-zampv_is) [isovector], zampv_is <- 0.5*(zampv+zampv_is) [isoscalar].
+    # ADoNIS keeps the loader blocks raw and applies the rotation here, at use time.
     # EM (mode>=10) keeps the raw blocks: proton -> vec, neutron I=1/2 -> isoscalar isv.
     for ipw in range(npw):
         is_I32 = int(two_I[ipw]) == 3

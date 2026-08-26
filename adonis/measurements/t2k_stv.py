@@ -1,10 +1,9 @@
 """Parsers for published measurement releases (T2K STV, via the NUISANCE data tree).
 
-Format knowledge -- a ROOT histogram layout, a text covariance layout -- which the fit layer needs to
-build real-data fits (analysis.campaign.stages.build_fakedata already loads CC1pi from here).  It belongs in
-the package for the same reason the fit does; what does NOT belong in the package is an assumption
-about where the files sit on disk, so the data root is a parameter with the previous hardcoded relative
-path as its default.
+Format knowledge -- a ROOT histogram layout, a text covariance layout -- that the fit layer needs to
+build real-data fits (analysis.campaign.stages.build_fakedata already loads CC1pi from here). The data
+root is a parameter, not an assumption about where the files sit on disk: override via
+ADONIS_MEASUREMENT_ROOT, default "../nuisance/data".
 
 Nothing in the physics engine imports this subpackage -- keep it that way, so `adonis` stays publishable
 without the measurement tree.  Only fit stages and drivers may import it.
@@ -16,7 +15,7 @@ import os
 import numpy as np
 import uproot
 
-# Previously "../nuisance/data" hardcoded at each call site.  Overridable, default unchanged.
+# Override via ADONIS_MEASUREMENT_ROOT; default is the relative path to the NUISANCE data tree.
 DATA_ROOT = os.environ.get("ADONIS_MEASUREMENT_ROOT", "../nuisance/data")
 
 def load_cc0pi(obs):

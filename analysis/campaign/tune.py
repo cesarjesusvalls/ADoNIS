@@ -98,7 +98,7 @@ import adonis.fsi.cascade as _CF
 # kind-1 sigma-reweight is exact (see all-gaussian decision).  max_steps=100000 (= production / the runaway
 # ceiling): with the M=1 serial pool the per-event nstep is the SUM of all particles' steps, so the physics
 # bound is path_budget_R*radius, not a small step cap (a 600 cap wrongly trips the runaway guard at M=1).
-POOLCFG = lambda **k: DiscreteCascadeConfig(step=0.04, max_steps=100000, path_budget_R=20.0, engine="pool", **k)
+from adonis.fsi.cascade import pool_cascade_config as POOLCFG
 REC_CAPS = (96, 64)            # pion IN-SLAB CANDIDATE steps<=96 (was hits<=32: the pion record now logs
                                # every candidate step, hit or not, to carry the sigma_tot/mean-free-path
                                # response -- measured mean 4.8, max 31 over 5.3k events, so 96 leaves tail

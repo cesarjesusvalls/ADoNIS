@@ -1,11 +1,11 @@
 """Exclusive ACHILLES DCC RES hadron current (amp_dcc_sl.f::amplitude, irot_q=1) -> amps2.
 
-Computes the piN current zj_mu(isf, lam) at the SAMPLED pion momentum (vs the inclusive
+Computes the piN current zj_mu(isf, lam) at the sampled pion momentum (vs. the inclusive
 angle-integrated tensor in adonis/primary/dcc), then contracts with the exact leptonic current.
 The two unitary spin-rotation blocks of amplitude() cancel in amps2 (Frobenius norm over the 2x2
-spin indices) and are skipped.  The /fm scaling cancels in the kinematics (angles, wcm, Q2 all in
+spin indices) and are skipped. The /fm scaling cancels in the kinematics (angles, wcm, Q2 all in
 MeV) and in fac*(2xmn/hbarc); the residual overall constant (table normalisation x 2sqrt2 mN x
-coupling) is validated as CONSTANT across events vs the instrumented-ACHILLES RESDUMP.
+coupling) is constant across events.
 """
 from __future__ import annotations
 
@@ -22,9 +22,8 @@ from adonis.channels.dcc.assembly import build_zmtx
 from adonis.channels.dcc.amplitudes import DCCAmplitudes, DCCKnobs
 from adonis.channels.dcc.loader import load_cached
 
-# The DCC amplitude table is ~38 MB and was parsed AT IMPORT, so `import adonis.channels.dcc.current`
-# read it -- and failed outright wherever the ACHILLES inputs are not installed, including when the
-# only intent was to inspect the module.  Built on first use instead, then cached.
+# Lazily built and cached: the ~38 MB amplitude table would otherwise be parsed at import time,
+# requiring ACHILLES inputs to be installed just to import this module.
 class _Tables:
     __slots__ = ("amp", "T", "pw_2J", "pw_2L", "pw_2I", "npw", "jmax")
 
@@ -48,52 +47,46 @@ _LMAX = 5
 _ISP = {-1: 1, 1: 0}                      # spin index: up(+1)->0, down(-1)->1  (0-based)
 _EPS_TPIN = 1e-3
 _METRIC = np.array([1.0, -1.0, -1.0, -1.0])
-# DCC amplitude table validity (currents_pi_dcc.f90:109-120): outside -> J_mu = 0.  ESSENTIAL --
-# without it the spline EXTRAPOLATES to garbage on high-Enu/high-Q2 events (1e8x spurious amps2).
+# DCC amplitude table validity (currents_pi_dcc.f90:109-120): outside -> J_mu = 0. Without it the
+# spline extrapolates to garbage on high-Enu/high-Q2 events (~1e8x spurious amps2).
 _W_LO = 1076.957; _W_HI = 2000.0; _Q2_HI = 5.0e6
-# First-principles RES normalisation (NO fit).  ACHILLES builds the hadron current as
+# First-principles RES normalisation (no fit). ACHILLES builds the hadron current as
 #   H = FResV * zj_raw * fac * (2*xmn/hbarc)   (res_spec_currents; amp_dcc_sl.f:417 fac;
 #   currents_pi_dcc.f90:130  J_mu*=2*xmn/hbarc),  with FResV = Vud*ee/(sw*sqrt2*2) the hadronic
-#   EW coupling (LeptonicCurrent.cc:63; resV=1).  My zj_raw omits FResV, fac and the fm-unit
+#   EW coupling (LeptonicCurrent.cc:63; resV=1).  zj_raw here omits FResV, fac and the fm-unit
 #   scalings; assembling those constants (fac^2 = 2/(fnuc^2 4pi) with the fm->MeV scaling fnuc^2,
 #   and (2 m_N/hbarc)^2) gives  1/_NORM = |FResV|^2 * (2 m_N)^2 / (2 pi).
-# Per-event amps2 audit vs the ACHILLES free-proton RESDUMP (scripts/amps2_resdump_audit.py): the
-# ratio amps2_ACH/amps2_ADO is FLAT at 1.0011 -- a pure constant => the only offset is _NORM's mass.
-# ACHILLES's 2*xmn/hbarc uses xmn = the NEUTRON mass (one_body.f90:3, 939.566), not the (mp+mn)/2
-# average -- so use C.mn here.  This removes the 0.11% (= (mn/mN_avg)^2) amps2 deficit; the absolute
-# scale is DERIVED, not tuned.
+# ACHILLES's 2*xmn/hbarc uses xmn = the neutron mass (one_body.f90:3, 939.566), not the (mp+mn)/2
+# average -- use C.mn here (norm_m_N()) to match; the absolute scale is derived, not tuned.
 _FRESV = C.Vud * C.ee / (C.sw * np.sqrt(2.0) * 2.0)          # |hadronic CC coupling|
 _NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron mass via conventions
-# EM (e,e') RES: the hadronic vertex couples with the PHOTON charge ee (the N->Delta transition FFs are
-# in the DCC vector amplitude), replacing the CC hadronic coupling FResV.  TWO differences vs _NORM:
+# EM (e,e') RES: the hadronic vertex couples with the photon charge ee (the N->Delta transition FFs
+# are in the DCC vector amplitude), replacing the CC hadronic coupling FResV. Two differences vs _NORM:
 #   1. FResV -> ee   (photon coupling; leptonic side carries -ee*i and i/q^2 via lepton_current kind="EM")
-#   2. the CC isospin factor fac*=sqrt(2) (amp_dcc_sl_module.f:275, mode 1-4 ONLY) is ABSENT for EM
-#      (mode=10) -> the CC fac^2 baked into _NORM carries an extra 2 that EM must NOT have -> *2 on _NORM_EM.
-# Net: _NORM_EM = 2 * _NORM * (FResV^2/ee^2).  Validated against oracle_ee_C_res.
+#   2. the CC isospin factor fac*=sqrt(2) (amp_dcc_sl_module.f:275, mode 1-4 only) is absent for EM
+#      (mode=10) -> the CC fac^2 baked into _NORM carries an extra 2 that EM must not have -> *2 on _NORM_EM.
+# Net: _NORM_EM = 2 * _NORM * (FResV^2/ee^2).
 _NORM_EM = 2.0 * (2.0 * np.pi) / (C.ee ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
-# NC RES: same two-step reasoning as EM, with the PHOTON coupling replaced by the Z hadronic coupling.
+# NC RES: same two-step reasoning as EM, with the photon coupling replaced by the Z hadronic coupling.
 #   1. FResV -> coupl3 = ee/(2*cw*sw)   (LeptonicCurrent.cc:96; FResV = FResA = coupl3 for NC, applied
 #      at :102-103 and :112-113 to both nucleons.  res_spectral_model.f90:127,145-149 confirms FResV
-#      multiplies the WHOLE DCC current, while FResA is only a boolean.)
-#   2. the CC isospin factor fac*=sqrt(2) is `mode 1..4 ONLY` (amp_dcc_sl_module.f:275, read directly),
-#      so like EM it is ABSENT for NC (mode=-1) -> the extra *2 on the CC-derived normalisation.
-# PRE-REGISTERED, before any measurement:  _NORM_NC/_NORM_EM = ee^2/_FRESV_NC^2 = (2*sw*cw)^2 = 0.7113.
-# tests/test_nc_norm.py asserts it.  If the measured ratio disagrees the DERIVATION is wrong, even
-# should some downstream ratio happen to look fine -- that is the whole point of registering it first.
+#      multiplies the whole DCC current, while FResA is only a boolean.)
+#   2. the CC isospin factor fac*=sqrt(2) is `mode 1..4 only` (amp_dcc_sl_module.f:275), so like EM
+#      it is absent for NC (mode=-1) -> the extra *2 on the CC-derived normalisation.
+# By this derivation, _NORM_NC/_NORM_EM = ee^2/_FRESV_NC^2 = (2*sw*cw)^2 = 0.7113.
 _FRESV_NC = C.ee / (2.0 * C.sw * C.cw)                       # |hadronic NC coupling| = |coupl3|
 _NORM_NC = 2.0 * (2.0 * np.pi) / (_FRESV_NC ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
-# Probe -> RES amplitude normalisation.  Kept here, next to the derivations above, rather than in the
-# probes registry (which stays import-light); the KeyError on a missing entry is deliberate -- a probe
-# that reaches this dict without a derived _NORM must not silently borrow CC's.
+# Probe -> RES amplitude normalisation. Kept here, next to the derivations above, rather than in the
+# probes registry (which stays import-light). The KeyError on a missing entry is deliberate: a probe
+# without a derived _NORM must not silently borrow CC's.
 _NORMS = {"CC": _NORM, "EM": _NORM_EM, "NC": _NORM_NC}
 
-# Amplitude(W,Q2) interpolation.  DEFAULT = "spline" (bit-faithful to ACHILLES interpolate_amp) -- the
-# SAFE default; every reported result must use it.  "bilinear" is NOT W-FAITHFUL (the dsigma/dW shape,
-# esp. the high-W tail, deviates well beyond 1%).  bilinear must NEVER be used unless the user has
-# EXPLICITLY requested it for a specific purpose.
+# Amplitude(W,Q2) interpolation. Default "spline" is bit-faithful to ACHILLES interpolate_amp and is
+# the only value any reported result may use. "bilinear" is NOT W-faithful (dsigma/dW, especially the
+# high-W tail, deviates well beyond 1%) -- never use it unless explicitly requested for a specific purpose.
 BATCH_INTERP = "spline"
-# Diagnostic override for the AMPLITUDE-INTERNAL pion mass (build_zmtx: qc, pion-pole facpp).
-# None -> use the per-channel hPID mass.  Used to determine which m_pi ACHILLES uses in the amplitude.
+# Diagnostic override for the amplitude-internal pion mass (build_zmtx: qc, pion-pole facpp).
+# None -> use the per-channel hPID mass.
 AMP_MPI_OVERRIDE = None
 # The DCC partial-wave amplitude is built with the momentum transfer q as the quantization (z) axis
 # (ACHILLES does this via TransformQZ before computing the current). amps2 is a Lorentz scalar but
@@ -219,11 +212,10 @@ _BUILD_ZMTX_V = None
 
 
 def _build_zmtx_vmapped(vec, isv, axial, W, Q2, itiz, mpi, r_axial=None, pion_pole=1.0, mode=1):
-    """Unified amplitude matrix: the batched differential.build_zmtx_batched (the single
-    build_zmtx; proven == vmapped assembly.build_zmtx for CC in tests/test_build_zmtx_equiv.py).
-    m_N via conventions (amplitude-internal avg mass); m_pi passed in (conventions.amp_m_pi()).
-    r_axial (N,) scales the axial amplitudes (M_A reweight hook; None = nominal).
-    mode: 1 CC (default) | 10 EM (e,e': axial off, EM isospin) | -1 NC."""
+    """Batched amplitude matrix via differential.build_zmtx_batched (matches assembly.build_zmtx
+    event-by-event for CC). m_N via conventions (amplitude-internal avg mass); m_pi passed in
+    (conventions.amp_m_pi()). r_axial (N,) scales the axial amplitudes (M_A reweight hook; None =
+    nominal). mode: 1 CC (default) | 10 EM (e,e': axial off, EM isospin) | -1 NC."""
     from adonis.channels.dcc.differential import build_zmtx_batched as _bzb
     return _bzb(vec, isv, axial, W, Q2, _tbl().pw_2J, _tbl().pw_2L, _tbl().pw_2I,
                 mode=mode, itiz=itiz, m_N=_conv.amp_m_N(), m_pi=mpi, r_axial=r_axial, pion_pole=pion_pole)
@@ -269,12 +261,12 @@ def _zmtx_to_zjx(zmtx, N, itiz, tcrz, tm_f, tpiz, bleg, zphi_pin, dfun, off, zph
 def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=1.0, tm_f=1.0,
                           return_zj=False, q_direct=None, r_axial=None, return_q2=False, knobs=None,
                           pion_pole=1.0, probe="CC", return_structures=False):
-    """Vectorised exclusive amps2 over a batch of events (all SAME channel: itiz, hPID).
+    """Vectorised exclusive amps2 over a batch of events (all same channel: itiz, hPID).
     Returns amps2 (N,) on the ACHILLES absolute scale (/_NORM).
-    return_zj=True returns the lab hadron current zj (N,4_combo,4_mu) instead (DIAGNOSTIC).
+    return_zj=True returns the lab hadron current zj (N,4_combo,4_mu) instead (diagnostic).
     q_direct (N,4): use this q verbatim as the (already de-Forest-shifted) transfer.
-    probe: "CC" (default; nu N, weak, mode=1, _NORM) is BIT-IDENTICAL to the pre-EM path.  "EM"
-    (inclusive (e,e'): photon leptonic current + i/q^2, DCC mode=10 EM isospin, _NORM_EM)."""
+    probe: "CC" (default; nu N, weak, mode=1, _NORM). "EM" (inclusive (e,e'): photon leptonic
+    current + i/q^2, DCC mode=10 EM isospin, _NORM_EM)."""
     _spec = probe_spec(probe)      # raises on unknown/unimplemented -- NEVER falls through to CC
     _mode = _spec.dcc_mode
     _lep_kind = _spec.lep_kind
@@ -283,7 +275,7 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     p_struck = np.asarray(p_struck, float); p_outN = np.asarray(p_outN, float); p_pi = np.asarray(p_pi, float)
     N = k_nu.shape[0]; mN = C.mN
     tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
-    mpi = _conv.amp_m_pi()    # amplitude-internal pion mass = isospin-avg fpio 138.04 (Risk-1 study)
+    mpi = _conv.amp_m_pi()    # amplitude-internal pion mass = isospin-avg fpio 138.04
     q = k_nu - k_lep
     if ROTATE_QZ:
         mlist = [k_nu, k_lep, p_struck, p_outN, p_pi]
@@ -312,8 +304,7 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     Q2 = np.sum(qsh[:, 1:] ** 2, axis=1) - qsh[:, 0] ** 2
     dfun, off = setdfun_batch(xz_q, _tbl().jmax)
     bleg = legendre_ylm_batch(_LMAX, xz_pin)                                  # (N, L+1, 2L+1)
-    # interp switch (default "spline" = bit-matches ACHILLES interpolate_amp).  "bilinear" is NOT
-    # W-faithful (W-SHAPE offender, >1% in the high-W tail) -- NEVER use unless explicitly requested.
+    # interp switch: see BATCH_INTERP above ("bilinear" is diagnostic-only, not W-faithful).
     _kn = knobs if knobs is not None else DCCKnobs()    # pw_norm / axial_strength reweight hook (record-build)
     if BATCH_INTERP == "spline":
         vec, isv, axial = _tbl().amp.amplitudes_spline_np(wcm, Q2, _kn)
@@ -326,10 +317,10 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     ang = (N, itiz, tcrz, tm_f, tpiz, bleg, zphi_pin, dfun, off, zphi_q)      # shared angular kernel
 
     if return_structures:
-        # Per-atom UNIT currents for the reduced-quadratic RES amps2 (docs/joint_amps2_plan.md).  The current
-        # zj is LINEAR in zmtx and zmtx is LINEAR in the amplitude blocks, so build the block/wave-split zmtx
-        # and map each to a zj.  Atoms {V,A,P} x {rest, wave5}: V=vector, A=axial(r=1,pole=0), P=pole only
-        # (=[axial+pole]-axial); wave5 split out for delta_strength.  Shared angular kernel `ang` is reused.
+        # Per-atom unit currents for the reduced-quadratic RES amps2. The current zj is linear in zmtx,
+        # and zmtx is linear in the amplitude blocks, so build the block/wave-split zmtx and map each to
+        # a zj. Atoms {V,A,P} x {rest, wave5}: V=vector, A=axial (r=1,pole=0), P=pole only
+        # (=[axial+pole]-axial); wave5 split out for delta_strength. Shared angular kernel `ang` is reused.
         w5 = _DELTA_WAVE if _DELTA_WAVE < _tbl().npw else None
         def _wmask(a, keep5):                                    # keep only wave 5 (keep5) or all-but-5
             out = np.array(a)

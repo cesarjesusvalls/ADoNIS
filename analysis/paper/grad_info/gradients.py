@@ -87,7 +87,7 @@ def main(label="multisample_carbon"):
     dskeys = [str(x) for x in d["dskeys"]]
     row0 = np.asarray(d["row0"])
 
-    marg = FE.gate1(J, sigma, prior, np.arange(J.shape[0]))[3]     # marginalized shrinkage, combined fit
+    marg = FE.fisher_shrinkage(J, sigma, prior, np.arange(J.shape[0]))[3]     # marginalized shrinkage, combined fit
     S = (prior[None, :] * J) / sigma[:, None]                      # (nbin, nknob) per-bin pull [sigma units]
     Sk = S.T                                                       # (nknob, nbin)
     rowmax = np.max(np.abs(Sk), axis=1, keepdims=True)

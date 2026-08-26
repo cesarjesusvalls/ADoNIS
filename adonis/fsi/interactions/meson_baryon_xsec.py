@@ -3,7 +3,7 @@ Resonances `MesonBaryonInteraction`).  Builds, from the Phase-E ANL-Osaka partia
 amplitudes (`meson_baryon_amplitudes`), the pi N -> pi' N' scattering cross sections sigma(W) [mb] for every
 charge channel (elastic + charge exchange), precomputed on the amplitude W grid and exposed
 as fast interpolators for the cascade.  These are the sharply Delta-peaked piN cross sections
-(validated to the 9.3:2.2:1 isospin ratio in Phase E) -- the RIGHT scatter rates for the
+(validated to the 9.3:2.2:1 isospin ratio in Phase E) -- the correct scatter rates for the
 cascade (vs the broad Oset QE).
 
 Channels (pion_in, nucleon) -> list of (pion_out, nucleon_out, isospin-cg) with
@@ -143,8 +143,7 @@ def _build_angular():
         return _ANG
     from adonis.fsi.interactions.meson_baryon_amplitudes import dsigma_dOmega
     Wg = np.linspace(1085.0, 2200.0, 224)            # W grid [MeV], 5 MeV step == the ANL piN grid
-    #   (1080-2200) that ACHILLES MesonBaryonAmplitudes loads.  Was truncated at 1700 -> high-momentum
-    #   pion scatters were clamped to a too-isotropic angle; ACHILLES samples to w_vec max (2200).
+    #   (1080-2200) that ACHILLES MesonBaryonAmplitudes loads (samples to w_vec max, 2200).
     cg_grid = np.linspace(-1.0, 1.0, 181)            # cos(theta_cm) grid
     ug = np.linspace(0.0, 1.0, 64)                   # uniform grid for the inverse CDF
     inv = np.zeros((_NCHAN, Wg.size, ug.size))

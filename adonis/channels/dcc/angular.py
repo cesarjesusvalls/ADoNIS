@@ -1,13 +1,12 @@
-"""Full DCC hadron-tensor assembly -- decoded conventions (Phase-2.5, milestone 6a).
+"""Angular primitives and index conventions for the DCC hadron-current port
+(amp_dcc_sl.f::amplitude(), interpolate_amp): turns the knob-scaled DCC partial-wave
+amplitudes into the helicity current zj_mu(isf, isi, mu) and, contracted with the lepton
+tensor, the differential cross section -- replacing the angle-integrated diagonal-bilinear
+approximation (dcc_xsec).
 
-This module is the scaffold for the faithful port of amp_dcc_sl.f::amplitude(): it
-turns the knob-scaled DCC partial-wave amplitudes into the helicity current
-zj_mu(isf, isi, mu) and, contracted with the lepton tensor, the differential cross
-section -- replacing the angle-integrated diagonal-bilinear approximation (dcc_xsec).
+Amplitude file conventions (from read_amp + amplitude() in amp_dcc_sl.f):
 
-Milestone 6a DECODE (from read_amp + amplitude() in amp_dcc_sl.f):
-
-* The amplitude file dcc_EW.dat stores, per (W-index ie, Q^2-index iq), entries
+* dcc_EW.dat stores, per (W-index ie, Q^2-index iq), entries
   `idx ipw igmb ils  za(1) za(2) za(3)` with the physical amplitude = sum_n za(n)
   (bare + dressed-N* + non-resonant; idata=(1,1,1)).
 
@@ -45,37 +44,23 @@ Milestone 6a DECODE (from read_amp + amplitude() in amp_dcc_sl.f):
       dsigma/dOmega = sum_{si,sf,lambda} (4pi^2 alpha / E_gamma) |zj_mu|^2
                       * m_N k_pi / (16 pi^3 W) / 4
   For neutrino CC the photon flux is replaced by the V-A lepton tensor (with the
-  vector-axial INTERFERENCE term, absent from the diagonal approximation).
+  vector-axial interference term, absent from the diagonal approximation).
 
-DONE (6b): the knob-independent angular primitives below -- wigner_d_half/int,
-cbg, legendre_ylm -- validated vs closed forms (validate_hadron_tensor.py).
-
-interpolate_amp DECODE (the zampv -> zmtx step, lines 588-960; for 6c):
+interpolate_amp (the zampv -> zmtx step, lines 588-960):
  (1) EW isospin combination: from the stored vector (zampv) and isoscalar-vector
      (zampv_is), form  isovector=(V-IS)/2, isoscalar=(V+IS)/2  (per idx,pw,gmb).
  (2) Current conservation (vector only): the charge/time component (idx 7,8) is
-     DERIVED from the longitudinal (idx 3,4) via V_z = V_0 * omega_cm/q_cm
+     derived from the longitudinal (idx 3,4) via V_z = V_0 * omega_cm/q_cm
      (xxx=qc0/qc, qc0=(W^2-m^2-Q^2)/2W). Hence vector stores only idx={1,2,3};
-     axial is NOT conserved so it stores idx=7 explicitly (PCAC).
+     axial is not conserved so it stores idx=7 explicitly (PCAC).
  (3) Parity/helicity symmetry fill: id1=(1,2,3,7) <-> id2=(6,5,4,8) -- the negative-
      photon-helicity / opposite-nucleon-helicity components (idx 4,5,6,8) are filled
      from the stored (idx 1,2,3,7) with a parity phase (zmtx(idxx)=zzz*pha).
  (4) (W,Q^2) bilinear interpolation onto the event point.
 
-STILL TO PORT (6c): interpolate_amp (1)-(4) above; the assembly loop (zfac_a isospin
-CG x zmtx, zzz = spin-orbit CG x Legendre x azimuth, accumulate zcrnt); zjx_mu
-helicity->Cartesian; the lepton-tensor contraction (sigma_T + sigma_L; V-A for CC).
-SIMPLIFICATIONS for the unpolarized, angle-integrated xsec (dsigma/dW,dQ^2): the spin
-rotations rspin + the irot_q nucleon-helicity rotation are UNITARY and CANCEL in the
-spin sum; dsigma/dW,dQ^2 are Lorentz-invariant so the lab boost (lorentz_trans) is
-unneeded -> work in piN-CM with photon along z (irot_q=0 branch). Then
-  W^{mu,nu}(W,Q2) = sum_{pw,pw'} A_pw^* G^{mu,nu}_{pw,pw'} A_pw'
-with G a knob-independent kernel = integral over Omega_pi of the (validated) angular
-functions; off-diagonal pw interference vanishes on angle-integration.
-
-VALIDATION (6d): integrated over the pion solid angle, this MUST collapse to the
-diagonal-bilinear assembly in dcc_xsec (the regression check), and then close the
-residual peak gap vs the EM/CC oracles (dcc_fold_validation.png).
+The knob-independent angular primitives below (wigner_d_half/int, cbg, legendre_ylm) are
+validated against closed forms; see assembly.py for the SIMPLIFICATIONS used for the
+unpolarized, angle-integrated xsec and the full W^{mu,nu} assembly.
 """
 from __future__ import annotations
 

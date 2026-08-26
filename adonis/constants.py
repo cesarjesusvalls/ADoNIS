@@ -1,7 +1,7 @@
-"""Single source of truth for physical constants — verbatim ACHILLES values.
+"""Physical constants, verbatim from ACHILLES.
 
-Two families, BOTH verbatim from the ACHILLES source. Never "fix" one into the other:
-the generator itself uses both, and bit-exact reproduction requires matching each code
+Two families, both verbatim from the ACHILLES source; never "fix" one into the other,
+since the generator uses both and bit-exact reproduction requires matching each code
 path's own choice.
 
 * `Constants.hh` precision values (lowercase: ``mp``, ``mn``, ``HBARC``, ``GF``, ...) —
@@ -11,7 +11,7 @@ path's own choice.
 
 The uppercase aliases (``M_P``, ``MQE``, ``M_PI``, ``W_THR``, ...) serve the
 differentiable DCC path (hard cuts from ``currents_pi_dcc.f90``).
-``adonis/channels/constants.py`` re-exports the lowercase family for back-compat.
+``adonis/channels/constants.py`` re-exports the lowercase family.
 Mass-convention ROLES (which mass plays which part in RES) live in
 ``adonis/primary/dcc/conventions.py``, not here.
 """
@@ -73,8 +73,8 @@ M_12C = 11174.862         # 12C nuclear mass [MeV]
 M_11B = 10252.547         # 11B residual mass [MeV]
 
 # --- forward-angle cut sentinel (T2K signal defs) ------------------------------------
-# EXACT expression matching workflow.config / workflow.plotting / reweight.bank_plot (bit-identical);
-# oracle.extract used np.cos(70*pi/180) which can differ by 1 ulp -- it now shares this value.
+# Must be bit-identical across workflow.config / workflow.plotting / reweight.bank_plot /
+# oracle.extract -- all of them read this constant rather than recomputing cos(70 deg).
 COS70 = float(np.cos(np.deg2rad(70.0)))
 
 # --- PDG id sets (membership tests) ---------------------------------------------------
@@ -87,9 +87,9 @@ PDG_MESONS = frozenset({111, 211, -211, 221, 130, 310, 311, 321, -321, -311})
 
 # ---- run-mode flags -------------------------------------------------------------------------------- #
 # ADONIS_EB_MIRROR: with the mirror on, the spectral-function response is EVEN in Eb_shift, so a
-# negative value denotes the same physical shift |Eb| and the fit must not be bounded at zero.  Two
-# modules must agree on it -- adonis.analysis.knobs (is Eb_shift bounded) and adonis.reweight.sf_reweight
-# (is the response mirrored) -- so the read happens once, here.  It cannot live in knobs.py because
-# sf_reweight cannot import knobs.
+# negative value denotes the same physical shift |Eb| and the fit must not be bounded at zero.
+# adonis.analysis.knobs (bounds Eb_shift) and adonis.reweight.sf_reweight (mirrors the response) must
+# agree on this flag, so it is read once, here; it cannot live in knobs.py because sf_reweight cannot
+# import knobs.
 import os as _os
 EB_MIRROR = _os.environ.get("ADONIS_EB_MIRROR", "") == "1"

@@ -1,9 +1,9 @@
-"""ADoNIS bank-generation CLI -- THE single entry point for every probe.
+"""ADoNIS bank-generation CLI.
 
   python -u -m adonis.workflow.cli <config.yaml> --out <outdir> [shard overrides]
 
-There is exactly ONE generator, `generate_bank(cfg, outdir)`, which dispatches on `cfg.probe`
-(weak | EM | hadron); ALL diversity lives in the config, not in the command.  Examples:
+`generate_bank(cfg, outdir)` dispatches on `cfg.probe` (weak | EM | hadron); all diversity lives in the
+config, not in the command:
 
   # neutrino reweight bank (weak hard vertex, T2K flux, QE+RES)
   python -u -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C

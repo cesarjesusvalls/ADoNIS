@@ -53,22 +53,21 @@ def knobs_of(theta, nom):
 
 
 # --------------------------------------------------------------------------- physical boundaries
-# Dials with a HARD PHYSICAL boundary.  The model CLAMPS outside these (e.g. sf_reweight flattens for
+# Dials with a hard physical boundary.  The model clamps outside these (e.g. sf_reweight flattens for
 # E_b < 0), so the likelihood is exactly flat there: a fit step, a profile node or a toy truth placed
-# outside the bound is unrecoverable, and one placed exactly ON it is degenerate.  Everything that
-# generates a theta value must go through `phys_lo` / `clip_phys` rather than hardcoding a floor --
-# the same 1e-2 was previously copy-pasted into six call sites, free to drift apart.
-# CODE-VALIDITY ranges: outside these the MODEL stops being meaningful (negative weights, mirror minima,
-# singular reweights) -- not merely "physically disfavoured".  Tighter physics-motivated priors are a
-# separate question and deliberately NOT encoded here.
-#   * M_A_* enter the axial dipole ONLY as M_A^2 (F_A = -g_A/(1+Q2/M_A^2)^2, form_factors.py), so the
-#     likelihood is exactly symmetric under M_A -> -M_A: an unbounded fit has a MIRROR MINIMUM at negative
-#     M_A.  Observed: M_A_qe = -1.55, M_A_res = -0.50 in the prior-thrown coverage ensemble.
-#   * f_NN_cex is a FRACTION: nncex_slot_factor returns f/0.5 (swapped) and (1-f)/0.5 (not), so outside
-#     [0,1] it produces NEGATIVE event weights.
-#   * every other dial is a multiplicative SCALE with nominal 1.0; <= 0 means a negative cross-section
+# outside the bound is unrecoverable, and one placed exactly on it is degenerate.  Everything that
+# generates a theta value must go through `phys_lo` / `clip_phys` rather than hardcoding a floor.
+# These are CODE-VALIDITY ranges: outside them the model stops being meaningful (negative weights,
+# mirror minima, singular reweights), not merely "physically disfavoured".  Tighter physics-motivated
+# priors are a separate question and deliberately not encoded here.
+#   * M_A_* enter the axial dipole only as M_A^2 (F_A = -g_A/(1+Q2/M_A^2)^2, form_factors.py), so the
+#     likelihood is exactly symmetric under M_A -> -M_A: an unbounded fit has a mirror minimum at
+#     negative M_A.
+#   * f_NN_cex is a fraction: nncex_slot_factor returns f/0.5 (swapped) and (1-f)/0.5 (not), so outside
+#     [0,1] it produces negative event weights.
+#   * every other dial is a multiplicative scale with nominal 1.0; <= 0 means a negative cross-section
 #     contribution, and the cascade rate scales additionally appear as exp(-a/s) (s<=0 is singular).
-#   * Eb_shift: the SF reweight clamps Eb<0, so the likelihood is exactly FLAT below zero.
+#   * Eb_shift: the SF reweight clamps Eb<0, so the likelihood is exactly flat below zero.
 _POS = (0.0, None)                          # strictly positive scale (FLOOR_EPS keeps it off zero)
 PHYS_BOUND = {
     "M_A_qe": _POS, "M_A_res": _POS,                          # mirror minimum at -M_A
@@ -93,14 +92,9 @@ def _base(name):
 # With ADONIS_EB_MIRROR=1 the SF response is EVEN in Eb_shift (see sf_reweight), so negative values are
 # meaningful -- they denote the same physical shift |Eb|.  Bounding the fit at zero would then re-impose
 # the very wall the mirroring exists to remove, so Eb_shift becomes unbounded in that mode.
-# ONE owner for this flag.  It was read from the environment independently HERE and in
-# adonis/reweight/sf_reweight.py, and the two must agree: this file decides whether Eb_shift is bounded
-# at zero, that file decides whether the SF response is even about zero.  Disagreement means the fit is
-# bounded away from values the physics treats as meaningful, or unbounded into values it does not.
-# They happen to agree today only because both read the same variable name.
-#
-# Promoting it to a config field means threading it into sf_reweight, which runs inside jitted code --
-# worth doing, but not as a side effect of a layering cleanup.  Single source now; config later.
+# This file decides whether Eb_shift is bounded at zero; adonis/reweight/sf_reweight.py decides whether
+# the SF response is mirrored about zero.  Both must read the same flag, or the fit ends up bounded
+# away from values the physics treats as meaningful (or unbounded into values it does not).
 from adonis.constants import EB_MIRROR
 _MIRRORED = {"Eb_shift"} if EB_MIRROR else set()
 

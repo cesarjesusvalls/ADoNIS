@@ -1,9 +1,9 @@
 """Nuclear targets: which nuclei ADoNIS has inputs for, and how a chemical formula resolves to them.
 
 A generation config names a target by chemical formula (e.g. "C", "CH", "H2O").  This module parses
-the formula into element stoichiometry and resolves each element against a REGISTRY of nuclei for
-which ADoNIS actually has the nuclear inputs to run.  Every per-nucleus input is carried here (the
-SINGLE SOURCE OF TRUTH) and threaded into the generators + cascade; nothing is hardcoded downstream.
+the formula into element stoichiometry and resolves each element against a registry of nuclei ADoNIS
+has the nuclear inputs to run.  Every per-nucleus input is carried here (the single source of truth)
+and threaded into the generators + cascade; nothing is hardcoded downstream.
 
 Each NuclearTarget carries, mirroring ACHILLES's per-nucleus inputs (Nucleus.cc / Configuration.cc /
 SpectralFunction.cc):

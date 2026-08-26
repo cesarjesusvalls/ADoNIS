@@ -1,18 +1,17 @@
 """Exact quadratic-amps2 reweight records for frozen QE/RES proposals -- the ONE mechanism for every
 hard-vertex knob (axial mass, axial/vector strength, Sachs form factors, DCC partial-wave norms, pion
-pole), NOT just M_A.
+pole), not just M_A.
 
-amps2 is QUADRATIC in the axial scale r (the hadron current is linear in FA/FAP for QE and
-in the axial amplitudes for RES), so 3 evals (r = 0, 1, -1) give per-event (a, b, c) with
-amps2(r) = a + b r + c r^2 exactly (gated to 5e-15 in tests/test_ma_reweight.py).  The
-fit/overlay-time weight is then elementwise:
+amps2 is QUADRATIC in a scale r (the hadron current is linear in FA/FAP for QE, in the axial
+amplitudes for RES): 3 evals at r = 0, 1, -1 give per-event (a, b, c) with amps2(r) = a + b r + c r^2
+exactly (checked to 5e-15 in tests/test_ma_reweight.py).  The fit/overlay-time weight is elementwise:
 
     w_MA = (a + b r_i + c r_i^2) / (a + b + c),
     r_i  = F_A_dipole(Q2_i; MA) / F_A_dipole(Q2_i; 1.0)   (axial_reweight_dipole)
 
--- the established M_A knob; w_MA = 1 exactly at MA = 1.0 GeV.  Q2_i is the Q2 at which
-each path evaluates the form factor: QE = the ORIGINAL leptonic Q2 (dirac.py); RES = the
-de-Forest-shifted amplitude Q2 (exclusive_amps2_batch return_q2)."""
+for the M_A knob; w_MA = 1 at MA = 1.0 GeV.  Q2_i is the Q2 where each path evaluates the form
+factor: QE uses the leptonic Q2 (dirac.py); RES uses the de-Forest-shifted amplitude Q2
+(exclusive_amps2_batch return_q2)."""
 from __future__ import annotations
 
 import numpy as np
@@ -26,11 +25,11 @@ RES_ITIZ = {(2112, 211): -1, (2112, 111): -1, (2212, 211): +1}
 
 
 def build_qe_ma_records(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=None):
-    """Per-event (a, b, c, Q2) for the QE sample.  Rejected draws (proposal weight 0) sit in
-    the arrays with unphysical kinematics (negative Q2, NaN amps2); they get the identity
-    record (w_MA = 1, grad 0).  probe="EM": the photon has no axial current, so amps2 is independent of
-    axial_scale -> (b,c)=(0,0) -> ma_reweight/strength_reweight collapse to identity (no axial gradient on
-    an electron bank, which is physically correct)."""
+    """Per-event (a, b, c, Q2) for the QE sample.  Rejected draws (proposal weight 0) sit in the
+    arrays with unphysical kinematics (negative Q2, NaN amps2) and get the identity record (w_MA=1,
+    grad 0).  probe="EM": the photon has no axial current, so amps2 is independent of axial_scale ->
+    (b,c)=(0,0) -> ma_reweight/strength_reweight collapse to identity (correct: no axial gradient on
+    an electron bank)."""
     kn, km, ps, po = (jnp.asarray(x) for x in (k_nu, k_lep, p_struck, p_out))
     _mc = lambda **kw: me_cross_section(kn, km, ps, po, probe=probe, is_proton=is_proton, **kw)["amps2"]
     a1 = np.asarray(_mc(axial_scale=1.0)); a0 = np.asarray(_mc(axial_scale=0.0)); am = np.asarray(_mc(axial_scale=-1.0))
@@ -41,10 +40,10 @@ def build_qe_ma_records(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=None
 
 
 def build_qe_vector_records(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=None):
-    """Per-event (a, b, c, Q2) for the QE VECTOR-current scale (F1,F2 multiplier): amps2 is quadratic in
-    vector_scale, so 3 evals (v=0,1,-1) give (a,b,c).  Same decomposition as the axial record; the weight
-    is vector_strength_reweight(rec, v) = strength_reweight (flat-scale ratio).  Q2 carried for bookkeeping.
-    probe="EM" (+ per-event is_proton) builds the photon vector record for an (e,e') bank."""
+    """Per-event (a, b, c, Q2) for the QE VECTOR-current scale (F1,F2 multiplier): amps2 is quadratic
+    in vector_scale, so 3 evals (v=0,1,-1) give (a,b,c).  Same decomposition as the axial record;
+    weight = strength_reweight (flat-scale ratio).  probe="EM" (+ per-event is_proton) builds the
+    photon vector record for an (e,e') bank."""
     kn, km, ps, po = (jnp.asarray(x) for x in (k_nu, k_lep, p_struck, p_out))
     _mc = lambda **kw: me_cross_section(kn, km, ps, po, probe=probe, is_proton=is_proton, **kw)["amps2"]
     a1 = np.asarray(_mc(vector_scale=1.0)); a0 = np.asarray(_mc(vector_scale=0.0)); am = np.asarray(_mc(vector_scale=-1.0))
@@ -149,10 +148,9 @@ def ma_reweight(rec, MA):
 
 def strength_reweight(rec, strength):
     """Exact overall-axial-STRENGTH weight from the SAME (a, b, c) amps2 record as M_A; pure in
-    `strength`, == 1 at strength = 1.0.  amps2(s) = a + b*s + c*s^2 (the hadron current is linear in the
-    axial block, so amps2 is exactly quadratic in the overall axial scale), so the reweight is the flat-
-    scale ratio -- the M_A knob is the SAME decomposition with the Q2-dependent dipole ratio r in place of
-    the flat s.  Differentiable knob: adonis/core/params.py axial_strength."""
+    `strength`, == 1 at strength = 1.0.  amps2(s) = a + b*s + c*s^2 (the hadron current is linear in
+    the axial block), so the reweight is the flat-scale ratio -- M_A uses the same decomposition with
+    the Q2-dependent dipole ratio r in place of s.  Knob: adonis/core/params.py axial_strength."""
     a, b, c, _ = (jnp.asarray(x) for x in rec)
     den = a + b + c
     return jnp.where(den > 0, (a + b * strength + c * strength * strength) / jnp.where(den > 0, den, 1.0), 1.0)

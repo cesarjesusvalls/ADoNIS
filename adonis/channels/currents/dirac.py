@@ -1,14 +1,14 @@
-"""Bit-exact JAX port of the ACHILLES Fortran QE Dirac current (currents_opt_v1.f90 module
-dirac_matrices) -- this is what the paper run uses (FortranModel QE_Spectral_Func), NOT the C++
-Weyl QESpectral.  Faithful to define_spinors / det_Ja / hadr_curr_matrix_el / current_init_had.
+"""Bit-exact JAX port of the ACHILLES Fortran QE Dirac current (currents_opt_v1.f90, module
+dirac_matrices); used by the paper's FortranModel QE_Spectral_Func, not the C++ Weyl QESpectral.
+Ports define_spinors / det_Ja / hadr_curr_matrix_el / current_init_had.
 
-DIRAC basis: g0=diag(I,-I), g^i=offdiag(sigma,-sigma), g5=offdiag(I,I).  Spinors are normalised
-with a SINGLE xmn=mN (constants%mqe) regardless of the actual on-shell mass -- the incoming
-nucleon is put mN-on-shell by current_init_had, the OUTGOING keeps its (mp-on-shell) energy but
-still uses xmn=mN in the normalisation (the ACHILLES hybrid).  ubar.u = 2 xmn for that mass.
+DIRAC basis: g0=diag(I,-I), g^i=offdiag(sigma,-sigma), g5=offdiag(I,I).  Spinors use a single
+xmn=mN (constants%mqe) rather than the true on-shell mass: current_init_had puts the incoming
+nucleon on-shell at mN, while the outgoing nucleon keeps its actual (mp-on-shell) energy but is
+still normalised with xmn=mN, so ubar.u = 2 xmn.
 
-Returns the hadron current H (..., 4_spincombo, 4_mu), spin-combo order (i,j)=(00,01,10,11) i.e.
-(f1=i//2... ) matching cur(i+2*(j-1)) -> we emit (i1=initial,f1=final) flattened as ACHILLES does.
+Returns H (..., 4_spincombo, 4_mu); spin-combo order (i,j)=(00,01,10,11) matches ACHILLES's
+cur(i+2*(j-1)), flattened here as (i1=initial, f1=final).
 """
 from __future__ import annotations
 
@@ -24,31 +24,15 @@ _COUPL_CC = C.Vud * C.ee * _I / (C.sw * np.sqrt(2.0) * 2.0)
 _COUPL_EM = _I * C.ee          # photon (ACHILLES LeptonicCurrent.cc:121, pid == 22: coupl = i*ee)
 
 # --------------------------------------------------------------------------- NC QE couplings (Z, pid 23)
-# ACHILLES LeptonicCurrent.cc:93-96, read directly:
-#     coupl1 = (ee*i / (4 * sin2w * cw)) * (0.5 - 2*sin2w)
-#     coupl2 = (ee*i / (4 * sw    * cw))
-# and the per-nucleon dictionaries at :97-115 attach them as
-#     proton : F1p,F2p <- coupl1 ; F1n,F2n <- -coupl2 ; FA <- +coupl2
-#     neutron: F1n,F2n <- coupl1 ; F1p,F2p <- -coupl2 ; FA <- -coupl2
-# i.e. coupl1 always multiplies the STRUCK nucleon's own F1/F2 and -coupl2 the other's.  ACHILLES
-# expresses the isoscalar/isovector recombination as this per-nucleon dictionary, so ADoNIS does the
-# same rather than inventing an isospin decomposition.
+# ACHILLES LeptonicCurrent.cc:93-96:  coupl1 = (ee*i/(4*sin2w*cw))*(0.5-2*sin2w),
+# coupl2 = ee*i/(4*sw*cw).  Per-nucleon (:97-115): proton F1p,F2p<-coupl1, F1n,F2n<--coupl2,
+# FA<-+coupl2; neutron mirrors it (F1n,F2n<-coupl1, F1p,F2p<--coupl2, FA<--coupl2) -- coupl1 on the
+# struck nucleon's own F1/F2, -coupl2 on the other's.
 #
-# THE coupl1 QUIRK.  coupl1 has sin2w (= sin^2 theta_W) where coupl2, one line below, has sw
-# (= sin theta_W).  coupl2's -1/4 * (g/c_W) isovector partner fixes the overall normalisation at
-# g/(2 c_W) = ee/(2*sw*cw), so the Standard-Model coupling is
-#     correct coupl1 = ee*i/(2*sw*cw) * (0.5 - 2*sin2w)
-# and ACHILLES's is larger by  [1/(2*sin2w)] / [1/sw] = 1/(2*sw) ~ 1.0396.  That "it is a typo" is an
-# INFERENCE from the adjacent line, not a fact -- so we do not bet on it.  Both branches exist and the
-# bank records which one produced it (GenConfig.achilles_coupl1_quirk -> manifest).
-#
-#   quirk=False (default) = correct physics.  This is what ADoNIS IS.
-#   quirk=True            = ACHILLES verbatim.  Set in the bank config that feeds the comparison
-#                           figures, so that comparison is like-for-like.
-#
-# Written as two explicit branches, NOT as one expression with a substituted denominator: the
-# single-expression form `ee*i/(4*X*cw)*(0.5-2*sin2w)` needs X = sw/2 for the correct branch, and
-# writing X = sw there is an easy factor-2 error that would make the DEFAULT half the right coupling.
+# coupl1 uses sin2w (sin^2 theta_W); coupl2 uses sw (sin theta_W).  The Standard-Model value is
+# ee*i/(2*sw*cw)*(0.5-2*sin2w) (matching coupl2's g/(2 c_W) normalisation); ACHILLES's coupl1 is
+# larger by 1/(2*sw) ~ 1.0396.  use_achilles_nc_coupling picks which: False (default) is the
+# Standard-Model coupling, True is ACHILLES verbatim, for a like-for-like comparison.
 _COUPL1_NC_QUIRK = (C.ee * _I / (4 * C.sin2w * C.cw)) * (0.5 - 2 * C.sin2w)   # ACHILLES verbatim
 _COUPL1_NC_TRUE = (C.ee * _I / (2 * C.sw * C.cw)) * (0.5 - 2 * C.sin2w)       # Standard Model
 _COUPL2_NC = C.ee * _I / (4 * C.sw * C.cw)                                    # both branches
@@ -96,7 +80,7 @@ def _spinors(p3, E):
     # u: upper = chi, lower = sigma.p chi /(E+xmn)
     lower = jnp.einsum('...ij,jk->...ik', sigp / denom, chi)      # (...,2,2col)
     # build (...,2spin,4): spin index = column of chi
-    up = jnp.stack([chi[0, 0] + 0 * E, chi[1, 0] + 0 * E], axis=-1)  # placeholder; do explicit below
+    up = jnp.stack([chi[0, 0] + 0 * E, chi[1, 0] + 0 * E], axis=-1)  # unused; superseded by mk() below
     # explicit per spin
     def mk(col):
         u_up = jnp.broadcast_to(jnp.asarray(chi[:, col]), p3.shape[:-1] + (2,))
@@ -114,9 +98,9 @@ def _spinors(p3, E):
 
 
 def _ubar_vtx_u(vtx, u_in, ubar_out):
-    """H[...,combo,mu] = ubar_out[f1] . vtx[mu] . u_in[i1], combos ordered (i1 init outer, f1 final inner)
-    -- matching ACHILLES cur(i+2*(j-1)).  The single home of the spinor sandwich, shared by the summed
-    current and the per-structure (return_structures) unit currents so the two cannot drift."""
+    """H[...,combo,mu] = ubar_out[f1] . vtx[mu] . u_in[i1], combos ordered (i1 init outer, f1 final inner),
+    matching ACHILLES cur(i+2*(j-1)).  Shared by the summed current and the per-structure
+    (return_structures) unit currents, so both use the identical spinor contraction."""
     out = []
     for i1 in range(2):          # initial spin
         Vu = jnp.einsum('...mij,...j->...mi', vtx, u_in[..., i1, :])     # (...,4mu,4)
@@ -128,26 +112,24 @@ def _ubar_vtx_u(vtx, u_in, ubar_out):
 def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scale=1.0, vector_scale=1.0,
                             ff_scale=None, probe="CC", is_proton=None, use_achilles_nc_coupling=False,
                             return_structures=False):
-    """All (...,4) MeV.  p_in_nuc OFF-SHELL struck nucleon (E=mN-removal); p_out_nuc outgoing
-    (mp-on-shell energy).  Returns H (...,4combo,4mu) matching ACHILLES cur(i+2*(j-1)).
-    axial_scale (scalar or (...,)) multiplies FA and FAP (FAP ~ FA): the M_A reweight hook;
-    vector_scale multiplies F1 and F2 (the overall vector current): the vector-strength reweight hook.
-    amps2 is QUADRATIC in EACH, so 3 evals give the exact per-event decomposition.  Default 1.0 = nominal.
+    """All momenta (...,4) MeV.  p_in_nuc is the off-shell struck nucleon (E=mN-removal); p_out_nuc
+    is outgoing (mp-on-shell energy).  Returns H (...,4combo,4mu) matching ACHILLES cur(i+2*(j-1)).
+    axial_scale (scalar or (...,)) multiplies FA and FAP (FAP ~ FA), the M_A reweight hook;
+    vector_scale multiplies F1 and F2, the vector-strength reweight hook.  amps2 is quadratic in
+    each, so 3 evals give the exact per-event decomposition.  Default 1.0 = nominal.
 
     probe:
-      "CC" (default) -- nu n -> mu- p.  The ISOVECTOR combination with the W coupling, and the axial
-            current.  UNCHANGED, bit-for-bit.
+      "CC" (default) -- nu n -> mu- p.  Isovector combination with the W coupling, plus the axial
+            current.
       "EM" -- e N -> e' N  (inclusive (e,e')).  ACHILLES LeptonicCurrent.cc:120 (pid == 22):
                 coupl = i*ee
                 proton : {F1p, coupl}, {F2p, coupl}    <- NO FA entry
                 neutron: {F1n, coupl}, {F2n, coupl}    <- NO FA entry
-            so the photon couples to the struck nucleon's OWN form factors (NOT the isovector
-            difference F1p - F1n), and CouplingsFF leaves FA = FAP = 0 -- the EM current is purely
-            vector.  Protons AND neutrons are both struck (incoherently); `is_proton` (bool, broadcast
-            over the event axis) selects which nucleon's form factors each event uses.
-            vector_scale still multiplies F1/F2, so the vector-strength / mu_p / mu_n / gep / gen
-            reweights work unchanged on an (e,e') sample -- which is exactly why it can break the
-            axial-vs-vector degeneracy that a nu-only fit cannot."""
+            The photon couples to the struck nucleon's own form factors (not F1p - F1n), and
+            CouplingsFF leaves FA = FAP = 0, so the current is purely vector.  Proton and neutron
+            are both struck incoherently; `is_proton` (bool, broadcast over events) selects which.
+            vector_scale still multiplies F1/F2, so vector-strength / mu_p / mu_n / gep / gen
+            reweights work unchanged here."""
     q = p_in_lep - p_out_lep
     Q2_FF = -(q[..., 0] ** 2 - jnp.sum(q[..., 1:] ** 2, axis=-1)) / 1e6     # GeV^2, ORIGINAL q
     ff = nucleon_ff(Q2_FF, ff_scale=ff_scale)
@@ -177,29 +159,12 @@ def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scal
         # FA <- +coupl2 on a proton, -coupl2 on a neutron (:101 / :112)
         ca = jnp.where(isp, _COUPL2_NC, -_COUPL2_NC)
         FA = ca * ff["FA"] * asc
-        # NO strange form factors.  ACHILLES computes FormFactors::FAs (FormFactor.cc:92,123) and
-        # NEVER consumes it: FormFactorInfo::Type (FormFactor.hh:22-48) has no strange entry, so
-        # CouplingsFF cannot dispatch on one.  Adding F1s/F2s/G_A^s would make ADoNIS more physically
-        # complete and fail every gate here by construction, because every gate is an ACHILLES
-        # comparison.  tests/test_nc_qe.py pins this omission with the enum citation.
-        #
-        # FAP (induced pseudoscalar): carried with the SAME +-coupl2 as FA, mirroring the validated CC
-        # branch above, which pairs FAP with FA on one coupling.
-        #
-        # OPEN ITEM, recorded rather than guessed.  `FAP` appears NOWHERE in LeptonicCurrent.cc -- not
-        # in the NC dictionary (:97-115) and not in the CC one (:82-92).  That is NOT evidence that
-        # the term is absent from the physics: the paper runs use `FortranModel QE_Spectral_Func`
-        # (currents_opt_v1.f90), which is what this module ports and which builds its own current;
-        # LeptonicCurrent.cc's dictionary feeds the C++ backend.  So the Fortran, not this dictionary,
-        # is the authority on whether NC QE carries an induced pseudoscalar -- and CC's FAP treatment
-        # here is bit-validated, so mirroring it is the defensible default until the P6 free-nucleon
-        # oracle gate settles it.  Flagged in docs/nc_implementation_plan.md.
-        #
-        # And note it DOES contribute: the term rides on `qsh`, the DE FOREST-SHIFTED transfer
-        # (qsh[0] = q[0] + p_in_nuc[0] - E_in_on), not on the leptonic q.  The tempting argument
-        # "a massless neutrino gives q.j_lep = 0, so the q^mu term drops" is therefore FALSE here --
-        # measured, a x137 FAP moves NC amps2 by ~600x.  test_nc_qe.py pins that it matters, so the
-        # open item cannot be quietly forgotten.
+        # No strange form factors: ACHILLES computes FormFactors::FAs (FormFactor.cc:92,123) but
+        # FormFactorInfo::Type (FormFactor.hh:22-48) has no strange entry, so CouplingsFF never
+        # dispatches on one.  FAP (induced pseudoscalar) carries the same +-coupl2 as FA, mirroring
+        # the CC branch's FA/FAP pairing above.  It rides on `qsh`, the De Forest-shifted transfer
+        # (qsh[0] = q[0] + p_in_nuc[0] - E_in_on), not the leptonic q -- so a massless neutrino
+        # (q.j_lep = 0) does not make this q^mu term vanish.
         FAP = ca * ff["FAP"] * asc
     else:
         raise ValueError(f"probe must be 'CC', 'EM' or 'NC', got {probe!r}")
@@ -221,15 +186,14 @@ def hadron_current_qe_dirac(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, axial_scal
     u_in, _ = _spinors(p3_in, E_in_on)                           # incoming: mN-on-shell energy
     _, ubar_out = _spinors(p_out_nuc[..., 1:], p_out_nuc[..., 0])  # outgoing: actual (mp) energy
     ok = (_FF_TCUT + Q2_FF) > 0.0
-    # Zero the unphysical (Q2 < -TCUT) events so amps2 -> 0, matching ACHILLES's post-hoc
-    # `if(isnan(amps2)) amps2=0` (XSecBackend.cc:156).  H is already finite (safe sqrts above), so this
-    # mask is gradient-clean; for every physical Q2>=0 the condition is True -> exact no-op.
+    # Zero unphysical (Q2 < -TCUT) events so amps2->0, matching ACHILLES's post-hoc
+    # `if(isnan(amps2)) amps2=0` (XSecBackend.cc:156); safe since H is already finite (sqrts above).
 
     if return_structures:
-        # The FOUR unit currents H_i (kinematics only) for the reduced-quadratic amps2:  H = sum_i F_i H_i,
-        # F_i the REAL form factors (F1p-F1n, F2p-F2n, FA, FAP) x dial scales, H_i the current with the i-th
-        # vertex term at unit form factor -- COUPL and the intrinsic factors (i/2m, q^mu/m) folded IN, so
-        # F_i is coupling-free.  amps2 = sum_ij F_i F_j Re[ sum_ab (L.H_i)*(L.H_j) ] exactly (see reduced_amps2).
+        # The four unit currents H_i: H = sum_i F_i H_i, F_i the real form factors (F1p-F1n, F2p-F2n,
+        # FA, FAP) x dial scales, H_i the vertex's i-th term at unit form factor with COUPL and the
+        # i/2m, q^mu/m factors folded in (so F_i is coupling-free).  amps2 = sum_ij F_i F_j
+        # Re[sum_ab (L.H_i)*(L.H_j)] exactly (see reduced_amps2).
         cpl = {"CC": _COUPL_CC, "EM": _COUPL_EM}.get(probe)
         if cpl is None:
             raise NotImplementedError(f"return_structures supports probe CC/EM only, not {probe!r} "

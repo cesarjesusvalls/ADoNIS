@@ -1,4 +1,4 @@
-"""Validation harness (Strategy §2, §12, §13).
+"""Validation harness.
 
 Every component is held to the same three gates before it is trusted:
 
@@ -273,12 +273,12 @@ def run_closure(loss_fn, to_params, init_unconstrained, key,
                    theta_fit, np.asarray(loss_hist), np.asarray(param_hist), max_err)
 
 
-# --- (§13) gradient signal-to-noise ------------------------------------------ #
+# --- gradient signal-to-noise ------------------------------------------------ #
 def measure_snr(grad_fn, theta, keys):
     """Gradient SNR = |E[g]| / std[g] per parameter, over a batch of PRNG keys.
 
     `grad_fn(theta, key)` returns the gradient vector for one key. High SNR means
-    the deep-cascade variance is under control (Strategy §13).
+    the deep-cascade variance is under control.
     """
     theta = jnp.asarray(theta, dtype=jnp.float64)
     grads = np.stack([np.asarray(grad_fn(theta, k)) for k in keys])

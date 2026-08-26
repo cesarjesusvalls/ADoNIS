@@ -56,7 +56,7 @@ def test_g6_2_nc_qe_absolute_sigma_on_a_free_nucleon():
     from adonis.channels.qe_nc import sigma_free_nucleon_nc_qe
     ratios = []
     for is_p in (True, False):
-        ado, _err = sigma_free_nucleon_nc_qe(E_NU, is_p, n=100_000, seed=1, quirk=True)
+        ado, _err = sigma_free_nucleon_nc_qe(E_NU, is_p, n=100_000, seed=1, use_achilles_nc_coupling=True)
         assert ado > 0
         ratios.append(ACH_QE[is_p] / ado)
     mean, spread = _mean_spread(ratios)
@@ -70,8 +70,8 @@ def test_nc_qe_neutron_over_proton_ratio_is_convention_free():
     the neutron's carries -1/2, so the proton is axial-dominated and the neutron is not.  Getting the
     couplings the wrong way round gives ~1/1.43, which no overall scale can rescue."""
     from adonis.channels.qe_nc import sigma_free_nucleon_nc_qe
-    p, _ = sigma_free_nucleon_nc_qe(E_NU, True, n=100_000, seed=1, quirk=True)
-    n, _ = sigma_free_nucleon_nc_qe(E_NU, False, n=100_000, seed=1, quirk=True)
+    p, _ = sigma_free_nucleon_nc_qe(E_NU, True, n=100_000, seed=1, use_achilles_nc_coupling=True)
+    n, _ = sigma_free_nucleon_nc_qe(E_NU, False, n=100_000, seed=1, use_achilles_nc_coupling=True)
     want = ACH_QE[False] / ACH_QE[True]
     assert n / p == pytest.approx(want, rel=0.01), f"n/p = {n/p:.4f}, ACHILLES {want:.4f}"
 

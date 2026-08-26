@@ -50,12 +50,12 @@ def nucleon_ff(Q2_GeV2, ff_scale=None):
     Gmn = _MUN * _param(_MN, tau) * s.get("gmn", 1.0)
     F1p = (Gep + tau * Gmp) / (1 + tau); F1n = (Gen + tau * Gmn) / (1 + tau)
     F2p = (Gmp - Gep) / (1 + tau);        F2n = (Gmn - Gen) / (1 + tau)
-    # GRADIENT PROTECTION: the z-expansion radicand TCUT+Q2 < 0 for unphysical Q2 < -TCUT (timelike q
-    # from off-shell bound-nucleon kinematics that the flux importance sampler now reaches).  sqrt of a
-    # negative NaNs FA (and poisons its gradient).  ACHILLES lets the NaN form and zeroes amps2 post-hoc
-    # (XSecBackend.cc:156 `if(isnan(amps2)) amps2=0`); we instead keep the forward+backward finite by
-    # evaluating the sqrt on a safe argument (the bad events are zeroed at the hadron-current level in
-    # dirac.py).  For every PHYSICAL Q2>=0, TCUT+Q2 >= TCUT > 0 -> these guards are exact no-ops.
+    # GRADIENT PROTECTION: the z-expansion radicand TCUT+Q2 < 0 for unphysical Q2 < -TCUT (timelike q,
+    # reachable from off-shell bound-nucleon kinematics).  sqrt of a negative NaNs FA and its gradient.
+    # ACHILLES lets the NaN form and zeroes amps2 post-hoc (XSecBackend.cc:156, `if(isnan(amps2))
+    # amps2=0`); here the sqrt argument is clamped instead, keeping forward+backward finite (bad events
+    # are zeroed at the hadron-current level in dirac.py).  For physical Q2>=0, TCUT+Q2 >= TCUT > 0,
+    # so this is an exact no-op.
     rad = _TCUT + Q2_GeV2
     sq = jnp.sqrt(jnp.where(rad > 0.0, rad, 1.0))                 # safe sqrt (no NaN fwd/bwd)
     z = (sq - np.sqrt(_TCUT - _T0)) / (sq + np.sqrt(_TCUT - _T0))

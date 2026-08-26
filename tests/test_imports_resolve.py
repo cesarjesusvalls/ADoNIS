@@ -42,6 +42,55 @@ def _targets(tree):
     return out
 
 
+def _package_binds(pkg, name):
+    """True if `pkg` binds `name` at module level (import, assignment, def or class).
+
+    `pkg` may be a module or a package; spec.origin points at the .py or at the __init__.py, and
+    either way a top-level binding of `name` is what makes `from pkg import name` legal.
+    """
+    spec = None
+    try:
+        spec = importlib.util.find_spec(pkg)
+    except (ImportError, AttributeError, ValueError):
+        return False
+    if spec is None or not spec.origin or not spec.origin.endswith(".py"):
+        return True                      # extension module or namespace package: cannot inspect
+    try:
+        tree = ast.parse(pathlib.Path(spec.origin).read_text())
+    except (OSError, SyntaxError):
+        return True                      # unreadable: do not manufacture a failure
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name == name:
+            return True
+        if isinstance(n, ast.Import) and any((a.asname or a.name).split(".")[0] == name for a in n.names):
+            return True
+        if isinstance(n, ast.ImportFrom) and any((a.asname or a.name) == name for a in n.names):
+            return True
+        if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            for t_ in ast.walk(n):
+                if isinstance(t_, ast.Name) and t_.id == name and isinstance(t_.ctx, ast.Store):
+                    return True
+        if isinstance(n, ast.If):        # names bound inside a module-level conditional
+            for t_ in ast.walk(n):
+                if isinstance(t_, ast.Name) and t_.id == name and isinstance(t_.ctx, ast.Store):
+                    return True
+    return False
+
+
+def _lazy_package(pkg):
+    """Packages that resolve names at runtime via module __getattr__ cannot be checked statically."""
+    try:
+        spec = importlib.util.find_spec(pkg)
+    except (ImportError, AttributeError, ValueError):
+        return False
+    if spec is None or not spec.origin or not spec.origin.endswith(".py"):
+        return True
+    try:
+        return "__getattr__" in pathlib.Path(spec.origin).read_text()
+    except OSError:
+        return True
+
+
 def _exists(mod):
     try:
         return importlib.util.find_spec(mod) is not None
@@ -57,9 +106,13 @@ def test_first_party_imports_resolve(path):
         if _exists(mod):
             continue
         if len(t) == 3:
-            # a `from pkg import name` where name is not a submodule: fine if pkg itself resolves,
-            # since it is then an attribute import and only running the module can check it.
-            if _exists(t[2]):
+            # `from pkg import name` where name is not a submodule.  It may be an attribute of the
+            # package, so check the package's __init__ for a module-level binding of that name.  Only
+            # when the package cannot provide it either is the import genuinely broken -- which is how
+            # `from adonis.reweight import tune` survived a move: the package resolved, so an
+            # existence check on the package alone said nothing.
+            pkg, name = t[2], mod.rsplit(".", 1)[1]
+            if _package_binds(pkg, name) or _lazy_package(pkg):
                 continue
         bad.append(f"{mod} (line {line})")
     assert not bad, f"{path.relative_to(ROOT)} imports nonexistent module(s): " + ", ".join(bad)

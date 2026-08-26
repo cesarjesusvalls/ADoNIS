@@ -98,8 +98,8 @@ def spinor(type_, bar, hel, mom, ms=1):
     omm = jnp.sqrt((mom[..., 0] - phE) / (2.0 * phE))
     r = 0 if mode else 2
     # massive correction (apply where m2 != 0; massless leptons keep m2~0 -> skip)
-    # DIAGNOSTIC: FORCE_MASSLESS drops the omp/omm mass correction (treats lepton as massless,
-    # so q.L=0 -> contraction blind to the q^mu pion-pole longitudinal, like the old fold).
+    # DIAGNOSTIC: FORCE_MASSLESS drops the omp/omm mass correction, treating the lepton as massless
+    # (q.L=0, so the contraction is blind to the q^mu pion-pole longitudinal piece).
     nz = (jnp.abs(m2) > 1e-8) & (not FORCE_MASSLESS)
     new_r0 = sgn * omm * u[2 - r]; new_r1 = sgn * omm * u[3 - r]
     u_2r = u[2 - r] * omp; u_3r = u[3 - r] * omp

@@ -6,7 +6,7 @@ Two top-level configs, each loaded from a standardized YAML:
 
 Number-precision sentinels: a cut/edge written as `cos70` resolves to float(np.cos(np.deg2rad(70.)))
 and `pi` resolves to np.pi at load time, so YAML stays readable while cuts/bin edges remain
-bit-identical to the hand-written scripts (cc1pi_engine_plot / cc0pi_engine_combined).
+exact.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field, fields, is_dataclass
@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from adonis.constants import COS70   # single source (adonis.constants)
+from adonis.constants import COS70
 _SCALAR_SENTINELS = {"cos70": COS70, "pi": float(np.pi), "-pi": -float(np.pi), "inf": float("inf")}
 
 
@@ -29,7 +29,7 @@ def _resolve_seq(seq):
 
 
 def _coerce(cls, d):
-    """Build dataclass `cls` from dict `d`, ignoring unknown keys is an ERROR (typo guard)."""
+    """Build dataclass `cls` from dict `d`. Unknown keys raise (typo guard), not ignored."""
     if d is None:
         return cls()
     known = {f.name for f in fields(cls)}
@@ -42,25 +42,25 @@ def _coerce(cls, d):
 # ----------------------------------------------------------------------------- generation
 @dataclass
 class CascadeHyperparams:
-    # NOTE: the pool stack width is FIXED at 1 (serial, ACHILLES-faithful processing order) -- there is no
-    # P knob.  See adonis/fsi/cascade_full.py (cascade_nucleus hardcodes M=1).
+    # Pool stack width is fixed at 1 (serial, ACHILLES-faithful processing order); there is no P knob.
+    # See adonis/fsi/cascade_full.py (cascade_nucleus hardcodes M=1).
     step: float = 0.04          # Glauber step [fm] (time_step=False: distance/step; True: Dt/step)
-    max_steps: int = 260        # legacy field; the engine now uses a fixed 100k runaway ceiling +
-                                #   path_budget_R*radius as the physics bound (generate.py sets the ceiling)
+    max_steps: int = 260        # unused: the engine bounds steps via a fixed 100k runaway ceiling +
+                                #   path_budget_R*radius instead (ceiling set in generate.py)
     nn_inelastic: bool = True
     time_step: bool = False     # stepping clock: False = distance-sync (every particle sweeps `step`);
                                 #   True = ACHILLES AdaptiveStep time-sync (Dt=step/beta_max per round)
-    path_budget_R: float = 20.0  # runaway backstop (was 3.0): drop a particle once its path length > this
-                                #   * radius.  20R never clips a real escaping/capturing track (net escape
-                                #   ~1R); at 3R it silently clipped ~0.009% slow random-walkers -> reacted
-                                #   mis-count.  Keep in sync with DiscreteCascadeConfig + tune.POOLCFG.
+    path_budget_R: float = 20.0  # runaway backstop: drop a particle once its path length exceeds this
+                                #   * radius.  Real escaping/capturing tracks have net path ~1R, so 20R
+                                #   gives margin without clipping them.  Keep in sync with
+                                #   DiscreteCascadeConfig + tune.POOLCFG.
     mprot: int = 6              # top-M proton terminals stored per event (-> ADONIS_MPROT)
 
 
 @dataclass
 class VegasConfig:
     enabled: bool = False       # RES importance estimator only: frozen VegasGrid over the 6 final-state
-                                #   hypercube dims (beam + 3-body); default OFF -> bit-identical sampling
+                                #   hypercube dims (beam + 3-body); default off = plain sampling
     nbins: int = 50             # per-axis grid bins
     warmup_iters: int = 6       # adapt iterations (accumulate -> refine), then freeze
     warmup_n: int = 100000      # events per warm-up iteration (per channel)
@@ -84,9 +84,9 @@ class TrackingConfig:
     max_steps: int = 260
 
 
-# flux key -> ACHILLES Spectrum table (relative to the sibling Achilles/ dir).  The generators read
-# the actual table via adonis.flux.spectrum (ADONIS_FLUX_FILE) (env ADONIS_FLUX_FILE); a run must export that to
-# the file below so the bank name (this key) and the physics agree.  See _resolve_flux() in the CLI.
+# flux key -> ACHILLES Spectrum table (relative to the sibling Achilles/ dir).  Generators read the
+# actual table via adonis.flux.spectrum through env var ADONIS_FLUX_FILE, which must be set to the path
+# below so the bank name (this key) and the physics agree.  See _resolve_flux() in the CLI.
 FLUX_FILES = {
     "t2k":        "flux/T2K_nu.dat",
     "minerva":    "flux/minerva_numu_fhc.dat",
@@ -94,12 +94,8 @@ FLUX_FILES = {
 }
 
 
-# PROBE NAMES ARE THE PHYSICS, and they must stay that way: adonis.channels.probes is the registry
-# that decides what each one MEANS, and "weak" was a name that could not survive NC -- a neutral
-# current is every bit as weak as a charged one, so "weak" would have had to mean "CC except when it
-# means NC".  Renamed to "CC" outright; there is deliberately NO alias and no back-compat mapping,
-# because a mapping is how the lie survives.  load_gen_config rejects unknown keys and probe_spec()
-# raises on unknown values, so a missed rename fails loudly rather than silently meaning CC.
+# adonis.channels.probes is the registry that defines what each probe name means. load_gen_config
+# rejects unknown keys and probe_spec() raises on unknown values.
 PROBES = ("CC", "NC", "EM", "hadron")   # CC/NC = charged-/neutral-current neutrino ; EM = electron ;
 #                                     hadron = a tagged hadron projectile (no hard vertex, pure FSI transport)
 HADRON_BEAMS = ("pip", "prot", "neut")               # tagged-hadron projectiles (adonis.flux.hadron.BEAMS)
@@ -114,9 +110,8 @@ _PROBE_BEAMS = {"CC": ("spectrum",), "NC": ("spectrum",), "EM": ("electron",),
 
 @dataclass
 class GenConfig:
-    """THE single generation config -- one schema for every bank the pipeline makes, driven entirely by
-    fields (there is exactly one generator, adonis.workflow.generate_bank; the diversity is here, not in
-    the code path).  `probe` selects the primary interaction:
+    """Generation config -- one schema for every bank, used by the single generator
+    adonis.workflow.generate_bank.  `probe` selects the primary interaction:
       * CC     : charged-current neutrino hard vertex (channels qe/res), beam=spectrum (a flux table)
       * NC     : neutral-current neutrino hard vertex, beam=spectrum.  theta_acc MUST be full
                  acceptance -- a polar cut on an invisible outgoing neutrino is meaningless and would
@@ -144,11 +139,9 @@ class GenConfig:
     # --- NC ---
     achilles_coupl1_quirk: bool = False     # NC QE only.  False = correct physics (the SM coupling);
     #                                         True = reproduce ACHILLES's coupl1 sin2w/sw discrepancy
-    #                                         verbatim (~1.0396 on both nucleons' F1/F2).  Set True in
-    #                                         the bank config that feeds the ACHILLES-comparison
-    #                                         figures, so the comparison is like-for-like.  RECORDED IN
-    #                                         THE MANIFEST -- a bank can never be ambiguous about which
-    #                                         convention produced it.  See channels/currents/dirac.py.
+    #                                         verbatim (~1.0396 on both nucleons' F1/F2).  Set True for
+    #                                         banks feeding ACHILLES-comparison figures (like-for-like).
+    #                                         Recorded in the manifest.  See channels/currents/dirac.py.
     fsi: bool = True                        # False -> PRE-FSI bank (primary products, no cascade)
     pauli: bool = True                      # cascade Pauli blocking (False -> DEBUG ablation)
     cascade: CascadeHyperparams = field(default_factory=CascadeHyperparams)
@@ -213,17 +206,16 @@ def load_gen_config(path) -> GenConfig:
     return _coerce(GenConfig, d)
 
 
-# Tagged-beam generation is no longer a separate config/driver: a hadron beam is just GenConfig with
-# probe="hadron", beam in HADRON_BEAMS -- built by the ONE generate_bank(cfg).  (BeamGenConfig + its
-# load_beam_config retired in P3; adonis.flux.hadron.BEAMS is the single projectile registry.)
+# A hadron beam is just GenConfig with probe="hadron", beam in HADRON_BEAMS; adonis.flux.hadron.BEAMS
+# is the projectile registry.
 
 
 # ----------------------------------------------------------------------------- analysis
 @dataclass
 class NuSignalDef:
-    """Neutrino signal topology, generalized over CC0pi & CC1pi (and NC1pi0).  The canonical selection
-    schema; sibling EleBeamSignalDef below covers the electron-beam (e,e') figures.  Pick which one a
-    config coerces into via the top-level `probe:` key (default "nu")."""
+    """Neutrino signal topology, covering CC0pi, CC1pi, and NC1pi0.  Sibling EleBeamSignalDef below
+    covers the electron-beam (e,e') figures; the top-level `probe:` key (default "nu") selects which
+    one a config coerces into."""
     mu_win: tuple = (250.0, 7000.0)
     p_win: tuple = (450.0, 1200.0)
     pi_win: tuple | None = (150.0, 1200.0)
@@ -241,9 +233,9 @@ class NuSignalDef:
     target: str = "carbon"                  # "carbon" | "hydrogen" | "CH"
     W_conv: str = "vertex"
     # MINERvA CC1pi+ (arXiv:2605.24224) signal: W_exp < 1.4 GeV/c^2 isolating the Delta(1232), a pion
-    # KINETIC-energy window (not the momentum window pi_win), and no lead-proton requirement ("any number
-    # of baryons").  W_exp/Q2 follow the paper's nucleon-at-rest reconstruction, Eqs. (1)-(3); at truth
-    # level E_had = Enu - Emu exactly, so the true Enu reproduces them without a visible-energy convention.
+    # kinetic-energy window (not the momentum window pi_win), and no lead-proton requirement ("any number
+    # of baryons").  W_exp/Q2 follow the paper's nucleon-at-rest reconstruction, Eqs. (1)-(3), evaluated
+    # with the true Enu (= Enu - Emu at truth level, so no visible-energy convention is needed).
     tpi_win: tuple | None = None            # pion KINETIC energy window [MeV]; None -> use pi_win (momentum)
     w_exp_max: float | None = None          # W_exp upper cut [MeV]
     veto_other_mesons: bool = False         # require zero eta/K/... on top of the pion counts
@@ -301,9 +293,8 @@ class ObservableSpec:
     label: str
     edges: list | None = None               # explicit edges (may contain sentinels e.g. "pi")
     linspace: list | None = None            # [lo, hi, n_edges] (sentinels allowed)
-    fit: bool = True                        # enters the Gate-I Fisher / fit?  False = plot-only validation
-    #                                         extra (e.g. ppi/cos_pi, MINERvA dphit/lp_p) NUISANCE never
-    #                                         released -- sec1 still plots it, the gradient ignores it.
+    fit: bool = True                        # enters the Gate-I Fisher / fit?  False = plot-only (e.g.
+    #                                         ppi/cos_pi, MINERvA dphit/lp_p that NUISANCE never released).
 
     def bin_edges(self) -> np.ndarray:
         if self.edges is not None:
@@ -341,10 +332,10 @@ class AnalysisConfig:
 
 def load_analysis_config(path) -> AnalysisConfig:
     d = yaml.safe_load(Path(path).read_text()) or {}
-    # figure-orchestration keys consumed by analysis/paper/validation (make.py + helper.py): the
-    # render hook, its compute/params, the make_figure layout, the --light flag.  They are NOT
-    # AnalysisConfig fields, so pop them here -- a figure spec that ALSO carries a selection (fig10/fig11,
-    # the electron figs) loads as an AnalysisConfig through the same door as the pure-selection multiobs specs.
+    # figure-orchestration keys consumed by analysis/paper/validation (make.py + helper.py): render
+    # hook, its compute/params, make_figure layout, --light flag.  Not AnalysisConfig fields, so pop
+    # them here -- lets a figure spec that also carries a selection (fig10/fig11, electron figs) load
+    # as an AnalysisConfig through the same path as pure-selection multiobs specs.
     for _k in ("name", "render", "compute", "params", "layout", "heavy"):
         d.pop(_k, None)
     _SEL = {"nu": NuSignalDef, "electron": EleBeamSignalDef}
@@ -360,7 +351,5 @@ def load_analysis_config(path) -> AnalysisConfig:
     return _coerce(AnalysisConfig, d)
 
 
-# Deprecated back-compat alias: the class was renamed SignalDef -> NuSignalDef when the electron sibling
-# (EleBeamSignalDef) was added.  External jobs/ scripts live outside this repo and may still import
-# SignalDef by name; keep this alias until they are updated, then delete it.
+# Back-compat alias: some external jobs/ scripts still import SignalDef by name.
 SignalDef = NuSignalDef

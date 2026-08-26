@@ -44,7 +44,7 @@ def test_beams_declared_once_and_only_once(cfg, beams):
     for b in cfg.beams:
         assert len(beams["beams"][b]["observables"]) == 2, \
             "beam_jacobian returns exactly two observables per beam (reaction, then the second)"
-    src = pathlib.Path("adonis/analysis/gate1.py").read_text()   # was analysis/paper/gate1_multisample.py
+    src = pathlib.Path("analysis/campaign/gate1.py").read_text()
     assert "BEAM_OBS = {" not in src, "BEAM_OBS is declared in code again; it belongs in beams.yaml"
     assert "SAMPLES = [" not in src, "the sample list is hardcoded again; it belongs in the fit config"
 

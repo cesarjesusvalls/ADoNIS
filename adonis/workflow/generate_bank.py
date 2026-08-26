@@ -1,12 +1,12 @@
-"""generate_bank(GenConfig): THE one bank generator for every probe.
+"""generate_bank(GenConfig): the bank generator for every probe.
 
-Replaces run_generation + reweight_bank + beam_bank.  The ONLY probe-specific code is the primary
-interaction (weak/EM hard vertex vs a tagged hadron projectile) -- irreducible physics.  Everything
-downstream is shared: one cascade engine, one centralized cascade-outcome record builder
-(adonis.workflow.records), one chunk/seed loop, one save.  All diversity is in the config fields.
+The only probe-specific code is the primary interaction (weak/EM hard vertex vs a tagged hadron
+projectile); everything downstream is shared: one cascade engine, one centralized cascade-outcome
+record builder (adonis.workflow.records), one chunk/seed loop, one save. All diversity is in the
+config fields.
 
-Per chunk (seed = cfg.seed0 + c) -> chunk_NNN.npz + manifest.json.  Uniform record set (all probes):
-fs_* final state, f_* FSI kind-1, n_* multiplicities, ks_* escaped list, reacted/absorbed.  Plus the
+Per chunk (seed = cfg.seed0 + c) -> chunk_NNN.npz + manifest.json. Uniform record set (all probes):
+fs_* final state, f_* FSI kind-1, n_* multiplicities, ks_* escaped list, reacted/absorbed. Plus the
 primary's own kinematics/weight (weak: k_nu/k_lep/hv_*; EM: c/omega/theta; hadron: beam_p/w0).
 """
 from __future__ import annotations
@@ -28,11 +28,11 @@ def _lepton_theta_deg(k_lep):
 
 
 def _accept_lepton(d, theta_acc, kkey=None, theta=None):
-    """THE uniform outgoing-lepton angular acceptance -- ONE mechanism for every hard-vertex channel
-    (weak muon + EM electron).  Keeps events whose lepton polar angle is within [lo,hi] deg, masking
-    every length-n field of the per-event dict `d`.  The angle is the precomputed `theta` (the EM
-    channels already expose it) else computed from d[kkey] (the weak outgoing muon, k_lep).  Full
-    acceptance (lo<=0 and hi>=180) short-circuits to the identity -> byte-for-byte (the weak default)."""
+    """Uniform outgoing-lepton angular acceptance, shared by every hard-vertex channel (weak muon + EM
+    electron).  Keeps events whose lepton polar angle is within [lo,hi] deg, masking every length-n
+    field of the per-event dict `d`.  The angle is the precomputed `theta` (the EM channels already
+    expose it) else computed from d[kkey] (the weak outgoing muon, k_lep).  Full acceptance (lo<=0 and
+    hi>=180) short-circuits to the identity, so the weak default is byte-for-byte unaffected."""
     lo, hi = theta_acc
     if lo <= 0.0 and hi >= 180.0:
         return d
@@ -61,13 +61,12 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
-    from adonis.reweight import tune as T
     from adonis.nuclear.targets import resolve_targets
     from adonis.nuclear.spectral import SpectralFunction
     import adonis.fsi.cascade as CF
 
-    # Probe dispatch.  `EM` stays a local boolean because the EM branch's SHAPE differs (monochromatic
-    # beam, c/omega/theta records); NC joins CC's shape, so it is a third branch rather than a fourth.
+    # Probe dispatch. `EM` is a local boolean because the EM branch's record shape differs (monochromatic
+    # beam, c/omega/theta records); NC shares CC's shape, so it is a third branch rather than a fourth.
     EM = (cfg.probe == "EM")
     NC = (cfg.probe == "NC")
     CHUNK = cfg.chunk or cfg.n_per_seed
@@ -82,7 +81,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     n_neutron = tgt.A - tgt.Z; n_proton = tgt.Z
     CF.FLAT_FSI_REC = True
     _MARGIN = float(os.environ.get("ADONIS_REC_MARGIN", "1.5"))
-    POOL = lambda **k: T.POOLCFG(nucleus=tgt.density_p, density_n=tgt.density_n, configs=tgt.configs, **k)
+    POOL = lambda **k: CF.pool_cascade_config(nucleus=tgt.density_p, density_n=tgt.density_n,
+                                              configs=tgt.configs, **k)
 
     LACC = tuple(cfg.theta_acc)             # outgoing-lepton polar acceptance, UNIFORM across all channels
     _ALL = (0.0, 180.0)                     # channels sample all-angle; the ONE acceptance is applied below
@@ -174,10 +174,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     CAPS_qe = CAPS_res = (64, 64)
     if do_qe: CAPS_qe = cal_caps(gen_qe, "qe"); log(f"flat FSI caps qe -> {CAPS_qe}")
     if do_res: CAPS_res = cal_caps(gen_res, "res"); log(f"flat FSI caps res -> {CAPS_res}")
-    # probe=cfg.probe, NOT a literal.  The EM branch used to hardcode probe="ee" while cfg.probe was
-    # "EM", so the bank's own manifest disagreed with the config that produced it -- a divergence that
-    # could only ever grow.  Sourcing it from cfg makes that class of bug unrepeatable; the permanent
-    # test is tests/test_probe_naming.py::test_manifest_probe_equals_config_probe.
+    # probe is always cfg.probe, never a literal, so the manifest can never disagree with the config
+    # that produced it. Guarded by tests/test_probe_naming.py::test_manifest_probe_equals_config_probe.
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, material=cfg.material,
                     channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res),
                     probe=cfg.probe, achilles_coupl1_quirk=bool(cfg.achilles_coupl1_quirk), **m_extra)
@@ -192,9 +190,9 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             ev = (gen_qe if chan == "qe" else gen_res)(CHUNK, SEED0 + c); nb = len(ev["p_N"])
             _t1 = time.time()
             _pt, nt, _o, _cr, rec, pf = cascade(ev, key, caps, chan)
-            # BLOCK BEFORE STOPPING THE CLOCK.  jax dispatch is asynchronous, so without this the cascade
-            # returns unfinished device arrays and its cost is charged to whatever touches them next --
-            # on a GPU that put the whole cascade inside the record-building step.
+            # Must block before stopping the clock: jax dispatch is asynchronous, so without this the
+            # cascade returns unfinished device arrays and its cost is charged to whatever touches them
+            # next -- on a GPU that would be the record-building step.
             jax.block_until_ready((nt[0], pf))
             t_pre += _t1 - _t0; t_cas += time.time() - _t1
             evs.append((chan, ev)); cols.append(np.zeros(nb, np.int8) if chan == "qe" else np.ones(nb, np.int8))
@@ -238,9 +236,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                         p_struck=np.concatenate([e[1]["p_struck"] for e in evs]).astype(np.float32),
                         k_lep=np.concatenate([e[1]["k_lep"] for e in evs]).astype(np.float32))
             # hv_* are the CC differentiable hard-vertex records (build_hv_sf + `sf` live only in the CC
-            # branch).  NC banks carry NONE: they reweight through w0 / bank_signal_nc, and bank_weight
-            # fails loud on a bank without hv_* (see adonis/reweight/bank_reweight).  Skip for NC -- this
-            # block was unreachable while NC was RES-only (do_qe False); NC QE+RES now reaches it.
+            # branch).  NC banks carry none: they reweight through w0 / bank_signal_nc, and bank_weight
+            # fails loud on a bank without hv_* (see adonis/reweight/bank_reweight).
             if do_qe and do_res and not NC:
                 HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False, qe_joint=False, res_joint=False)   # legacy per-knob storage
                 hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
@@ -344,10 +341,10 @@ def _generate_hadron(cfg, outdir, log, t0):
 
 # =========================================================================== bank reader ============
 def load_bank(outdir, max_chunks=None):
-    """Concatenate the chunk_*.npz of a bank dir into ONE in-memory dict (+ ["manifest"]).  The ragged
-    per-slot event indices (FSI f_*_eidx, escaped-list ks_eidx) are OFFSET into the global event
+    """Concatenate the chunk_*.npz of a bank dir into one in-memory dict (+ ["manifest"]).  Ragged
+    per-slot event indices (FSI f_*_eidx, escaped-list ks_eidx) are offset into the global event
     numbering; everything else -- including prim_fate (n, Wmax) and nsc_prim (n,) -- concatenates on
-    axis 0.  Moved here from the retired beams/beam_bank.py so the ONE generator owns read + write."""
+    axis 0."""
     man = json.load(open(f"{outdir}/manifest.json"))
     files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
     if max_chunks is not None:

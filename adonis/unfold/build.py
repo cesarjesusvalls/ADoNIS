@@ -1,27 +1,26 @@
 """Build the unfolding inputs from a bank: response, background, truth spectrum, efficiency, purity.
 
-ONE streamed pass over the bank produces everything the fit needs.  For each chunk the SAME selection
-code runs twice -- once on the true 4-vectors and once on the smeared ones -- so reco selection, reco
+One streamed pass over the bank produces everything the fit needs. For each chunk the same selection
+code runs twice, once on the true 4-vectors and once on the smeared ones, so reco selection, reco
 observables, efficiency and purity are all consequences of the detector rather than separate models:
 
     true_sel, true_obs = select_full(B,       sd)      # true signal phase space
     reco_sel, reco_obs = select_full(B_reco,  sd)      # what the "experiment" sees
 
-Every reco-selected event is then one of two things, and the two are reweighted by DIFFERENT parameters:
+Every reco-selected event is one of two things, reweighted by different parameters:
 
-  SIGNAL      true_sel and its TRUE (dpt, dat) lands in the truth grid.  Scaled by the template c_j of
-              its TRUE bin.  Physics knobs do NOT touch it -- the template parameters are the only thing
-              that moves the signal, which is what makes the unfolded result a measurement of the signal
-              rather than of the model.
-  BACKGROUND  everything else that survives the reco cuts: true non-signal, and true signal whose truth
-              value falls outside the truth grid.  Reweighted by the 28 physics knobs, never by c.
+  signal      true_sel with its true (dpt, dat) inside the truth grid. Scaled by the template c_j of
+              its true bin; physics knobs never touch it, so the unfolded result measures the signal
+              rather than the model.
+  background  everything else that survives the reco cuts, including true signal outside the truth
+              grid. Reweighted by the 28 physics knobs, never by c.
 
 so the prediction in reco bin i is
 
     mu_i(theta, c) = sum_j A_ij c_j  +  B_i(theta) ,    A_ij = sum over signal events (reco i, true j) w0
 
-with A the (n_reco x n_truth) response.  A is a fixed array: the signal term is exactly linear in c, so
-its Jacobian is A itself and needs no autodiff at all.
+with A the (n_reco x n_truth) response, fixed: the signal term is linear in c, so its Jacobian is A
+itself and needs no autodiff.
 
 Efficiency and purity fall out of the same pass and are reported, not assumed:
     eff_j    = (signal events from truth bin j that pass reco) / (all true signal in truth bin j)
@@ -45,13 +44,11 @@ def _obs2(obs, mode="stv"):
     """The unfolded observable pair, for `mode`.
 
     "stv" -> (delta-p_T [MeV], delta-alpha_T [rad])
-    "lep" -> (p_mu [GeV/c], cos theta_mu).  p_mu is converted from the selection's MeV to the GeV/c of
-             the published binning HERE and nowhere else, so there is exactly one place the unit can be
-             wrong -- a factor 1000 in a momentum axis would move every event into the first bin and
-             still produce a plausible-looking fit.
+    "lep" -> (p_mu [GeV/c], cos theta_mu). p_mu is converted from the selection's MeV to the published
+             binning's GeV/c here and nowhere else, so there is exactly one place the unit can be wrong.
 
-    `mode` is passed in rather than read from a module global set by the environment at import time:
-    the observable pair and the truth grid have to agree, and a global lets them disagree silently.
+    `mode` is a function argument, not a module global: the observable pair and the truth grid must
+    agree, and a global would let them disagree silently.
     """
     if mode == "lep":
         return (np.asarray(obs["pmu"], dtype=float) / 1000.0,
@@ -81,27 +78,21 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
           TG=None, RG=None, soft_sigma=None, soft_reco=0):
     """Stream `bank_dir` and return the unfolding inputs.
 
-    `soft_sigma`: (sigma_dpt, sigma_dat).  When given, a signal event does not go into ONE truth cell --
-    its weight is spread over cells by a Gaussian of the detector's own resolution, so the templates
-    become overlapping basis functions rather than disjoint indicators.  The motivation is that a basis
-    finer than the resolution is not measurable, so matching the basis to what the detector can localise
-    should condition better.  Note what it costs: c_j is then the coefficient of an overlapping basis
-    function, NOT the rate in cell j, and the two are only comparable through a derived quantity.
+    `soft_sigma`: (sigma_dpt, sigma_dat). When given, a signal event's weight spreads over truth cells
+    via a Gaussian of the detector's own resolution, so templates become overlapping basis functions
+    rather than disjoint indicators -- a basis finer than the resolution is not measurable, so matching
+    the two should condition better. Cost: c_j is then a basis coefficient, not the rate in cell j.
 
-    `soft_reco`: number of DETECTOR REPLICAS per event.  Instead of smearing once and putting the event
-    in one reco bin, smear it `soft_reco` times and give each replica 1/N of the weight, so one event
-    contributes to several reco bins in the proportion the detector actually produces.
+    `soft_reco`: number of detector replicas per event. Instead of smearing once, smear `soft_reco`
+    times and split the weight 1/N per replica, so one event contributes to several reco bins in the
+    proportion the detector actually produces -- resampling the real kernel rather than assuming one.
+    This matters because smearing is multiplicative (|p| -> |p|(1 + 0.2 g)): a +20% and a -20% move
+    are not mirror images, so the induced delta-p_T kernel is skewed, which any symmetric fixed-width
+    approximation (including `soft_sigma`'s Gaussian) gets wrong.
 
-    This resamples the REAL kernel rather than assuming one, which matters because the smearing is
-    MULTIPLICATIVE: |p| -> |p|(1 + 0.2 g).  A +20% move and a -20% move are not mirror images (1/1.2 =
-    0.833, not 0.8), the width scales with the value rather than being a constant, and the induced
-    kernel in delta-p_T is skewed.  Any symmetric fixed-width approximation -- including the Gaussian
-    used by `soft_sigma` -- gets that wrong; resampling cannot, because it never writes the kernel down.
-
-    `norm_events`: scale every weight so the TOTAL PRE-SELECTION rate equals this (50 000 for section 5).
-    Normalising by summed WEIGHT, never by row count -- the bank retains rejected events as dead rows
-    carrying exactly w0 = 0 (0.9% of the T2K bank, some of which even pass the selection mask), so a
-    count-based normalisation would silently include them and shift the scale.
+    `norm_events`: scale every weight so the total pre-selection rate equals this (nominally 50 000),
+    normalising by summed weight, never row count -- the bank retains rejected events as dead rows with
+    w0 = 0 (0.9% of the T2K bank), which a count-based normalisation would wrongly include.
     """
     spec = spec or SmearSpec()
     # SOFT TRUTH MEMBERSHIP IS RECTANGULAR-ONLY.  It spreads an event over cells using one shared edge

@@ -1,7 +1,7 @@
-"""Differentiable JAX access to the DCC electroweak amplitudes (Strategy §14).
+"""Differentiable JAX access to the DCC electroweak amplitudes.
 
 Wraps the parsed `dcc_EW.dat` table (see `dcc_loader`) as JAX constants and provides
-a differentiable bilinear interpolation in (W, Q^2), with a layer of tunable knobs:
+differentiable interpolation in (W, Q^2), with a layer of tunable knobs:
 
   * `axial_strength`  -- overall factor on the axial current block (the closest
                          differentiable proxy for an axial-mass / axial-coupling tune)
@@ -86,10 +86,9 @@ class DCCAmplitudes:
         return vec, isv, axial
 
     def amplitudes_bilinear(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
-        """Batched (N,) BILINEAR amplitude interpolation -- faster / lighter than the spline.
-        WARNING -- NOT W-FAITHFUL.  The dsigma/dW SHAPE (esp. the high-W tail) deviates from the
-        ACHILLES spline by well over 1%.  bilinear must NEVER be used unless the user has EXPLICITLY
-        requested it for a specific purpose.
+        """Batched (N,) bilinear amplitude interpolation -- faster / lighter than the spline.
+        NOT W-faithful: the dsigma/dW shape (especially the high-W tail) deviates from the ACHILLES
+        spline by well over 1%. Never use unless explicitly requested for a specific purpose.
         Returns vec, isv, axial each (N, n_idx, n_pw), knobs applied."""
         gw, gq = self.W, self.Q2
         nw, nq = gw.shape[0], gq.shape[0]
@@ -110,9 +109,7 @@ class DCCAmplitudes:
         return vec, isv, axial
 
     def amplitudes_bilinear_np(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
-        """NumPy batched BILINEAR interp -- fastest path.  WARNING: NOT W-FAITHFUL -- the dsigma/dW shape
-        (high-W tail) deviates >1% from the spline.  NEVER use unless the user has EXPLICITLY requested
-        it for a specific purpose.  See amplitudes_bilinear."""
+        """NumPy twin of amplitudes_bilinear (fastest path, same W-unfaithfulness caveat)."""
         if not hasattr(self, "_Wnp"):
             self._Wnp = np.asarray(self.W); self._Q2np = np.asarray(self.Q2)
             self._vecnp = np.asarray(self.vec); self._isvnp = np.asarray(self.isv)

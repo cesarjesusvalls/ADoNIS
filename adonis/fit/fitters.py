@@ -1,10 +1,6 @@
 """The fitters: bound-constrained least squares, and the Gate-2 diagnostics built on them.
 
-Split out of the old physical_fit_run.py, which was 700 lines in which these six functions sat
-beside a pre-section study driver for GENIE/fakedata modes.  That driver read fourteen
-PHYSFIT_*/ADONIS_* variables AT MODULE LEVEL, so merely importing trf_fit executed them -- which is
-how a fit layer that is meant to take its parameters from a config kept a live path to the
-environment.  The driver is gone; these are what sections 1-4 use.
+Parameters come from a config, not the environment.
 """
 import os, time
 import numpy as np
@@ -17,23 +13,13 @@ import jax.numpy as jnp
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
-# SPEC and theta_nominal from the CORE copy.  This block used to import nine names from
-# analysis.paper.physical_fit -- SPEC, NPAR, PNAMES, PRIOR, theta_nominal, knobs_of,
-# build_physfit_datasets, N_BINS, SYST -- plus info_content, and used exactly two of them.  The other
-# seven were dead, and each one made the package unimportable without the paper application beside it.
-# Verified before switching: SPEC/NPAR/PNAMES/PRIOR are identical between the two copies, and the two
-# theta_nominal/knobs_of implementations differ only by a docstring and one space.
 from adonis.analysis.knobs import SPEC, theta_nominal
 
 
 
 # ---- fitter constants ----------------------------------------------------------------------------- #
-# These were environment reads.  NIT and STEP_SCALE are per-run and now arrive from the config
-# (fit.minimizer.max_nfev); the values here are defaults for a direct call.  S4_LOGFIT selected dials to
-# fit in log space -- an abandoned experiment, dropped rather than carried as an empty set that silently
-# changes the parameterisation if anyone sets it.
 NIT = 12                # default iteration budget; callers pass cfg.fit.minimizer.max_nfev
-STEP_SCALE = 1.0        # LM step scaling; 0.5 under-converged on flat dials and was reverted
+STEP_SCALE = 1.0        # LM step scaling factor
 F_RESP = 0.3            # responsive-bin threshold: |J_bk| * prior_k > F_RESP * sigma_b
 HUBER_C = 1.345         # Huber tuning constant (95% efficiency at the Gaussian)
 
@@ -82,27 +68,20 @@ def fit_kernel(eng, subset, mask=None):
 def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None, exact_cov=False):
     """Bound-constrained least squares by trust-region reflective, ON THE FUSED KERNEL.
 
-    Same contract as before -- (th, V, J, m, chi2_total, chi2_data) -- but the residuals and the analytic
-    Jacobian now come from `adonis.fit.kernels.FitKernel`, which bins INSIDE the jit.  The path this
-    replaces computed per-event derivatives on the device and shipped them to the host to be binned with
-    np.bincount: ~77 MB per sample per iteration at 17 dials and 125k events/sample, on every iteration
-    of every fit.  Measured on one shared objective, that host round trip was the whole of what used to
-    look like Gauss-Newton being slow (docs/bench_fair_report.md).
+    Returns (th, V, J, m, chi2_total, chi2_data).  Residuals and the analytic Jacobian come from
+    `adonis.fit.kernels.FitKernel`, which bins INSIDE the jit.
 
-    WHY TRF.  Both earlier recipes failed on E_b for optimiser reasons, not statistical ones -- its
-    profile is parabolic to 5%, so there was never any non-Gaussianity to model:
-      * LINEAR space, step then clip: projecting a rejected step onto the boundary manufactures SPURIOUS
-        local minima.  E_b parks on the floor, the other dials re-optimise around it, and the point even
-        passes a KKT check.  10 of 12 such toys reached a LOWER chi2 when restarted above the wall.
-      * LOG space: removes the floor but not the bound, at the cost of an unbounded step -- the first
-        iteration jumped E_b by e^-20 and was ACCEPTED because the other dials improved enough.
-    A genuine trust region bounds the step and reflection handles the box, so a step that would leave it
-    is not silently replaced by one pointing somewhere else.
+    WHY TRF.  A genuine trust region bounds the step and reflection handles the box, so a step that
+    would leave the feasible region is reflected rather than silently replaced by one pointing
+    somewhere else.  This matters on dials with a hard physical floor (e.g. E_b >= 0):
+      * LINEAR space, step then clip: projecting a rejected step onto the boundary can manufacture a
+        SPURIOUS local minimum at the wall, one that even passes a KKT check.
+      * LOG space: removes the floor but not the bound, at the cost of an unbounded step near it.
 
     exact_cov: return V from the EXACT hessian (forward-over-reverse HVPs) instead of (J^T W J)^-1.
-    Off by default because the two differ by ~1e-4 on the DIAGONAL -- invisible in any quoted sigma --
-    while costing n HVPs.  It matters for the log-DETERMINANT, which is sensitive to the
-    worst-constrained directions (measured 0.145 at the closure best fit); see `logdet_cov`.
+    Off by default -- the two differ by ~1e-4 on the DIAGONAL, invisible in any quoted sigma, while
+    costing n extra HVPs.  It matters for the log-DETERMINANT, which is sensitive to the
+    worst-constrained directions; see `logdet_cov`.
     """
     from adonis.fit.minimizers import gn_fit
 
@@ -117,10 +96,10 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None, exa
 
     _mz = getattr(getattr(eng, "cfg", None), "fit", None)
     _mz = getattr(_mz, "minimizer", None)
-    # GTOL is the only tolerance allowed to stop this fit early, and it is loose ON PURPOSE: stopping on
-    # the PROJECTED GRADIENT is the criterion that means "this is a minimum", while xtol/ftol stay tight
-    # so a small step or a small chi2 change can never be mistaken for convergence on the degenerate
-    # M_A_res/delta_strength direction (corr -0.995), which is exactly how the old LM false-converged.
+    # gtol is the only tolerance allowed to stop this fit early, and it is loose ON PURPOSE: stopping
+    # on the PROJECTED GRADIENT is the criterion that means "this is a minimum", while xtol/ftol stay
+    # tight so a small step or a small chi2 change is never mistaken for convergence on a near-
+    # degenerate direction (e.g. M_A_res/delta_strength, corr ~ -0.995).
     r = gn_fit(kern, x0, bounds=(lo, hi), max_nfev=max(nit, 8),
                gtol=float(getattr(_mz, "gtol", 1e-8)),
                xtol=float(getattr(_mz, "xtol", 1e-14)),
@@ -128,9 +107,8 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None, exa
                trace=record is not None)
     th[idx] = r.x
 
-    # Convergence is RECORDED, not assumed.  The LM this replaced never once satisfied its own tolerance
-    # (0/12 on the wall toys) and nothing downstream noticed -- that silence is how 21.6% of an ensemble
-    # ended up on the E_b floor and got read as physics.
+    # Convergence is RECORDED, not assumed, so a caller can see when the optimizer failed to reach its
+    # own tolerance instead of silently treating the last iterate as a result.
     eng.last_status = 1 if r.converged else 0
     eng.last_nfev, eng.last_njev = int(r.nfev), int(r.njev)
     eng.last_passes = float(r.passes)
@@ -141,9 +119,9 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None, exa
     c_tot = float(r.chi2)
     dx = (r.x - kern.x0) * kern.pw
     c_data = c_tot - float(dx @ dx)
-    # The Newton decrement -- how much chi2 remains between here and the local minimum, in the same units
-    # as everything we compare.  A gradient NORM says nothing on its own: |g|=0.1 against curvature ~100
-    # leaves 1e-4 of chi2 on the table, irrelevant next to the 0.4-4.3 gaps between basins.
+    # The Newton decrement -- how much chi2 remains between here and the local minimum, in the same
+    # units as everything we compare.  A gradient NORM alone says nothing: |g|=0.1 against curvature
+    # ~100 leaves only 1e-4 of chi2 on the table.
     # chi2 = ||r||^2, so g = 2 J^T r and H = 2 J^T J; the predicted decrease is (1/2) g^T H^-1 g, i.e.
     # (1/4) g^T (J^T J)^-1 g.  Built from J and r, which the fit already has -- no extra program.
     rr = kern.residuals(r.x)
@@ -171,25 +149,23 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None, exa
 def logdet_cov(eng, subset, th, mask=None):
     """log det V for the Laplace/Occam factor, from the EXACT hessian.
 
-    NOT from (J^T W J)^-1.  That drops sum_b r_b d2m_b, which is a ~2.4e-04 elementwise perturbation at
-    the closure best fit and therefore invisible in any sigma -- but a log-determinant is a sum over ALL
-    eigen-directions and is dominated by the worst-constrained ones, so on this nuisance block
-    (cond ~260) it moves log det V by 0.145.  The Occam term enters the profile in units where
-    Delta chi2 = 1 is one sigma, so an error of 0.02-0.25 is not a rounding difference; measured across
-    profile nodes in docs/bench_fair_report.md.  The exact hessian costs ~n HVPs, against ~2n^2 objective
-    evaluations for a finite-difference HESSE.
+    NOT from (J^T W J)^-1.  That drops sum_b r_b d2m_b, an elementwise perturbation invisible in any
+    single sigma -- but a log-determinant sums over ALL eigen-directions and is dominated by the
+    worst-constrained ones, so on an ill-conditioned nuisance block it can move log det V by an amount
+    that is not negligible in Delta chi2 units.  The exact hessian costs ~n HVPs, against ~2n^2
+    objective evaluations for a finite-difference HESSE.
 
-    Returns (logdet, n_kept): directions truncated by the pseudo-inverse are dropped and counted, because
-    slogdet returns sgn=0 the moment one is, which would silently poison the whole scan.
+    Returns (logdet, n_kept): directions truncated by the pseudo-inverse are dropped and counted,
+    because slogdet returns sgn=0 the moment one is, which would silently poison the whole scan.
     """
     kern = fit_kernel(eng, subset, mask)
     kern.set_fixed(th)
     kern.refresh_data()
     x = np.asarray(th, float)[np.array(subset, int)]
-    # HVP BATCH 4, NOT n.  The hessian program is compiled ON TOP of the residual and jacobian programs
-    # this kernel already holds, and a vmap of width n makes it large enough that its CUBIN fails to load
-    # -- observed killing every 2-D corner shard at 125k.  A narrower vmap is the same arithmetic in more
-    # dispatches: the hessian is still exact and still O(n) passes, only the peak program size changes.
+    # HVP batch defaults to 4, not n.  The hessian program is compiled ON TOP of the residual and
+    # jacobian programs this kernel already holds, and a vmap of width n can make the compiled program
+    # too large for its CUBIN to load.  A narrower vmap is the same arithmetic in more dispatches: the
+    # hessian is still exact and still O(n) passes, only the peak program size changes.
     hb = int(getattr(kern, "plan", {}).get("hvp_batch", 4))
     w = np.linalg.eigvalsh(0.5 * kern.hessian(x, batch=hb))
     pos = w[w > 1e-12 * max(w.max(), 1e-300)]
@@ -204,17 +180,14 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
             accepted iteration -- the optimization trajectory, for a convergence plot (no re-fit).
     tol:    convergence on the NEWTON DECREMENT g^T A^-1 g (predicted objective gap), default 1e-6.  This
             is landscape-invariant: it certifies theta is at the argmin even on flat/degenerate directions,
-            where the old relative-chi2 test stalled with theta still off the minimum.  Full Gauss-Newton
-            steps (PHYSFIT_STEP_SCALE=1, the default) then converge quadratically; use <1 only to force a
-            slow smooth trajectory for a convergence demo.
+            where a relative-chi2 test can stall with theta still off the minimum.  Full Gauss-Newton
+            steps (STEP_SCALE=1, the default) converge quadratically; use <1 only to force a slow,
+            smooth trajectory for a convergence demo.
     th_init: start point (default eng.th0).  The prior is ALWAYS centred at eng.th0 -- th_init only warm-
             starts the walk (e.g. profile scans re-minimising from the BFP), it does not move the prior."""
-    # NO HIDDEN DISPATCH.  This used to return trf_fit(...) when S4_FITTER=trf was set in the
-    # environment, so a call to lm_fit could silently be a call to something else.  Which minimiser runs
-    # is now cfg.fit.minimizer.method, decided by the caller.  (The reason to prefer TRF stands and is
-    # recorded in its docstring: at E_b truth 0.50, LM put 18.5% of 2000 toys on the wall against
-    # Chernoff's 10.7%, while TRF gave 7.2%.  A boundary coverage number built with LM measures the
-    # minimiser, not the statistics.)
+    # Which minimiser runs is decided by the caller (cfg.fit.minimizer.method); lm_fit never
+    # dispatches to another minimiser internally.  TRF is generally preferred for bound-constrained
+    # fits -- see trf_fit's docstring.
     data, sigma = eng.data_sigma()
     if mask is None:
         mask = np.ones(len(data), bool)
@@ -227,11 +200,10 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
         c_pri = float(np.sum(prior_w * (thv[subset] - eng.th0[subset])**2))
         return c_data + c_pri, c_data, m, hw
     c_cur, c_data, m, hw = chi2_terms(th)
-    # LOG-SPACE FITTING WAS REMOVED.  S4_LOGFIT let selected dials be fitted as u = log(theta), which
-    # removes the boundary instead of projecting onto it -- but e^u > 0 keeps the bound while destroying
-    # the parameterisation the priors and sigma_post are quoted in, and TRF's own box handles the wall
-    # correctly.  Kept as an all-False array so the downstream branches stay readable rather than being
-    # unpicked; the compiler folds it away.
+    # Log-space dial fitting (u = log(theta)) is not supported here: e^u > 0 would keep a dial positive
+    # but destroys the parameterisation the priors and sigma_post are quoted in, and TRF's own box
+    # already handles the boundary correctly.  islog is kept as an explicit all-False array so the
+    # branches below read as general rather than dial-specific; the compiler folds them away.
     islog = np.zeros(len(subset), bool)
     if islog.any():
         if np.any(th[np.array(subset)[islog]] <= 0):
@@ -259,12 +231,10 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
             # log dials update multiplicatively (theta <- theta*e^du), the exact map back from u-space;
             # this is what keeps them strictly positive without any clipping.
             th_try[subset] = np.where(islog, th[subset] * np.exp(np.clip(dth, -20, 20)), th[subset] + dth)
-            # BOX CONSTRAINTS from the PHYS_BOUND registry (was hardcoded for Eb_shift alone).  Outside
-            # these the MODEL is not merely disfavoured, it is meaningless:
+            # BOX CONSTRAINTS from the PHYS_BOUND registry.  Outside these the MODEL is not merely
+            # disfavoured, it is meaningless:
             #   * M_A_* enter the dipole only as M_A^2, so an unbounded fit has a MIRROR MINIMUM at
-            #     negative M_A with IDENTICAL chi2.  Observed at M_A_qe=-1.55, delta_strength=-2.81 in
-            #     the prior-thrown coverage ensemble, where they produced |pull| up to 6.7e11 that the
-            #     coverage figure then silently discarded via its |pull|>8 cut.
+            #     negative M_A with IDENTICAL chi2.
             #   * f_NN_cex outside [0,1] gives NEGATIVE event weights.
             #   * scale knobs <= 0 give a negative cross-section contribution; cascade rates appear as
             #     exp(-a/s), singular at s=0.

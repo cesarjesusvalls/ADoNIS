@@ -1,7 +1,7 @@
 """Gauss-Newton and MIGRAD, both driven by the SAME `FitKernel`, both instrumented the same way.
 
-This is Phase 2 of docs/bench_fair_plan.md.  The only thing that differs between the two arms here is
-which derivative object the algorithm asks the kernel for:
+The only thing that differs between the two arms here is which derivative object the algorithm asks
+the kernel for:
 
     gn        residuals + full forward Jacobian   -> normal equations, second-order information for free
     migrad+g  scalar chi2 + one reverse-mode VJP  -> quasi-Newton, curvature accumulated over steps
@@ -12,11 +12,11 @@ is the kernel's, identically for all three.
 
 TWO THINGS THAT ARE DELIBERATELY NOT DONE HERE:
 
-  NO POST-FIT WORK INSIDE THE CLOCK.  `trf_fit` times its own covariance and Newton-decrement
-  diagnostic -- one model evaluation and TWO Jacobians (it calls eng.jac twice at the same theta) --
-  which is not minimisation and was worth ~2.05 s of a 12.3 s "Gauss-Newton fit".  The covariance is
-  still available: it is J^T J at the solution, and `covariance()` builds it from the Jacobian the fit
-  already computed, after the clock has stopped.
+  NO POST-FIT WORK INSIDE THE CLOCK.  `trf_fit` computes its own covariance and Newton-decrement
+  diagnostic after fitting -- one model evaluation and TWO Jacobians (it calls eng.jac twice at the
+  same theta) -- which is not minimisation.  The covariance is still available: it is J^T J at the
+  solution, and `covariance()` builds it from the Jacobian the fit already computed, after the clock
+  has stopped.
 
   NO COMPARISON OF NATIVE STOPPING RULES.  GN stops on the projected gradient, MIGRAD on EDM; they
   therefore stop at different accuracies and a single wall-clock number each is not a comparison.  Every
@@ -148,11 +148,10 @@ def gn_fit(kern, x0, bounds=None, max_nfev=200, gtol=1e-8, xtol=1e-14, ftol=1e-1
 def migrad_fit(kern, x0, bounds=None, tol=0.1, max_calls=100000, use_grad=True, strategy=1, trace=True):
     """One MIGRAD fit on the kernel.  `use_grad=False` leaves MINUIT to build the gradient itself.
 
-    VALUE AND GRADIENT COME FROM SEPARATE CALLS ON PURPOSE.  Serving both from one cached
-    `value_and_grad` is a trap that was measured: MIGRAD's line search evaluates the FUNCTION at several
-    trial points before asking for a gradient, so each of those paid for a VJP it never used, and a
-    one-entry cache then thrashed.  That made "MIGRAD with gradients" come out SLOWER than without --
-    an artefact of the harness, not a property of the method.
+    VALUE AND GRADIENT COME FROM SEPARATE CALLS ON PURPOSE.  MIGRAD's line search evaluates the
+    function at several trial points before requesting a gradient; sharing one cached `value_and_grad`
+    between them would pay for a VJP at every trial point, whether or not a gradient is ever requested
+    there.
     """
     from iminuit import Minuit
 

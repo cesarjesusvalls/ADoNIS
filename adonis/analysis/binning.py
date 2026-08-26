@@ -1,15 +1,9 @@
 """The binning primitive: per-event weights -> per-bin observables, for every sample type.
 
-Moved verbatim out of analysis/paper/info_content.py.  It lived in the application layer while
-analysis.campaign.stages.multisample, analysis.benchmarks.verify_chunk and the Fisher machinery all imported it, which
-is what made the package unusable without the paper application beside it.  Nothing here references any
-of that module's globals -- the study-basis PSETS, its argv parsing, its figure code -- so the move is
-an extraction, not a rewrite.
-
-NOTE ON THE DEVICE CACHE.  `_device()` memoises the on-device index arrays on the instance.  Keep that
-structure as it is: adonis/fit/kernels.py warms the bin caches EAGERLY, before tracing, and relies on
-the cached arrays being the same objects afterwards.  Rebuilding them inside a trace raises
-UnexpectedTracerError -- loud, but only if you are running the jitted path.
+Device cache: `_device()` memoises the on-device index arrays on the instance.  Keep that
+structure as it is -- adonis/fit/kernels.py warms the bin caches eagerly, before tracing, and
+relies on the cached arrays being the same objects afterwards.  Rebuilding them inside a trace
+raises UnexpectedTracerError (only under the jitted path).
 """
 from __future__ import annotations
 
@@ -26,34 +20,31 @@ def _bin(sig_mask, values, edges):
     return sel.astype(np.int64), idx[sel].astype(np.int64), nbin
 
 # ---------------------------------------------------------------------------------------------------
-# ONE binning primitive for every sample type.
+# One binning primitive for every sample type.
 #
-# Both sample families reduce per-event weights to per-bin observables with the SAME linear map,
+# Both sample families reduce per-event weights to per-bin observables with the same linear map,
 #
 #     m_b = scale_b * sum_{e : binidx_e = b} coef_e * w_[sel_e]   (+ offset_b)
 #
-# and used to implement it twice with np.bincount:
 #     BankSample : scale_bin * bincount(binidx, w[sel_idx])          + free-H offset
 #     BeamSample : (piR^2/n_tried) * bincount(idx, coef*w)           coef = 1 (reaction) or `second`
-# The only differences are an event selection in one and a per-event coefficient in the other -- neither
-# is exclusive, and neither is physics.  Duplicating it meant a device-resident/JAX binning could only
-# ever cover part of the model, which in turn made the whole model NOT reverse-mode differentiable: a
-# scalar gradient still cost one forward JVP per dial instead of a single VJP.
+# The only differences are an event selection in one and a per-event coefficient in the other; neither
+# is physics.
 #
 # `apply_dev` keeps the reduction on device, so a model evaluation returns ~nbin floats instead of
-# pulling ~1.9M per-event weights back to the host, AND is differentiable end to end.  Events are sorted
-# by bin ONCE at construction so segment_sum uses a segmented reduction rather than contended atomics
-# (~6000 events/bin here).
+# pulling per-event weights back to the host, and is differentiable end to end (reverse-mode: one VJP
+# rather than one forward JVP per dial).  Events are sorted by bin once at construction so segment_sum
+# uses a segmented reduction rather than contended atomics.
 # ---------------------------------------------------------------------------------------------------
 class BinSpec:
     """The fixed sparse map w -> per-bin observable, shared by every sample type.
 
     Two index orderings are kept deliberately:
       HOST   events in BANK order.  np.bincount does not care about order, but the gather w[sel] does --
-             bin-sorting it scatters the reads and measured 2.06x slower (~52 ms per model evaluation
-             across the 19 datasets).  So the host path keeps the natural order.
+             bin-sorting it scatters the reads and is measurably slower.  So the host path keeps the
+             natural order.
       DEVICE events sorted by bin, so segment_sum uses a segmented reduction instead of contended
-             atomics (~6000 events/bin here).  Built lazily; nothing pays for it unless S4_JAX_BIN=1.
+             atomics.  Built lazily; nothing pays for it unless S4_JAX_BIN=1.
     """
 
     __slots__ = ("sel", "coef", "binidx", "nbin", "scale", "offset", "_dev", "_chunks")
@@ -88,16 +79,16 @@ class BinSpec:
         return self._dev
 
     def chunks(self, n_events, C):
-        """Per-chunk gather tables for a scan over EVENT blocks of size C.
+        """Per-chunk gather tables for a scan over event blocks of size C.
 
-        The model is a sum over events, m_b = sum_{e in b} coef_e w_e, so it decomposes EXACTLY over
-        chunks: m = sum_c m^(c).  That is what makes event-chunking free -- unlike splitting the DIAL
-        axis, which adds one full primal pass per extra dispatch.  Chunking has to happen on the BANK
-        axis, because that is where w is computed, while `sel` picks an arbitrary subset of it; so the
-        entries belonging to a chunk are ragged and are padded to a common length with a TRASH BIN at
-        index nbin, dropped after the segment_sum.
+        The model is a sum over events, m_b = sum_{e in b} coef_e w_e, so it decomposes exactly over
+        chunks: m = sum_c m^(c).  That is what makes event-chunking free, unlike splitting the dial
+        axis (which adds one full primal pass per extra dispatch).  Chunking happens on the bank axis,
+        because that is where w is computed, while `sel` picks an arbitrary subset of it; so the entries
+        belonging to a chunk are ragged and are padded to a common length with a trash bin at index
+        nbin, dropped after the segment_sum.
 
-        Returns (starts, loc, binidx, coef, n_chunk, L, C): `loc` is the event index WITHIN its window,
+        Returns (starts, loc, binidx, coef, n_chunk, L, C): `loc` is the event index within its window,
         `binidx` is nbin on padding.  Built once; costs nothing at run time.
         """
         key = (int(n_events), int(C))
@@ -108,12 +99,11 @@ class BinSpec:
             return got
         C = min(int(C), int(n_events))
         nch = int(np.ceil(n_events / C))
-        # WINDOW STARTS, with the LAST ONE SHIFTED BACK to n-C so every window has the same width and no
-        # padding of the bank is needed.  Padding would mean a second copy of the per-event arrays, and
-        # those ARE the dominant resident memory (1.47 GB at 125k x 10 samples) -- the cure would cost
-        # more than the disease.  The last window overlaps its predecessor; each entry is assigned to
-        # EXACTLY ONE window (the one its index would naturally fall in, clamped), so nothing is double
-        # counted and the sum over windows is still exactly the sum over events.
+        # Window starts, with the last one shifted back to n-C so every window has the same width and no
+        # padding of the bank is needed (a second copy of the per-event arrays would dominate resident
+        # memory).  The last window overlaps its predecessor; each entry is assigned to exactly one
+        # window (the one its index would naturally fall in, clamped), so nothing is double counted and
+        # the sum over windows is still exactly the sum over events.
         starts = np.minimum(np.arange(nch) * C, max(int(n_events) - C, 0))
         wof = np.minimum(self.sel // C, nch - 1)         # which window owns each entry
         order = np.argsort(wof, kind="stable")

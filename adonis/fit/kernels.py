@@ -1,44 +1,29 @@
-"""ONE device-resident objective, consumed by BOTH minimisers.
+"""One device-resident objective, shared by both minimisers (Gauss-Newton and MIGRAD).
 
-WHY THIS EXISTS.  Until now Gauss-Newton and MIGRAD reached the same physics through different code:
-
-  * GN   ->  eng.model / eng.jac.  Per-event weights (and, for the Jacobian, per-event DERIVATIVES --
-             `(B, n_events)`, ~77 MB per sample per iteration at B=16, N=600k) are pulled back to the
-             host and binned there with np.bincount.
-  * MIGRAD -> eng.chi2_fn / eng.chi2_grad_fn.  Fully device-resident; only a scalar crosses the bus.
-
-Measured consequence at 60k/sample: 106 ms vs 14.9 ms for the SAME model evaluation.  A timing
-comparison built on that is measuring the two implementations, not the two algorithms -- and it moved by
-3.6x when a single environment variable (S4_JAX_BIN) was flipped, which is the proof that it was never
-measuring an algorithm at all.  The existing device-binning path is no fix: it bins each dial's
-derivative for each dataset in a PYTHON LOOP (~170 tiny dispatches, each with its own host sync), and
-measured 944 ms against the host path's 260 ms.
-
-The defect is that there was no fused `theta -> bins` primitive with the binning INSIDE the jit.  This
-module is that primitive, and every derivative object is built from the one function:
+Every derivative object is built from one traced function per sample:
 
     f_s(x)  =  concat(sample s's binned model blocks)      x = the FITTED dials only
 
   residuals(x)   (nbin + n,)      whitened data residuals stacked with the prior block
   chi2(x)        scalar           sum of squares of the above
   grad(x)        (n,)             ONE reverse-mode VJP per sample
-  jac(x)         (nbin + n, n)    vmapped forward JVP, BINNED ON DEVICE -> nbin*n floats come back,
-                                  never per-event arrays
+  jac(x)         (nbin + n, n)    vmapped forward JVP, BINNED ON DEVICE -> nbin*n floats cross the
+                                  host/device boundary, never per-event arrays
 
-Both minimisers then differ in exactly one thing: which of these they ask for.
+The two minimisers differ in exactly one thing: which of these they ask for (GN wants residuals+jac,
+MIGRAD wants chi2, optionally +grad).
 
-DESIGN NOTES, each of them a bug that was actually paid for:
+Design invariants:
 
-  PER-SAMPLE JITS, SUMMED ON THE HOST.  Jitting the concatenation of all ten samples fuses them into one
-  XLA program whose live set is every sample's intermediates at once, and that OOMs an 11 GB turing card.
-  Splitting the sum over bins changes no arithmetic and bounds the peak at the largest single sample.
+  PER-SAMPLE JITS, SUMMED ON THE HOST.  Fusing the concatenation of all samples into one XLA program
+  makes its live set every sample's intermediates at once, which can exceed device memory.  Summing the
+  per-sample results on the host instead bounds the peak at the largest single sample.
 
   DATA AND WEIGHTS ARE ARGUMENTS, not captured constants, so a toy ensemble retargets with a
   host-to-device copy of a few hundred floats instead of a fresh XLA compile per toy.
 
   ONE COMPILED TANGENT SHAPE.  The Jacobian's dial batches are ALL of width B, zero-padded on the last
-  block.  The old `S4_JAC_BATCH=16` against 17 dials gave two dispatches of unequal width -- two compiled
-  programs, and one extra full primal pass that landed specifically on the n=17 point of a dial scan.
+  block, so every dispatch shares one compiled program regardless of how the dial count divides by B.
   Padding costs a tangent column; an extra dispatch costs a whole primal.  Both are counted (see
   `counts`), so nothing about the batching is hidden from the report.
 
@@ -47,9 +32,8 @@ DESIGN NOTES, each of them a bug that was actually paid for:
   same spec dies with `UnexpectedTracerError`.  One eager pass per sample, in the constructor, before
   anything is jitted.
 
-  NOTHING IS JITTED LAZILY.  Every jitted object is built in the constructor and compiled by `warmup()`.
-  `eng.chi2_fn()` returned a fresh `jax.jit` on every call, which is how 65 of 72 measured seconds turned
-  out to be XLA compiling inside the timed region.
+  NOTHING IS JITTED LAZILY.  Every jitted object is built in the constructor and compiled by `warmup()`;
+  no method here returns a fresh `jax.jit` on a hot path.
 """
 from __future__ import annotations
 
@@ -65,16 +49,15 @@ from adonis.analysis import knobs as _K
 
 
 # ---- event-pass accounting ------------------------------------------------------------------------ #
-# The portable unit.  Wall-clock is one machine's realisation of these counts; the counts themselves are
-# implementation- and hardware-independent, so they are what a reader can carry to their own setup.
-# A "pass" is one traversal of the resident event set:
+# Event passes are a hardware-independent cost unit: a traversal of the resident event set.
 #   primal model evaluation   1 pass
-#   one JVP tangent column    1 pass   (the primal it shares is counted once per DISPATCH, not per column)
+#   one JVP tangent column    1 pass   (the shared primal is counted once per DISPATCH, not per column)
 #   one VJP                   2 passes (forward sweep + reverse sweep)
-# The VJP factor is a convention, stated so it can be re-weighted: the raw counts are kept separately.
+# The VJP/HVP factors below are a stated convention; raw counts are kept separately so they can be
+# re-weighted.
 VJP_PASSES = 2.0
-# One hessian-vector product is a forward sweep carried through a reverse sweep: the primal, the tangent,
-# and the cotangent.  Counted as 3 passes, on the same stated-convention basis as VJP_PASSES.
+# A hessian-vector product is a forward sweep carried through a reverse sweep (primal, tangent,
+# cotangent): counted as 3 passes on the same convention.
 HVP_PASSES = 3.0
 
 
@@ -100,9 +83,8 @@ class FitKernel:
         self.n = len(self.subset)
         self.pnames = [eng.pnames[k] for k in self.subset]
         # th_fixed holds the dials NOT in `subset` -- a profile node pins the scanned dial here while the
-        # rest are re-minimised.  The PRIOR CENTRE stays at eng.th0 regardless: pinning a dial away from
-        # nominal must not drag the prior along with it, or the node is minimising a different objective
-        # than the fit it belongs to.
+        # rest are re-minimised.  The prior centre stays at eng.th0 regardless: pinning a dial away from
+        # nominal must not drag the prior along with it.
         self.th0 = np.asarray(eng.th0 if th_fixed is None else th_fixed, float)
         self.x0 = np.asarray(eng.th0, float)[self.idx].copy()
         self.pw = 1.0 / np.asarray(eng.prior, float)[self.idx]      # prior residual weights
@@ -117,11 +99,11 @@ class FitKernel:
         self.nblk = int(np.ceil(self.n / self.B))
 
         _idx = jnp.asarray(self.idx)
-        # THE FIXED DIALS ARE AN ARGUMENT, NOT A CONSTANT.  A profile scan re-minimises the same free
-        # subset at node after node, changing only where the scanned dial is pinned.  If that vector were
-        # closed over, every node would need its own FitKernel -- and every kernel loads ~50 CUBIN
-        # modules that jax.clear_caches() does not unload, so a 13-node scan would exhaust the CUDA
-        # context.  As an argument of fixed shape it changes for the price of a host-to-device copy.
+        # Fixed dials are a runtime argument, not a captured constant.  A profile scan re-minimises the
+        # same free subset at node after node, changing only where the scanned dial is pinned.  If that
+        # vector were closed over, every node would need its own FitKernel -- and every kernel loads
+        # ~50 CUBIN modules that jax.clear_caches() does not unload, so a multi-node scan would exhaust
+        # the CUDA context.  As an argument of fixed shape, changing it costs only a host-to-device copy.
         self._thf = jnp.asarray(self.th0)
 
         def _mk_f(s):
@@ -130,7 +112,7 @@ class FitKernel:
             return f
         self._f = [_mk_f(s) for s in eng.samples]
 
-        # EAGER BIN-CACHE WARM, before any jax.jit exists (see module docstring).
+        # Eager bin-cache warm, before any jax.jit exists (see module docstring).
         for f in self._f:
             np.asarray(f(jnp.asarray(self.x0), self._thf))
 
@@ -148,8 +130,8 @@ class FitKernel:
 
             def hs(x, thf, D, R, V):              # (B, n) Hessian rows: FORWARD-OVER-REVERSE
                 # One HVP is a jvp through the gradient, i.e. ~one extra forward sweep on top of the
-                # VJP -- so the EXACT hessian costs O(n) passes, against ~2n^2 objective evaluations for
-                # a finite-difference HESSE.  That is the whole reason it is worth having.
+                # VJP -- so the exact Hessian costs O(n) passes, against ~2n^2 objective evaluations for
+                # a finite-difference HESSE.
                 return jax.vmap(lambda v: jax.jvp(
                     lambda u: jax.grad(c)(u, thf, D, R), (x,), (v,))[1])(V)
 
@@ -171,7 +153,7 @@ class FitKernel:
         self.reset_counts()
 
     def set_fixed(self, th_fixed):
-        """Move the NON-fitted dials (e.g. pin a scanned dial at a profile node).  No recompilation:
+        """Move the non-fitted dials (e.g. pin a scanned dial at a profile node).  No recompilation:
         a host-to-device copy of NPAR floats.  The prior centre `x0` is untouched -- pinning a dial must
         not drag the prior along with it."""
         self.th0 = np.asarray(th_fixed, float).copy()
@@ -199,7 +181,7 @@ class FitKernel:
         return self
 
     def data_sigma(self):
-        """Host copies of the stacked (data, sigma), for reference checks against the old path."""
+        """Host copies of the stacked (data, sigma)."""
         return (np.concatenate([d["data"] for s in self.eng.samples for d in s.ds]),
                 np.concatenate([d["sigma"] for s in self.eng.samples for d in s.ds]))
 
@@ -277,18 +259,16 @@ class FitKernel:
     def chi2_and_grad(self, x):
         """(chi2, grad) from ONE value_and_grad per sample -- the right primitive for HMC/NUTS.
 
-        A leapfrog step needs BOTH at the same point, always, so splitting them into two programs would
-        make the sampler pay a second primal pass for a value it is about to compute anyway.  (The
-        opposite was true for MIGRAD, which evaluates the function at several trial points before asking
-        for a gradient: there a shared value_and_grad made it pay for VJPs it never used.  Same
-        principle, opposite conclusion, because the access pattern differs.)
+        A leapfrog step always needs both at the same point, so splitting them into two programs would
+        cost a second primal pass for a value already computed.  MIGRAD's line search, by contrast,
+        evaluates chi2 at several trial points before requesting a gradient, so the same fusion there
+        would pay for VJPs it never uses -- the right primitive depends on the caller's access pattern.
         """
         xj = jnp.asarray(np.asarray(x, float))
         out = [f(xj, self._thf, D, R) for f, D, R in zip(self._j_vg, self._D, self._R)]
-        # ITS OWN COUNTER.  Incrementing counts["chi2"] here made a value-and-gradient indistinguishable
-        # from a plain likelihood downstream, so an "ESS per likelihood evaluation" column charged a
-        # gradient at a likelihood's price -- exactly 2x too kind to the gradient method.  `visits`
-        # (one forward traversal, with or without a reverse sweep) is the honest shared denominator.
+        # Counted separately from chi2/grad: folding a value-and-gradient call into those counters would
+        # make it indistinguishable from a plain likelihood evaluation downstream.  `visits()` (one
+        # forward traversal, with or without a reverse sweep) is the shared denominator across methods.
         self.counts["vg"] += 1
         self.counts["grad"] += 1
         self.counts["vjp"] += 1
@@ -299,7 +279,7 @@ class FitKernel:
 
     def jac_data(self, x):
         """(nbin, n) whitened data Jacobian.  Binning happens INSIDE the jit: what crosses the bus is
-        nbin*n floats, never the (n, n_events) per-event derivative the old path shipped."""
+        nbin*n floats, never a (n, n_events) per-event derivative array."""
         xj = jnp.asarray(np.asarray(x, float))
         out = np.empty((self.nbin, self.n))
         for i, (f, D, R) in enumerate(zip(self._j_J, self._D, self._R)):
@@ -320,13 +300,13 @@ class FitKernel:
     def hessian(self, x, batch=None):
         """(n, n) EXACT Hessian of chi2 -- not the Gauss-Newton approximation.
 
-        WHY THIS MATTERS FOR THE LAPLACE/OCCAM FACTOR.  The fit's own covariance is (J^T W J)^-1, which
-        drops the term sum_b r_b d2m_b: exact only in the small-residual limit.  The Occam correction is
-        a log-det of precisely the matrix being approximated, so "the covariance is free" is a claim
-        about the GAUSS-NEWTON matrix, not about the Hessian.  This gives the real one in ~n HVPs, where
-        a finite-difference HESSE needs ~2n^2 objective evaluations.
+        The fit's covariance (J^T W J)^-1 drops the term sum_b r_b d2m_b and is exact only in the
+        small-residual limit.  The Laplace/Occam log-determinant is dominated by the worst-constrained
+        eigen-directions, so it needs the real Hessian rather than the Gauss-Newton one.  Computed here
+        in ~n HVPs (forward-over-reverse), against ~2n^2 objective evaluations for a finite-difference
+        HESSE.
 
-        The prior block is exactly 2 diag(1/prior^2) -- quadratic, so no derivative work is needed.
+        The prior block is exactly 2 diag(1/prior^2) -- quadratic, so it needs no derivative work.
         """
         B = self.n if not batch else min(int(batch), self.n)
         xj = jnp.asarray(np.asarray(x, float))
@@ -342,11 +322,9 @@ class FitKernel:
             H[lo:lo + m_] = np.asarray(acc)[:m_]
             nblk += 1
         self.counts["hess"] += 1
-        # SHARE THE REVERSE SWEEP ACROSS THE DISPATCH, as jac_data shares its primal.  grad(c)(x) does
-        # not depend on the tangent direction, so a vmapped dispatch of B HVP columns costs one VJP plus
-        # B marginal passes -- measured cost(B) = a + b B with a ~ 10.4 ms against an independently
-        # timed single VJP of 9.5 ms, and b ~ 2.2 ms against a single primal of 2.5 ms.  Charging
-        # HVP_PASSES per column instead overcounted by ~2.7x and made autodiff look worse than it is.
+        # The reverse sweep is shared across the dispatch, as jac_data shares its primal: grad(c)(x)
+        # does not depend on the tangent direction, so a vmapped dispatch of B HVP columns costs one
+        # VJP plus B marginal passes, not HVP_PASSES per column.
         self.counts["vjp"] += nblk
         self.counts["tangent"] += nblk * B
         H = 0.5 * (H + H.T)                      # symmetrise: the two sweeps round differently
@@ -366,10 +344,9 @@ class FitKernel:
         """Compile the jitted objects on the exact shapes the timed loop will use, then zero the
         counters.  Nothing after this call may trigger an XLA compile.
 
-        Five programs per sample is a MINUTES-long XLA compile at production statistics; `which` exists
-        so a caller that only needs one of them (a batch-invariance check, a value-only scan) does not
-        pay for the other four.  The elapsed time is kept on `.compile_s` -- it is setup, it is never
-        part of a timing, and it should be visible rather than folded into a first iteration.
+        Compiling all five programs per sample can take minutes at production statistics; `which` lets
+        a caller that only needs one of them (a batch-invariance check, a value-only scan) skip the
+        rest.  Elapsed compile time is kept on `.compile_s`, separate from any later timing.
         """
         import time as _t
         x = self.x0 if x is None else np.asarray(x, float)
@@ -400,7 +377,7 @@ class FitKernel:
 # The model is a SUM over events, m_b = sum_{e in b} coef_e w_e(theta), so it decomposes exactly over
 # event windows: m = sum_w m^(w).  That is what makes chunking the event axis free -- unlike splitting
 # the DIAL axis, which costs one extra full primal pass per additional dispatch.  Peak memory becomes
-# O(C) instead of O(n_events), so the ceiling that stops this kernel at 125k events/sample goes away.
+# O(C) instead of O(n_events).
 #
 # THE RAGGED PART.  A bank is not one array.  hv_*/p_struck/w0/channel are per-EVENT and slice directly,
 # but the FSI records (f_bc, f_sa, ... with f_p_eidx / f_n_eidx) are per-INTERACTION SLOT with an event
@@ -455,15 +432,13 @@ def bank_chunk_plan(JB, n_events, chunk):
 def bank_windows(JB, n_events, chunk, drop_source=False):
     """Materialise the per-window sub-banks ONCE.  Returns (nch, C, [sub_bank...], owns).
 
-    THE POINT, and the mistake it fixes.  The first version did the dynamic_slice, the per-slot
-    jnp.take and the pad-row concatenate INSIDE the jitted call, so every model evaluation
-    re-materialised its sub-bank: measured 4.0 ms against 0.5 ms unchunked at ONE window, i.e. an 8x
-    penalty for chunking that was not chunking anything.  The windows are fixed, so this work belongs at
-    construction, once.
+    The windows are fixed, so the dynamic_slice, the per-slot jnp.take and the pad-row concatenate
+    belong at construction, once -- doing them inside the jitted call would re-materialise every
+    sub-bank on every model evaluation.
 
     Because the windows PARTITION the bank, the caller can drop the source arrays afterwards
     (`drop_source`) and the decomposition costs only the padding rather than a second copy.  Peak
-    TRANSIENT memory during a jvp/vjp is then O(C), which is the entire reason for chunking.
+    TRANSIENT memory during a jvp/vjp is then O(C), which is the point of chunking.
 
     The pad row is baked in here too: every per-event array is one longer than C, the ragged FSI
     reduction runs over C+1 events, and padded slots point at that trash event.  `bank_weight_window`
@@ -496,12 +471,6 @@ def bank_windows(JB, n_events, chunk, drop_source=False):
     # one running to n_events.  Note this is NOT the window's slice: the last window is SHIFTED BACK to
     # start at n-C so every window shares one compiled shape, so its slice [n-C, n) is wider than the
     # events it owns, and a reader extracting from it must offset by `starts[w]`, not by `lo`.
-    #
-    # The original code set the last window's lo to its SLICE start (n-C) instead of its OWNERSHIP start
-    # ((nch-1) C), so windows nch-2 and nch-1 both claimed the overlap -- 35,000 of 125,000 events (28%
-    # of the bank) at chunk 40,000.  A reassembly test cannot see this (assignment is idempotent to
-    # overlap); summing per-window contributions, which is the whole point of chunking, would have
-    # double counted them.
     owns = [(int(w * C), int(min((w + 1) * C, n_events))) for w in range(nch)]
     if drop_source:
         JB.clear()                       # the windows hold everything; free the undivided arrays

@@ -1,24 +1,18 @@
-"""Rectangular 2-D binnings in (delta-p_T, delta-alpha_T), one for truth and a finer one for reco.
+"""Rectangular 2-D binnings in (delta-p_T, delta-alpha_T): one truth grid, one finer reco grid.
 
-Unfolding needs MORE reco bins than truth bins -- the reco distribution is the constraint and the truth
-distribution is the unknown, so an over-determined system is what makes the inverse stable.  Both live
-here so the two can never drift apart, and so the flattening convention (row-major, delta-p_T slowest) is
-stated exactly once: a truth index that means something different in the response builder than in the
-figure is the kind of bug that produces a plausible, wrong unfolded spectrum.
+Unfolding needs more reco bins than truth bins: the reco distribution is the constraint, the truth
+distribution is the unknown, so the system must be over-determined for the inverse to be stable. Both
+grids live here so they cannot drift apart, and the flattening convention (row-major, delta-p_T
+slowest) is defined exactly once.
 
-The truth grid is 9 cells by default (see TRUTH_EDGES) and the reco grid is 60.  Six reco bins per truth bin leaves the system
-comfortably over-determined once the 28 physics knobs are floating too: 60 reco bins against 9 unpriored
-templates, rather than 30, which data alone could not close.  (The other three blocks -- flux,
-cross-section knobs and detector -- each carry a prior, so each contributes a constraint alongside its
-parameter and is to first order self-financing; only the templates spend the data.)
+The truth grid is 9 cells by default (TRUTH_EDGES), the reco grid 60: 60 reco bins against 9 unpriored
+templates stays over-determined even once the 28 physics knobs float (the other three blocks -- flux,
+cross-section knobs, detector -- each carry a prior and so are self-financing).
 
-The factorisation was measured, not guessed.  Of the ways to split 60 cells, 10 x 6 is the only one that
-keeps at least 10 SIGNAL events in every reco bin (min 11.5; 20 x 3 falls to 2.0 and 12 x 5 to 8.1) while
-also giving the best-conditioned response.  6 x 10 has more occupancy margin but conditions worse and
-leaves only 6 delta-p_T bins against the truth delta-p_T bins -- too weak a ratio in the variable carrying
-most of the structure.  delta-p_T nests exactly (each truth bin splits into two reco bins); delta-alpha_T
-does not (2 -> 6 is a clean 3x, but its edges are quantiles rather than subdivisions), and it does not
-need to, because the projections quoted in the paper are taken in TRUTH space.
+Of the ways to split 60 reco cells, 10 x 6 keeps at least 10 signal events in every bin (min 11.5;
+20 x 3 falls to 2.0, 12 x 5 to 8.1) while best-conditioning the response; 6 x 10 conditions worse and
+leaves too few delta-p_T bins against the truth axis. delta-p_T nests exactly into reco; delta-alpha_T
+does not and does not need to, since the projections quoted downstream are taken in truth space.
 """
 from __future__ import annotations
 
@@ -26,28 +20,25 @@ import numpy as np
 
 PI = float(np.pi)
 
-# EQUAL-OCCUPANCY edges, from the weighted quantiles of the nominal sample (truth edges from the true
-# distribution, reco edges from the smeared one).  The first attempt used the NUISANCE release edges
-# coarsened by eye, and left a reco bin holding 0.32 events out of 11 500 -- a bin where sqrt(N) is not an
-# uncertainty and the Gaussian chi2 term is meaningless.  Quantiles fix that by construction.
+# Equal-occupancy edges, from weighted quantiles of the nominal sample (truth edges from the true
+# distribution, reco edges from the smeared one): no bin's count is small enough for sqrt(N) to stop
+# being a meaningful uncertainty.
 #
-# The last bin of each delta-p_T axis is OPEN.  Smearing pushes the reco tail out to ~4.9 GeV, and an
-# event outside the grid is not binned at all: a closed axis would silently drop ~1% of the reco sample
-# from the fit, and any true signal above the top edge would be reclassified as background.
+# The last delta-p_T bin is open. Smearing pushes the reco tail out to ~4.9 GeV, and an event outside a
+# closed grid would not be binned at all -- it would silently drop out of the fit, and true signal above
+# the top edge would be reclassified as background.
 RECO_DPT = [0.0, 80.0, 120.0, 150.0, 185.0, 220.0, 260.0, 310.0, 380.0, 520.0, np.inf]
 # delta-alpha_T [rad], likewise equal-occupancy.  pi is a hard kinematic bound, so these axes are closed.
 RECO_DAT = [0.0, 0.68, 1.34, 1.91, 2.38, 2.78, PI]
 
-# TWO TRUTH GRIDS, both equal-occupancy by the same rule, selected by TRUTH_GRID below.  Kept side by
-# side rather than one overwriting the other: they answer different questions and the comparison between
-# them IS a result -- see the resolution note above.
+# Two truth grids, both equal-occupancy, selected via DEFAULT_TRUTH. Kept side by side because they
+# answer different questions:
 #
-#   "3x3"  9 cells.  Every delta-p_T bin is wider than the 106-152 MeV resolution.  cond(A) = 41,
-#          c_err 0.23.  This is the grid the detector supports.
-#   "5x6"  30 cells.  Occupancy is ample (min 134 true-signal events per cell), so this is NOT a
-#          statistics limit, but the delta-p_T widths are 42.8-95.6 MeV -- every one of them NARROWER
-#          than the resolution.  These edges land within a few MeV of the old 5x2 grid, which returned
-#          c_err 0.98, a x27 inflation over the perfect-detector limit, from conditioning alone.
+#   "3x3"  9 cells. Every delta-p_T bin wider than the 106-152 MeV resolution. cond(A) = 41, c_err
+#          0.23 -- the grid the detector supports.
+#   "5x6"  30 cells. Occupancy is ample (min 134 signal events/cell), but delta-p_T widths (42.8-95.6
+#          MeV) are all narrower than the resolution: c_err 0.98, a x27 inflation from conditioning
+#          alone.
 TRUTH_EDGES = {
     "3x3": ([0.0, 150.0, 350.0, np.inf], [0.0, 1.2, 2.2, PI]),
     "5x6": ([0.0, 84.4, 127.2, 175.7, 271.3, np.inf],
@@ -92,23 +83,17 @@ class Grid2D:
         return f"Grid2D({self.name}: {self.ndpt} dpt x {self.ndat} dat = {self.n} cells)"
 
 
-# WHICH OBSERVABLE PAIR THE SECTION UNFOLDS.  "stv" is the transverse-kinematic pair the section was
-# built on; "lep" is muon momentum and angle on the published T2K binning.  The switch matters because
-# the two behave completely differently under the same detector: delta-p_T is a VECTOR SUM of muon and
-# proton momenta, so it inherits both resolutions and ends up coarser than either, while p_mu and
-# cos theta_mu are measured directly.  Measured on this bank at the section working point, every STV
-# truth bin was narrower than its resolution and 54 of 58 lepton bins are wider than theirs.
+# "stv" is the transverse-kinematic pair; "lep" is muon momentum/angle on the published T2K binning.
+# delta-p_T is a vector sum of muon and proton momenta, so it inherits both resolutions and ends up
+# coarser than either, while p_mu and cos theta_mu are measured directly: every STV truth bin is
+# narrower than its resolution, while 54 of 58 lepton bins are wider.
 #
-# THESE ARE ARGUMENTS, NOT ENVIRONMENT.  They used to be `os.environ.get(...)` evaluated at MODULE
-# IMPORT, which fails in the worst available way: an importer that had not already exported
-# ADONIS_UNFOLD_OBS silently got the STV grid and produced a complete, plausible result on the wrong
-# binning.  Nothing raised, nothing warned, and the only symptom was a 9-cell answer where 58 were
-# wanted.  Import order is not a place to keep physics.
+# `obs` is a function argument, not a module global, so the observable pair and the truth grid cannot
+# silently disagree.
 
 
-# `obs` selects a FAMILY of binning, not a measurement.  "lep" resolves through
-# adonis.measurements, because published bin edges are reference data about an experiment and do not
-# belong to the unfolding framework; add another measurement there, not here.
+# `obs` selects a family of binning, not a specific measurement: "lep" resolves through
+# adonis.measurements, since published bin edges are reference data, not part of this framework.
 def truth_grid(obs="stv", variant=DEFAULT_TRUTH):
     """Truth binning: "stv" -> rectangular Grid2D from TRUTH_EDGES[variant]; "lep" -> a published staircase."""
     if obs == "lep":
@@ -126,15 +111,12 @@ def reco_grid(obs="stv", split=2):
 
 
 def _subdivide(slices, k=2, open_top=True):
-    """Split every p_mu bin into k, for the RECO grid.
-
-    Unfolding needs MORE reco bins than truth bins, and the templates carry no prior, so 58 truth
-    against 60 reco (the old rectangular reco grid) leaves almost no margin.  k=2 gives 116.
+    """Split every p_mu bin into k, for the reco grid: a 58 truth / 58 reco split would leave almost no
+    margin since the templates carry no prior, so k=2 gives 116 reco bins.
 
     The top p_mu edge becomes infinite: smearing pushes the momentum tail past any closed edge, and an
-    event outside the grid is not binned at all, so a closed axis silently drops reco events from the
-    fit.  Truth keeps the published finite edges -- true signal outside the truth grid has no template
-    to scale it and is background by construction.
+    event outside the grid is not binned at all. Truth keeps the published finite edges -- true signal
+    outside the truth grid has no template to scale it and is background by construction.
     """
     out = []
     for (c0, c1), e in slices:

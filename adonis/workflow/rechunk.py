@@ -1,10 +1,10 @@
 """Repack a bank into uniform, memory-balanced chunks.
 
-Some banks are chunked pathologically -- e.g. beam_e_C_hv is 628 tiny ~3.6k-event chunks (a narrow (e,e')
-angular acceptance -> few accepted events per generation batch), while nu_T2K_C is 220 x ~94k.  Streaming
-cost is dominated by PER-CHUNK overhead (to_jax + jvp dispatch), so many tiny chunks are slow.  This tool
+Some banks are chunked unevenly -- e.g. a narrow (e,e') angular acceptance can leave a bank with
+hundreds of tiny ~3.6k-event chunks, while a wide-acceptance bank has ~94k-event chunks. Streaming cost
+is dominated by per-chunk overhead (to_jax + jvp dispatch), so many tiny chunks are slow. This tool
 rewrites a bank so every chunk loads to ~the same memory footprint (default 0.5 GB), preserving the full
-record schema AND the cross-section normalization.
+record schema and the cross-section normalization.
 
 Normalization: the bank convention is  cross_section = sum(stored w0) / n_chunks  (each chunk a 1/n_chunks
 estimate).  Repacking into M chunks therefore stores  w0_final * M  (w0_final = load_bank's per-event

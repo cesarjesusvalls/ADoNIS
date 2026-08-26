@@ -1,10 +1,8 @@
 """NN -> N Delta inelastic channel: faithful port of ACHILLES NucleonNucleon (GiBUU /
 Dmitriev-Sushkov) -- src/Achilles/CascadeInteractions/NucleonNucleon.cc::SigmaNN2NDelta{,Interp}
 + ResonanceHelper.cc::{MatNN2NDelta, DSigmaDM, GetEffectiveWidth} + Distributions.hh::
-BlattWeisskopf.  This is the channel that degrades fast nucleons and CREATES pions in the
-ACHILLES cascade (ResonanceMode: Decay -> Delta -> N pi immediately); it was missing from the
-ADoNIS nucleon cascade (elastic-only), the offender behind the CC1pi carbon excess
-(docs/logbook/cc1pi_t2k.md #6).
+BlattWeisskopf.  This is the channel that degrades fast nucleons and creates pions in the
+ACHILLES cascade (ResonanceMode: Decay -> Delta -> N pi immediately).
 
 Conventions mirrored exactly:
 * ParticleInfo masses = Particles.yml (MASS_PDG_*); mn_avg = (938.27+939.57)/2 MeV.
@@ -33,7 +31,7 @@ MPI_HEAVY = MASS_PDG_PIP / _GEV
 # Particles.yml delta masses/widths [GeV]
 DELTA_MASS = {"pp": 1230.55 / _GEV, "p": 1234.90 / _GEV, "0": 1231.30 / _GEV, "m": 1230.55 / _GEV}
 DELTA_WIDTH = {"pp": 112.2 / _GEV, "p": 131.1 / _GEV, "0": 112.5 / _GEV, "m": 112.2 / _GEV}
-HBARC_GEVFM = 197.3269804 / 1000.0                             # GeV.fm (BlattWeisskopf x = k/HBARC); full precision (was 0.19732, 3.5e-5 coarse) [audit 2026-07-20]
+HBARC_GEVFM = 197.3269804 / 1000.0                             # GeV.fm, full precision (BlattWeisskopf x = k/HBARC)
 HBARC2_GEV2_MB = HBARC2 / 1e6                                   # mb GeV^2
 
 _CACHE = {}
@@ -117,10 +115,10 @@ def _build_tables(n_s=240, n_m=160, s_lo=None, s_hi=4.0):
     if "sig" in _CACHE:
         return
     s_lo = s_lo or (2 * MN_HEAVY + MPI_HEAVY + 1e-4)
-    # NON-UNIFORM sqrts grid: DENSE near threshold (the sigma turn-on is steep -> a uniform ~8 MeV grid
-    # gave +36% from linear-interp overshoot, cf. scripts/test_sigma_nn_ndelta.py) then coarse above the
-    # cascade-relevant region.  The per-point mass/cos integral is ALREADY exact vs ACHILLES (validated
-    # direct), so n_m/ncos are unchanged -- only the table density near threshold is the fix.
+    # Non-uniform sqrts grid: dense near threshold, where the sigma turn-on is steep enough that a
+    # uniform grid would overshoot under linear interpolation, then coarse above the cascade-relevant
+    # region.  The per-point mass/cos integral is exact vs ACHILLES regardless of grid (n_m/ncos fixed);
+    # only the sqrts table density changes.
     s_knee = min(2.30, s_hi)
     S = np.unique(np.concatenate([np.linspace(s_lo, s_knee, 4 * n_s),
                                   np.linspace(s_knee, s_hi, n_s)]))

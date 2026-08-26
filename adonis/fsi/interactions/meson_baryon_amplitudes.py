@@ -12,8 +12,7 @@ The table columns are the 20 waves L_{2I,2J} x (Re, Im); the label gives (L, I, 
 directly (e.g. P33 = L=1, I=3/2, J=3/2 = the Delta(1232)).
 
 This forward sigma(W) IS the ANL-Osaka model, so it self-validates against the known
-piN cross section (the Delta peak at W~1232) -- no cascade binary needed (which is a
-confirmed showstopper here; see docs/phases/README.md).
+piN cross section (the Delta peak at W~1232) -- no cascade binary needed.
 """
 from __future__ import annotations
 
@@ -57,10 +56,9 @@ def load_anl(i=0, f=0, root=None):
 
 
 def _pcm2(W, mM=138.5, mB=938.5):
-    # ANL-code flux masses (ACHILLES MesonBaryonAmplitudes.hh:110-111 Mass_m[0]=138.5, Mass_b[0]=938.5),
-    # NOT the physical PDG masses -- using mpip/mp here inflates the near-threshold piN normalization by
-    # up to ~38% (matches the _MM_ANL/_MB_ANL convention already used for the eta/conversion grids below).
-    # [audit 2026-07-20; see docs constants registry]
+    # ANL-code flux masses (ACHILLES MesonBaryonAmplitudes.hh:110-111: Mass_m[0]=138.5, Mass_b[0]=938.5),
+    # not the physical PDG masses -- matches the _MM_ANL/_MB_ANL convention used for the eta/conversion
+    # grids below.
     PF = (W ** 2 - mM ** 2 - mB ** 2) ** 2 - 4.0 * mM ** 2 * mB ** 2
     return PF                                            # ACHILLES "PF" (= 4 W^2 p_cm^2)
 

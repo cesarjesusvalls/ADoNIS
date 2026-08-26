@@ -1,24 +1,20 @@
 """Differentiable spectral-function (initial-state) reweight knobs (differentiable_knobs.md Group E).
 
-The struck nucleon (|p|, E_removal) is SAMPLED from the tabulated spectral function S(p,E); a deformation of
-S reweights each event by the density ratio  w = S_theta(p,E) / S_0(p,E)  at the recorded sampled point.
-Knobs (all nominal = no-op):
-  kF_sf     : Fermi-momentum / |p|-axis SCALE   -> S(p/kF, .)        (nominal 1.0)
-  Eb_shift  : binding/removal-energy SHIFT [MeV] -> S(., E - Eb)     (nominal 0.0)
+The struck nucleon (|p|, E_removal) is SAMPLED from the tabulated spectral function S(p,E); a
+deformation of S reweights each event by the density ratio w = S_theta(p,E) / S_0(p,E) at the
+recorded sampled point.  Knobs (all nominal = no-op):
+  kF_sf     : Fermi-momentum / |p|-axis SCALE    -> S(p/kF, .)        (nominal 1.0)
+  Eb_shift  : binding/removal-energy SHIFT [MeV] -> S(., E - Eb)      (nominal 0.0)
   sf_norm   : overall normalization              -> * sf_norm        (nominal 1.0)
   src_tail  : high-|p| (short-range-correlation) tail scale          (nominal 1.0)
 
-INTERPOLATION: FAITHFUL to the upstream SpectralFunction (spectral.py Interp2D, polynomial order (3,1)):
-CUBIC in p, LINEAR in E, with S clamped >=0 and 0 outside the grid.  The p-axis is a uniform cubic
-B-spline (coefficients prefiltered along p only with scipy.ndimage.spline_filter1d, mode='mirror'), so
-kF_sf (which scales the p-axis) keeps well-defined C2 derivatives; the E-axis is 2-tap linear, matching
-the ACHILLES SF resolution.  An earlier bicubic (C2-in-E) B-spline overshot the steep low-E rise of S(p,E)
--> NEGATIVE densities (~14% of events at Eb=+4 MeV) and a ~12% biased Eb_shift reweight; that was an
-undiscussed divergence from ACHILLES.  Consequence of the faithful choice: D2/D3 wrt Eb_shift (and wrt
-kF_sf near the SF support edge) are non-smooth at S=0 -- physically real (the tabulated SF has a hard zero
-edge).  The arrow/variation plots use the EXACT reweight (D0), not a Taylor expansion, so they are
-unaffected.  The reweight is exactly 1 at nominal (numerator==denominator), so the nominal forward
-prediction is untouched.
+Interpolation is FAITHFUL to the upstream SpectralFunction (spectral.py Interp2D, order (3,1)):
+cubic in p, linear in E, clamped >=0 and 0 outside the grid.  The p-axis is a uniform cubic B-spline
+(coefficients prefiltered along p with scipy.ndimage.spline_filter1d, mode='mirror'), so kF_sf keeps
+well-defined C2 derivatives; the E-axis is 2-tap linear, matching the ACHILLES SF resolution.  D2/D3
+wrt Eb_shift (and kF_sf near the SF support edge) are non-smooth at S=0 -- physically real, since the
+tabulated SF has a hard zero edge.  The variation plots use the exact reweight (D0), not a Taylor
+expansion, so they are unaffected there.  w == 1 at nominal (numerator == denominator).
 """
 from __future__ import annotations
 
@@ -59,10 +55,9 @@ def _mirror(idx, n):
 
 
 def _bspline2d(g, p, E):
-    """S(p,E) FAITHFUL to the upstream SpectralFunction: cubic B-spline in p (C2) x LINEAR in E (2-tap),
-    clamped >=0, 0 outside the grid.  Linear-in-E matches the ACHILLES SF (Interp2D order (3,1)); a bicubic
-    (C2-in-E) overshoots the steep low-E rise -> negative S + ~12% biased Eb_shift reweight.  kF_sf scales
-    the p-axis (cubic) so its D2/D3 stay well-defined in the bulk."""
+    """S(p,E), faithful to the upstream SpectralFunction: cubic B-spline in p (C2) x linear in E
+    (2-tap), clamped >=0, 0 outside the grid.  Linear-in-E matches the ACHILLES SF (Interp2D order
+    (3,1)).  kF_sf scales the p-axis (cubic), so its D2/D3 stay well-defined in the bulk."""
     u = (p - g["m0"]) / g["hm"]; v = (E - g["e0"]) / g["he"]
     iu = jnp.floor(u).astype(jnp.int32); iv = jnp.floor(v).astype(jnp.int32)
     wu = _bw(u - iu); fv = v - iv
@@ -74,9 +69,8 @@ def _bspline2d(g, p, E):
         col = coef[ia, j0] * (1.0 - fv) + coef[ia, j1] * fv       # linear in E on the p-filtered coeffs
         val = val + col * wu[a]
     in_grid = (p >= g["m_lo"]) & (p <= g["m_hi"]) & (E >= g["e_lo"]) & (E <= g["e_hi"])
-    # density: clamp >=0 and 0 off-grid (upstream `where(in_grid & (r>0), r, 0)`).  Unclamped, the spline
-    # overshoots <0 near the steep low-E rise -> NEGATIVE reweights for Eb_shift>0 (~14% of events at +4 MeV,
-    # min ratio -2600).  Kink only at the S=0 hard edge (physically real).
+    # density: clamp >=0, 0 off-grid (upstream `where(in_grid & (r>0), r, 0)`).  Unclamped, the spline
+    # can overshoot <0 near the steep low-E rise.  Kink only at the S=0 hard edge (physically real).
     return jnp.where(in_grid, jnp.maximum(val, 0.0), 0.0)
 
 
@@ -90,20 +84,17 @@ def sf_reweight(grids, p_mag, E_removal, *, kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0
     grids = sf_grids(SpectralFunction).  p_mag,E_removal (N,) the recorded sampled struck (|p|, removal).
     tail = 1 + (src_tail-1)*sigmoid((|p|-p_src)/w_src) enhances the high-|p| (SRC) region.  == 1 at nominal
     (kF=1,Eb=0,norm=1,src_tail=1).  Differentiable in every knob; C2 in (kF_sf,Eb_shift) -> valid D2/D3."""
-    # ONE-SIDED KNOB, two ways of enforcing it:
-    #   clamp  (default)   S(., E - max(Eb,0)) -- the prediction is CONSTANT for Eb<0, so chi2 is exactly
-    #                      flat there and the gradient vanishes: an absorbing region a minimiser cannot
-    #                      climb out of.  Since Eb_shift's nominal IS its floor (_EB_EPS = 0.01), every
-    #                      fit starts on that edge, which is the documented failure mode.
-    #   mirror (ADONIS_EB_MIRROR=1)  S(., E - |Eb|) -- the response is EVEN about zero, so below the boundary
-    #                      the gradient points back toward it with the right magnitude and the minimiser
-    #                      is pushed out instead of stalling.  This is what T2K does for parameters whose
-    #                      prior central value sits on a physical boundary (arXiv:2606.14015): "the
-    #                      response functions ... were mirrored across the boundary".  The fit then runs
-    #                      UNBOUNDED in Eb and the physical quantity is |Eb|; note the likelihood is even,
-    #                      so it carries twin minima at +-Eb, and Eb=0 is a stationary point by symmetry.
-    #                      Mirroring fixes the MINIMISATION, not the statistics -- the interval near the
-    #                      boundary still needs an FC-style construction.
+    # ONE-SIDED KNOB, two ways to enforce it:
+    #   clamp  (default): S(., E - max(Eb,0)).  Prediction is constant for Eb<0, so chi2 is flat there
+    #     and the gradient vanishes -- an absorbing region a minimiser cannot climb out of.  Eb_shift's
+    #     nominal IS its floor (_EB_EPS=0.01), so every fit starts on that edge.
+    #   mirror (ADONIS_EB_MIRROR=1): S(., E - |Eb|).  The response is even about zero, so below the
+    #     boundary the gradient points back toward it and the minimiser is pushed out instead of
+    #     stalling -- the T2K prescription for a parameter whose prior sits on a physical boundary
+    #     (arXiv:2606.14015: response functions mirrored across the boundary).  The fit then runs
+    #     unbounded in Eb (physical quantity |Eb|); the likelihood is even, with twin minima at +-Eb
+    #     and a stationary point at Eb=0.  Mirroring fixes the minimisation, not the statistics -- the
+    #     interval near the boundary still needs an FC-style construction.
     Eb_shift = jnp.abs(Eb_shift) if _EB_MIRROR else jnp.maximum(Eb_shift, 0.0)
     s0 = _bspline2d(grids, p_mag, E_removal)
     sθ = _bspline2d(grids, p_mag / kF_sf, E_removal - Eb_shift)

@@ -231,7 +231,7 @@ def render_beam_sigma(spec, show_ratio=True):
     BANK = pp.get("bank_pattern", "output/paper_banks_p4/beam_{beam}_{target}/merged")
     os.environ.setdefault("ADONIS_BEAM_PATTERN", BANK)
     from analysis.campaign.beams import bank_sigma as adonis_sigma
-    from adonis.oracle import beam_sigma as AB
+    from analysis.oracle_tools import beam_sigma as AB
     nbins = int(pp.get("nbins", 30)); BEAM = pp.get("beam", "pip")
 
     def reduce_nuc(nuc):

@@ -1,9 +1,4 @@
-"""Diagonal Gaussian error model and Gauss-Newton covariance -- the two smallest shared primitives.
-
-Both existed in multiple places: `bin_sigma` in analysis/paper/fisher_engine.py and (as `_bin_sigma`)
-in adonis/analysis/sample.py, verified here to have byte-identical ASTs apart from the docstring; the
-GN covariance inline in adonis/fit/kernels.py and adonis/unfold/fit.py with the same rcond.
-"""
+"""Diagonal Gaussian error model and Gauss-Newton covariance."""
 from __future__ import annotations
 
 import numpy as np

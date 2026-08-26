@@ -1,16 +1,15 @@
-"""THE single kinematics module (JAX) -- 4-vector algebra AND physics observables, one backend.
+"""The kinematics module (JAX): 4-vector algebra and physics observables, one backend.
 
-Two layers, no numpy twins:
-  * PRIMITIVES    : mink_dot, mass2, kallen, boost (CM->lab), boost_to_rest, boost_from_rest.
-  * OBSERVABLES   : leptonic / hadronic / single-transverse-kinematic-imbalance (TKI) formulas, each
-                    written ONCE on raw lab 4-vectors, exposed two ways --
-                      - EventRecord wrappers + the OBSERVABLES registry  (differentiable reweight, DCC),
-                      - raw-4-vector functions (vertex_W_Q2 / tki / muon_obs / cc0pi_obs) for the
-                        selection + info-content analysis paths.
+Two layers:
+  * PRIMITIVES  : mink_dot, mass2, kallen, boost (CM->lab), boost_to_rest, boost_from_rest.
+  * OBSERVABLES : leptonic / hadronic / single-transverse-kinematic-imbalance (TKI) formulas, each
+                  written once on raw lab 4-vectors, exposed two ways --
+                    - EventRecord wrappers + the OBSERVABLES registry (differentiable reweight, DCC),
+                    - raw-4-vector functions (vertex_W_Q2 / tki / muon_obs / cc0pi_obs) for the
+                      selection + info-content analysis paths.
 
 Metric (+,-,-,-); 4-vectors (...,4) = (E, px, py, pz) [MeV].  JAX throughout -- numpy inputs promote
-fine.  This replaces the former split (adonis/kinematics.py numpy primitives, observables/kinematics.py
-jnp registry, observables/kinematics_np.py numpy twin, dcc/lepton primitives, oracle Q2/W/boost).
+fine.
 """
 from __future__ import annotations
 
@@ -36,8 +35,7 @@ def kallen(s, s1, s2):
 
 
 def boost(p4, beta):
-    """CM->lab Lorentz boost of p4 (...,4) by beta (...,3) (= P/E of the boosting frame).  This is the
-    former numpy `boost_np` the qe/ee samplers used, now JAX (identical to float precision)."""
+    """CM->lab Lorentz boost of p4 (...,4) by beta (...,3) (= P/E of the boosting frame)."""
     b2 = jnp.sum(beta ** 2, axis=-1, keepdims=True)
     g = 1.0 / jnp.sqrt(jnp.clip(1 - b2, 1e-15, None))
     bp = jnp.sum(beta * p4[..., 1:], axis=-1, keepdims=True)
@@ -256,10 +254,10 @@ OBSERVABLES = {
 
 
 # =============================================================================== raw-4-vector API =====
-# For the numpy selection + info-content paths (former observables/kinematics_np.py).  Same formula
-# core as the EventRecord API above; inputs are (n,4) lab 4-vectors, outputs jnp arrays (callers
-# np.asarray at the histogram boundary).  The NUISANCE hydrogen-daT randomization is a data-comparison
-# overlay applied by the caller, NOT an observable, so `tki` here is deterministic.
+# For the numpy selection + info-content paths.  Same formula core as the EventRecord API above;
+# inputs are (n,4) lab 4-vectors, outputs jnp arrays (callers np.asarray at the histogram boundary).
+# The NUISANCE hydrogen-daT randomization is a data-comparison overlay applied by the caller, not an
+# observable, so `tki` here is deterministic.
 def mom(p4):
     """|vec p| [MeV] of a 4-vector (batch)."""
     return _mag(jnp.atleast_2d(p4)[..., 1:])

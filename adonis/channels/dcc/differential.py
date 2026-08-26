@@ -1,30 +1,29 @@
 """Differential (un-integrated) DCC hadron current as a function of the pion emission
 angle (theta_pi, phi_pi) -- the per-event ingredient for a full final state.
 
-`hadron_assembly.current_and_tensor` builds the ANGLE-INTEGRATED hadron tensor
-W^{mu,nu} = sum_g w[g] sum_{isf,lam} conj(zj_g) zj_g, a Gauss-Legendre x uniform
-quadrature of  int dcos(theta_pi) dphi_pi  of the per-grid-point DIFFERENTIAL current
-zj[g, isf, lam, mu].  For a full final state we must instead evaluate that differential
-current at the ACTUAL sampled pion angle of each event.
+`assembly.current_and_tensor` builds the angle-integrated hadron tensor
+W^{mu,nu} = sum_g w[g] sum_{isf,lam} conj(zj_g) zj_g via Gauss-Legendre x uniform
+quadrature over dcos(theta_pi) dphi_pi of the per-grid-point differential current
+zj[g, isf, lam, mu]. For a full final state we instead evaluate that differential
+current at the actual sampled pion angle of each event.
 
-The angle dependence factorizes exactly.  In `angular_kernel`, for every
-(isf, igm1, lam, pw) there is a SINGLE term
+The angle dependence factorizes exactly: in `angular_kernel`, every (isf, igm1, lam, pw)
+term is a single
 
     K[g, ...] = coeff[isf,igm1,lam,pw] * Y_L^{llz}(theta_g) * e^{i llz phi_g}
 
-with L = pw's orbital (twoL//2) and llz = (2*M_J - isf)//2 both FIXED by the indices,
-and coeff = sqrt(2J+1) * <isospin CGs> * <spin-orbit CG> ANGLE-INDEPENDENT.  So we
-precompute coeff, L, llz once (mirroring the exact `angular_kernel` selection rules),
-then evaluate Y_L^{llz}(theta_pi) e^{i llz phi_pi} per event.
+with L = pw's orbital (twoL//2) and llz = (2*M_J - isf)//2 fixed by the indices, and
+coeff = sqrt(2J+1) * <isospin CGs> * <spin-orbit CG> angle-independent. `precompute_diff_coeffs`
+computes coeff, L, llz once (mirroring `angular_kernel`'s selection rules); `angular_factor`
+then evaluates Y_L^{llz}(theta_pi) e^{i llz phi_pi} per event.
 
-The interpolated amplitude `zmtx` depends only on (W, Q^2), NOT on the pion angle, so
-the whole knob-dependent / differentiable path (build_zmtx) is reused unchanged; the
-angle enters only through the detached, precomputed angular basis.
+The interpolated amplitude `zmtx` depends only on (W, Q^2), not on the pion angle, so the
+knob-dependent path (build_zmtx) is reused unchanged; the angle enters only through the
+detached, precomputed angular basis.
 
-Consistency (see `_grid_consistency` / validate_final_state.py): summing the differential
-tensor over the SAME quadrature grid with the SAME weights reproduces
-`current_and_tensor` to ~1e-12.  Sampling the angle uniformly over the solid angle and
-weighting by 4*pi reproduces it in expectation.
+Consistency: summing the differential tensor over the same quadrature grid and weights as
+`current_and_tensor` reproduces it to ~1e-12; sampling the angle uniformly over the solid
+angle and weighting by 4*pi reproduces it in expectation.
 """
 from __future__ import annotations
 
@@ -38,12 +37,9 @@ from adonis.channels.dcc.assembly import (IGM1_LIST, LAM_LIST, ISF_LIST, _IXI1_O
 
 _SQHF = 1.0 / np.sqrt(2.0)
 
-# DIAGNOSTIC ONLY -- the relative sign of the NC isoscalar (zampv_is) block against the isovector one.
-# +1 is the literal Fortran transcription (amp_dcc_sl_module.f:1036, `zzz = vvfac(itiz)*zampv_is`) and
-# is the only value any production path may use.  It exists because the loader stores `isv` WITHOUT
-# the Fortran `isign` (differential.py applies isign, and only for EM mode 10/11), so "is the stored
-# isv already sign-flipped relative to zampv_is?" is a real question that a free-nucleon sigma
-# comparison can answer decisively.  Flip it in a scratch probe, never in committed code.
+# Relative sign of the NC isoscalar (zampv_is) block against the isovector one. +1 is the literal
+# Fortran transcription (amp_dcc_sl_module.f:1036, `zzz = vvfac(itiz)*zampv_is`); the only value any
+# production path may use. DIAGNOSTIC ONLY -- never flip in committed code.
 NC_ISV_SIGN = 1.0
 
 
@@ -114,7 +110,7 @@ def _bb(n, k):
 
 
 def legendre_ylm_batch(lmax, z):
-    """Vectorised `hadron_tensor.legendre_ylm` over an array `z=cos(theta)` (shape (N,)).
+    """Vectorised `angular.legendre_ylm` over an array `z=cos(theta)` (shape (N,)).
     Returns bleg[N, l, m_index] with m = m_index - lmax (m in -lmax..lmax)."""
     z = np.asarray(z, dtype=np.float64)
     N = z.shape[0]
@@ -170,18 +166,18 @@ def angular_factor(theta, phi, pre):
 # --------------------------------------------------------------------------- #
 #  Batched build_zmtx (the angle-independent, knob-dependent amplitude matrix)  #
 # --------------------------------------------------------------------------- #
-IDXP_START = True    # ACHILLES-faithful: skip the idxp=1 (0,5) current pair for J=1/2 waves (default).
-#                      Set False only to MEASURE the size of that term vs the pre-fix behavior.
+IDXP_START = True    # ACHILLES-faithful: skip the idxp=1 (0,5) current pair for J=1/2 waves.
+#                      Set False only to inspect the size of that term (non-faithful).
 
 
 def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
                        m_N, m_pi, r_axial=None, vfac=1.0, pion_pole=1.0):
-    """Batched port of `hadron_assembly.build_zmtx`.
+    """Batched port of `assembly.build_zmtx`.
 
     vec, isv, axial : (N, 8, n_pw) complex (interpolated amplitude components).
     W, Q2           : (N,) real.  Returns zmtx (N, 8, n_pw) complex.
     Differentiable in the amplitude / r_axial (the knobs); equals the scalar build_zmtx
-    event-by-event (asserted in validate_final_state.py).
+    event-by-event.
     """
     # Static Python int -> a plain guard, not a traced branch.  See assembly.build_zmtx for why.
     probe_for_mode(mode)
@@ -227,39 +223,17 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
     if 0 < mode < 10:                                        # CC: I=1/2 -> (V-IS)/2; I=3/2 raw
         src_block = i32 * vec + (1.0 - i32) * 0.5 * (vec - isv)
     elif mode <= -1:                                         # NC
-        # THE KEY FACT, at amp_dcc_sl_module.f:675-691, and easy to miss because it is nowhere near
-        # the assembly loops -- it runs ONCE at table read:
-        #
-        #     !conversion 1/2p 1/2n -> 1/2v 1/2s basis
-        #     if(mode.lt.10)then          ! neutrino case      <- WEAK ONLY (CC and NC), not EM
-        #       do 510 ipw=1,njLs
-        #       if(itpind(ipw)==3)goto 510                     <- I=3/2 waves SKIPPED
-        #       zp = (zampv + zampv_is)*0.5d0
-        #       zm = (zampv - zampv_is)*0.5d0
-        #       zampv    = zm    ! isovector
-        #       zampv_is = zp    ! isoscalar
-        #
-        # So for the weak probe, by the time the vector block (:867-995) and the NC isoscalar block
-        # (:1004-1050) run, `zampv` ALREADY MEANS the isovector 0.5*(raw_v - raw_is) and `zampv_is`
-        # ALREADY MEANS the isoscalar 0.5*(raw_v + raw_is), on I=1/2 waves only.
-        #
-        # ADoNIS's loader stores the RAW blocks (loader.py:107-109) and does the rotation HERE, at use
-        # time, instead of in place at load time.  Same physics, different moment.  Hence:
-        #
-        #     I=3/2 : VFAC * vec                                    (raw; the rotation skipped it)
+        # EW isospin rotation (amp_dcc_sl_module.f:675-691), applied once at Fortran table read,
+        # weak only (`if(mode.lt.10)`), with I=3/2 waves skipped (`if(itpind(ipw)==3)goto 510`):
+        #     zp = (zampv+zampv_is)*0.5   zm = (zampv-zampv_is)*0.5
+        #     zampv = zm (isovector)      zampv_is = zp (isoscalar)
+        # ADoNIS's loader stores the raw blocks (loader.py:107-109) and applies this rotation here, at
+        # use time, instead of in place at load time -- same physics, different moment:
+        #     I=3/2 : VFAC * vec                              (raw; the rotation skips it)
         #     I=1/2 : VFAC * 0.5*(vec-isv)  +  VVFAC(itiz) * 0.5*(vec+isv)
-        #
-        # This ALSO settles the CC branch above.  `0.5*(vec-isv)` on I=1/2 is not an invention -- it is
-        # exactly `zm`, the isovector.  The old comment cited :585-604 (the nLsdt L-S table setup),
-        # which is why a search of the interpolation loops "proved" the form appears nowhere in the
-        # Fortran.  It appears at :686-691.  CC and NC share the rotation, as they must.
-        #
-        # Measured against the ACHILLES free-nucleon NC cards, this form is the one that reproduces
-        # ACHILLES's near-exact p/n mirror symmetry; the raw-vec transcription breaks it by 4-17%.
-        #
-        # sw2 is ACHILLES's HARDCODED 0.2312 (:291), NOT C.sin2w = 0.23129.  Do not "fix" it: the
-        # contract is bit-faithfulness to ACHILLES and the difference is measurable.
-        sw2 = 0.2312                                         # amp_dcc_sl_module.f:291
+        # This is also what the CC branch above uses for I=1/2 (`0.5*(vec-isv)` = zm, the isovector).
+        sw2 = 0.2312                                         # amp_dcc_sl_module.f:291 (hardcoded; not
+        #                                                       C.sin2w -- bit-faithfulness to ACHILLES)
         VFAC = 1.0 - 2.0 * sw2                               # :292
         VVFAC = -2.0 * sw2 if itiz == 1 else 2.0 * sw2       # :293-294  vvfac(+1)=-2sw2, vvfac(-1)=+2sw2
         iso_v = 0.5 * (vec - isv)                            # :690  zampv    = zm  (isovector)

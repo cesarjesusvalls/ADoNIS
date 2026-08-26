@@ -17,7 +17,7 @@ def _run(flat, n=300, seed=0):
     import sys
     import adonis.fsi.cascade as CF
     from adonis.channels import qe as qe_xsec
-    from adonis.reweight import tune as T
+    from analysis.campaign import tune as T
     CF.FLAT_FSI_REC = flat
     caps = (n * 8, n * 24) if flat else T.REC_CAPS       # flat: TOTAL budget; dense: per-event K
     qe = qe_xsec.sample_importance(n, seed=seed)
@@ -45,7 +45,7 @@ def test_flat_overflow_raises():
     import sys
     import adonis.fsi.cascade as CF
     from adonis.channels import qe as qe_xsec
-    from adonis.reweight import tune as T
+    from analysis.campaign import tune as T
     CF.FLAT_FSI_REC = True
     n = 300
     qe = qe_xsec.sample_importance(n, seed=0)

@@ -1,6 +1,7 @@
-"""Plot-time consumer of the differentiable EVENT BANK (adonis.workflow.generate_bank.generate_bank).  NO JAX cascade here -- everything
-is a cheap re-sum over the stored per-event records (kinematics, ragged final state, w0, hard-vertex amps2 +
-FSI kind-1 + SF records for the EXACT reweight via bank_reweight).
+"""Plot-time consumer of the differentiable event bank (adonis.workflow.generate_bank.generate_bank).
+No JAX cascade here -- everything is a cheap re-sum over the stored per-event records (kinematics,
+ragged final state, w0, hard-vertex amps2 + FSI kind-1 + SF records for the exact reweight via
+bank_reweight).
 
 Pick ANY of these at plot time, no re-running:
   * signal definition  -> a boolean mask over events (topology from the full final state + phase space)
@@ -22,14 +23,15 @@ _FS = ("fs_off", "fs_pid", "fs_chg", "fs_p4")
 
 
 def load_bank(outdir, max_chunks=None):
-    """Concatenate all chunks into one in-memory FULL-RECORD bank (kinematics + ragged final state + bare w0
-    + hard-vertex amps2 records + FSI kind-1 record).  Only w0 is divided by n_chunks (-> sum = cross
-    section); the records are per-event multipliers.  Exact reweight at any theta via bank_reweight.
+    """Concatenate all chunks into one in-memory full-record bank (kinematics + ragged final state +
+    bare w0 + hard-vertex amps2 records + FSI kind-1 record).  Only w0 is divided by n_chunks (-> sum
+    = cross section); the records are per-event multipliers.  Exact reweight at any theta via
+    bank_reweight.
 
-    max_chunks: load only the first N chunk files (a subsampled bank).  w0 is then divided by the number
-    LOADED (not the manifest total), so the central stays a proper cross-section estimate and the MC-error
-    FRACTION reflects the loaded statistics -- exactly what a closure/fit needs when the full bank is far
-    larger than the MC precision required."""
+    max_chunks: load only the first N chunk files (a subsampled bank).  w0 is then divided by the
+    number loaded (not the manifest total), so the central stays a proper cross-section estimate and
+    the MC-error fraction reflects the loaded statistics -- what a closure/fit needs when the full
+    bank is far larger than the MC precision required."""
     man = json.load(open(f"{outdir}/manifest.json"))
     nchunks = man["n_chunks"]; files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
     if max_chunks is not None:
@@ -38,26 +40,23 @@ def load_bank(outdir, max_chunks=None):
     ev_off = 0                       # events seen so far -> shifts each chunk's ragged indices
     for f in files:
         d = np.load(f)
-        # --- TEMPORARY k_lep compat shim (REMOVE after banks are regenerated/migrated) --------------
-        # sec1 renamed the outgoing-lepton field k_mu (CC) / k_e (EM) -> k_lep.  Banks written before
-        # that rename still carry the old name on disk.  Alias it to k_lep PER CHUNK, before
-        # concatenation, so a directory caught mid-migration (some chunks already k_lep, some not --
-        # migrate_k_lep is atomic per chunk) still assembles a full-length k_lep aligned with w0.
-        # A global post-concat alias would populate k_lep from only the migrated chunks -> length
-        # mismatch against w0.  Delete this once every bank under $ADONIS_OUT carries k_lep.
+        # TEMPORARY k_lep compat shim: banks written before the k_mu (CC) / k_e (EM) -> k_lep rename
+        # still carry the old field name.  Alias PER CHUNK, before concatenation, so a directory
+        # caught mid-migration (migrate_k_lep is atomic per chunk) still assembles a full-length
+        # k_lep aligned with w0 -- a global post-concat alias would cover only the migrated chunks.
+        # Remove once every bank under $ADONIS_OUT carries k_lep.
         _lep_alias = None
         if "k_lep" not in d.files:
             _lep_alias = next((o for o in ("k_mu", "k_e") if o in d.files), None)
-        # -------------------------------------------------------------------------------------------
         for key in d.files:
             if key in _FS:
                 continue
             v = d[key]
             if key in ("f_p_eidx", "f_n_eidx"):
-                # PER-SLOT event index of the ragged FSI record: each chunk numbers its events from 0, so
-                # it must be shifted into the global event numbering before concatenation (exactly what
-                # fs_off does for the ragged final state).  Without this, every chunk after the first
-                # would silently attribute its FSI slots to the wrong events.
+                # PER-SLOT event index of the ragged FSI record: each chunk numbers events from 0, so it
+                # must be shifted into the global numbering before concatenation (as fs_off does for the
+                # ragged final state) -- else every chunk after the first attributes its FSI slots to
+                # the wrong events.
                 v = v.astype(np.int64) + ev_off
             perev.setdefault("k_lep" if key == _lep_alias else key, []).append(v)
         fs_pid.append(d["fs_pid"]); fs_chg.append(d["fs_chg"]); fs_p4.append(d["fs_p4"])
@@ -80,10 +79,10 @@ def bank_nchunks(outdir):
     return json.load(open(f"{outdir}/manifest.json"))["n_chunks"]
 
 
-# Canonical dtypes for the integer/bool FSI records.  An EMPTY bank (e.g. free hydrogen: a free proton has
-# no nucleon cascade, so every f_* nucleon/pion record is length 0) lets numpy default those arrays to
-# float32 -- and jax then rejects a float-typed `iso` used as an index (se[iso]).  Coercing to the canonical
-# dtypes at load is a no-op on a populated carbon bank and fixes the empty-bank schema.
+# Canonical dtypes for the integer/bool FSI records.  An EMPTY bank (free hydrogen: no nucleon cascade,
+# so every f_* nucleon/pion record has length 0) lets numpy default those arrays to float32, and jax
+# then rejects a float-typed `iso` used as an index (se[iso]).  Coercing at load is a no-op on a
+# populated carbon bank and fixes the empty-bank schema.
 _FSI_CANON = (("f_iso", np.int8), ("f_bc", np.int8), ("f_hh", bool), ("f_inel", bool),
               ("f_swap", bool), ("f_pi_hh", bool), ("f_p_eidx", np.int32), ("f_n_eidx", np.int32))
 
@@ -102,15 +101,15 @@ _FSI_NUC = ("hh", "a", "iso", "finel", "inel", "swap")
 
 
 def filter_events(B, keep):
-    """Compact full-record bank of ONLY the events where keep[i] is True.
+    """Compact full-record bank of only the events where keep[i] is True.
 
-    Per-event fields (w0, k_lep, the hard-vertex hv_qe_/hv_res_ records, ...) are gathered by event; the
-    ragged families -- final state (fs_off/fs_pid/fs_chg/fs_p4), the ks_ summary (ks_eidx), and the two FSI
-    slot families (pion via f_p_eidx, nucleon via f_n_eidx) -- keep only the selected events' slots with
-    their event index REMAPPED to the new 0..M-1 order, and fs_off/_eidx are rebuilt.  So the compact bank is
-    self-consistent for every downstream reducer AND bank_weight(filter_events(B, sig), theta) equals
-    bank_weight(B, theta)[sig] -- i.e. a fit can cache N_selected instead of N_total (see workflow.selection
-    .select_bank for the streaming, full-bank version)."""
+    Per-event fields (w0, k_lep, the hard-vertex hv_qe_/hv_res_ records, ...) are gathered by event;
+    the ragged families -- final state (fs_off/fs_pid/fs_chg/fs_p4), the ks_ summary (ks_eidx), and the
+    two FSI slot families (pion via f_p_eidx, nucleon via f_n_eidx) -- keep only the selected events'
+    slots with their event index remapped to the new 0..M-1 order, and fs_off/_eidx are rebuilt.  So
+    the compact bank is self-consistent for every downstream reducer, and
+    bank_weight(filter_events(B, sig), theta) == bank_weight(B, theta)[sig] -- a fit can cache
+    N_selected instead of N_total (see workflow.selection.select_bank for the streaming version)."""
     keep = np.asarray(keep, bool); idx = np.where(keep)[0]; n = len(B["w0"])
     remap = np.full(n, -1, np.int64); remap[idx] = np.arange(len(idx))
     out = {}
@@ -147,12 +146,12 @@ def filter_events(B, keep):
 
 
 def load_bank_chunk(f, nchunks):
-    """ONE chunk file as a full-record bank dict -- same schema as load_bank for a single chunk (ev_off=0,
-    so its ragged indices are already 0-based / self-contained).  w0 is divided by `nchunks` (the manifest
-    total, passed in) so that SUMMING a per-chunk reduction over all chunks reproduces load_bank's
-    cross-section exactly.  This is what the streaming, bounded-memory selection in workflow.selection uses:
-    it loads one chunk, keeps only the ~1% of events that pass the cut, frees the chunk, and never holds the
-    whole concatenated bank in memory (which OOMs on the 20M-event Ar/uBooNE banks)."""
+    """One chunk file as a full-record bank dict -- same schema as load_bank for a single chunk
+    (ev_off=0, so its ragged indices are already 0-based / self-contained).  w0 is divided by
+    `nchunks` (the manifest total, passed in) so summing a per-chunk reduction over all chunks
+    reproduces load_bank's cross-section exactly.  Used by the streaming, bounded-memory selection in
+    workflow.selection: load one chunk, keep only the events that pass the cut, free the chunk --
+    never hold the whole concatenated bank in memory (which OOMs on the 20M-event Ar/uBooNE banks)."""
     d = np.load(f)
     _lep_alias = None if "k_lep" in d.files else next((o for o in ("k_mu", "k_e") if o in d.files), None)
     B = {}

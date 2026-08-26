@@ -1,8 +1,7 @@
 """Generic numerical helpers shared across ADoNIS -- interpolation + CDF building.
 
-Backend-neutral utilities that no physics package should privately own (they were formerly buried in
-nuclear/spectral.py, from which flux/spectrum.py reached in cross-package).  The ACHILLES Polint
-(Neville) is bit-exact vs the instrumented reference; the code here is moved VERBATIM.
+Backend-neutral utilities that no physics package should privately own.  The ACHILLES Polint
+(Neville) implementation here is bit-exact vs the instrumented reference.
 """
 from __future__ import annotations
 

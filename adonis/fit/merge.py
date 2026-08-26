@@ -1,27 +1,20 @@
 """Validating a set of shards before merging them.
 
-A merged product is only meaningful if its shards came from ONE run definition and cover ALL of the work.
-Neither was checked.  The corner merge inferred completeness from the fraction of non-NaN grid cells
-(`isfinite(d).mean() >= 0.999`) and inferred the run from the axes; both are proxies, and both fail in the
-directions that matter:
+A merged product is only meaningful if its shards came from ONE run definition and cover ALL of the
+work.  A NaN-fraction threshold on the merged grid is not a substitute for either check: it can accept
+an incomplete scan silently backfilled at the wrong resolution, or merge shards whose axes agree but
+whose injected truth, sigma or estimator do not.
 
-  * an incomplete FINE scan is dropped and a complete COARSE one silently takes its place, so the figure
-    renders at the wrong resolution and looks entirely healthy.  This happened; it is the reason the
-    N=41 M_A_res x S_Delta scan exists at all, and a `[note]` on stdout is not a guard.
-  * shards from two half-edited campaigns merge without complaint, because the axes agree even when the
-    injected truth, the sigma or the estimator do not.  That is the shape of the MAP-vs-MLE bug: the
-    2-D corner ran a different estimator from every other stage and nothing on disk recorded it.
-
-So: check the claims the shards make about themselves (`adonis.fit.provenance`), and check coverage
-exactly rather than statistically.
+This module checks the claims shards make about themselves (`adonis.fit.provenance`) and checks
+coverage exactly, not statistically:
 
     rep = merge.check(files, arrays)
     rep.rows(covered=[(0, 7), (7, 7)], grid=21, what="M_A_res x Eb_shift")
     rep.raise_if_bad()          # or rep.emit() to warn only
 
-GRANDFATHERING is deliberate.  Every product of the sec4_P1 campaign predates stamping, and re-running it
-is explicitly out of scope, so an unstamped shard is a WARNING.  A shard that carries provenance and
-disagrees with its siblings is an ERROR: once the information exists, ignoring it is how it rots.
+A shard written before provenance stamping cannot be verified and is a WARNING rather than an error,
+since it may not be re-runnable.  A stamped shard that disagrees with its siblings is always an ERROR:
+once the information exists, ignoring it is how it rots.
 """
 from __future__ import annotations
 
@@ -31,9 +24,8 @@ from adonis.fit import provenance
 
 
 # Every degradation knowingly accepted in this process, as (what, reason).  A figure is a PNG and has
-# nowhere to keep a `prov_partial` field, so the fact has to live somewhere the renderer can find it --
-# and it must be found without every figure function agreeing to pass a flag along, because forgetting to
-# pass it is the same failure as not having the check.  See `analysis.paper.style.save`.
+# nowhere to keep a `prov_partial` field, so the fact lives here where the renderer can find it without
+# every figure function having to pass a flag along.  See `analysis.paper.style.save`.
 DEGRADED = []
 
 
@@ -61,9 +53,9 @@ class Report:
     def rows(self, covered, grid, what=""):
         """Assert a set of (base, n) row blocks tiles range(grid) exactly.
 
-        This replaces a NaN-fraction threshold with a statement about the WORK: which rows were assigned
-        and which came back.  A gap is named, and an overlap is reported too -- two shards writing the
-        same rows means one of them computed something else than its filename claims.
+        A statement about the WORK, not a proxy for it: which rows were assigned and which came back.
+        A gap is named, and an overlap is reported too -- two shards writing the same rows means one of
+        them computed something else than its filename claims.
         """
         seen = {}
         for base, n in covered:

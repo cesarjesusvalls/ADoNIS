@@ -1,17 +1,17 @@
-"""Flexible reduced-quadratic hard-vertex amps2 reweight (see docs/joint_amps2_plan.md).
+"""Reduced-quadratic hard-vertex amps2 reweight (see docs/joint_amps2_plan.md).
 
 amps2 is an EXACT quadratic form in the linear form-factor structures ("atoms"):
 
     amps2(F) = sum_ij F_i F_j M_ij ,   M_ij = Re[ sum_ab (L_a . H_i)* (L_a . H_j) ]
 
-with H_i the per-event UNIT currents (kinematics only; coupling + intrinsic i/2m, q^mu/m folded in) and F_i the
-REAL form factors times the dial scales.  M_ij is knob-INDEPENDENT -- assembled once from kinematics -- so the
-reweight for ANY simultaneous knob setting is F(knobs)^T M F(knobs) / F0^T M F0: exact, and differentiable to any
-order (the only nonlinearity is the smooth dial->F map).  This is the joint replacement for the per-knob product
-in reweight_model._hv_qe, which kept only the diagonal M_ii and dropped every cross term.
+with H_i the per-event UNIT currents (kinematics only; coupling + intrinsic i/2m, q^mu/m folded in) and
+F_i the REAL form factors times the dial scales.  M_ij is knob-INDEPENDENT -- assembled once from
+kinematics -- so the reweight for ANY simultaneous knob setting is F(knobs)^T M F(knobs) / F0^T M F0:
+exact, and differentiable to any order (the only nonlinearity is the smooth dial->F map).  This
+supersedes a per-knob product that kept only the diagonal M_ii and dropped every cross term.
 
-QE atoms = {F1, F2, FA, FAP} (all four dial-touched -> store the full 4x4 M; no frozen atoms).  RES (larger atom
-set, active subset chosen by the dial list) lands here later.
+QE atoms = {F1, F2, FA, FAP} (all four dial-touched -> store the full 4x4 M; no frozen atoms).  RES
+(larger atom set, active subset chosen by the dial list) below.
 """
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ def build_qe_reduced(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=None):
     LH = jnp.einsum('...am,...sbm->...sab', Lm, Hs)                    # (...,4s,4a,4b) = L_a . H_s,b
     m = jnp.einsum('...sab,...tab->...st', jnp.conj(LH), LH)           # (...,4s,4t) Hermitian
     M = jnp.real(m)                                                    # amps2 = F^T M F  (F real -> Im cancels)
-    # Match the legacy per-knob records' validity mask (build_qe_*_records: ok = q2 > 0), so the reduced
-    # record is an EXACT drop-in -- same events counted, first derivatives (Jacobian/Fisher) unchanged.  The
-    # near-threshold q2<=0 events (dirac's wider Q2_FF>-TCUT mask keeps them) are dropped identically to the
-    # old records; revisiting that acceptance is a separate change, not part of the cross-term fix.
+    # Match the legacy per-knob records' validity mask (ok = q2 > 0): same events counted, so first
+    # derivatives (Jacobian/Fisher) are unchanged.  Near-threshold q2<=0 events (kept by dirac's wider
+    # Q2_FF>-TCUT mask) are dropped identically to the old records; revisiting that acceptance is a
+    # separate change.
     Q2 = _q2_mev2(kn, km)
     M = jnp.where((Q2 > 0)[..., None, None], M, 0.0)
     return {"M": np.asarray(M), "Q2": np.asarray(Q2)}
@@ -89,9 +89,9 @@ def qe_reduced_reweight(record, knobs, probe="CC", is_proton=None, nominal=None)
 
 
 # =============================================================================== RES (paper dials)
-# Atoms = {V,A,P} x {rest, wave5}; the paper's RES dials (M_A_res, res_axial_strength, pion_pole,
-# delta_strength) touch them via nested coefficients g_s(knobs).  pw_norm is dormant (add more wave-splits
-# to the atom set if it is ever released).  Unit currents come from dcc.exclusive_amps2_batch(return_structures).
+# Atoms = {V,A,P} x {rest, wave5}; the RES dials (M_A_res, res_axial_strength, pion_pole,
+# delta_strength) touch them via nested coefficients g_s(knobs).  pw_norm is dormant (extend the atom
+# set with more wave-splits if it is released).  Unit currents from dcc.exclusive_amps2_batch(return_structures).
 _RES_ATOMS = ("V_rest", "A_rest", "P_rest", "V_w5", "A_w5", "P_w5")
 _RES_ITIZ = {(2112, 211): -1, (2112, 111): -1, (2212, 211): +1}   # (ipid, ppid) -> itiz
 
@@ -115,9 +115,9 @@ def build_res_reduced(k_nu, k_lep, p_struck, p_N, p_pi, ipid, ppid):
         for i, s in enumerate(_RES_ATOMS):
             for j, t in enumerate(_RES_ATOMS):
                 Mm[:, i, j] = np.real(np.sum(np.conj(LH[s]) * LH[t], axis=(1, 2))) / norm
-        # nan_to_num: the DCC atom machinery yields NaN/inf for a ~0.1% tail of high-Q2 kinematics the gate
-        # does not catch; those events carry negligible amps2, so zeroing M (-> reweight 1, gradient 0) is the
-        # right, safe handling (a NaN M gives den=NaN -> value forced to 1 anyway, but a NaN GRADIENT).
+        # nan_to_num: the DCC atom machinery yields NaN/inf for a ~0.1% tail of high-Q2 kinematics the
+        # gate misses; those events carry negligible amps2, so zeroing M (-> reweight 1, gradient 0) is
+        # safe (a NaN M gives den=NaN -> forced to 1 anyway, but with a NaN gradient).
         M[mm] = np.where(gate[:, None, None], np.nan_to_num(Mm), 0.0)
         Q2[mm] = st["Q2"]
     # float64 M: the 6x6 quadratic form g^T M g keeps full significance for the tiny high-Q2 RES amps2

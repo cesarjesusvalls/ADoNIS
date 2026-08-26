@@ -43,18 +43,16 @@ def flux_factor(p_in_lep, p_in_nuc, had_mass=MASS_PDG_NEUTRON):
 def me_cross_section(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, spin_avg=None, had_mass=MASS_PDG_NEUTRON,
                      axial_scale=1.0, vector_scale=1.0, ff_scale=None, probe="CC", is_proton=None,
                      use_achilles_nc_coupling=False):
-    """amps2 * FluxFactor * SpinAvg  [nb] -- the matrix-element cross section WITHOUT the
-    InitialStateWeight (spectral function) and WITHOUT the phase-space Jacobian.  had_mass is the
+    """amps2 * FluxFactor * SpinAvg  [nb] -- the matrix-element cross section without the
+    InitialStateWeight (spectral function) and without the phase-space Jacobian.  had_mass is the
     actual struck-nucleon mass (mn neutron / mp proton) used by FluxFactor.  axial_scale/vector_scale
     are the QE axial/vector reweight hooks (amps2 quadratic in each).
 
-    probe: "CC" (default, nu N -> l N; leptonic kind="CC_nu", isovector hadron current) is BIT-IDENTICAL
-    to the pre-EM path.  "EM" (e N -> e' N inclusive (e,e')) routes the photon leptonic current and the
-    struck-nucleon's own form factors -- needs is_proton (bool, broadcast over events).
+    probe: "CC" (default, nu N -> l N; leptonic kind="CC_nu", isovector hadron current).  "EM"
+    (e N -> e' N inclusive (e,e')) routes the photon leptonic current and the struck-nucleon's own
+    form factors -- needs is_proton (bool, broadcast over events).
     spin_avg=None takes the probe's registry value (CC 1/2, EM 1/4 = 2 e helicities x 2 nucleon
-    spins); every production call site still passes it explicitly, so this is byte-identical.  It used
-    to default to 0.5, which is CC's value -- an EM caller that forgot it got the wrong average with
-    no error.  The probe now decides."""
+    spins); pass it explicitly to override."""
     spec = probe_spec(probe)          # raises on unknown/unimplemented -- NEVER falls through to CC
     if spin_avg is None:
         spin_avg = spec.spin_avg

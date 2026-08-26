@@ -1,21 +1,19 @@
 """How the fused kernel is sized on whatever GPU it lands on.
 
-Every memory knob in this codebase has, at some point, been a hardcoded number that happened to work on
-one card.  `S4_JAC_BATCH=16` against 17 dials; a 0.25 pool fraction tuned on an A100; a dial batch chosen
-because 11 GB was what turing had.  Each one silently changed the arithmetic, the dispatch count, or the
-failure mode on a different device.  This module makes the sizing an explicit, logged, overridable PLAN.
+Memory knobs (event chunking, dial batching, pool fraction) are auto-sized per device from a measured
+budget, logged, and overridable via config: a number that changes the dispatch count or arithmetic
+should never be invisible in the output.
 
-WHAT LIMITS THE KERNEL.  Two different resources, and they are easy to confuse:
+WHAT LIMITS THE KERNEL.  Two different resources, easy to confuse:
 
   * BFC POOL (`XLA_PYTHON_CLIENT_MEM_FRACTION`, default 0.75 of the card).  Holds the resident banks and
     the program's tensors.  Wants to be LARGE.
   * EVERYTHING OUTSIDE THE POOL -- the compiled CUBIN, CUDA graphs, cuBLAS/cuDNN workspaces, and the
     compiler's own scratch.  Wants the pool to be SMALL, because preallocation takes that memory away.
 
-Measured on turing (11 GB) at 250k events/sample: an 8.07 GB pool failed loading the chi2 program; 4.84
-reached residuals; 2.69 reached the jacobian.  One stage further per halving -- the classic signature of
-a resource that lives outside the pool.  So the default here is a pool just large enough for the data,
-not the stock 75%.
+Shrinking the pool fraction in steps, the largest program that still loads (chi2 vs residuals vs
+jacobian) grows a stage at a time -- the signature of a resource living outside the pool, not inside
+it.  So the default here sizes the pool just large enough for the resident data, not the stock 75%.
 
 WHAT SETS THE CEILING.  A vmapped JVP carries an (n_dials x n_events) tangent through every intermediate,
 so the working set scales as the PRODUCT.  Calibration points, all measured:
@@ -95,10 +93,9 @@ def device_gb():
 def resolve(cfg, n_dials, n_events_max, log=print):
     """Return the memory plan {event_chunk, jac_batch, hvp_batch} for this device and problem.
 
-    Explicit config values are honoured verbatim -- this never silently overrides a stated choice.  What
-    is auto-sized is auto-sized from the measured budget, and the whole plan is LOGGED, because the
-    single most expensive lesson in this codebase is that a number which changes the dispatch count must
-    never be invisible in the output.
+    Explicit config values are honoured verbatim -- this never silently overrides a stated choice.
+    What is auto-sized comes from the measured budget, and the whole plan is LOGGED: a number that
+    changes the dispatch count must never be invisible in the output.
     """
     c = _cfg(cfg)
     gb = device_gb()

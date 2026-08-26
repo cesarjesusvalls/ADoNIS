@@ -1,16 +1,15 @@
-"""Signal selection + TKI/STV observables on the CURRENT bank schemas, driven by a NuSignalDef.
+"""Signal selection + TKI/STV observables on the current bank schemas, driven by a NuSignalDef.
 
-Two inputs, ONE selection vocabulary:
+Two inputs, one selection vocabulary:
   * ADoNIS   -> `bank_signal(bank_dir, sd)`   : a paper_banks bank dir (k_lep + ragged fs_*, weight w0;
                 loaded by bank_plot.load_bank, which already divides w0 by n_chunks -> absolute nb).
   * ACHILLES -> `oracle_signal(oracle_npz, sd)`: a probe-agnostic fs_rich oracle npz
                 (lep / prot_p4 / pi_p4 / pi_pid / n_other_meson, weight w * weight_to_nb -> absolute nb).
 
 The NuSignalDef selects the topology (pion_id "none" = CC0pi, "pip" = CC1pi) and the acceptance windows
-(mu_win + cos_mu|cth, p_win + cth, pi_win + cth).  The SAME cuts and the SAME validated STV formulas
+(mu_win + cos_mu|cth, p_win + cth, pi_win + cth).  The same cuts and the same STV formulas
 (bank_plot.pN_1pi/dptt_1pi/dpt_1pi/dat_1pi -- with the pion 4-vector set to zero, the CC1pi formulas
-reduce EXACTLY to CC0pi) run on both sides.  This replaces the retired engine-bank
-select_signal/select_reference (P-A); it generalizes the T2K/MINERvA/MicroBooNE scratch drivers.
+reduce exactly to CC0pi) run on both sides.
 """
 import glob
 import json
@@ -21,7 +20,7 @@ from adonis.reweight import bank_plot as BP
 from adonis.constants import (PDG_MESONS, mp as _MP, mN as _MN, me as _ME, mpip as _MPIP,
                               MASS_PDG_MUON as _MMU)
 
-_MESONS = list(PDG_MESONS)   # np.isin needs a list/tuple -- a frozenset silently matches NOTHING
+_MESONS = list(PDG_MESONS)   # np.isin needs a list/tuple; a frozenset silently matches nothing
 
 
 def _cos(p4, mom):
@@ -68,11 +67,9 @@ def _q2_wexp(mu, pmu, cmu, knu):
 
 
 def _mu_pass(pmu, cmu, sd):
-    # BOTH None means NO ANGULAR CUT, which is a real signal definition, not a missing value: the T2K
-    # CC0pi double-differential measurement (arXiv:2002.09323) bins cos theta_mu down to -1.  Before
-    # this, cos_mu: null with cth: null reached `cmu > None` and raised.  Encoding it as cos_mu: -1.0
-    # instead would work but says something slightly different -- it excludes exactly -1 -- and hides
-    # the intent behind a magic number.
+    # cos_mu and cth both None means NO ANGULAR CUT, a real signal definition rather than a missing
+    # value: the T2K CC0pi double-differential measurement (arXiv:2002.09323) bins cos theta_mu down
+    # to -1.  cos_mu: -1.0 would work numerically but excludes exactly -1 and hides the intent.
     cut = sd.cos_mu if sd.cos_mu is not None else sd.cth       # CC0pi backward/forward mu cut, else cth
     ok = (pmu >= sd.mu_win[0]) & (pmu <= sd.mu_win[1])
     return ok if cut is None else (ok & (cmu > cut))
@@ -86,12 +83,12 @@ def _finish(obs, sel, w, chan):
 
 
 # --------------------------------------------------------------------------- streaming (bounded memory)
-# The ADoNIS banks are 20M events across ~240 chunk_*.npz; a signal cut keeps ~0.1-1% of them.  Loading
-# the whole concatenated bank just to select that sliver OOMs the big Ar/uBooNE banks (needs ~128G).  So
-# every bank-side reducer STREAMS: load one chunk, keep only the passing events, free the chunk.  Peak
-# memory = one chunk + the (tiny) accumulated selection -- independent of bank size.  Exactly reproduces
-# load-all-then-select: load_bank_chunk divides w0 by the manifest n_chunks (as load_bank does), and chunk
-# + within-chunk order is preserved, so the histograms/chi2 are bit-identical.
+# The ADoNIS banks are 20M events across ~240 chunk_*.npz; a signal cut keeps ~0.1-1% of them. Loading
+# the whole concatenated bank just to select that sliver OOMs the big Ar/uBooNE banks (needs ~128G). So
+# every bank-side reducer streams: load one chunk, keep only the passing events, free the chunk. Peak
+# memory = one chunk + the accumulated selection, independent of bank size. Reproduces load-all-then-
+# select exactly: load_bank_chunk divides w0 by the manifest n_chunks (as load_bank does), and chunk +
+# within-chunk order is preserved, so histograms/chi2 are bit-identical.
 def _merge_sel(parts):
     parts = [p for p in parts if len(p["w"])]
     if not parts:
@@ -114,7 +111,7 @@ def _stream_select(bank_dir, loader, select_fn, sd):
 def _cc_full(B, sd):
     """Full-length (sel mask, obs dict, w0, chan) for ONE CC bank/chunk -- the pre-compaction body shared
     by bank_signal (which _finish-compacts it for plotting) and the Gate-I jacobian (which bins the
-    per-event DIFFERENTIATED weight over the SAME mask/edges).  sel/obs/w0/chan are all bank-length."""
+    per-event differentiated weight over the same mask/edges).  sel/obs/w0/chan are all bank-length."""
     mu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(mu[:, 1:], axis=1); cmu = _cos(mu, pmu)
     if sd.pion_id == "none":                                   # ---- CC0pi (Np) / CC-inclusive muon box ----
@@ -136,10 +133,7 @@ def _cc_full(B, sd):
     else:                                                      # ---- CC1pi ----
         npip, npi0, npim = BP.pion_counts(B); pip = BP.single_pip(B)
         if sd.pion_id == "anypi":
-            # "anypi" USED to validate and then do nothing -- selection never branched on it, so it
-            # was byte-identical to "pip".  A config key that silently does nothing is the same class
-            # of defect as a field name that lies.  Implemented: exactly one pion of ANY charge, and
-            # the signal pion is whichever one it is.
+            # exactly one pion of any charge; the signal pion is whichever one it is
             pip = pip + BP.single_pi0(B) + BP._single_pion(B, -211)
         elif sd.pion_id != "pip":
             raise ValueError(f"pion_id={sd.pion_id!r} has no selection branch; for NC1pi0 use "
@@ -191,9 +185,9 @@ def _ele_full_bank(B, sd):
 
 
 def select_full(B, sd):
-    """Full-length selection dispatch (mask + obs dict + w0 + chan) for the Gate-I jacobian, which bins the
-    per-event DIFFERENTIATED weight over the SAME mask/edges bank_signal plots.  Dispatches on the signal
-    type: EleBeamSignalDef -> (e,e') electron; NuSignalDef -> CC.  (NC gradient is a later sample.)"""
+    """Full-length selection dispatch (mask + obs dict + w0 + chan) for the Gate-I jacobian, which bins
+    the per-event differentiated weight over the same mask/edges bank_signal plots.  Dispatches on the
+    signal type: EleBeamSignalDef -> (e,e') electron; NuSignalDef -> CC."""
     if hasattr(sd, "e_theta_win"):                            # EleBeamSignalDef (duck-typed to avoid a cycle)
         return _ele_full_bank(B, sd)
     return _cc_full(B, sd)
@@ -232,18 +226,18 @@ def _concat_compact(parts):
 
 
 def select_bank(bank_dir, sd, max_chunks=None, cap=None):
-    """A compact full-record bank of ONLY the signal events (N_selected), built by STREAMING the full bank
-    and filter_events-ing each chunk to `sd`.  Peak memory = one chunk + the accumulated signal (never the
-    whole bank); bank_weight / the observables on the result reproduce the full bank restricted to the
-    signal.  This is what lets the fit (sec4) cache N_selected instead of N_total.
+    """A compact full-record bank of only the signal events (N_selected), built by streaming the full bank
+    and filter_events-ing each chunk to `sd`.  Peak memory = one chunk + the accumulated signal, never the
+    whole bank; bank_weight / observables on the result reproduce the full bank restricted to the signal.
+    Lets the fit (sec4) cache N_selected instead of N_total.
 
-    `cap` (fit-side subsample): keep EXACTLY `cap` selected events.  Stream chunks; when a chunk would push
+    `cap` (fit-side subsample): keep exactly `cap` selected events.  Stream chunks; when a chunk would push
     the total past cap, keep only its first (cap - accumulated) selected events and stop.  w0 is normalized
-    by the EFFECTIVE chunk count = (full chunks kept) + (fraction of the last chunk's SELECTED events kept).
-    That is an exact, UNBIASED cross section: each chunk's selected-w0 sum is an iid estimate of
-    sigma_selected (different seeds), and a random fraction f of a chunk's selected events sums to ~f*sigma,
-    so dividing by K+f recovers sigma.  No partial-chunk bias.  cap=None -> the full signal (loaded chunk
-    count).  (Events aren't physically ordered within a chunk, so the first-N is a fine random subsample.)"""
+    by the effective chunk count = (full chunks kept) + (fraction of the last chunk's selected events kept).
+    This is an unbiased cross section: each chunk's selected-w0 sum is an iid estimate of sigma_selected,
+    and a random fraction f of a chunk's selected events sums to ~f*sigma, so dividing by K+f recovers
+    sigma exactly.  cap=None -> the full signal (loaded chunk count).  Events aren't physically ordered
+    within a chunk, so taking the first N is a valid random subsample."""
     import glob
     files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
     if max_chunks:
@@ -300,14 +294,13 @@ def oracle_signal(oracle_npz, sd):
     return _finish(_obs(mu, lead, pip), sel, w, chan)
 
 
-# =============================================================== NC1pi0: a PARALLEL selection path
-# Deliberately NOT a flag threaded through _obs.  Every observable it computes -- dpt, dalphat,
-# dphit, pn, dptt -- takes the outgoing lepton as a REQUIRED argument and is physically undefined
-# without it.  For NC the lepton is an invisible neutrino, so threading a "lepton optional" flag
-# would produce observables that are silently meaningless rather than absent, which is worse.
+# =============================================================== NC1pi0: a parallel selection path
+# Not a flag threaded through _obs: every observable it computes (dpt, dalphat, dphit, pn, dptt) takes
+# the outgoing lepton as a required argument and is physically undefined without it. For NC the lepton
+# is an invisible neutrino, so a "lepton optional" flag would produce silently meaningless observables.
 #
-# The NC observables are the ones the paper's figures 11 and 12 actually plot: p_pi0, cos theta_pi0,
-# and the proton multiplicity ("Xp").
+# NC observables are the ones the paper's figures 11 and 12 plot: p_pi0, cos theta_pi0, and the proton
+# multiplicity ("Xp").
 
 def _obs_nc(pi0, protons_lead, has_p):
     """Observable dict for an NC1pi0 event.  No lepton anywhere."""
@@ -374,17 +367,17 @@ def oracle_signal_nc(oracle_npz, sd):
     return _finish(_obs_nc(pi0, lead, hasp), sel, w, chan)
 
 
-# =============================================================== electron (e,e') beam: a PEER of the nu path
-# The sibling of bank_signal / oracle_signal for the electron-scattering figures, driven by an
-# EleBeamNuSignalDef instead of a NuNuSignalDef.  Same contract: one reducer per input side, each returning a
-# per-event dict of the (e,e') observables (omega, E_QE, E_cal, P_T) + weight w + QE/RES channel + the
-# topology counts (npi, nprot) the figures slice on (0pi for E_QE, 1p0pi for E_cal/P_T).  The common
-# electron acceptance (theta window + optional E_e floor) is applied here; the per-observable 0pi/1p0pi
-# masks are applied by the caller, since one figure histograms several topologies off one reduction.
+# =============================================================== electron (e,e') beam: peer of the nu path
+# Sibling of bank_signal / oracle_signal for the electron-scattering figures, driven by an
+# EleBeamSignalDef.  Same contract: one reducer per input side, each returning a per-event dict of the
+# (e,e') observables (omega, E_QE, E_cal, P_T) + weight w + QE/RES channel + topology counts (npi,
+# nprot) the figures slice on (0pi for E_QE, 1p0pi for E_cal/P_T).  Common electron acceptance (theta
+# window + optional E_e floor) is applied here; per-observable 0pi/1p0pi masks are applied by the
+# caller, since one figure histograms several topologies off one reduction.
 #
-# The (e,e') banks differ from the neutrino paper_banks on disk (weight field `c` not `w0`; the inclusive
-# bank carries no outgoing-lepton 4-vector, since omega+theta fully fix the scattered electron), so this
-# path uses its own small loader rather than bank_plot.load_bank.
+# The (e,e') banks differ from the neutrino paper_banks on disk (weight field `c` not `w0`; the
+# inclusive bank carries no outgoing-lepton 4-vector, since omega+theta fully fix the scattered
+# electron), so this path uses its own small loader rather than bank_plot.load_bank.
 
 def _load_ele_bank(bank_dir):
     """Concatenate an (e,e') bank's chunks -> per-event {omega, theta, k_lep, w0, channel, n_pi_out} +

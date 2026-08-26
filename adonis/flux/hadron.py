@@ -3,7 +3,7 @@ beam sampling.  A mono-species projectile fired along +z with |p| uniform in [pm
 parameter b uniform in a disk of radius R_DISK, starting at z0 = -1.05*R_nuc (5% outside the surface).
 
 This is the reusable BEAM DESCRIPTION; the tagged-beam cascade STUDY (running the cascade + binning
-sigma(p) etc.) lives in the analysis layer.  (Extracted 2026-07-26 from analysis/beams/beam_bank.py.)
+sigma(p) etc.) lives in the analysis layer.
 """
 import numpy as np
 

@@ -43,7 +43,7 @@ plab = style.plab      # knob name -> LaTeX symbol; single-sourced in style.py (
 
 def gate1(J, sigma, prior, rows):
     """(marginalized shrinkage, raw shrinkage, Fisher) for the given bin rows -- via the shared engine."""
-    F, _V, _sig_post, marg, reach = FE.gate1(J, sigma, prior, rows)     # reach = sqrt(diag F)
+    F, _V, _sig_post, marg, reach = FE.fisher_shrinkage(J, sigma, prior, rows)     # reach = sqrt(diag F)
     with np.errstate(divide="ignore"):
         raw = np.where(reach > 0, 1.0 / (reach * prior), np.inf)         # raw shrinkage = 1/sqrt(F_kk)/prior
     return marg, raw, F

@@ -1,19 +1,16 @@
-"""THE centralized cascade-outcome record builder -- one place, every probe.
+"""The cascade-outcome record builder -- one place, every probe.
 
-`cascade_outcome_record(out, prim_fate, fsi_rec, primary)` takes the RAW cascade output batch (the same
-`out` batch run_cascade_pool returns and cascade_nucleus exposes as nterms[0]) and produces the UNIFORM
+`cascade_outcome_record(out, prim_fate, fsi_rec, primary)` takes the raw cascade output batch (the same
+`out` batch run_cascade_pool returns and cascade_nucleus exposes as nterms[0]) and produces the uniform
 record set that every bank carries, regardless of whether the primary was a neutrino vertex, an electron
 vertex, or a tagged hadron beam:
 
   * fs_*   : full ragged final state (fs_off, fs_pid, fs_chg, fs_p4) -- eta-aware (pion charge 3 -> 221)
   * ks_*   : the escaped-particle list as species/charge/|p|/cos_theta (angular view of fs_*)
   * n_*    : final-state multiplicities (n_p/n_n out, n_pi+/pi0/pi-/eta)
-  * reacted/absorbed : primary-interaction flags derived from the fates (meaningful for ANY primary)
+  * reacted/absorbed : primary-interaction flags derived from the fates (meaningful for any primary)
   * f_*    : the FSI kind-1 reweight record (via compact_fsi_record) -- accepts one record or a list to
              concatenate (weak/EM bank the qe+res blocks; hadron banks a single block)
-
-This replaces the two duplicated copies of this logic (analysis/paper/beams/beam_bank.py::build and
-adonis/workflow/reweight_bank.py).  No scatter: the helpers live here.
 """
 from __future__ import annotations
 import numpy as np
@@ -28,9 +25,8 @@ _PI_PID = np.array([211, 111, -211, 221])    # pion charge idx 0:+ 1:0 2:- 3:eta
 
 # --------------------------------------------------------------------------- final state (eta-aware) ---
 def final_state(out):
-    """Ragged (fs_off, fs_pid, fs_chg, fs_p4) over the ALIVE escaped particles.  Eta-aware (charge 3 ->
-    pid 221).  ONE definition for every probe (was duplicated, and the neutrino/(e,e') copy mislabelled a
-    surviving eta as a pi- via clip(charge,0,2))."""
+    """Ragged (fs_off, fs_pid, fs_chg, fs_p4) over the alive escaped particles.  Eta-aware (charge 3 ->
+    pid 221).  One definition for every probe."""
     sp = np.asarray(out["species"]); chg = np.asarray(out["charge"]); al = np.asarray(out["alive"])
     p4 = np.asarray(out["p4"]).astype(np.float64)
     pid = np.where(sp == PION, _PI_PID[np.clip(chg, 0, 3)], np.where(chg == 1, 2212, 2112))
@@ -64,9 +60,8 @@ def multiplicities(out):
 
 def kicked_secondaries(out):
     """Flat per-escaped-particle kinematics: species/charge/|p|/cos_theta(+z) + primary tag + event idx.
-    ks_prim tags the escaped PRIMARIES via track_id (< _TRACK_OFFSET) -- the ONE uniform primary criterion
-    for every probe.  (gen==0 over-counted knocked-out background nucleons; origin==_ORIG_PRIM_PI was
-    hadron-beam specific -- track_id subsumes both and equals the beam reference byte-for-byte.)"""
+    ks_prim tags the escaped primaries via track_id (< _TRACK_OFFSET), a uniform primary criterion that
+    holds for every probe."""
     sp = np.asarray(out["species"]); chg = np.asarray(out["charge"]); al = np.asarray(out["alive"])
     tid = np.asarray(out["track_id"]); p3 = np.asarray(out["p4"])[:, :, 1:]
     pm = np.linalg.norm(p3, axis=2); cth = p3[:, :, 2] / np.clip(pm, 1e-9, None)
@@ -80,7 +75,7 @@ def kicked_secondaries(out):
 def primary_nsc(out, prim_fate):
     """The surviving primary's scatter count, per event: nsc of the escaped primary (track_id w), maxed
     over primaries -- 0 for primaries that reacted terminally (not in the final state; their reaction is
-    carried by prim_fate).  This + prim_fate ARE the per-primary ground truth; every reaction flag is a
+    carried by prim_fate).  This + prim_fate are the per-primary ground truth; every reaction flag is a
     view over them (see `derive_flags`), so nothing derived is persisted."""
     tid = np.asarray(out["track_id"]); nsc = np.asarray(out["nsc"]); al = np.asarray(out["alive"])
     n, Wp = np.asarray(prim_fate).shape
@@ -93,7 +88,7 @@ def primary_nsc(out, prim_fate):
 
 # --------------------------------------------------------------------------- derived reaction flags ----
 def derive_flags(bank):
-    """THE single definition of the event-level primary-interaction flags, computed from the ONLY two
+    """The single definition of the event-level primary-interaction flags, computed from the only two
     stored ground-truth arrays: per-primary fate `prim_fate` (n, Wmax; FATE_NONE-padded) and per-event
     scatter count `nsc_prim` (n,).  Nothing derived is persisted -- consumers call this.  Fate-derived,
     no species branch (nucleons never carry ABSORB/CONVERT, mesons never CAPTURE, so physics separates
@@ -130,10 +125,10 @@ def fsi_kind1(recs, ns):
 
 
 def cascade_outcome_record(blocks, fsi_recs, ns):
-    """The full uniform cascade-outcome record for one chunk, concatenated across the present BLOCKS
+    """The full uniform cascade-outcome record for one chunk, concatenated across the present blocks
     (one block for a hadron beam; the qe then res blocks for a weak/EM bank).  Each block is
     (out, prim_fate): out = raw escaped batch, prim_fate = (nb, Wp) per-primary terminal fate (one
-    column per primary track_id).  The ground truth is exactly TWO arrays: `prim_fate` stored as a
+    column per primary track_id).  The ground truth is exactly two arrays: `prim_fate` stored as a
     padded rectangle (n, Wmax) -- FATE_NONE fills the shorter (QE, 1-primary) block up to the widest
     (RES, 2-primary) -- and `nsc_prim` (n,).  A padded rectangle is self-describing (no companion count
     array) and concatenates cleanly across chunks (axis 0) under the naive beam loader.  Every reaction
