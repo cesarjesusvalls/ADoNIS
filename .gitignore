@@ -4,33 +4,22 @@ __pycache__/
 *.egg-info/
 .ipynb_checkpoints/
 
-# Generated validation artifacts (reproducible via the run_*.py scripts)
-*.png
-*_out.txt
-
 # JAX / OS
 .DS_Store
 .jax_cache/
 
-# DCC parse cache
+# Run products, all regenerable: figures, banks and caches, ACHILLES events, logs.
+*.png
 *.npz
-
-# ACHILLES event output
 *.hepmc
-# all inputs/data live locally, not in the repo (experiment releases via nuisance, ACHILLES
-# inputs fetched, densities/oracle regenerable) -- see data/README or docs
-# BOTH the directory form and the bare name.  `data/` and `output/` with a trailing slash match a
-# DIRECTORY only -- in this checkout they are SYMLINKS into /sdf/data/neutrino/cjesus/ADoNIS, which the
-# trailing-slash form does not match.  They therefore showed as untracked forever, and a `git add -A`
-# committed them (f96a9e3): a machine-specific absolute path, baked into the repo.
+*.log
+*_out.txt
+
+# Inputs and outputs live outside the repo; see analysis/paper/REPRODUCE.md.  Both spellings are
+# needed: `data/` and `output/` match a directory only, and in a working checkout these are usually
+# symlinks, which the trailing-slash form does not match.
 data
 data/
-# run products (regenerable): output/achilles = ACHILLES, output/adonis = ADoNIS banks + caches
 output
 output/
 _paper_release/
-output/event_bank/
-
-# LaTeX/build logs (docs/paper_skeleton.log was committed by an `add -A`)
-*.log
-slurm-35088178.out

@@ -146,10 +146,10 @@ Runs every study in the config and writes `output/altgen/sec5f10_unfold.npz`.
 ## 4. Figures
 
 ```bash
-python -m analysis.paper.validation.make --no-ratio      # Figs. 1, 3, 7, 8, 9, 10
-python -m analysis.paper.grad_info.make                  # Figs. 4, 5
-python -m analysis.paper.inference.make --label sec4_P2  # Figs. 6, 11, 12
-python -m analysis.paper.unfolding.make --label sec5f10  # Figs. 13, 14, 15
+python -m analysis.paper.validation.make --no-ratio      # ADoNIS vs ACHILLES, 8 figures
+python -m analysis.paper.grad_info.make                  # gradient information, 2
+python -m analysis.paper.inference.make --label sec4_P2  # fit and uncertainties, 3
+python -m analysis.paper.unfolding.make --label sec5f10  # unfolding, 3
 ```
 
 Each renders one figure per subprocess. Name a figure to build only that one
