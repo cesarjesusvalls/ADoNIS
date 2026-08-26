@@ -75,13 +75,11 @@ def _kf_local(rho_species):
 
 
 def _two_body_cm_scatter(p_pi, p_N, m_out_pi, key, cos_cm=None, m_recoil=None):
-    """Elastic/charge-exchange piN -> pi'N' (or NN -> N'N') two-body kinematics; cos(theta_cm) is supplied
-    (from the DCC angular distribution -- ACHILLES MesonBaryonInteraction::GenerateMomentum
-    samples the partial-wave angular CDF, NOT isotropic) or isotropic if cos_cm is None.
-    Returns the OUTGOING (m_out_pi) 4-momentum (E,px,py,pz) in the lab.  theta_cm is measured from
-    the incoming-particle CM direction (Poincare z-axis), matching ACHILLES.
-    m_recoil = the recoil particle's mass (default avg M_N); pass the PHYSICAL per-species nucleon mass
-    so the 2->2 final-state masses match ACHILLES GenerateMomentum (ma/mb physical)."""
+    """Elastic/charge-exchange piN -> pi'N' (or NN -> N'N') two-body kinematics.  cos_cm is the CM
+    scattering angle, measured from the incoming-particle CM direction (ACHILLES convention); sampled
+    from the DCC angular CDF by the caller, or isotropic if None.  Returns the outgoing (m_out_pi)
+    4-momentum in the lab.  m_recoil defaults to avg M_N; pass the physical per-species mass so the 2->2
+    final-state masses match ACHILLES GenerateMomentum."""
     P = p_pi + p_N                                  # total 4-momentum (lab)
     s = P[0] ** 2 - jnp.sum(P[1:] ** 2)
     sqrts = jnp.sqrt(jnp.clip(s, 1e-6, None))
@@ -159,11 +157,9 @@ def sample_vertex(key, n, nucleus="c12_density.txt", density_n=None):
 M_N_GEV = M_N / 1000.0
 
 def nn_elastic_sigma(sqrts_mev, same_iso, mn_gev=M_N_GEV):
-    """NN elastic cross section [mb] (ACHILLES NNElastic, GiBUU).  sqrts in MeV; `same_iso`
-    True for pp/nn, False for np.  Piecewise in p_lab [GeV].  `mn_gev` is the PER-PAIR average mass
-    (mp+mp)/2 for pp, (mn+mn)/2 for nn, (mp+mn)/2 for pn -- ACHILLES NNElastic.cc:184 uses the actual
-    pair mass in threshold/plab and the low-plab mn/threshold terms (default = global avg for callers
-    that do not resolve the pair)."""
+    """NN elastic cross section [mb] (ACHILLES NNElastic, GiBUU).  sqrts in MeV; `same_iso` True for
+    pp/nn, False for np.  Piecewise in p_lab [GeV].  `mn_gev` is the per-pair average mass (ACHILLES
+    NNElastic.cc:184 uses the actual pair mass in threshold/plab; default = global avg)."""
     sqrts = sqrts_mev / 1000.0                       # GeV
     mn = mn_gev
     thr = sqrts ** 2 - 4.0 * mn ** 2
@@ -286,8 +282,7 @@ def _ragged_prod(per, eidx, n_events):
     return jnp.exp(jnp.zeros(n_events, acc).at[eidx].add(lp))
 
 
-# ---- PER-SLOT likelihood ratios: the physics, written ONCE.  Shape-agnostic -- the same function serves
-# the dense in-engine record (n, K) and the ragged bank record (M,); only the reduction differs. --------- #
+# ---- PER-SLOT likelihood ratios, shape-agnostic: serve both the dense (n,K) and ragged (M,) records. ---- #
 def pion_slot_factor(code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c,
                      s_abs, s_el, s_cex, s_conv):
     """Per-slot pion FSI likelihood ratio -- branch x survival.  One slot = one in-slab candidate step
@@ -299,9 +294,8 @@ def pion_slot_factor(code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c,
           candidate:   hit: pk/p0    no-hit: (1-pk)/(1-p0),    p0 = exp(-a), pk = exp(-a/g).
     Under a common rescale the branch factor is 1 but survival is not (mean free path changes).
     == 1 at all-nominal (g = 1 -> pk = p0)."""
-    # A no-hit slot's branch stats are taken at j = argmin over an all-inf metric -> meaningless and
-    # possibly non-finite; jnp.where picks the right value but a non-finite untaken branch still poisons
-    # the reverse-mode gradient (nan * 0 = nan), so neutralize the branch inputs off-hit up front.
+    # A no-hit slot's branch stats can be non-finite; a non-finite untaken branch still poisons the
+    # reverse-mode gradient (nan * 0 = nan), so neutralize the branch inputs off-hit up front.
     hitf = hh.astype(bool)
     sa = jnp.where(hitf, sa, 1.0); ss_el = jnp.where(hitf, ss_el, 1.0)
     ss = jnp.where(hitf, ss, 1.0); si = jnp.where(hitf, si, 0.0)
@@ -406,52 +400,41 @@ class CascadeConfig:
     density_n: str = "c12_density.txt"     # neutron density file (= nucleus for N=Z nuclei, e.g. C)
     configs: str = "QMC_configs.out.gz"    # nucleon configuration file (QMC/RMF; A read from header)
     step: float = 0.05
-    max_steps: int = 100000  # absolute per-particle/per-event step ceiling (ACHILLES cMaxSteps = 100000).
-                             # Not a physics knob: the cascade terminates via escape/capture/absorption/
-                             # path_budget_R far below this.  Reaching it means a runaway particle, which
-                             # the pool raises on (run_cascade_pool._raise_if_runaway) instead of silently
-                             # truncating.  Must equal _HARD_STEPS below.
-    path_budget_R: float = 20.0  # runaway backstop: drop a particle once its accumulated path length
-                             # exceeds path_budget_R * nuclear_radius.  ACHILLES has no such cap (only
-                             # geometric escape/capture + the 100k-step ceiling); too tight a budget would
-                             # clip legitimate slow tracks ACHILLES lets run to escape/capture, so 20R (net
-                             # escape needs ~1R) keeps the clipped fraction ~0 at negligible extra compute.
+    max_steps: int = 100000  # absolute per-particle/per-event step ceiling (ACHILLES cMaxSteps).  Not a
+                             # physics bound (escape/capture/absorption/path_budget_R fire far below it);
+                             # reaching it means a runaway particle, and the pool raises instead of
+                             # silently truncating.  Must equal _HARD_STEPS below.
+    path_budget_R: float = 20.0  # runaway backstop: drop a particle once its path length exceeds
+                             # path_budget_R * nuclear_radius.  ACHILLES has no such cap; 20R is far
+                             # beyond any real escaping/capturing track (net escape needs ~1R).
     seed: int = 0
-    time_step: bool = False  # stepping clock: False = fixed-distance march (every particle advances
-                             # `step` fm/global-step).  True = fixed-time march mirroring ACHILLES
-                             # AdaptiveStep: `step` is read as Dt and each particle advances `beta*step`
-                             # fm/global-step (its own beta, no max_beta -> P-invariant), so fast tracks
-                             # outrun slow ones; fz then decrements by the shared Dt, keeping the
-                             # fz-expiry distance beta*fz invariant.
-    # interaction probability is always the Gaussian model exp(-pi b^2/sigma) -- the single,
-    # differentiable interaction-probability law.
-    fast_xsec: bool = True   # evaluate Oset/DCC cross sections only for the K nearest in-slab nucleons
-                             # (scatter back into the (n,A) grid); bit-exact, ~4x cheaper per step.
+    time_step: bool = False  # stepping clock: False = fixed-distance march (`step` fm/global-step).
+                             # True = fixed-time march mirroring ACHILLES AdaptiveStep: `step` is Dt and
+                             # each particle advances `beta*step` (own beta, no max_beta -> P-invariant),
+                             # so fast tracks outrun slow ones; fz decrements by the shared Dt.
+    # interaction probability is always the Gaussian model exp(-pi b^2/sigma), the single differentiable
+    # interaction-probability law.
+    fast_xsec: bool = True   # evaluate Oset/DCC cross sections only for the K nearest in-slab nucleons;
+                             # bit-exact, ~4x cheaper per step.
     pauli: bool = True       # Pauli-block the outgoing nucleon(s) of scatter/absorption (ACHILLES
-                             # FinalizeMomentum); set False for ablation (no-blocking) studies.
-    algo: str = "step"       # "step": fixed-step Glauber march (reference).  "interaction": jump
-                             # directly to the next interaction (same probability model, ~20x fewer
-                             # iterations).  Statistically equivalent to "step".
-    nn_inelastic: bool = True  # NN -> N Delta -> N N pi in the NUCLEON cascade (ACHILLES
-                             # NucleonNucleon GiBUU ResonanceMode: Decay; adonis/fsi/nn_inelastic).
-                             # Degrades fast nucleons and creates a pion (meson-veto relevant).
-                             # False = elastic-only walk.
+                             # FinalizeMomentum); False for ablation (no-blocking) studies.
+    algo: str = "step"       # "step": fixed-step Glauber march (reference).  "interaction": jump directly
+                             # to the next interaction (same probability model, ~20x fewer iterations).
+    nn_inelastic: bool = True  # NN -> N Delta -> N N pi in the NUCLEON cascade (ACHILLES NucleonNucleon
+                             # GiBUU ResonanceMode: Decay).  Degrades fast nucleons and creates a pion
+                             # (meson-veto relevant).  False = elastic-only walk.
     early_exit: bool = True  # while_loop walk that stops once no particle can interact again (dead, or
-                             # outside the radius moving outward = inert).  Bit-exact in every returned
-                             # output (same per-step keys; skipped steps are identity); max_steps then
-                             # acts as a pure safety bound.  False = the reference lax.scan.
-    track_steps: bool = False  # MC-truth: also stack the per-step (pos, p4, alive) trajectory from the
-                             # scan -> returns traj for viz/diagnostics.  Forces the reference scan (not
-                             # early_exit).  Default off -> production path unchanged.
+                             # outside the radius moving outward).  Bit-exact in every output; max_steps
+                             # then acts as a pure safety bound.  False = the reference lax.scan.
+    track_steps: bool = False  # MC-truth: also stack the per-step (pos, p4, alive) trajectory -> traj
+                             # for viz/diagnostics.  Forces the reference scan (not early_exit).
     engine: str = "pool"     # cascade structure: "pool" = single per-step-reconciled particle stack
                              # (default); "bfs" = generation-synchronized, not true step-order consumption.
     recap_ke: float = 10.0   # escaping nucleon with KE < recap_ke [MeV] is recaptured (set to rest).
-                             # Faithful to ACHILLES Cascade::Escaped (src/Achilles/Cascade.cc, called every
-                             # step, ungated by PotentialProp): `constexpr double potential = 10.0; energy =
-                             # E - mN - potential; if(|pos|>radius){ KE<10 -> captured }`.  This 10 MeV
-                             # optical-potential capture is separate from (and always on, unlike) the
-                             # PotentialProp:True Hamiltonian capture.  Keep in sync with ACHILLES's
-                             # hard-coded 10.0; set 0.0 only for no-capture ablations.
+                             # Faithful to ACHILLES Cascade::Escaped (Cascade.cc, ungated by PotentialProp):
+                             # `energy = E - mN - potential; if(|pos|>radius){ KE<10 -> captured }`, always
+                             # on and separate from the PotentialProp:True Hamiltonian capture.  Keep in
+                             # sync with ACHILLES's hard-coded 10.0; 0.0 only for no-capture ablations.
 
 
 def sample_nucleons(key, n, cfg: CascadeConfig):
@@ -462,12 +445,10 @@ def sample_nucleons(key, n, cfg: CascadeConfig):
     kc, kd, km = jax.random.split(key, 3)
     idx = jax.random.choice(kc, pos.shape[0], (n,), p=w)
     npos = pos[idx]; nisp = iso[idx]
-    # Per-draw random Euler rotation of the nucleon configuration (ACHILLES
-    # DensityConfiguration::GetConfiguration, Configuration.cc:76-79: three angles ~U(0,2pi) with the
-    # second halved to [0,pi), applied via ThreeVector::Rotate's ZXZ matrix, ThreeVector.cc:31-40).
-    # The density is spherically symmetric so r (hence k_F) is unchanged, but the fixed-+z beam sees a
-    # different nucleon arrangement per event.  Independent RNG stream (fold_in) so config/momentum
-    # draws above stay bit-identical.
+    # Per-draw random Euler rotation of the nucleon configuration (ACHILLES DensityConfiguration::
+    # GetConfiguration, Configuration.cc:76-79, ZXZ matrix per ThreeVector::Rotate).  Density is
+    # spherically symmetric so k_F is unchanged, but the fixed-+z beam sees a different arrangement
+    # per event.  Independent RNG stream (fold_in) so the draws above stay bit-identical.
     _ke = jax.random.fold_in(key, 777)
     _ang = jax.random.uniform(_ke, (n, 3)) * (2 * jnp.pi)
     _a, _b, _g = _ang[:, 0], _ang[:, 1] / 2.0, _ang[:, 2]      # beta halved -> [0,pi)
@@ -519,34 +500,26 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     Returns: (p4', pos', dhat', fz', alive'), terminal, recap, do, (ko4,kopos,kofz,koisp,koal),
              (pi4,pipos,pifz,pich,pial), consumed', (has_hit, perp2_c, sig_c)."""
     n, A = nisp.shape; ar = jnp.arange(n)
-    # ACHILLES's Escaped() (Cascade.cc:640) is a PURE position test -- `Position().Magnitude2() >
-    # radius^2` -- with no directional gate: a particle beyond the radius but momentarily moving inward
-    # or tangentially still counts as escaped.
+    # ACHILLES's Escaped() (Cascade.cc:640) is a pure position test, no directional gate.
     esc_sphere = jnp.linalg.norm(pos, axis=1) > radius
-    # ACHILLES external_test beam (is_beam == ParticleStatus::external_test, the un-scattered CrossSection
-    # beam) escapes via the z>=radius PLANE (Cascade.cc:632); everything else -- scattered primary,
-    # knockouts/secondaries, all RES/QE -- escapes via the sphere.
+    # ACHILLES external_test beam escapes via the z>=radius plane (Cascade.cc:632); everything else
+    # (scattered primary, knockouts/secondaries, all RES/QE) escapes via the sphere.
     if is_beam is not None:
         reached = jnp.where(is_beam, pos[:, 2] >= radius, esc_sphere)   # reached the escape boundary
     else:
         reached = esc_sphere
-    # ACHILLES Cascade::Escaped (Cascade.cc:640-649, ungated by PotentialProp): a nucleon reaching the
-    # boundary with KE < 10 MeV is CAPTURED (bound, status 26), not final_state (status 1).  Partition the
-    # boundary-reachers into `escaping` (emitted) and `captured` (bound) here, at the source, so every
-    # downstream consumer of the escape flag is correct by construction -- no separate recapture flag a
-    # caller must remember to apply.  Mass convention: E uses the physical per-species mass (neutron
-    # mn=939.565) while the subtracted threshold uses the average mN (Constant::mN=938.919); ADoNIS
-    # p4[:,0] carries avg M_N, so recompute E from |p| with the physical species mass.
+    # ACHILLES Cascade::Escaped (Cascade.cc:640-649): a nucleon reaching the boundary with KE < 10 MeV is
+    # captured (bound, status 26), not final_state.  Partition boundary-reachers into `escaping` (emitted)
+    # vs `captured` here so every downstream consumer of the escape flag is correct by construction.
+    # p4[:,0] carries the average mN, so recompute E from |p| with the physical per-species mass.
     _e_phys = jnp.sqrt(jnp.where(isp, _MP_PHYS, _MN_PHYS) ** 2 + jnp.sum(p4[:, 1:] ** 2, axis=1))
     captured = reached & ((_e_phys - M_N) < cfg.recap_ke)      # KE < recap_ke -> bound, not emitted
     escaping = reached & ~captured                             # emitted to the final state ONLY
     alive = alive & ~reached                                   # emitted AND captured both leave the cascade
     beta = jnp.linalg.norm(p4[:, 1:], axis=1) / jnp.clip(p4[:, 0], 1e-9, None)
-    # Stepping clock: distance-sync -> every particle sweeps `step` fm/step, fz -= step/beta (proper time).
-    # time-sync (ACHILLES AdaptiveStep) -> the per-event time step dt_evt = step/beta_max (beta_max over
-    # the event's alive particles, supplied by the pool) sets the clock: sweep beta*dt_evt fm/step (fast
-    # tracks outrun slow ones; a particle alone has beta_max=beta -> sweeps `step`, never freezes), fz -=
-    # dt_evt.  Both schemes keep the fz-expiry distance = beta*fz invariant.
+    # Stepping clock: distance-sync sweeps `step` fm/step, fz -= step/beta.  Time-sync (ACHILLES
+    # AdaptiveStep) sweeps beta*dt_evt with dt_evt = step/beta_max from the pool, fz -= dt_evt.  Both
+    # keep the fz-expiry distance = beta*fz invariant.
     if cfg.time_step:
         _dt = jnp.full_like(beta, cfg.step) if dt_evt is None else dt_evt
         _dstep = beta * _dt                           # distance swept this step = beta * Dt
@@ -562,14 +535,12 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     Pp = p4[:, None, :] + nmom
     s = Pp[:, :, 0] ** 2 - jnp.sum(Pp[:, :, 1:] ** 2, axis=2)
     same_iso = isp[:, None] == nisp
-    # ACHILLES NNElastic.cc:184 uses the PER-PAIR average physical mass (mp for pp, mn for nn, avg for
-    # pn) in threshold/plab + the low-plab mn/threshold terms -- not the global average.
+    # ACHILLES NNElastic.cc:184 uses the per-pair average physical mass, not the global average.
     _m1_mev = jnp.where(isp, _MP_PHYS, _MN_PHYS)[:, None]           # (n,1) beam nucleon PHYSICAL mass
     _m2_mev = jnp.where(nisp, _MP_PHYS, _MN_PHYS)                   # (n,A) struck nucleon PHYSICAL mass
     _m_pair_gev = 0.5 * (_m1_mev + _m2_mev) / 1000.0
-    # sqrts floor: PHYSICAL per-pair threshold (m1+m2)^2 so near-threshold thr can reach 0, matching
-    # ACHILLES NNElastic.cc:185-186 (not the avg-mass floor, which would cap the divergent low-p pp sigma
-    # since 2*mN=1877.84 > 2*mp=1876.54).
+    # sqrts floor: physical per-pair threshold (m1+m2)^2, matching ACHILLES NNElastic.cc:185-186 (the
+    # avg-mass floor would cap the divergent low-p pp sigma since 2*mN > 2*mp).
     sqrts = jnp.sqrt(jnp.clip(s, (_m1_mev + _m2_mev) ** 2, None))
     sig_el = jnp.clip(nn_elastic_sigma(sqrts, same_iso, _m_pair_gev), 0.0, None)
     if cfg.nn_inelastic:
@@ -585,19 +556,17 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     prob = jnp.where(in_slab, jnp.exp(-jnp.pi * perp2 / jnp.clip(sig * MB_TO_FM2, 1e-12, None)), 0.0)
     _ks3 = _ev_split(key, 3); sk, ku, ks = _ks3[:, 0], _ks3[:, 1], _ks3[:, 2]   # per-event keys (n,2)
     passes = in_slab & (_ev_uniform(ku, (A,)) < prob)
-    # ACHILLES Cascade::Interacted (Cascade.cc:759-786) walks candidates in ASCENDING IMPACT-PARAMETER b^2
-    # order -- AllowedInteractions sorts by perp^2 via Project()->Magnitude2() (Cascade.cc:718-726) +
-    # sortPairSecond (Utilities.cc:32) -- and returns the FIRST that passes its Gaussian roll.  With the
-    # per-nucleon rolls fixed, "first passer in b^2 order" == "min-PERP2 among passers" (NOT path order).
+    # ACHILLES Cascade::Interacted (Cascade.cc:759-786) walks candidates in ascending impact-parameter b^2
+    # order and returns the first that passes its Gaussian roll == min-perp2 among passers (not path order).
     big = jnp.where(passes, perp2, jnp.inf)        # ACHILLES: smallest-impact-parameter passer
     j = jnp.argmin(big, axis=1)
     has_hit = jnp.isfinite(big[ar, j]) & alive & can_int
     perp2_is = jnp.where(in_slab, perp2, jnp.inf); cidx = jnp.argmin(perp2_is, axis=1)
     has_slab = jnp.any(in_slab, axis=1)
     perp2_c = jnp.where(has_slab, perp2_is[ar, cidx], 1e6); sig_c = sig[ar, cidx]
-    # GRANULAR nucleon-FSI record: pair-isospin of the closest in-slab candidate {0 pp,1 pn,2 nn} and the
-    # inelastic fraction finel = sig_in/sig_tot there -> lets fsi_nucleon_reweight scale per-iso elastic and
-    # inelastic NN sigma independently (s_NN_elastic{pp,pn,nn}, s_NN_inelastic{pp,pn,nn}).
+    # Granular nucleon-FSI record: pair-isospin of the closest in-slab candidate {0 pp,1 pn,2 nn} and the
+    # inelastic fraction finel = sig_in/sig_tot there, so fsi_nucleon_reweight can scale per-iso elastic
+    # and inelastic NN sigma independently.
     _nisp_c = nisp[ar, cidx]
     iso_c = jnp.where(isp & _nisp_c, 0, jnp.where((~isp) & (~_nisp_c), 2, 1)).astype(jnp.int32)
     finel_c = jnp.clip(sig_in[ar, cidx] / jnp.clip(sig_c, 1e-12, None), 0.0, 1.0)
@@ -608,17 +577,13 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     _rnuc_j = rnuc[ar, j]
     kf_p_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoP))        # (charge-exchange recoil uses the struck vertex)
     kf_n_j = _kf_local(_rho_species(_rnuc_j, rgrid, rhoN))
-    # LEADING outgoing Pauli k_F: evaluate at the LEADING's OWN position (|pos|), NOT the struck nucleon's
-    # position -- ACHILLES PauliBlocking(paOut) uses k_F at the outgoing's own position.  For large-sigma
-    # (slow-proton, near-threshold) scatters the struck nucleon can sit up to ~the impact parameter (~2 fm)
-    # away at a different density, so using its k_F would let sub-k_F leading outgoing nucleons through.
+    # LEADING outgoing Pauli k_F: evaluate at the leading's own position, not the struck nucleon's
+    # (ACHILLES PauliBlocking(paOut) uses k_F at the outgoing's own position).
     _r_lead = jnp.linalg.norm(pos, axis=1)
     _kfp_l = _kf_local(_rho_species(_r_lead, rgrid, rhoP)); _kfn_l = _kf_local(_rho_species(_r_lead, rgrid, rhoN))
 
-    # ACHILLES NN ELASTIC CHARGE EXCHANGE: the two outgoing are {id1,id2} OR the id-SWAPPED {id2,id1}, each
-    # at HALF the elastic sigma (NucleonNucleon.cc:62-65).  a-role = p_out (continues in the slot),
-    # b-role = recoil; the swap exchanges their isospin (-> mass, Pauli k_F species, charge).  No-op for
-    # pp/nn (isp == struck).  Per-event coin (fold 109), independent of the other channel draws.
+    # ACHILLES NN elastic charge exchange: outgoing {id1,id2} or id-swapped {id2,id1}, each at half the
+    # elastic sigma (NucleonNucleon.cc:62-65); no-op for pp/nn.  Per-event coin (fold 109).
     _swap_cx = _ev_fold_uniform(sk, 109) < 0.5
     _struck_isp = nisp[ar, j]
     lead_isp_out = jnp.where(_swap_cx, _struck_isp, isp)         # continuing nucleon's OUTGOING isospin
@@ -648,10 +613,8 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     cth1 = 2 * _ev_fold_uniform(sk, 103) - 1.0
     phi1 = 2 * jnp.pi * _ev_fold_uniform(sk, 104)
     # Delta->N pi decay follows the AngularMom:2 law w(cos) proportional to (1+3cos^2)/4, sampled by
-    # ACHILLES's analytic inverse-CDF (DecayHandler.cc:126-131).  cbrt is the real cube root; the sqrt
-    # argument 7-27r+27r^2 has negative discriminant so is always positive.  cth2 in [-1,1] (clip the
-    # ~1e-2 float overshoot at the endpoints), symmetric, cth2(r=0.5)=0.  The NN->NDelta production
-    # angle cth1 stays isotropic (NucleonNucleon.cc:129 cos_cms = 2r-1).
+    # ACHILLES's analytic inverse-CDF (DecayHandler.cc:126-131); cth2 clipped to [-1,1] for float overshoot.
+    # The NN->NDelta production angle cth1 stays isotropic (NucleonNucleon.cc:129 cos_cms = 2r-1).
     _r2 = _ev_fold_uniform(sk, 105)
     _term2 = jnp.cbrt(9.0 - 18.0 * _r2 + 2.0 * jnp.sqrt(3.0)
                       * jnp.sqrt(jnp.clip(7.0 - 27.0 * _r2 + 27.0 * _r2 ** 2, 0.0, None)))
@@ -684,12 +647,10 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
         pf = jnp.sqrt(jnp.clip(EA ** 2 - mA ** 2, 0.0, None))
         sth_ = jnp.sqrt(jnp.clip(1 - cth_ ** 2, 0, None))
         if aniso_axis:
-            # Measure the polar angle cth_ relative to the DECAYING PARTICLE's momentum direction, not
-            # the lab z-axis.  ACHILLES rotates the rest-frame products so z aligns with the mother's
-            # momentum before boosting (DecayHandler.cc:76-79; the NN->NDelta Delta has no Mothers set,
-            # so the `else` branch = the Delta's OWN momentum is used).  For an isotropic decay the axis
-            # is irrelevant, but the AngularMom:2 law (1+3cos^2) is anisotropic, so the axis matters:
-            # build the rest-frame unit vector in the {phat, e1, e2} basis with phat = parent momentum.
+            # Measure cth_ relative to the decaying particle's momentum direction, not the lab z-axis
+            # (ACHILLES rotates the rest-frame products so z aligns with the mother's momentum before
+            # boosting, DecayHandler.cc:76-79).  Irrelevant for an isotropic decay, but the AngularMom:2
+            # law (1+3cos^2) is anisotropic, so build the rest-frame vector in a {phat, e1, e2} basis.
             phat = P4[:, 1:] / jnp.clip(jnp.linalg.norm(P4[:, 1:], axis=1, keepdims=True), 1e-9, None)
             ref = jnp.where(jnp.abs(phat[:, 0:1]) < 0.9,
                             jnp.array([1.0, 0.0, 0.0]), jnp.array([0.0, 1.0, 0.0]))
@@ -713,9 +674,8 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
 
     pN1, pD = _split2(Pj, _mN1, m_d, cth1, phi1)                         # production: isotropic
     pN2, _pPiX = _split2(pD, _mN2, _mpi_dec, cth2, phi2, aniso_axis=True)  # (1+3cos^2) about pD dir
-    # Pauli-block the two inelastic outgoing nucleons per species; the LEADING one (faster -> continues
-    # from |pos|) is blocked at the LEADING's position (like the elastic kf_lead), the other (knockout at
-    # the struck vertex) at the struck k_F -- same position fix as the elastic channel.
+    # Pauli-block the two inelastic outgoing nucleons per species: the leading one at the leading's
+    # position (like elastic kf_lead), the knockout at the struck k_F.
     _kfp_lead = _kf_local(_rho_species(_r_lead, rgrid, rhoP)); _kfn_lead = _kf_local(_rho_species(_r_lead, rgrid, rhoN))
     nl_is1 = jnp.linalg.norm(pN1[:, 1:], axis=1) >= jnp.linalg.norm(pN2[:, 1:], axis=1)   # pN1 is leading
     _n1p = (q_pair - dch) == 1; _n2p = (dch - pi_q) == 1
@@ -745,20 +705,16 @@ def _nucleon_step(p4, pos, dhat, fz, isp, alive, npos, nmom, nisp, consumed,
     ko_fz = jnp.where(is_inel, _formation_zone(p4, inel_nl), _formation_zone(p4, recoil))
     ko_alive = (do | is_inel) & (jnp.linalg.norm(ko_cand[:, 1:], axis=1) > 1.0)
     ko_pos = npos[ar, j]
-    # created pion spawn (inelastic only)
-    # Delta+ (2214) and Delta0 (2114) have a radiative branch Delta->N gamma at BR 0.0055
-    # (data/decays.yml); Delta++ and Delta- go 100% to N pi.  The Delta charge is `dch`, so this branch
-    # is open only for dch in {0,+1}.  When it fires the vertex emits a photon instead of a pion -> no
-    # pion produced (the recoil nucleon N2 is kept with its N pi kinematics; the ~massless-vs-m_pi
-    # kinematic shift on a 0.55% branch is negligible, and the photon does not reinteract).
+    # created pion spawn (inelastic only): Delta+/Delta0 have a radiative branch Delta->N gamma at BR
+    # 0.0055 (data/decays.yml, open only for dch in {0,+1}); Delta++/Delta- go 100% to N pi.  When it
+    # fires, no pion is produced (photon does not reinteract; recoil N2 keeps its N pi kinematics).
     _delta_pm = (dch == 0) | (dch == 1)
     _gamma = _delta_pm & (_ev_fold_uniform(sk, 111) < 0.0055)
     pi_alive = is_inel & (jnp.linalg.norm(_pPiX[:, 1:], axis=1) > 1.0) & ~_gamma
     pi_fz = _formation_zone(p4, _pPiX)
-    # Birth position of the Delta's decay products (ACHILLES NucleonNucleon.cc, ResonanceMode::Decay):
-    # the Delta is always out_ids[0] (allowed_states, :38-45), so its decay products are always built at
-    # particle1.Position() (:161) -- the LEADING nucleon's position; only the other inelastic-slot nucleon
-    # (:172) sits at the struck vertex.  So the pion belongs at `pos`, matching the leading nucleon.
+    # Birth position of the Delta's decay products (ACHILLES NucleonNucleon.cc): the Delta is always
+    # out_ids[0], so its products (nucleon + pion) are born at the leading nucleon's position `pos`;
+    # only the other inelastic-slot nucleon sits at the struck vertex.
     pi_pos = jnp.broadcast_to(pos, _pPiX[:, 1:].shape)
     # leading update + consumed depletion + fz + advance
     p4 = jnp.where(do[:, None], p_out, jnp.where(is_inel[:, None], lead_in, p4))
@@ -789,22 +745,18 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     assert cfg.algo == "step", "pool pion step implements the 'step' algo (production path) only"
     n, A = nisp.shape; ar = jnp.arange(n)
     p_pi = p4
-    is_eta = (ch == 3)          # meson track: pion charge 0/1/2, or 3 = eta (from piN->etaN conversion;
-                                # propagated so it can back-convert etaN->piN)
-    # escape (Cascade.cc:532-553): beam pion (nsc==0) -> z>=radius plane; scattered -> sphere.
-    # The pool has no early-exit skip, so a pion that left the nucleus (|pos|>radius, moving outward,
-    # rho=0 ahead) must be escaped explicitly every step, or an un-scattered pion leaving off-axis idles
-    # to max_steps.  Use the explicit external_test flag (ACHILLES ParticleStatus::external_test), not the
-    # `nsc==0` proxy: secondaries are pushed as Status::propagating and a created pion is also nsc==0 at
-    # birth, so the proxy would wrongly give it the beam's plane escape.  Fall back to the proxy only when
-    # the caller supplies no flag (non-pool callers), where the pion beam IS the nsc==0 particle.
+    is_eta = (ch == 3)     # meson track: pion charge 0/1/2, or 3 = eta (piN->etaN conversion product;
+                           # propagated so it can back-convert etaN->piN)
+    # Escape (Cascade.cc:532-553): beam pion -> z>=radius plane; scattered -> sphere.  The pool has no
+    # early-exit skip, so a pion that left the nucleus must be escaped explicitly every step.  Use the
+    # explicit external_test flag, not the `nsc==0` proxy (a created pion is also nsc==0 at birth); fall
+    # back to the proxy only for non-pool callers, where the pion beam IS the nsc==0 particle.
     ext = (nsc == 0) if is_beam is None else is_beam
     # Pure position test, no `& outward` gate -- matches Cascade.cc:640.  See _nucleon_step.
     esc_sphere = jnp.linalg.norm(pos, axis=1) > radius
-    # Cascade.cc:632 is an if/else, NOT a union: the external_test beam is tested ONLY against the
-    # z-plane, everything else ONLY against the sphere.  This matters because the beam is launched at
-    # z0 = -1.05*radius, i.e. already outside the sphere -- OR-ing the two tests would escape the beam
-    # at step 0 and it would never interact at all.  Mirrors _nucleon_step's jnp.where.
+    # Cascade.cc:632 is an if/else, not a union: the beam is tested only against the z-plane, everything
+    # else only against the sphere -- OR-ing the two would escape the beam (launched outside the sphere)
+    # at step 0.  Mirrors _nucleon_step's jnp.where.
     escaping = jnp.where(ext, pos[:, 2] >= radius, esc_sphere)
     alive = alive & ~escaping
     # Stepping clock (see _nucleon_step): time-sync -> sweep beta*dt_evt (dt_evt=step/beta_max from the
@@ -842,8 +794,8 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
         sio = meson_baryon_xsec.jax_channel_sigmas_resolved(Wf, chf, nuf).reshape(n, K_, 3)
         ssl = jnp.clip(jnp.sum(sio, axis=-1), 0.0, None)
         sil = jnp.clip(meson_baryon_xsec.jax_conversion_sigma(Wf, chf, nuf).reshape(n, K_), 0.0, None)
-        # --- ETA meson track (ch==3): no Oset absorption; elastic etaN->etaN is "scatter"; back-conversion
-        # etaN->piN is "conversion" (regenerates a pion).  Blend by the per-event species (is_eta). --------
+        # ETA track (ch==3): no Oset absorption; elastic etaN->etaN is "scatter"; back-conversion etaN->piN
+        # is "conversion".  Blend by per-event species (is_eta).
         ssl_eta = jnp.clip(meson_baryon_xsec.jax_eta_elastic_sigma(Wf).reshape(n, K_), 0.0, None)
         sil_eta = jnp.clip(jnp.sum(meson_baryon_xsec.jax_eta_backconv_sigma(Wf, nuf).reshape(n, K_, 3), -1), 0.0, None)
         ise = is_eta[:, None]
@@ -875,19 +827,16 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     j = jnp.argmin(metric, axis=1)
     has_hit = jnp.isfinite(metric[ar, j]) & alive
     sa_j = sa[ar, j]; si_j = si[ar, j]; sig_j = sig[ar, j]
-    # CLOSEST in-slab candidate (mirrors _nucleon_step's perp2_c/sig_c).  The pion's INTERACTION
-    # PROBABILITY is prob = exp(-pi*perp2/(sigma_tot*MB_TO_FM2)) -- it responds to a sigma scale, but the
-    # per-hit branch record (sa_j..si_j, taken at the STRUCK candidate) cannot express that: under a common
-    # rescale the branch LR is identically 1.  These are the sufficient statistics for the hit/no-hit
-    # factor, recorded on EVERY in-slab step (hit or not), exactly as the nucleon record does.
+    # Closest in-slab candidate (mirrors _nucleon_step's perp2_c/sig_c): the sufficient statistics for the
+    # hit/no-hit factor, recorded on every in-slab step, since the per-hit branch record (sa_j..si_j) can't
+    # express the sigma-scale response of the interaction probability itself.
     perp2_is = jnp.where(cand, perp2, jnp.inf)
     cidx = jnp.argmin(perp2_is, axis=1)
     has_slab = jnp.any(cand, axis=1)
     perp2_c = jnp.where(has_slab, perp2_is[ar, cidx], 1e6)
     sa_c = sa[ar, cidx]; si_c = si[ar, cidx]
-    # ss DIRECTLY at the candidate -- NOT sig_c - sa_c - si_c.  That subtraction is a cancellation
-    # (~10 out of ~200) and, once stored as float32, can round to ss_c < ss_el_c, so clip(ss_c-ss_el_c,0)
-    # truncates and g drifts off 1 at nominal -- which exp(-a/g) amplifies.  ss is already computed.
+    # ss directly at the candidate, not sig_c - sa_c - si_c: that subtraction is a float32 cancellation
+    # that can round below ss_el_c, drifting g off 1 at nominal.
     ss_c = ss[ar, cidx]
     ss_el_c = sig_io.reshape(n, A, 3)[ar, cidx][ar, jnp.clip(ch, 0, 2)]   # elastic part (eta: ch clipped, unused)
     W_j = W[ar, j]; pN_j = nmom[ar, j]; kf_j = kf_n[ar, j]
@@ -945,9 +894,8 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
         ma = jnp.linalg.norm(pa[1:]); mb = jnp.linalg.norm(pb[1:])
         kfA = jnp.where(A_is_p, kfpa, kfna); kfB = jnp.where(B_is_p, kfpb, kfnb)
         blocked = (ma < kfA) | (mb < kfB)
-        # ACHILLES re-cascades BOTH absorption nucleons (Cascade.cc particles_out[0],[1]) regardless of
-        # charge: a neutron product can knock out a proton downstream.  Emit both full 4-vecs + their
-        # true charges, NOT proton-only slots (zeroing neutrons dropped secondary proton knockouts).
+        # ACHILLES re-cascades both absorption nucleons regardless of charge; emit both full 4-vecs with
+        # their true charges, not proton-only slots.
         return pa, pb, A_is_p.astype(jnp.int32), B_is_p.astype(jnp.int32), blocked
     abs_pa, abs_pb, abs_qa, abs_qb, abs_blocked = jax.vmap(abs_one)(p_pi, pN_j, pN_p, nprot_out,
                                                          kfPA, kfNA, kfPB, kfNB, kab)   # kab (n,2) per-event
@@ -979,11 +927,9 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     if not cfg.pauli:
         blocked = blocked & False
     # ----- conversion: pion<->eta MORPH (+ pion->K terminal) -----------------------------------------
-    # A pion conversion (piN->etaN) emits a propagating eta (meson spawn, charge idx 3) with prob
-    # si_eta/si_total; the rest (KLambda/KSigma) stays terminal.  An eta conversion (etaN->piN) emits a
-    # regenerated pion (charge sampled from the per-charge back-conversion sigma).  The recoil N' baryon
-    # is emitted in either morph direction.  ACHILLES propagates the eta the same way, which is why a
-    # fraction of high-|p| conversions do not end up absorbed (the eta back-converts to a pion).
+    # A pion conversion (piN->etaN) emits a propagating eta (charge idx 3) with prob si_eta/si_total; the
+    # rest (KLambda/KSigma) stays terminal.  An eta conversion (etaN->piN) emits a regenerated pion.  The
+    # recoil N' baryon is emitted in either direction (ACHILLES propagates the eta the same way).
     is_conv = chose_conv
     nuc_idx_j = nuc_idx                                        # struck-nucleon index (0 p, 1 n)
     bc_j = meson_baryon_xsec.jax_eta_backconv_sigma(W_j, nuc_idx_j)   # (n,3) etaN->pi_c N sigma per out-pion
@@ -1019,11 +965,9 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
         return jnp.concatenate([(gcv * (Ecm + bp))[:, None], p3], axis=1)
     p_bary = _boost_cm(EN, pst[:, None] * dcv)
     p_meson = _boost_cm(Em, -pst[:, None] * dcv)               # the propagated eta / regenerated pion
-    # Pauli-block the piN<->etaN morph recoil N', like the scatter/absorption recoils (ACHILLES
-    # FinalizeMomentum: `hit &= !PauliBlocking(part)` on every accepted channel's outgoing baryon,
-    # Cascade.cc:814-820).  A blocked morph rejects the conversion; the pion/eta continues unchanged.
-    # Terminal K-Lambda/K-Sigma conversions produce a hyperon, not nucleon-Pauli blocked, so
-    # conv_blocked is gated on `chose_morph`.
+    # Pauli-block the piN<->etaN morph recoil N' (ACHILLES FinalizeMomentum, Cascade.cc:814-820).  A
+    # blocked morph rejects the conversion; the pion/eta continues unchanged.  Terminal K-Lambda/K-Sigma
+    # conversions produce a hyperon, not Pauli blocked, so conv_blocked is gated on `chose_morph`.
     kf_bary = jnp.where(q_bary == 1, kf_p_j, kf_n_j)
     conv_blocked = chose_morph & (jnp.linalg.norm(p_bary[:, 1:], axis=1) < kf_bary)
     if not cfg.pauli:
@@ -1036,8 +980,7 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     rcand = jnp.where(is_conv[:, None], p_bary, p_rec)
     fz_rec = _formation_zone(p_pi, rcand)
     # ----- spawns: slot1 = abs nucleon A | scatter recoil | conv baryon ; slot2 = abs nucleon B -----
-    # Both absorption nucleons (A,B) carry their TRUE charge (abs_qa/abs_qb) and full 4-vec; neutron
-    # products re-cascade (ACHILLES particles_out[0],[1]) instead of being dropped.
+    # Both absorption nucleons carry their true charge and full 4-vec (re-cascade, not dropped).
     s1_p4 = jnp.where(is_abs[:, None], abs_pa, jnp.where(is_scat[:, None], p_rec, jnp.where(morph_ok[:, None], p_bary, 0.0)))
     s1_q = jnp.where(is_abs, abs_qa, jnp.where(is_scat, q_rec, jnp.where(morph_ok, q_bary, 0))).astype(jnp.int32)
     s1_pos = jnp.where(is_abs[:, None], pos_hit, npos[ar, j])
@@ -1066,14 +1009,11 @@ def _pion_step(p4, pos, dhat, ch, nsc, alive, npos, nmom, nisp, consumed,
     d3 = p_pi[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)  # NEXT
     ss_j = ss[ar, j]                                            # direct (see ss_c: no sig-sa-si cancellation)
     ss_el_j = sig_io_j[ar, jnp.clip(ch, 0, 2)]                  # elastic (out==in) scatter sigma at the hit
-    # ETA-track steps are NOT recorded in the pion kind-1 FSI reweight (their sa/ss/si carry the eta
-    # sigmas, not pion ones -> a pion knob must not scale them).  Excluding via perp2_c>1e5 makes the
-    # eta path forward-faithful and gradient-neutral for the pion FSI knobs.
+    # ETA-track steps are excluded from the pion kind-1 FSI reweight (their sa/ss/si carry eta sigmas, not
+    # pion ones); perp2_c>1e5 makes the eta path gradient-neutral for the pion FSI knobs.
     perp2_c = jnp.where(is_eta, 1e6, perp2_c)
-    # Granular kind-1 channel code {0 elastic, 1 charge-exchange, 2 absorption, 3 conversion}.  Scatter
-    # splits into elastic/cex by the sampled out-pion charge (out_ch==ch -> elastic).  ss_el recorded
-    # alongside ss (total scatter) -> ss_cex = ss - ss_el; this lets fsi_pion_reweight scale
-    # s_piN_elastic / s_piN_cex / s_pi_abs / s_conv independently.
+    # Granular kind-1 channel code {0 elastic, 1 charge-exchange, 2 absorption, 3 conversion}; ss_el
+    # recorded alongside ss so fsi_pion_reweight can scale s_piN_elastic/cex/abs/conv independently.
     code4 = jnp.where(chose_abs, 2, jnp.where(chose_conv, 3,
                       jnp.where(out_ch == ch, 0, 1))).astype(jnp.int32)
     return ((p_pi, pos, dhat, ch, nsc, alive), escaping, is_abs, is_conv,
@@ -1143,9 +1083,8 @@ def empty_batch(n, P):
     return dict(species=jnp.zeros((n, P), jnp.int32), charge=jnp.zeros((n, P), jnp.int32),
                 p4=jnp.zeros((n, P, 4)), pos=jnp.zeros((n, P, 3)), fz=jnp.zeros((n, P)),
                 nsc=jnp.zeros((n, P), jnp.int32),                     # pion scatter count (pool: beam-vs-internal escape)
-                external_test=jnp.zeros((n, P), bool),                # ACHILLES ParticleStatus::external_test: the
-                #   CrossSection beam BEFORE its first interaction -> z-plane escape (Cascade.cc:632).  Set True
-                #   at beam init; cleared on the first realized interaction.  Default False = sphere (all else).
+                external_test=jnp.zeros((n, P), bool),                # ACHILLES ParticleStatus::external_test:
+                #   the un-scattered CrossSection beam -> z-plane escape; cleared on first interaction.
                 alive=jnp.zeros((n, P), bool), w=jnp.ones((n, P)), fate=jnp.zeros((n, P), jnp.int32),
                 origin=jnp.zeros((n, P), jnp.int32), gen=jnp.zeros((n, P), jnp.int32),
                 track_id=jnp.zeros((n, P), jnp.int32),                # MC-truth: unique id per particle
@@ -1175,12 +1114,9 @@ def compact(b, P_out, sort_priority=False):
         # stable rank of each live particle within its event (0-based); dead get a large rank
         rank = jnp.cumsum(alive.astype(jnp.int32), axis=1) - 1
     else:
-        # lexsort keys (LAST = primary): alive-first, then ABSOLUTE TIME gtime asc, then CREATION index
-        # track_id asc.  gtime (not per-particle lstep) is the cascade-synchronized cohort so daughters act
-        # with their cohort, not ahead of it; WITHIN a cohort, ascending track_id reproduces ACHILLES's
-        # within-timestep order (Cascade.cc:353 iterates kickedIdxs = std::set<size_t> ascending particle
-        # index = creation order).  Integer keys -> no float-precision dependence; track_id is unique per
-        # alive particle (primaries 0/1; daughters _TRACK_OFFSET + step*3 + chan) -> no position fallback.
+        # lexsort keys (last = primary): alive-first, then absolute time gtime asc (the cascade-synchronized
+        # cohort, so daughters act with their cohort not ahead of it), then creation index track_id asc
+        # (reproduces ACHILLES's within-timestep order, Cascade.cc:353 ascending particle index).
         order = jnp.lexsort((b["track_id"], b["gtime"], (~alive).astype(jnp.int32)), axis=-1)
         rank = jnp.argsort(order, axis=-1)
     rank = jnp.where(alive, rank, M + P_out)                      # dead -> out of range
@@ -1204,28 +1140,23 @@ def compact(b, P_out, sort_priority=False):
 
 
 def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
-    """Build the pooled-engine physics stepper: advance every slot of the (n, M) stack ONE step,
-    dispatched by species (NUCLEON -> _nucleon_step, PION -> _pion_step), with the consumed mask threaded
-    slot-serially (slot m+1 sees m's depletion).  Both per-step bodies run on every slot and the result is
-    selected by species.  Each slot emits up to 2 NUCLEON spawns + 1 PION spawn: a nucleon slot -> (1
-    knockout N, 1 NN-created pion); a pion slot -> (up to 2 absorption/recoil N, 0 pion).  Returns
-    stepper(stack, key, consumed) -> (stack2, terminal (n,M) bool [escaped final-state particles],
-    spawn ParticleBatch (n,3M), consumed)."""
+    """Build the pooled-engine physics stepper: advance every slot of the (n, M) stack one step, dispatched
+    by species (NUCLEON -> _nucleon_step, PION -> _pion_step), with the consumed mask threaded slot-serially
+    (slot m+1 sees m's depletion).  Each slot emits up to 2 NUCLEON spawns + 1 PION spawn.  Returns
+    stepper(stack, key, consumed) -> (stack2, terminal (n,M) bool, spawn ParticleBatch (n,3M), consumed)."""
     npos0, nmom0, nisp0 = su["npos"], su["nmom"], su["nisp"]   # default background; per-call `bg` overrides it
     rgrid, rhoP, rhoN, radius = _load_density(cfg.nucleus, cfg.density_n)
     _dead = lambda n: (jnp.zeros((n, 4)), jnp.zeros((n, 3)), jnp.zeros(n), jnp.zeros(n, jnp.int32), jnp.zeros(n, bool))
 
     def stepper(stack, key, consumed, step=0, bg=None, dt_evt=None):
-        # bg=(npos,nmom,nisp) per-call -> lets run_cascade_pool swap the background when an event slot is
-        # refilled; bg=None uses the closed-over default (non-refill callers).
-        # dt_evt: per-event (n,) time step = step/beta_max for the ACHILLES-faithful time-sync clock
-        # (cfg.time_step); None -> the steppers fall back to a fixed Dt=step.  Ignored for distance-sync.
+        # bg=(npos,nmom,nisp) per-call lets run_cascade_pool swap the background on refill; bg=None uses
+        # the closed-over default.  dt_evt: per-event (n,) time step = step/beta_max for the time-sync
+        # clock; None falls back to a fixed Dt=step (ignored for distance-sync).
         npos, nmom, nisp = (npos0, nmom0, nisp0) if bg is None else bg
         n, M = stack["alive"].shape
         _dt_e = dt_evt if dt_evt is not None else jnp.full(n, cfg.step)   # (n,) per-event Dt
-        # `key` is the PER-EVENT step key (n,2) = fold_in(fold_in(base, evt_id), nstep) built by
-        # run_cascade_pool; fold by slot index m -> a unique per-(event,step,slot) key.  This makes a
-        # refilled event draw identical randoms regardless of which slot/global-step runs it.
+        # `key` is the per-event step key (n,2), folded by slot index m into a unique per-(event,step,slot)
+        # key, so a refilled event draws identical randoms regardless of which slot/global-step runs it.
 
         def slot(consumed, m):
             p4 = stack["p4"][:, m]; pos = stack["pos"][:, m]; fz = stack["fz"][:, m]
@@ -1233,17 +1164,14 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             sp = stack["species"][:, m]
             is_N = (sp == NUCLEON) & al; is_pi = (sp == PION) & al
             d3 = p4[:, 1:]; dhat = d3 / jnp.clip(jnp.linalg.norm(d3, axis=1, keepdims=True), 1e-9, None)
-            # P-INVARIANT RNG: key by the particle's OWN lineage key (pkey) + its OWN local step count
-            # (lstep), NOT by slot index m or the global nstep.  A particle thus draws identical randoms
-            # whether it is processed in-stack or after the wait queue, at any stack width P.
+            # P-invariant RNG: key by the particle's own lineage key (pkey) + local step count (lstep), not
+            # by slot index m or the global nstep, so it draws identical randoms at any stack width P.
             pkey_m = stack["pkey"][:, m]; lstep_m = stack["lstep"][:, m]
             step_key = jax.vmap(lambda pk, ls: jax.random.fold_in(pk, ls))(pkey_m, lstep_m)   # (n,2)
             _kk = jax.vmap(lambda k: jax.random.split(k))(step_key)        # (n,2,2)
             kN, kP = _kk[:, 0], _kk[:, 1]                                  # per-particle nucleon/pion keys (n,2)
-            # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.
-            # escN is EMITTED-to-final-state only: _nucleon_step partitions boundary-reachers into
-            # escaping (emitted) vs capturedN (bound, KE<10 MeV) at the source, so escN never contains a
-            # captured nucleon and `term` below is correct without any flag-application step here.
+            # NUCLEON branch (charge = isospin, 1=p); inactive slots produce no consumption/spawn.  escN is
+            # emitted-to-final-state only (_nucleon_step partitions captured nucleons out at the source).
             (p4n, posn, _dn, fzn, alnN, qln), escN, capturedN, _do, koN, pinN, consumedN, nstat = _nucleon_step(
                 p4, pos, dhat, fz, chg.astype(bool), is_N, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kN, dt_evt=_dt_e,
@@ -1253,10 +1181,9 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
                 p4, pos, dhat, chg, nsc, is_pi, npos, nmom, nisp, consumed,
                 rgrid, rhoP, rhoN, radius, cfg, kP, dt_evt=_dt_e,
                 is_beam=stack["external_test"][:, m])   # real external_test flag, not the nsc==0 proxy
-            # kind-1 FSI reweight sufficient statistics:
-            #   pion: record every geometric hit (has_hit) -> branch code + sigma components (sa,ss,si).
-            #   nucleon: record every in-slab candidate step (perp2_c<1e5) -> hit flag + a_nom=pi b^2/sigma.
-            # Computed only when with_rec (the differentiable/tuning path) -> forward generation pays nothing.
+            # kind-1 FSI reweight sufficient statistics (pion: branch code + sigma components at each hit;
+            # nucleon: hit flag + a_nom=pi b^2/sigma at each in-slab candidate).  Computed only when
+            # with_rec -> forward generation pays nothing.
             if with_rec:
                 (p_hh, p_bc, p_sa, p_ss_el, p_ss, p_si,               # branch stats @ the STRUCK candidate
                  p_perp2_c, p_sa_c, p_ss_el_c, p_ss_c, p_si_c) = pstat   # survival stats @ the CLOSEST one
@@ -1266,9 +1193,8 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
                 p_a_nom = jnp.pi * p_perp2_c / jnp.clip(p_sig_c * MB_TO_FM2, 1e-12, None)
                 # Record every in-slab candidate (perp2_c < 1e5), not just hits -- no-hit steps are where
                 # the sigma_tot response lives.  Non-finite sigma is excluded: Oset absorption sigma is NaN
-                # for E < m_pi (mpi0 kinematic mass vs per-charge physical mass makes |p|=sqrt(E^2-m^2) go
-                # negative for |p| < ~35 MeV/c); such a candidate cannot interact at any theta, so recording
-                # it would only inject NaN.  ACHILLES has the identical re-derivation, so this is faithful.
+                # for E < m_pi (|p|=sqrt(E^2-m^2) goes negative there), and such a candidate cannot interact
+                # at any theta, so recording it would only inject NaN (ACHILLES has the same re-derivation).
                 p_fin = jnp.isfinite(p_a_nom) & jnp.isfinite(p_sa_c) & jnp.isfinite(p_ss_c) \
                     & jnp.isfinite(p_si_c) & jnp.isfinite(p_ss_el_c)
                 rec_slot = (is_pi & (p_perp2_c < 1e5) & p_fin, p_bc, p_sa, p_ss_el, p_ss, p_si,
@@ -1278,39 +1204,29 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             p4_2 = jnp.where(is_N[:, None], p4n, jnp.where(is_pi[:, None], p4p, p4))
             pos_2 = jnp.where(is_N[:, None], posn, jnp.where(is_pi[:, None], posp, pos))
             fz_2 = jnp.where(is_N, fzn, fz)                           # only the nucleon updates fz
-            # nsc = post-Pauli interaction count of this particle.  The pion path uses nscp directly; the
-            # nucleon counts its realized (post-Pauli) elastic `_do` and inelastic `nstat[5]` hits.  A
-            # nucleon-beam cross-section run needs exactly this: ACHILLES counts a reaction only inside
-            # `if(hit)` after Pauli blocking (Cascade.cc:903), so the kind-1 `hh` flag (pre-Pauli) would
-            # over-count.  Readers of nsc take it from the primary PION terminal (pterm["nsc"]).
+            # nsc = post-Pauli interaction count (pion: nscp directly; nucleon: realized elastic `_do` +
+            # inelastic `nstat[5]`).  ACHILLES counts a reaction only inside `if(hit)` after Pauli blocking
+            # (Cascade.cc:903), so the pre-Pauli `hh` flag would over-count.
             n_react = is_N & (_do.astype(bool) | nstat[5])            # realized elastic OR inelastic
             nsc_2 = jnp.where(is_pi, nscp, nsc + n_react.astype(jnp.int32))
-            # external_test (ACHILLES status) is cleared on the FIRST realized interaction of this particle
-            # -- nucleon scatter/inelastic (n_react) OR pion scatter/absorb/convert -> becomes 'propagating'.
+            # external_test is cleared on the first realized interaction -> becomes ACHILLES 'propagating'.
             _react = n_react | (is_pi & ((nscp > nsc) | is_abs | is_conv))
             et_2 = stack["external_test"][:, m] & ~_react
-            # nucleon charge can now change: NN elastic charge-exchange / inelastic leading channel charge
-            # (qln from _nucleon_step; == incident charge when no scatter).  Pion charge oscillates (chp).
+            # nucleon charge: NN elastic charge-exchange / inelastic leading channel charge (qln from
+            # _nucleon_step; == incident charge when no scatter).  Pion charge oscillates (chp).
             chg_2 = jnp.where(is_N, qln, jnp.where(is_pi, chp, chg))
             al_2 = jnp.where(is_N, alnN, jnp.where(is_pi, alnP, al))
-            # PER-PARTICLE termination (P-INVARIANT; both caps key off the particle's OWN state, never the
-            # global step count -> no P-dependent truncation; capped = dropped, not a final state):
-            #   (1) PHYSICS: accumulated path length lpath >= path_budget_R * radius.  _dstep is the
-            #       distance swept THIS step = beta*step (time-sync) or step (distance-sync), from the
-            #       PRE-step momentum (matches the slab/advance inside _nucleon_step/_pion_step).
-            #   (2) SAFETY: lstep >= max_steps -- a guaranteed-fire backstop (lstep always +1's) for the
-            #       degenerate beta~0 case where lpath cannot advance.
+            # Per-particle termination, P-invariant (both caps key off the particle's own state, not the
+            # global step count; capped = dropped, not a final state): (1) lpath >= path_budget_R * radius
+            # (physics); (2) lstep >= max_steps (safety backstop for the degenerate beta~0 case).
             _beta_m = jnp.linalg.norm(d3, axis=1) / jnp.clip(p4[:, 0], 1e-9, None)
             _dstep_m = _beta_m * _dt_e if cfg.time_step else jnp.full_like(_beta_m, cfg.step)
             _lpath_2 = stack["lpath"][:, m] + _dstep_m * al.astype(stack["lpath"].dtype)
             al_2 = al_2 & (_lpath_2 < cfg.path_budget_R * radius) & ((lstep_m + 1) < cfg.max_steps)
             term = (is_N & escN) | (is_pi & escP)                    # escaped = final-state (collected)
-            # per-slot fate (for the primary-pion latch in run_cascade_pool; output stays escape-only):
-            # nucleon/pion escape -> ESCAPE, pion absorbed -> ABSORB, pion converted -> CONVERT.
-            # A captured nucleon (KE<10 MeV at the boundary) is bound, not emitted to the final state
-            # (escN excludes it), but it did react -- record FATE_CAPTURE so the primary-fate latch
-            # preserves its reaction (its nsc is otherwise lost when it leaves the output).  This is
-            # ACHILLES status-26: recorded (reaction counted) but not status-1 (not a final-state particle).
+            # Per-slot fate for the primary-pion latch (output stays escape-only): escape -> ESCAPE, pion
+            # absorbed -> ABSORB, converted -> CONVERT.  A captured nucleon (bound, ACHILLES status-26) did
+            # react but isn't emitted, so record FATE_CAPTURE to preserve its reaction in the latch.
             fate_2 = jnp.where(is_N & capturedN, FATE_CAPTURE,
                      jnp.where((is_N & escN) | (is_pi & escP), FATE_ESCAPE,
                      jnp.where(is_pi & is_abs, FATE_ABSORB,
@@ -1332,9 +1248,8 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
             seg_slot = None
             if with_seg:
                 # per-slot SEGMENT record: channel + segment-start |p| + product (pid,|p|) set, mirroring
-                # the ACHILLES VERTEXDUMP.  channel: pion {1 elastic,2 charge-ex,3 abs,4 conv}, nucleon
-                # {1 elastic NN->NN, 2 inelastic NN->NNpi}, 0 = no interaction this step.  Assembled (per
-                # channel) by the Python runner; here we export the raw pieces.
+                # ACHILLES VERTEXDUMP.  channel: pion {1 elastic,2 charge-ex,3 abs,4 conv}, nucleon
+                # {1 elastic NN->NN, 2 inelastic NN->NNpi}, 0 = no interaction.
                 _PIDPI = jnp.array([211, 111, -211])
                 pi_scat = is_pi & (nscp > nsc)
                 made_pi = is_N & pinN[4]                          # nucleon inelastic (created a pion)
@@ -1363,8 +1278,7 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         new, nuc1, nuc2, pio = scanned[:4]
         T = lambda x: jnp.moveaxis(x, 0, 1)                          # (M, n, ...) -> (n, M, ...)
         p4s, poss, fzs, nscs, chgs, als, terms, fates, ets = new
-        # accumulated path: +beta*step (time-sync) or +step (distance-sync) per processed step, from the
-        # PRE-step momentum -- the same _dstep the slot cap uses, vectorised over the whole stack.
+        # accumulated path, vectorised over the whole stack (same _dstep the per-slot cap above uses).
         _beta_all = jnp.linalg.norm(stack["p4"][:, :, 1:], axis=2) / jnp.clip(stack["p4"][:, :, 0], 1e-9, None)
         _dstep_all = _beta_all * _dt_e[:, None] if cfg.time_step else jnp.full_like(_beta_all, cfg.step)
         stack2 = {**stack, "p4": T(p4s), "pos": T(poss), "fz": T(fzs), "nsc": T(nscs),
@@ -1396,8 +1310,8 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         spawn["pos"] = jnp.concatenate([npos_, ppos], axis=1)
         spawn["fz"] = jnp.concatenate([nfz, pfz], axis=1)
         spawn["alive"] = jnp.concatenate([nal, pal], axis=1)
-        # P-INVARIANT daughter RNG key (PHYSICS, not just provenance): derive from the PARENT's lineage
-        # key + the daughter channel + the parent's local step at spawn -> unique & order/P-independent.
+        # P-invariant daughter RNG key: derive from the parent's lineage key + daughter channel + the
+        # parent's local step at spawn -> unique and order/P-independent.
         _pslot = jnp.tile(jnp.arange(M), 3)                          # (3M,) parent slot per spawn col
         _chan = jnp.repeat(jnp.arange(3), M)                         # 0=nuc1, 1=nuc2, 2=pion daughter channel
         _ppk = stack["pkey"][:, _pslot]                             # (n,3M,2) parent lineage key
@@ -1406,10 +1320,9 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
         spawn["pkey"] = jax.vmap(jax.vmap(_dk))(_ppk, jnp.broadcast_to(_chan, (n, 3 * M)), _pls)
         spawn["lstep"] = jnp.zeros((n, 3 * M), jnp.int32)            # daughter's own step count starts at 0
         spawn["gtime"] = stack["gtime"][:, _pslot] + 1              # but acts at the NEXT absolute time (cohort-synced)
-        # track_id = CREATION index (ALWAYS set; the within-cohort processing order keys off it -- see
-        # compact sort_priority).  Unique per (step,slot,channel): `step` is a SCALAR global step (lock-step)
-        # or a PER-EVENT (n,) nstep (refill); both monotone in creation time, so ascending track_id == the
-        # order daughters were born == ACHILLES's ascending particle index.  _pslot/_chan reuse the pkey cols.
+        # track_id = creation index (the within-cohort processing order keys off it, see compact
+        # sort_priority); unique per (step,slot,channel) and monotone in creation time, so ascending
+        # track_id matches ACHILLES's ascending particle index.
         sa = jnp.asarray(step)
         if sa.ndim == 0:
             tid = (_TRACK_OFFSET + (step * M + _pslot) * 3 + _chan).astype(jnp.int32)
@@ -1433,19 +1346,12 @@ def make_pool_stepper(su, cfg, with_rec=False, with_seg=False):
 
 
 def pool_reconcile(stack, terminal, spawn, M, wait=None, Q=0):
-    """The pooled engine's per-step in/out: drop the slots that terminated this step (escape/absorb/
-    convert), keep the survivors, insert the particles created this step, and re-pack to the fixed
-    width M -- counting any that don't fit as overflow.  This is exactly compact(concat(survivors,
-    spawned), M), so it reuses the compaction primitive.
-      stack    : ParticleBatch (n, M)   -- the current stack (post-step state)
-      terminal : (n, M) bool            -- slots that reached a terminal this step
-      spawn    : ParticleBatch (n, K)   -- particles created this step (alive mask = which are real)
-      M        : int                    -- fixed active-stack width
-      wait     : ParticleBatch (n, Q) or None -- the FIFO waiting buffer (particles that didn't fit in M)
-      Q        : int                    -- waiting-buffer width (0 = no queue, overflow dropped)
-    With Q>0 the combined survivors+wait+spawn are packed into M active + Q waiting (drain order:
-    survivors keep their slots, then the waiting buffer re-enters before brand-new spawns); only
-    particles beyond M+Q are dropped.
+    """The pooled engine's per-step in/out: drop the slots that terminated this step, keep the survivors,
+    insert the particles created this step, and re-pack to width M (compact(concat(survivors, spawned), M)).
+      stack/terminal/spawn/M : the post-step stack, its per-slot terminal flags, this step's spawns, width
+      wait, Q : FIFO waiting buffer (n, Q) and its width (0 = no queue, overflow dropped)
+    With Q>0 survivors+wait+spawn are packed into M active + Q waiting (survivors keep their slots, then
+    the waiting buffer re-enters before new spawns); only particles beyond M+Q are dropped.
     Returns (new_stack (n, M), new_wait (n, Q) or None, overflow (scalar))."""
     stack = {**stack, "alive": stack["alive"] & ~terminal}
     if Q > 0 and wait is not None:
@@ -1475,13 +1381,11 @@ def _rec_scatter(bufs, cnt, mask, vals, cap):
 
 
 def _rec_scatter_flat(bufs, gc, eidx_buf, mask, vals, evt_id, cap, n_events):
-    """Flat/streaming twin of _rec_scatter: append this step's
-    masked slots' `vals` into ONE flat (cap,) buffer at a GLOBAL running cursor `gc`, tagging each written
-    slot with its event id `evt_id[row]` in `eidx_buf`.  `cap` = TOTAL interaction budget (~ n*E[interactions],
-    tail-INSENSITIVE), NOT per-event K -- so it is sized by the concentrated sum, not the heavy per-event
-    tail.  Overflow (gc+order >= cap) is dropped (mode='drop').  Unwritten eidx slots keep their init value
-    n_events (out of range) so the by-eidx reduction (_ragged_prod) drops them.  The reweight is a scatter-ADD
-    by eidx, so step-order here gives a BIT-IDENTICAL reweight to _rec_scatter's per-event order.
+    """Flat/streaming twin of _rec_scatter: append this step's masked slots' `vals` into ONE flat (cap,)
+    buffer at a global running cursor `gc`, tagging each written slot with its event id in `eidx_buf`.
+    `cap` = total interaction budget (tail-insensitive), not per-event K.  Overflow is dropped.  Unwritten
+    eidx slots keep n_events (out of range) so _ragged_prod drops them.  The reweight is a scatter-add by
+    eidx, so step-order here gives a bit-identical reweight to _rec_scatter's per-event order.
     Returns (new_bufs, new_gc, new_eidx_buf, overflow_this_step)."""
     n, M = mask.shape
     fm = mask.reshape(-1)                                          # (n*M,) row-major: row i's M slots contiguous
@@ -1499,8 +1403,8 @@ def _rec_scatter_flat(bufs, gc, eidx_buf, mask, vals, evt_id, cap, n_events):
 # field lists for the flat record (mirror _P_SLOT/_N_SLOT + the reduction's expected order)
 def _empty_flat_fsi_record(Tp, Tn, n_events):
     """Flat FSI record: single (Tp,)/(Tn,) field buffers + global cursors gc_p/gc_n + per-slot event index
-    p_eidx/n_eidx (init n_events = out-of-range -> unwritten slots dropped by _ragged_prod).  Tp/Tn = TOTAL
-    budgets (n_events * E[interactions]).  Slot defaults match _empty_fsi_record (per-slot LR=1 at nominal)."""
+    p_eidx/n_eidx (init n_events, out of range -> unwritten slots dropped by _ragged_prod).  Slot defaults
+    match _empty_fsi_record (per-slot LR=1 at nominal)."""
     return dict(bc=jnp.zeros(Tp, jnp.int32), sa=jnp.ones(Tp), ss_el=jnp.ones(Tp), ss=jnp.ones(Tp),
                 si=jnp.zeros(Tp), pi_hh=jnp.zeros(Tp, bool), pi_a=jnp.full(Tp, 50.0),
                 sa_c=jnp.ones(Tp), ss_el_c=jnp.ones(Tp), ss_c=jnp.ones(Tp), si_c=jnp.zeros(Tp),
@@ -1512,10 +1416,9 @@ def _empty_flat_fsi_record(Tp, Tn, n_events):
 
 def _empty_fsi_record(n, Kp, Kn):
     """Per-event kind-1 FSI reweight buffers (defaults give per-slot LR=1).  bc is the granular pion channel
-    code {0 el,1 cex,2 abs,3 conv}; ss_el = elastic part of the total scatter sigma ss (ss_cex = ss-ss_el).
-    PION slots are per IN-SLAB CANDIDATE STEP (hit or not) -- pi_hh/pi_a/*_c carry the sigma_tot (hit/no-hit)
-    response, without which a common rescale of the four pion sigmas is a spurious flat direction.
-    Defaults: a=50 (p0->0 => no-hit factor 1), sa_c/ss_c=1, si_c=0 => g=1 at nominal."""
+    code {0 el,1 cex,2 abs,3 conv}; ss_el = elastic part of ss (ss_cex = ss-ss_el).  Pion slots are per
+    in-slab candidate step (hit or not): pi_hh/pi_a/*_c carry the sigma_tot response, without which a
+    common rescale of the four pion sigmas would be a spurious flat direction."""
     return dict(bc=jnp.zeros((n, Kp), jnp.int32), sa=jnp.ones((n, Kp)),
                 ss_el=jnp.ones((n, Kp)), ss=jnp.ones((n, Kp)),
                 si=jnp.zeros((n, Kp)),
@@ -1529,11 +1432,9 @@ def _empty_fsi_record(n, Kp, Kn):
 
 def pool_fsi_reweight(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None, s_conv=1.0,
                       s_NN_elastic=None, s_NN_inelastic=None, f_NN_cex=0.5):
-    """Joint kind-1 FSI reweight for the pool.  Pion branch-split + nucleon (per-iso el/inel).  Pure in the
-    scales; == 1 at nominal; == the in-walk weight at any theta.  Backward-compatible: pool_fsi_reweight(
-    record, sabs, sscat) reproduces the coarse two-knob reweight bit-for-bit (all granular knobs default
-    to sabs/sscat).  Granular knobs: pion s_piN_elastic/s_piN_cex/s_conv (s_pi_abs==sabs); nucleon
-    s_NN_elastic/s_NN_inelastic each a length-3 per-iso {pp,pn,nn} scale (default = sscat each)."""
+    """Joint kind-1 FSI reweight for the pool.  Pion branch-split + nucleon (per-iso el/inel).  Pure in
+    the scales; == 1 at nominal; == the in-walk weight at any theta.  pool_fsi_reweight(record, sabs,
+    sscat) reproduces the coarse two-knob reweight bit-for-bit (granular knobs default to sabs/sscat)."""
     s_el = sscat if s_piN_elastic is None else s_piN_elastic
     s_cex = sscat if s_piN_cex is None else s_piN_cex
     if "p_eidx" in record:                       # RAGGED (bank) record -> same physics, ragged reduction
@@ -1553,26 +1454,22 @@ def pool_fsi_reweight(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex=None
 
 
 # ---- RAGGED (bank) record --------------------------------------------------------------------------- #
-# The in-engine record must be dense (n, K): XLA needs static shapes inside the jitted walk.  But the tail
-# slots are mostly padding (real per-event occupancy is a small fraction of K), so compact_fsi_record()
-# drops the padding at write time into flat (M,) slot arrays plus a per-slot event index (matching how the
-# bank already stores the ragged final state: fs_* + _eidx).  This cuts on-disk size and lets every
-# Jacobian jvp touch far fewer slots.
+# The in-engine record must be dense (n, K) for XLA's static shapes, but the tail slots are mostly padding,
+# so compact_fsi_record() drops the padding at write time into flat (M,) slot arrays + a per-slot event
+# index (matching how the bank stores the ragged final state), cutting on-disk size and Jacobian jvp cost.
 _P_SLOT = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
 _N_SLOT = ("hh", "a", "iso", "finel", "inel", "swap")
 
 
 def compact_fsi_record(rec):
     """Dense (n, K) kind-1 record -> ragged: flat slot arrays + per-slot event index (p_eidx / n_eidx).
-    Pure numpy (called once, at bank-write time).  Physics-preserving: it only drops the padding.
-    FLAT record (from FLAT_FSI_REC streaming, carries gc_p/gc_n): already ragged -- just TRIM to the
-    cursor (the tail past gc has eidx=n_events, dropped by the reweight anyway)."""
+    Pure numpy, called once at bank-write time; only drops the padding.  A flat record (carries gc_p/gc_n)
+    is already ragged -- just trim to the cursor."""
     import numpy as _np
     if "gc_p" in rec:                                            # already-flat streaming record: trim + pass
         gp = int(_np.asarray(rec["gc_p"])); gn = int(_np.asarray(rec["gc_n"]))
         Tp = len(_np.asarray(rec["bc"])); Tn = len(_np.asarray(rec["hh"]))
-        # gc counts ALL interactions (incl. dropped-past-budget) -> gc > buffer means silent truncation.
-        # Fail LOUD with the total budget needed (the flat budget is ~ n*E[interactions], tail-insensitive).
+        # gc counts all interactions (incl. dropped-past-budget); gc > buffer means silent truncation.
         if gp > Tp or gn > Tn:
             raise ValueError(f"FLAT FSI record overflow: pion {gp}/{Tp}, nucleon {gn}/{Tn}. Raise the flat "
                              f"TOTAL budget (rec_caps) -- it must be >= the batch's total interaction count.")
@@ -1585,11 +1482,8 @@ def compact_fsi_record(rec):
         c = _np.asarray(rec[cnt])
         K = _np.asarray(rec[names[0]]).shape[1]
         cmax = int(c.max()) if c.size else 0
-        # The in-cascade log is a fixed-width (n, K) buffer (JAX static shapes); K = rec_caps.  If any
-        # particle took MORE steps than K, that buffer truncated it while `c` still reports the true count
-        # -> the compaction below would be inconsistent.  Fail LOUD and say exactly what K is needed (the
-        # bigger nuclei, e.g. Ar, log more steps than the carbon-tuned caps).  Only the transient buffer
-        # grows with K; the stored ragged output does not.
+        # The in-cascade log is a fixed-width (n, K) buffer; if any particle took more steps than K, it
+        # was truncated while `c` still reports the true count, making the compaction inconsistent.
         if cmax > K:
             raise ValueError(
                 f"FSI '{tag}' record overflow: max per-event steps = {cmax} exceeds the buffer cap K = {K} "
@@ -1608,10 +1502,9 @@ def pool_fsi_reweight_flat(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex
     (pion_slot_factor / nucleon_slot_factor / nncex_slot_factor), ragged reduction.  record["n_events"]
     gives the event count."""
     R = record
-    # OVERFLOW GUARD on the DIRECT (uncompacted) flat path: a raw flat record carries gc_p/gc_n = the TRUE
-    # interaction count (incl. dropped-past-buffer).  If gc > buffer, the buffer is TRUNCATED and the reweight
-    # would be silently wrong -- fail loud here too (not only in compact_fsi_record).  A compacted record has
-    # no gc_* (already trimmed & guarded), so this is a no-op there.
+    # Overflow guard on the direct (uncompacted) flat path: a raw flat record's gc_p/gc_n is the true
+    # interaction count; gc > buffer means the buffer truncated and the reweight would be silently wrong.
+    # A compacted record has no gc_* (already trimmed), so this is a no-op there.
     if "gc_p" in R:
         gp = int(jnp.asarray(R["gc_p"])); gn = int(jnp.asarray(R["gc_n"]))
         Tp = len(jnp.asarray(R["bc"])); Tn = len(jnp.asarray(R["hh"]))
@@ -1632,11 +1525,9 @@ def pool_fsi_reweight_flat(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex
     return wp * wn * wc
 
 
-# SEGMENT-LOG fields written by the in-engine logger (see run_cascade_pool log_cap path).  One row per
-# cascade SEGMENT (a particle's free-flight episode ending in an interaction or a terminal escape):
-#   chan: 0 transmit/escape | pion {1 elastic,2 charge-ex,3 abs,4 conv} | nucleon {1 elastic,2 inelastic}
-#   inc_pid/incp: the particle's pid + segment-start |p|;  track_id/parent_id/gen: provenance (G4-like);
-#   cont_*: the continuing particle post-interaction;  n1/n2/pio: the ejected daughters (pid,|p|,alive).
+# SEGMENT-LOG fields (run_cascade_pool log_cap path).  One row per segment (free-flight episode ending in
+# an interaction or escape): chan = 0 transmit | pion {1 el,2 cex,3 abs,4 conv} | nucleon {1 el,2 inel};
+# inc_pid/incp = pid + segment-start |p|; cont_* = continuing particle; n1/n2/pio = daughters.
 _LOG_I = ("chan", "inc_pid", "parent_id", "gen", "track_id", "cont_pid", "n1_pid", "n1_al",
           "n2_pid", "n2_al", "pio_pid", "pio_al")
 _LOG_F = ("incp", "cont_p", "n1_p", "n2_p", "pio_p")
@@ -1648,14 +1539,11 @@ def _take_rows(d, idx):
 
 
 def _round_betamax(stk, wait, round_gt, betamax):
-    """ACHILLES AdaptiveStep, P-invariantly: per-event beta_max = max beta over ALL the event's alive
-    particles (stack UNION wait -- a P-INDEPENDENT set), SNAPSHOTTED once per gtime-round.  A new round is
-    detected when the event's min(gtime) over alive particles advances past `round_gt`; at that instant the
-    cascade's lock-step has brought every alive particle to that min gtime, so the max is the true round
-    beta_max at ANY P (P only changes how the set is split between stack and wait).  Within a round the
-    stored beta_max is reused (so an already-processed fast particle still counts).  Returns (round_gt',
-    beta_max').  dt_evt = step/beta_max -> a particle ALONE has beta_max=its own beta -> moves a full step
-    (no freeze, no arbitrary cap -- the same slow-particle protection ACHILLES gets for free)."""
+    """ACHILLES AdaptiveStep, P-invariantly: per-event beta_max = max beta over all the event's alive
+    particles (stack union wait, a P-independent set), snapshotted once per gtime-round (detected when the
+    event's min(gtime) over alive particles advances past `round_gt`).  Within a round the stored beta_max
+    is reused.  Returns (round_gt', beta_max').  dt_evt = step/beta_max, so a particle alone moves a full
+    step (no freeze, no arbitrary cap)."""
     def _bg(b):
         be = jnp.linalg.norm(b["p4"][..., 1:], axis=-1) / jnp.clip(b["p4"][..., 0], 1e-9, None)
         return be, b["alive"], b["gtime"]
@@ -1676,21 +1564,18 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
                      rec_caps=None, log_cap=None, bg=None, q_cap=0,
                      pending=None, n_w=None, per_event_cap=None, time_sync=False, step=0.04):
     """POOLED engine loop: ONE fixed-size (W, M) particle stack stepped once per step; the in/out
-    reconcile (pool_reconcile) runs INSIDE the step.
+    reconcile (pool_reconcile) runs inside the step.
       stepper(stack, key, state) -> (stack2 (W,M), terminal (W,M) bool, spawn (W,K), state2[, rec|seg])
-    Escaped terminals (the cascade FINAL STATE) accumulate into a fixed (W, M_out) output batch.  RNG is
-    PER EVENT (key folded by evt_id+nstep) so an event is reproducible regardless of slot/step.
+    Escaped terminals accumulate into a fixed (W, M_out) output batch.  RNG is per event (key folded by
+    evt_id+nstep) so an event is reproducible regardless of slot/step.
 
-    TWO modes share the per-step body `_apply_step` (single source of truth):
-      * NO-REFILL (pending=None, default): the working set IS the n events, run lock-step until all done or
-        `max_steps`.
-      * REFILL (pending given): the working set holds `n_w` event-slots fed from a PENDING POOL of all
-        N_total events; when a slot's event finishes (no live particle) OR hits its per-event step cap, its
-        accumulators are FLUSHED into global (N_total,...) buffers at its evt_id and the slot is REFILLED
-        from a cursor.  `per_event_cap` replaces the global max_steps, so one long event steps on its own
-        slot without holding up the rest, keeping the (W,M) tensor small.  At n_w=N_total it is bit-exact
-        to no-refill; at n_w<N_total the per-event outputs are identical (compare by evt_id), only
-        occupancy/wall time changes.
+    Two modes share the per-step body `_apply_step`:
+      * NO-REFILL (pending=None, default): the working set IS the n events, run lock-step until done.
+      * REFILL (pending given): the working set holds `n_w` event-slots fed from a pending pool of all
+        N_total events; when a slot's event finishes or hits its per-event step cap (`per_event_cap`,
+        replacing the global max_steps), its accumulators flush to global buffers at its evt_id and the
+        slot refills from a cursor.  At n_w=N_total it is bit-exact to no-refill; at n_w<N_total the
+        per-event outputs are identical (compare by evt_id), only occupancy/wall time changes.
     `prim_origin` (RES): origin tag of the PRIMARY pion -> its terminal fate is latched per event.
     rec_caps=(Kp,Kn): accumulate the per-event kind-1 FSI reweight record.  log_cap=L: in-engine segment
     logger.  rec_caps and log_cap are mutually exclusive.
@@ -1711,14 +1596,12 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     def _apply_step(stk, state, kk, step_i, wait, out, prim, rb, log, wptr, sofl, oofl, rofl, logofl, bg_w, ar,
                     round_gt, betamax, evt_id=None):
         """ONE pooled step on the working set + accumulation (out, prim latch, rec, seg log) + reconcile.
-        Scalars sofl/oofl/rofl/logofl accumulate globally; out/prim/rb/log/wptr are per-slot.  Returns the
-        updated working-set state; identical maths regardless of refill mode.  time_sync: ACHILLES
-        AdaptiveStep per-event dt = step/beta_max (snapshotted per gtime-round over stack UNION wait)."""
+        Scalars sofl/oofl/rofl/logofl accumulate globally; out/prim/rb/log/wptr are per-slot.  Identical
+        maths regardless of refill mode.  time_sync: ACHILLES AdaptiveStep per-event dt = step/beta_max."""
         if time_sync:
             round_gt, betamax = _round_betamax(stk, wait, round_gt, betamax)
-            # DECOUPLED diagnostic (ADONIS_DECOUPLED=1): fixed Dt=step (each particle moves beta*step from
-            # its OWN beta, no beta_max coupling) instead of ACHILLES adaptive Dt=step/beta_max.  Same
-            # beta_i:beta_j ratios, different absolute step -> isolates "coupled vs decoupled time-sync".
+            # ADONIS_DECOUPLED=1 diagnostic: fixed Dt=step (no beta_max coupling) instead of the ACHILLES
+            # adaptive Dt=step/beta_max, isolating "coupled vs decoupled time-sync".
             dt_evt = jnp.full_like(betamax, step) if os.environ.get("ADONIS_DECOUPLED") == "1" else step / betamax
         else:
             dt_evt = None
@@ -1733,11 +1616,9 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         extra = _step[4] if len(_step) >= 5 else None
         term_batch = {**stk2, "alive": terminal}
         out2, oo = compact({k: jnp.concatenate([out[k], term_batch[k]], axis=1) for k in out}, M_out)
-        # Latch each PRIMARY's terminal fate into prim[:, track_id] -- one column per primary, NO assumption
-        # on the number of primaries (QE 1, RES 2, beam 1, ...).  Primaries are track_id < _TRACK_OFFSET
-        # (daughters start at _TRACK_OFFSET), so this catches every primary species-agnostically -- the RES
-        # pion AND its recoil nucleon, the QE nucleon, a beam projectile.  First-come latch (once set, keep).
-        # prim[:, 0] is the RES pion's / beam projectile's fate.
+        # Latch each PRIMARY's terminal fate into prim[:, track_id] -- one column per primary, with no
+        # assumption on their number (QE 1, RES 2, beam 1, ...).  Primaries are track_id < _TRACK_OFFSET;
+        # first-come latch (once set, keep).  prim[:, 0] is the RES pion's / beam projectile's fate.
         isprim = (stk2["track_id"] < _TRACK_OFFSET) & (stk2["fate"] != FATE_NONE)
         for _w in range(prim.shape[1]):
             _m = isprim & (stk2["track_id"] == _w)
@@ -1786,9 +1667,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     if pending is None:
         n = init["alive"].shape[0]; ar = jnp.arange(n)
         _NEVT = n                                        # event count for the flat record's eidx range
-        # INITIAL overflow (more primaries than M, e.g. RES pion+recoil at M=1) must go to the wait QUEUE,
-        # not be dropped -- else the engine is not P-invariant (the initial compact silently discarded the
-        # 2nd primary at small M).  Mirror pool_reconcile: pack init into M active + Q waiting.
+        # Initial overflow (more primaries than M, e.g. RES pion+recoil at M=1) must go to the wait queue,
+        # not be dropped, for P-invariance.  Mirror pool_reconcile: pack init into M active + Q waiting.
         if Q > 0:
             _full, _ = compact(init, M + Q, sort_priority=True)
             stack = {k: v[:, :M] for k, v in _full.items()}
@@ -1801,10 +1681,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         log0 = _logbuf(n); wptr0 = jnp.zeros(n, jnp.int32); logofl0 = jnp.int32(0)
         evt_id0 = jnp.arange(n, dtype=jnp.int32); nstep0 = jnp.zeros(n, jnp.int32)
 
-        # The per-particle caps (stepper: physical lpath budget + lstep safety backstop) guarantee every
-        # particle terminates, so the loop normally ends via 'no particle alive' (early-exit) at ANY P.  The
-        # _HARD_STEPS ceiling is a pure runaway tripwire: reaching it means a particle never terminated, and
-        # run_cascade_pool RAISES below rather than silently truncating (-> visible anomaly, per design).
+        # The per-particle caps guarantee every particle terminates, so the loop normally ends via 'no
+        # particle alive'.  _HARD_STEPS is a pure runaway tripwire; reaching it raises below.
         def cond(st):
             return (st[0] < _HARD_STEPS) & (jnp.any(st[1]["alive"]) | jnp.any(st[12]["alive"]))
 
@@ -1839,9 +1717,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     W = min(int(n_w) if n_w else Ntot, Ntot); ar = jnp.arange(W)
     _NEVT = Ntot                                     # event count for the flat record's eidx range
     _flat = with_rec and FLAT_FSI_REC                # streaming: rb IS the ONE global flat buffer (no grb flush)
-    # INITIAL overflow (events with >M primaries, e.g. RES pion+recoil at M=1) must ride in the WAIT queue,
-    # not be dropped -- mirror the no-refill init.  pstack = M active per event, pwait = Q waiting per
-    # event.  Without this the RES recoil nucleon is silently dropped at refill setup.
+    # Initial overflow (events with >M primaries) must ride in the wait queue, mirroring the no-refill
+    # init: pstack = M active per event, pwait = Q waiting per event.
     if Q > 0:
         _pfull, _ = compact(pending["stack"], M + Q, sort_priority=True)
         pstack = {k: v[:, :M] for k, v in _pfull.items()}
@@ -1925,8 +1802,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         wptr3 = jnp.where(finished, 0, wptr2)
         evt3 = jnp.where(finished, jnp.where(take, new_id, jnp.int32(-1)), evt)
         nstep3 = jnp.where(finished, jnp.int32(0), nstep2)
-        # reset the per-event time-sync snapshot on EVERY finished slot (a refilled slot is a NEW event,
-        # so its first step must recompute beta_max): round_gt -> -1 triggers new_round next step.
+        # Reset the time-sync snapshot on every finished slot (a refilled slot is a new event, so its
+        # first step must recompute beta_max): round_gt -> -1 triggers new_round next step.
         round_gt3 = jnp.where(finished, jnp.int32(-1), round_gt2)
         betamax3 = jnp.where(finished, 1.0, betamax2)
         return (cursor2, stk3, cons3, bg3, evt3, nstep3, wait3, out3, prim3, rb3, log3, wptr3,
@@ -1950,14 +1827,14 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
                   n_w=0, q_cap=0, per_event_cap=None):
     """POOLED-engine realization of cascade_nucleus (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
-    log_cap=L: run the same cascade with the in-engine segment logger on and return
-    (log, counts, log_overflow) directly -- the single entry point for the cascade-vertex/segment matrix.
+    log_cap=L: run the same cascade with the in-engine segment logger on and return (log, counts,
+    log_overflow) directly -- the single entry point for the cascade-vertex/segment matrix.
       QE : gen-0 stack = the struck->proton (1 NUCLEON slot); pterm = QE "none"; created = leading
            surviving pion.
-      RES: gen-0 stack = the PRIMARY pion (PION slot, origin-tagged) + the RES recoil nucleon; the pion's
-           own scatter-recoils / absorption protons / created pions spawn natively during the walk.
-           pterm = the primary pion's outcome (escape -> its pid/p4; absorbed -> pid 0; converted -> -1,
-           via the latched fate); created = leading surviving non-primary pion."""
+      RES: gen-0 stack = the PRIMARY pion (origin-tagged) + the RES recoil nucleon; the pion's own
+           scatter-recoils / absorption protons / created pions spawn natively during the walk.  pterm =
+           the primary pion's outcome (escape/absorbed/converted, via the latched fate); created = leading
+           surviving non-primary pion."""
     ar = jnp.arange(n)
     if channel == "qe":
         g0 = empty_batch(n, 1)
@@ -1982,9 +1859,8 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
         g0["pkey"] = jnp.stack([jax.vmap(lambda b: jax.random.fold_in(b, 0))(_base),   # pion primary idx 0
                                 jax.vmap(lambda b: jax.random.fold_in(b, 1))(_base)], axis=1)  # recoil idx 1 (n,2,2)
         prim_origin = _ORIG_PRIM_PI
-    # n_w>0 (refill): run the persistent-refill engine -- a working set of n_w event-slots fed from the
-    # pending pool of all n events (g0 + per-event nucleus background).  n_w=0 -> lock-step.  q_cap>0
-    # enables the particle waiting-queue in EITHER path (keeps overflow particles).
+    # n_w>0: refill engine (working set of n_w event-slots fed from the pending pool of all n events);
+    # n_w=0 -> lock-step.  q_cap>0 enables the particle waiting-queue in either path.
     pend = dict(stack=g0, consumed0=su["consumed0"], npos=su["npos"], nmom=su["nmom"],
                 nisp=su["nisp"]) if n_w and n_w > 0 else None
     nw = n_w if pend is not None else None
@@ -2007,9 +1883,8 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
     # charge: raw charge idx, nucleon isospin (1=p) | pion charge (0:+,1:0,2:-); lets consumers key off
     # pid while also counting pions by charge via this field.
     nterms = [dict(species=sp, pid=jnp.where((sp == NUCLEON) & (chg == 1), 2212, 2112),
-                   charge=chg, p4=p4o, alive=al, origin=out["origin"], gen=out["gen"], nsc=out["nsc"],
-                   track_id=out["track_id"])]                       # nsc + track_id: per-particle scatter
-                                                                     # count + provenance for uniform outcome
+                   charge=chg, p4=p4o, alive=al, origin=out["origin"], gen=out["gen"],
+                   nsc=out["nsc"], track_id=out["track_id"])]   # nsc/track_id: per-particle scatter count/provenance
     is_surv_pi = (sp == PION) & al                                     # escaped pions (output is escape-only)
     if channel == "qe":
         pim = jnp.linalg.norm(p4o[:, :, 1:], axis=2) * is_surv_pi
@@ -2043,40 +1918,35 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
 def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, sabs=1.0, sscat=1.0,
                       channel="res", rec_caps=None, log_cap=None, n_w=None, q_cap=None, per_event_cap=None,
                       su_external=None, return_fate=False):
-    """Faithful engine, SHARED by RES (CC1pi) and QE (CC0pi).
-    channel="res": a primary pion segment (+ its top-K knockouts) then a NUCLEON BFS over {RES recoil,
+    """Faithful engine, shared by RES (CC1pi) and QE (CC0pi).
+    channel="res": a primary pion segment (+ its top-K knockouts) then a nucleon BFS over {RES recoil,
                    pion knockouts}; pterm = the surviving pion.
-    channel="qe":  NO primary pion -- gen-0 nucleon = the QE proton (p_N); pterm = "no pion" (pid 0).
-    Both share the nucleon BFS (top-K knockouts) + the created-pion (NN->NDelta->Npi) re-entry, so the
-    meson veto (no surviving pion for CC0pi / exactly one pi+ for CC1pi) is handled uniformly.
+    channel="qe":  no primary pion -- gen-0 nucleon = the QE proton (p_N); pterm = "no pion" (pid 0).
+    Both share the nucleon BFS + the created-pion (NN->NDelta->Npi) re-entry, so the meson veto (no
+    surviving pion for CC0pi / exactly one pi+ for CC1pi) is handled uniformly.
     rec_caps=(Kp,Kn) (pool only): also return the joint per-event kind-1 FSI reweight record as a 5th
-    element (for pool_fsi_reweight).  Default None -> 4-tuple.
-    log_cap=L: run the same cascade with the in-engine segment logger and return (log, counts, overflow).
-    ENGINE DEFAULTS (refill + waiting-queue ON for every consumer):
-      n_w   : None -> refill with working set min(_DEFAULT_NW, n);  0 -> lock-step (bit-exact reference);
-              int>0 -> refill with min(n_w, n).
-      q_cap : None -> _DEFAULT_QCAP (keep overflow particles, sofl->0);  0 -> legacy drop-on-overflow.
-      per_event_cap: None -> cfg.max_steps (per-slot step cap in the refill path).
+    element.  Default None -> 4-tuple.  log_cap=L: run with the in-engine segment logger and return
+    (log, counts, overflow).
+    Engine defaults (refill + waiting-queue on for every consumer):
+      n_w   : None -> refill with working set min(_DEFAULT_NW, n);  0 -> lock-step (bit-exact reference).
+      q_cap : None -> _DEFAULT_QCAP (keep overflow particles);  0 -> drop-on-overflow.
+      per_event_cap: None -> cfg.max_steps.
     Returns (pterm, nucleon_terminals_per_gen, overflow, created[, fsi_record]) | (log, counts, overflow)."""
-    # su_external (ablation harness): run on an EXTERNALLY supplied nucleus (e.g. ACHILLES's exact per-event
-    # background + struck vertex) instead of sampling our own -- isolates transport from input generation.
-    # Must provide npos,nmom,nisp,pos0,consumed0,ch0,kp (same keys setup_nucleus returns).
+    # su_external (ablation harness): run on an externally supplied nucleus (e.g. ACHILLES's exact
+    # per-event background) instead of sampling our own, to isolate transport from input generation.
     su = setup_nucleus(p_pi, pid_pi, pid_Ni, cfg, key) if su_external is None else su_external
     n = p_pi.shape[0]
     _kpi, knuc, _kpi2 = jax.random.split(su["kp"], 3)     # knuc drives the pool (RNG stream preserved)
-    # Resolve engine defaults: refill ON (n_w window) + waiting-queue ON (q_cap) for ALL consumers.
+    # Resolve engine defaults: refill on (n_w window) + waiting-queue on (q_cap) for all consumers.
     nw_eff = 0 if n_w == 0 else (min(_DEFAULT_NW, n) if n_w is None else min(int(n_w), n))
     q_eff = _DEFAULT_QCAP if q_cap is None else int(q_cap)
-    # POOLED engine (the single cascade core): ONE fixed-size stack stepped once/step, in/out reconcile
-    # inside the step; persistent-refill working set + keep-overflow queue by default (n_w=0 -> lock-step).
     if log_cap is not None:
         return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, log_cap=log_cap,
                              n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
     res6 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=rec_caps,
                          n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
-    # res6 = (pterm, nterms, overflow, created, fsi_rec, prim_fate).  Default: the 5-/4-tuple (fsi_rec
-    # only when rec_caps).  return_fate=True appends prim_fate (the uniform cascade-outcome driver uses
-    # it to derive reacted/absorbed for ANY probe, not just tagged beams).
+    # res6 = (pterm, nterms, overflow, created, fsi_rec, prim_fate).  return_fate=True appends prim_fate
+    # (used to derive reacted/absorbed for any probe, not just tagged beams).
     base = res6[:5] if rec_caps is not None else res6[:4]
     return (base + (res6[5],)) if return_fate else base
 
