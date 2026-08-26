@@ -114,7 +114,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
 
         def gen_qe(n, seed):
             r = qe_nc_x.generate(n, material=cfg.material, seed=seed, return_events=True,
-                                 quirk=bool(cfg.achilles_coupl1_quirk), theta_acc=LACC)["events"]
+                                 use_achilles_nc_coupling=bool(cfg.achilles_coupl1_quirk),
+                                 theta_acc=LACC)["events"]
             # NO _accept_lepton: the outgoing neutrino is invisible, so a polar cut is meaningless
             # (generate refuses a non-trivial theta_acc, like res_nc).
             return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]),
