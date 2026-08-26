@@ -3,8 +3,7 @@
 # Paper Fig. anl_bnl / pion_prod_validation (ADoNIS reproduces ACHILLES; data overlay = ANL/BNL in
 # data/experiment/anl_bnl_cc1pi).  Monochromatic beam: the sigma(E) CURVE is a SCAN over `Energy` --
 # the runner overrides it per point.  achilles:oracle image, Cascade OFF (free nucleon, no FSI).
-#   docker run --rm --platform linux/amd64 -v "$PWD/output/achilles:/out" \
-#     --entrypoint /achilles/bin/achilles ghcr.io/cesarjesusvalls/achilles:oracle /out/run_freenucleon_res_N.yml
+#   python -m analysis.oracle_tools.run_achilles configs/achilles/fn_N_E1000.yml
 Main:
   NEvents: 200000
   HardCuts: false

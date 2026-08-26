@@ -1,8 +1,7 @@
 # ACHILLES inclusive (e,e') -- RES_Spectral_Func on 12C, e- beam E=2.222 GeV, theta_e in [5,45] deg
 # (narrow acceptance ~15.541 deg).  The RES (pion-production) component of paper Fig. inclusive_data (JLab Murphy:2019wed).
 # Run in the achilles:oracle image (Cascade OFF -> inclusive):
-#   docker run --rm --platform linux/amd64 -v "$PWD/output/achilles:/out" \
-#     --entrypoint /achilles/bin/achilles ghcr.io/cesarjesusvalls/achilles:oracle /out/run_inclusive_ee_C_res.yml
+#   python -m analysis.oracle_tools.run_achilles configs/achilles/run_inclusive_ee_C_res.yml
 Main:
   NEvents: 40000
   HardCuts: true

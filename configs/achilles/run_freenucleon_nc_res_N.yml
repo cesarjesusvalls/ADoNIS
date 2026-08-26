@@ -11,8 +11,7 @@
 # Monochromatic beam: the sigma(E) CURVE is a SCAN over `Energy`, overridden per point by the runner.
 # No cascade => run_achilles.py routes this to the amd64 :oracle default (no 'run_cascade'/'*_fsi'
 # prefix), which is correct: emulation only SIGSEGVs with the cascade on.
-#   docker run --rm --platform linux/amd64 -v "$PWD/output/achilles:/out" \
-#     --entrypoint /achilles/bin/achilles ghcr.io/cesarjesusvalls/achilles:oracle /out/run_freenucleon_nc_res_N.yml
+#   python -m analysis.oracle_tools.run_achilles configs/achilles/run_freenucleon_nc_res_N.yml
 Main:
   NEvents: 200000
   HardCuts: false
