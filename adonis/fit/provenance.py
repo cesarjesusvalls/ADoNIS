@@ -48,7 +48,7 @@ def stamp(**extra) -> dict:
         try:
             from adonis.fit.config import FitConfig
             digest = FitConfig.load(cfg_path).digest()
-        except Exception as e:                      # a broken config must fail in the stage, not here
+        except Exception as e:
             digest = f"unreadable:{type(e).__name__}"
     out = {f"{_PREFIX}config": os.path.basename(cfg_path), f"{_PREFIX}digest": digest,
            f"{_PREFIX}stage": os.environ.get("ADONIS_FIT_STAGE", ""),

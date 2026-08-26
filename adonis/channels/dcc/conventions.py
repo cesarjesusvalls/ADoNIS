@@ -17,18 +17,13 @@ Nucleon mass has two roles:
 """
 from adonis.channels import constants as C
 
-# --- physical masses [MeV]: PDG / ACHILLES Constants.hh -- inputs, not fits -----------------------
-M_P   = C.mp            # 938.272  proton
-M_N   = C.mn            # 939.565  neutron
-M_NUC = C.mN            # 938.919  (mp+mn)/2  -- amplitude-internal nucleon mass
-M_PIP = C.mpip          # 139.570  charged pion
-M_PI0 = C.mpi0          # 134.976  neutral pion
-M_PI_AMP = (2.0 * M_PIP + M_PI0) / 3.0   # 138.039  isospin-avg fpio -- amplitude-internal pion pole
+M_P   = C.mp
+M_N   = C.mn
+M_NUC = C.mN
+M_PIP = C.mpip
+M_PI0 = C.mpi0
+M_PI_AMP = (2.0 * M_PIP + M_PI0) / 3.0
 
-# --- the ACHILLES-match toggle -------------------------------------------------------------------
-# True  -> reproduce ACHILLES's (model) mass conventions (mpi0 kinematics, neutron norm mass).
-# False -> use strictly-physical per-channel masses; the RES sigma then sits ~1% above ACHILLES.
-# Deliberate "match the generator" switch, not physics -- flip it to move away from ACHILLES.
 MATCH_ACHILLES = True
 
 def amp_m_N():

@@ -84,9 +84,9 @@ class FitResult:
     method: str
     x: np.ndarray
     chi2: float
-    wall: float                       # minimisation only
-    counts: dict                      # kernel call counts over the timed region
-    passes: float                     # event passes over the timed region
+    wall: float
+    counts: dict
+    passes: float
     converged: bool
     message: str
     nfev: int = 0
@@ -106,7 +106,6 @@ class FitResult:
         return np.linalg.pinv(A, rcond=1e-12)
 
 
-# ---- Gauss-Newton ---------------------------------------------------------------------------------- #
 def gn_fit(kern, x0, bounds=None, max_nfev=200, gtol=1e-8, xtol=1e-14, ftol=1e-14, trace=True):
     """Bound-constrained Gauss-Newton via scipy's trust-region reflective, on the kernel.
 
@@ -137,14 +136,12 @@ def gn_fit(kern, x0, bounds=None, max_nfev=200, gtol=1e-8, xtol=1e-14, ftol=1e-1
     counts = dict(kern.counts)
     passes = kern.event_passes()
 
-    # status 1..4 are the three tolerances met; 0 is the evaluation cap, i.e. NOT converged.
     return FitResult(method="gn", x=np.asarray(r.x, float), chi2=float(2.0 * r.cost), wall=wall,
                      counts=counts, passes=passes, converged=bool(r.status > 0),
                      message=f"status {r.status}: {r.message}", nfev=int(r.nfev), njev=int(r.njev),
                      trace=tr, J=np.asarray(r.jac, float))
 
 
-# ---- MIGRAD ---------------------------------------------------------------------------------------- #
 def migrad_fit(kern, x0, bounds=None, tol=0.1, max_calls=100000, use_grad=True, strategy=1, trace=True):
     """One MIGRAD fit on the kernel.  `use_grad=False` leaves MINUIT to build the gradient itself.
 
@@ -158,7 +155,7 @@ def migrad_fit(kern, x0, bounds=None, tol=0.1, max_calls=100000, use_grad=True, 
     lo, hi = kern.bounds() if bounds is None else bounds
     x0 = np.clip(np.asarray(x0, float), lo + 1e-12, hi - 1e-12)
     tr = Trace(kern) if trace else None
-    nf = [0, 0]                                   # [value calls, gradient calls]
+    nf = [0, 0]
 
     def fcn(*a):
         x = np.asarray(a, float)
@@ -174,7 +171,7 @@ def migrad_fit(kern, x0, bounds=None, tol=0.1, max_calls=100000, use_grad=True, 
 
     names = list(kern.pnames)
     m = Minuit(fcn, *x0, name=names, grad=(grd if use_grad else None))
-    m.errordef = Minuit.LEAST_SQUARES             # chi2: the 1-sigma contour is chi2_min + 1
+    m.errordef = Minuit.LEAST_SQUARES
     for i, nm in enumerate(names):
         m.limits[nm] = (None if not np.isfinite(lo[i]) else lo[i],
                         None if not np.isfinite(hi[i]) else hi[i])
@@ -200,7 +197,6 @@ def migrad_fit(kern, x0, bounds=None, tol=0.1, max_calls=100000, use_grad=True, 
                      nfev=nf[0], njev=nf[1], trace=tr, J=None)
 
 
-# ---- time to a COMMON accuracy ---------------------------------------------------------------------- #
 def time_to(trace, chi2_ref, targets):
     """First point at which the best-so-far chi2 came within `eps` of `chi2_ref`.
 

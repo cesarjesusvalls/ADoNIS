@@ -21,7 +21,6 @@ from __future__ import annotations
 PROTON, NEUTRON = 2212, 2112
 PIP, PIM, PI0 = 211, -211, 111
 
-# (pion, struck) -> list of (absorption_partner_pid, (out1_pid, out2_pid))   [VERBATIM ACHILLES]
 ABSORPTION_MODES = {
     (PIP, PROTON):  [(NEUTRON, (PROTON, PROTON))],
     (PIP, NEUTRON): [(NEUTRON, (PROTON, NEUTRON)), (NEUTRON, (NEUTRON, PROTON)),
@@ -64,7 +63,6 @@ def proton_count_dist(pion, struck, has_p=True, has_n=True):
     return tuple(p)
 
 
-# cascade charge index -> pion PID (0:pi+, 1:pi0, 2:pi-), matching cascade_discrete `ch`.
 _CHMAP = {0: PIP, 1: PI0, 2: PIM}
 
 

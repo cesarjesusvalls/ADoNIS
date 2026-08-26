@@ -24,20 +24,13 @@ HERE = Path(__file__).resolve().parent
 ROOT = next(p for p in HERE.parents if (p / "adonis").is_dir())
 sys.path.insert(0, str(ROOT))
 
-# key -> (module, callable, args-from-label).  The third element turns the ONE label the user passes
-# into that figure's full argument list, because the per-run npz families are named off it:
-#   <label>.npz                  the closure fit           (fig_rates)
-#   <label>_ens_NNNN.npz         the toy ensemble          (fig_closure_summary)
-#   <label>_nutsown_N.npz        the NUTS chains           (fig_corner_all)
-# Deriving them here is the point: passing a label to fig_closure_summary while leaving `ens` at its
-# module default silently reads a DIFFERENT run's ensemble, and the figure still renders.
 FIGURES = {
     "rates":   ("analysis.paper.inference.fig_rates", "main", lambda L: (L,)),
     "closure": ("analysis.paper.inference.fig_closure_summary", "main", lambda L: (L, f"{L}_ens")),
     "corner":  ("analysis.paper.inference.fig_corner_all", "main", lambda L: (L, L)),
 }
 
-DEFAULT_LABEL = "sec4_P2"          # the run behind the published figures
+DEFAULT_LABEL = "sec4_P2"
 
 
 def _selected(names):

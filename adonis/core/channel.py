@@ -18,8 +18,6 @@ from adonis.core.validation import SelfTestMixin
 
 
 class Channel(SelfTestMixin, ABC):
-    #: declared proposal schema -- the EXACT key set `sample` returns (None = unchecked).
-    #: The Generator validates each proposal against it (see core/sample.check_sample).
     sample_fields: tuple | None = None
 
     def validate_sample(self, sample):
@@ -39,5 +37,3 @@ class Channel(SelfTestMixin, ABC):
     def event_record(self, params, sample):
         """Full EventRecord (lab final state + weight + channel/PDG)."""
 
-    # closure_test / oracle_test inherited from SelfTestMixin; overridden by
-    # concrete channels (e.g. DCCSinglePion) with the real grad + oracle gates.

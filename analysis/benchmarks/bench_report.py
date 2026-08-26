@@ -72,7 +72,6 @@ def main(argv=None):
                     cells.append(" ".join(per))
                 print(f"{n:>3} " + " | ".join(cells))
 
-        # ratios at the largest available N
         Nb = Ns[-1]
         print(f"\n---- ratio to Gauss-Newton at {Nb:,} events/sample ----")
         print(f"{'n':>3} {'gn wall':>9} {'gn passes':>10} " +
@@ -89,7 +88,6 @@ def main(argv=None):
                              else f"{'-':>16} {'-':>16}")
             print(f"{n:>3} {gw:9.2f} {gp:10.0f} " + " ".join(cells))
 
-        # seed-to-seed spread: the honest error bar on everything above
         print(f"\n---- seed spread at n={ns[-1]}, {Nb:,} events/sample (min-max over realisations) ----")
         for m in METH:
             rr = [r for r in sel(rows, n=ns[-1], N=Nb, method=m) if r["tag"] in tags]
@@ -102,7 +100,6 @@ def main(argv=None):
                   f"passes {p:6.0f} [{plo:.0f}-{phi:.0f}]   nfev {f:5.0f} [{flo:.0f}-{fhi:.0f}]")
         print()
 
-    # scaling in N, per method, at the largest n -- fitted on the medians
     print("================ SCALING ================")
     nb = ns[-1]
     print(f"wall-clock vs events, n={nb}, noise cells: fit log(t) = alpha log(N) + c")

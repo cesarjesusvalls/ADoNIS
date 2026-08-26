@@ -37,19 +37,18 @@ class NuclearTarget:
     symbol: str
     A: int
     Z: int
-    density_p: str | None       # proton number-density file (data/nuclear/); None = free nucleon
-    density_n: str | None       # neutron number-density file (= density_p for N=Z nuclei, e.g. C)
-    spectral_n: str | None      # neutron spectral-function path (Achilles-relative); None for free p
-    spectral_p: str | None      # proton spectral-function path
-    configs: str | None         # nucleon configuration file (QMC/RMF); None = no cascade
-    free_nucleon: bool          # True -> primary-level only, separate bank, struck nucleon at rest
+    density_p: str | None
+    density_n: str | None
+    spectral_n: str | None
+    spectral_p: str | None
+    configs: str | None
+    free_nucleon: bool
 
     @property
     def runs_cascade(self) -> bool:
         return self.density_p is not None and self.configs is not None
 
 
-# Only nuclei with the FULL set of inputs present in the repo.
 REGISTRY: dict[str, NuclearTarget] = {
     "C": NuclearTarget("C", 12, 6, "c12_density.txt", "c12_density.txt",
                        "data/Spectral_Functions/pke12n_tot.data",

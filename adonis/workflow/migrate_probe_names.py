@@ -36,15 +36,15 @@ def migrate_file(path: Path, apply: bool) -> str | None:
     try:
         raw = path.read_text()
         d = json.loads(raw)
-    except Exception as e:                       # a truncated manifest from a preempted shard
+    except Exception as e:
         return f"UNREADABLE ({e})"
     old = d.get("probe")
     if old not in RENAME:
-        return None                              # already current, or has no probe field
+        return None
     new = RENAME[old]
     if apply:
         d["probe"] = new
-        tmp = path.with_name(path.name + ".tmp")     # atomic: temp + rename, restartable
+        tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps(d, indent=2))
         os.replace(tmp, path)
     return f"{old}->{new}"

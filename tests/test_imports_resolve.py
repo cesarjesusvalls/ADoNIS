@@ -20,7 +20,6 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FILES = sorted(p for p in ROOT.rglob("*.py")
                if "__pycache__" not in str(p) and not str(p.relative_to(ROOT)).startswith("output/"))
-# First-party roots only.  Third-party availability is the environment's problem, not the repo's.
 OURS = ("adonis", "analysis", "tests", "jobs")
 
 
@@ -34,8 +33,6 @@ def _targets(tree):
             if n.module.split(".")[0] not in OURS:
                 continue
             out.append((n.module, n.lineno))
-            # `from pkg import name` may import a SUBMODULE rather than an attribute; only flag it
-            # when neither reading exists, so importing a function stays legal.
             for a in n.names:
                 if a.name != "*":
                     out.append((f"{n.module}.{a.name}", n.lineno, n.module))
@@ -54,11 +51,11 @@ def _package_binds(pkg, name):
     except (ImportError, AttributeError, ValueError):
         return False
     if spec is None or not spec.origin or not spec.origin.endswith(".py"):
-        return True                      # extension module or namespace package: cannot inspect
+        return True
     try:
         tree = ast.parse(pathlib.Path(spec.origin).read_text())
     except (OSError, SyntaxError):
-        return True                      # unreadable: do not manufacture a failure
+        return True
     for n in tree.body:
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name == name:
             return True
@@ -70,7 +67,7 @@ def _package_binds(pkg, name):
             for t_ in ast.walk(n):
                 if isinstance(t_, ast.Name) and t_.id == name and isinstance(t_.ctx, ast.Store):
                     return True
-        if isinstance(n, ast.If):        # names bound inside a module-level conditional
+        if isinstance(n, ast.If):
             for t_ in ast.walk(n):
                 if isinstance(t_, ast.Name) and t_.id == name and isinstance(t_.ctx, ast.Store):
                     return True
@@ -106,11 +103,6 @@ def test_first_party_imports_resolve(path):
         if _exists(mod):
             continue
         if len(t) == 3:
-            # `from pkg import name` where name is not a submodule.  It may be an attribute of the
-            # package, so check the package's __init__ for a module-level binding of that name.  Only
-            # when the package cannot provide it either is the import genuinely broken -- which is how
-            # `from adonis.reweight import tune` survived a move: the package resolved, so an
-            # existence check on the package alone said nothing.
             pkg, name = t[2], mod.rsplit(".", 1)[1]
             if _package_binds(pkg, name) or _lazy_package(pkg):
                 continue

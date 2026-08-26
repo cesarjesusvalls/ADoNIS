@@ -95,9 +95,6 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
     w0 = 0 (0.9% of the T2K bank), which a count-based normalisation would wrongly include.
     """
     spec = spec or SmearSpec()
-    # SOFT TRUTH MEMBERSHIP IS RECTANGULAR-ONLY.  It spreads an event over cells using one shared edge
-    # array per axis, which a staircase grid does not have -- its p_mu edges differ per cos slice.  Fail
-    # loudly rather than index the wrong array and return a response matrix that looks fine.
     from adonis.unfold.binning import StaircaseGrid
     if soft_sigma is not None and isinstance(TG or truth_grid(obs_mode), StaircaseGrid):
         raise NotImplementedError("soft_sigma is not supported on a StaircaseGrid truth binning")
@@ -109,17 +106,11 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
     nch = BP.bank_nchunks(bank_dir)
 
     NF = n_flux()
-    # RESPONSE carries a FLUX axis: a flux parameter scales signal as well as background, so the signal
-    # term is bilinear, mu_i = sum_jb A_ijb c_j f_b, and A cannot be collapsed over b.
-    A = np.zeros((RG.n, TG.n, NF))      # response: reco bin x true bin x flux bin
-    n_true = np.zeros(TG.n)             # ALL true signal per truth bin (reco-selected or not) -> efficiency
-    n_sig_reco = np.zeros(RG.n)         # signal that passes reco, per reco bin      -> purity numerator
-    w_total = 0.0                       # total pre-selection rate (the 50k normalisation target)
+    A = np.zeros((RG.n, TG.n, NF))
+    n_true = np.zeros(TG.n)
+    n_sig_reco = np.zeros(RG.n)
+    w_total = 0.0
 
-    # BACKGROUND is kept as a COMPACT BANK, not as (chunk, index) pointers.  Its weight has to be
-    # recomputed from the hard-vertex records at every fit iteration, so the records must stay resident;
-    # pointers would mean re-reading the bank per iteration.  filter_events guarantees
-    # bank_weight(filter_events(B, m), theta) == bank_weight(B, theta)[m], so compacting changes nothing.
     bkg_parts, bkg_bins, bkg_fbins, bkg_frac = [], [], [], []
     for ci, f in enumerate(files):
         B = BP.load_bank_chunk(f, nch)
@@ -130,8 +121,6 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         tsel, tobs, _, _ = SG.select_full(B, signal)
         tdpt, tdat = _obs2(tobs, obs_mode)
         tbin = TG.index(tdpt, tdat)
-        # RECO REPLICAS: replica r of chunk ci uses seed offset r, so each is an independent draw of the
-        # same detector and the set is still a pure function of (seed, chunk).
         nrep = max(int(soft_reco), 1)
         reps = []
         for rep in range(nrep):
@@ -141,11 +130,8 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
             reps.append((rsel_r, RG.index(rdpt_r, rdat_r)))
             del Rr
         rsel, rbin = reps[0]
-        fbin = flux_index(np.asarray(B["k_nu"], dtype=float)[:, 0])   # TRUE E_nu, never the reco proxy
+        fbin = flux_index(np.asarray(B["k_nu"], dtype=float)[:, 0])
 
-        # TRUE signal = passes the true selection AND lands inside the truth grid.  True signal outside
-        # the grid has no template to scale it, so it is background by construction; calling it signal
-        # would attach it to whichever c_j the clipping happened to choose.
         is_sig = tsel & (tbin >= 0)
         if soft_sigma is None:
             np.add.at(n_true, tbin[is_sig], w0[is_sig])
@@ -156,24 +142,18 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
                        * w0[is_sig][:, None]).sum(axis=0)
 
         if soft_reco:
-            # SIGNAL: every replica contributes 1/nrep of the weight to the bin it landed in.
             for rsel_r, rbin_r in reps:
                 keep_r = rsel_r & (rbin_r >= 0)
                 sr = keep_r & is_sig
                 np.add.at(A, (rbin_r[sr], tbin[sr], fbin[sr]), w0[sr] / nrep)
                 np.add.at(n_sig_reco, rbin_r[sr], w0[sr] / nrep)
-            # BACKGROUND: the detector does not know which events are signal, so the background must be
-            # softened the same way.  It cannot be replicated as EVENTS -- its weight is theta-dependent
-            # and has to stay one row per event in the compact bank -- so instead each event keeps one
-            # row and carries a DISTRIBUTION over reco bins.  The hard case is the one-hot special case
-            # of this, which is why both paths end in the same matrix product downstream.
             any_pass = np.zeros(len(w0), bool)
             for rsel_r, rbin_r in reps:
                 any_pass |= (rsel_r & (rbin_r >= 0))
-            bkg_r = any_pass & ~is_sig          # non-signal that survives reco in AT LEAST one replica
+            bkg_r = any_pass & ~is_sig
             if bkg_r.any():
                 bkg_parts.append(BP.filter_events(B, bkg_r))
-                loc = np.cumsum(bkg_r) - 1      # global event index -> row in this chunk's compact bank
+                loc = np.cumsum(bkg_r) - 1
                 rows, cols, vals = [], [], []
                 for rsel_r, rbin_r in reps:
                     m = bkg_r & rsel_r & (rbin_r >= 0)
@@ -190,7 +170,6 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         if soft_sigma is None:
             np.add.at(A, (rbin[sig_r], tbin[sig_r], fbin[sig_r]), w0[sig_r])
         else:
-            # SOFT: one event lands on several truth cells, weighted by the resolution kernel.
             mi = _soft_membership(tdpt[sig_r], TG.dpt, soft_sigma[0])
             mj = _soft_membership(tdat[sig_r], TG.dat, soft_sigma[1])
             cell = (mi[:, :, None] * mj[:, None, :]).reshape(int(sig_r.sum()), TG.n)
@@ -211,9 +190,6 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
 
     bkg_bank = SG._concat_compact(bkg_parts)
     if soft_reco:
-        # one sparse (n_events x n_reco*n_flux) matrix: row e, column i*NF+b holds the fraction of
-        # event e's weight the detector puts in reco bin i.  Rows may sum to LESS than 1 -- an event
-        # that survives the selection in only some replicas is partly inefficient, and that is real.
         from scipy.sparse import coo_matrix
         R_, C_, V_, off = [], [], [], 0
         for r_, c_, v_, n_ in bkg_frac:
@@ -228,8 +204,6 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
         bkg_fbin = np.concatenate(bkg_fbins)
         n_bkg_reco = np.bincount(bkg_bin, weights=np.asarray(bkg_bank["w0"], float), minlength=RG.n)
 
-    # ONE scale, applied to w0.  bank_weight is w0 * (knob factors), so scaling w0 carries the
-    # normalisation into every theta-dependent background weight with no further bookkeeping.
     scale = 1.0 if norm_events is None else float(norm_events) / w_total
     A *= scale; n_true *= scale; n_sig_reco *= scale; n_bkg_reco *= scale
     bkg_bank["w0"] = np.asarray(bkg_bank["w0"], float) * scale

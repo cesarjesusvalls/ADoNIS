@@ -11,8 +11,6 @@ profile.  --allow-partial accepts it knowingly, and marks the product partial.
 import os, sys, glob
 from pathlib import Path
 import numpy as np
-# ALTGEN was reached via analysis.paper.style purely for a path constant -- the fit layer was
-# importing the PLOTTING module to learn where to write.  Own it here.
 ALTGEN = Path(os.environ.get('ADONIS_OUT', 'output')) / 'altgen'
 from adonis.fit import merge as MG
 
@@ -22,8 +20,6 @@ def main(label="sec4_all16", allow_partial=False):
         raise SystemExit(f"no shards for {label}")
     Z = [np.load(f, allow_pickle=True) for f in fs]
     rep = MG.check(fs, Z, what=f"{label} profile")
-    # Coverage over the DIAL index, from what each shard says it was assigned.  Shards written before
-    # stamping say nothing, and then there is nothing to check but the NaN rows below.
     blocks = [(p["dial_base"], p["n_dial"]) for p in (MG.provenance.read(z) for z in Z)
               if p and "dial_base" in p]
     if blocks:
@@ -43,8 +39,6 @@ def main(label="sec4_all16", allow_partial=False):
             v = np.asarray(z[key]); m = np.isfinite(v).any(axis=1)
             arr[m] = v[m]
     pn = [str(x) for x in base["pnames"]]; sub = [int(k) for k in base["subset"]]
-    # The DATA-level check, kept alongside the assignment-level one: a dial can be assigned to a shard
-    # that ran and still produce nothing.
     missing = [pn[sub[c]] for c in range(len(sub)) if not np.isfinite(prof[c]).any()]
     if missing:
         rep.error(f"no profile curve for {len(missing)} dial(s): {missing}")

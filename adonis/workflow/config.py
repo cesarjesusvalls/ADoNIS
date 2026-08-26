@@ -39,37 +39,26 @@ def _coerce(cls, d):
     return cls(**d)
 
 
-# ----------------------------------------------------------------------------- generation
 @dataclass
 class CascadeHyperparams:
-    # Pool stack width is fixed at 1 (serial, ACHILLES-faithful processing order); there is no P knob.
-    # See adonis/fsi/cascade_full.py (cascade_nucleus hardcodes M=1).
-    step: float = 0.04          # Glauber step [fm] (time_step=False: distance/step; True: Dt/step)
-    max_steps: int = 260        # unused: the engine bounds steps via a fixed 100k runaway ceiling +
-                                #   path_budget_R*radius instead (ceiling set in generate.py)
+    step: float = 0.04
+    max_steps: int = 260
     nn_inelastic: bool = True
-    time_step: bool = False     # stepping clock: False = distance-sync (every particle sweeps `step`);
-                                #   True = ACHILLES AdaptiveStep time-sync (Dt=step/beta_max per round)
-    path_budget_R: float = 20.0  # runaway backstop: drop a particle once its path length exceeds this
-                                #   * radius.  Real escaping/capturing tracks have net path ~1R, so 20R
-                                #   gives margin without clipping them.  Keep in sync with
-                                #   DiscreteCascadeConfig + tune.POOLCFG.
-    mprot: int = 6              # top-M proton terminals stored per event (-> ADONIS_MPROT)
+    time_step: bool = False
+    path_budget_R: float = 20.0
+    mprot: int = 6
 
 
 @dataclass
 class VegasConfig:
-    enabled: bool = False       # RES importance estimator only: frozen VegasGrid over the 6 final-state
-                                #   hypercube dims (beam + 3-body); default off = plain sampling
-    nbins: int = 50             # per-axis grid bins
-    warmup_iters: int = 6       # adapt iterations (accumulate -> refine), then freeze
-    warmup_n: int = 100000      # events per warm-up iteration (per channel)
-    alpha: float = 1.5          # VEGAS damping exponent (ACHILLES VegasParams::alpha_default)
-    seed: int = 987654321       # warm-up RNG seed (fixed -> reproducible grid)
-    cache: str = "auto"         # "auto" (load the sidecar grid if present, else build+save),
-                                # "rebuild" (always warm up + overwrite the sidecar),
-                                # "load" (require an existing sidecar; error if missing)
-    grid_path: str | None = None  # explicit sidecar path; None -> <bank>_vegasgrid.npz next to the bank
+    enabled: bool = False
+    nbins: int = 50
+    warmup_iters: int = 6
+    warmup_n: int = 100000
+    alpha: float = 1.5
+    seed: int = 987654321
+    cache: str = "auto"
+    grid_path: str | None = None
 
     def __post_init__(self):
         if self.cache not in ("auto", "rebuild", "load"):
@@ -78,15 +67,12 @@ class VegasConfig:
 
 @dataclass
 class TrackingConfig:
-    enabled: bool = False       # store per-event MC-truth summary (track/parent/pdg/end-process)
-    steps: bool = False         # per-step trajectories (viz only; NOT in batch generation)
+    enabled: bool = False
+    steps: bool = False
     max_tracks: int = 64
     max_steps: int = 260
 
 
-# flux key -> ACHILLES Spectrum table (relative to the sibling Achilles/ dir).  Generators read the
-# actual table via adonis.flux.spectrum through env var ADONIS_FLUX_FILE, which must be set to the path
-# below so the bank name (this key) and the physics agree.  See _resolve_flux() in the CLI.
 FLUX_FILES = {
     "t2k":        "flux/T2K_nu.dat",
     "minerva":    "flux/minerva_numu_fhc.dat",
@@ -94,16 +80,12 @@ FLUX_FILES = {
 }
 
 
-# adonis.channels.probes is the registry that defines what each probe name means. load_gen_config
-# rejects unknown keys and probe_spec() raises on unknown values.
-PROBES = ("CC", "NC", "EM", "hadron")   # CC/NC = charged-/neutral-current neutrino ; EM = electron ;
-#                                     hadron = a tagged hadron projectile (no hard vertex, pure FSI transport)
-HADRON_BEAMS = ("pip", "prot", "neut")               # tagged-hadron projectiles (adonis.flux.hadron.BEAMS)
-GEN_BEAMS = ("spectrum", "electron") + HADRON_BEAMS  # nu spectrum | mono e- | pi+/p/n projectile
-E_BEAM_JLAB = 2222.0            # default monochromatic e- energy [MeV] (JLab 2.222 GeV); adonis.flux.electron
+PROBES = ("CC", "NC", "EM", "hadron")
+HADRON_BEAMS = ("pip", "prot", "neut")
+GEN_BEAMS = ("spectrum", "electron") + HADRON_BEAMS
+E_BEAM_JLAB = 2222.0
 
 
-# probe -> the beam sources it is allowed to pair with (a bank can't be mislabelled across probes).
 _PROBE_BEAMS = {"CC": ("spectrum",), "NC": ("spectrum",), "EM": ("electron",),
                 "hadron": HADRON_BEAMS}
 
@@ -120,39 +102,26 @@ class GenConfig:
       * hadron : a tagged pi+/p/n projectile (no hard vertex, pure FSI transport), beam in {pip,prot,neut},
                  |p| uniform in [pmin,pmax]
     `fsi` (default True) runs the cascade -> the rich reweight records; fsi=False -> a pre-FSI bank."""
-    probe: str = "CC"           # CC | NC | EM | hadron
-    beam: str = "spectrum"      # spectrum | electron | pip | prot | neut  (must be consistent with probe)
+    probe: str = "CC"
+    beam: str = "spectrum"
     material: str = "C"
-    channels: tuple = ("res",)              # CC/NC/EM: subset of {"res","qe"}; ignored for hadron
-    # --- CC (neutrino) ---
-    flux: str = "t2k"           # neutrino flux key (beam=spectrum only); see FLUX_FILES
-    # --- EM (electron) ---
-    e_beam: float = E_BEAM_JLAB             # monochromatic e- energy [MeV]
-    theta_acc: tuple = (0.0, 180.0)         # outgoing-lepton polar acceptance [deg], applied UNIFORMLY to
-    #                                         every hard-vertex channel (CC muon + EM electron) at
-    #                                         generation.  Default (0,180) = full acceptance (no-op);
-    #                                         EM configs set (5,180) to cut the forward 1/q^4 divergence.
-    # --- hadron (tagged beam) ---
-    pmin: float = 50.0                      # projectile |p| window [MeV/c] (uniform)
+    channels: tuple = ("res",)
+    flux: str = "t2k"
+    e_beam: float = E_BEAM_JLAB
+    theta_acc: tuple = (0.0, 180.0)
+    pmin: float = 50.0
     pmax: float = 1000.0
-    # --- cascade / FSI ---
-    # --- NC ---
-    achilles_coupl1_quirk: bool = False     # NC QE only.  False = correct physics (the SM coupling);
-    #                                         True = reproduce ACHILLES's coupl1 sin2w/sw discrepancy
-    #                                         verbatim (~1.0396 on both nucleons' F1/F2).  Set True for
-    #                                         banks feeding ACHILLES-comparison figures (like-for-like).
-    #                                         Recorded in the manifest.  See channels/currents/dirac.py.
-    fsi: bool = True                        # False -> PRE-FSI bank (primary products, no cascade)
-    pauli: bool = True                      # cascade Pauli blocking (False -> DEBUG ablation)
+    achilles_coupl1_quirk: bool = False
+    fsi: bool = True
+    pauli: bool = True
     cascade: CascadeHyperparams = field(default_factory=CascadeHyperparams)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     vegas: VegasConfig = field(default_factory=VegasConfig)
-    n_w: int | None = None                  # cascade refill working set (None=engine default; 0=lock-step)
-    # --- sharding / output ---
+    n_w: int | None = None
     n_per_seed: int = 30000
     n_seeds: int = 56
     seed0: int = 0
-    chunk: int | None = None                # events/chunk (dense FSI buffers scale w/ this); None -> n_per_seed
+    chunk: int | None = None
     out_dir: str = "output/adonis"
     tag: str = ""
 
@@ -206,11 +175,8 @@ def load_gen_config(path) -> GenConfig:
     return _coerce(GenConfig, d)
 
 
-# A hadron beam is just GenConfig with probe="hadron", beam in HADRON_BEAMS; adonis.flux.hadron.BEAMS
-# is the projectile registry.
 
 
-# ----------------------------------------------------------------------------- analysis
 @dataclass
 class NuSignalDef:
     """Neutrino signal topology, covering CC0pi, CC1pi, and NC1pi0.  Sibling EleBeamSignalDef below
@@ -219,32 +185,23 @@ class NuSignalDef:
     mu_win: tuple = (250.0, 7000.0)
     p_win: tuple = (450.0, 1200.0)
     pi_win: tuple | None = (150.0, 1200.0)
-    cos_mu: float | None = None             # CC0pi muon backward cut (e.g. -0.6); None -> use cth
-    cth: float | None = None                # forward cos cut; None -> no cut.  Each measurement
-                                            # states its own (cos70 for T2K CC1pi, 0.4 for the
-                                            # CC0pi-Np proton) -- the package defaults to none.
-    proton_lead: str = "in_window"          # "in_window" (CC1pi) | "global" (CC0pi NUISANCE def)
-    proton_count: str = "ge1"               # "ge1" | "eq1"
+    cos_mu: float | None = None
+    cth: float | None = None
+    proton_lead: str = "in_window"
+    proton_count: str = "ge1"
     require_proton: bool = True
-    pt_hi: float | None = None              # muon transverse-momentum cap [MeV] (MINERvA qelike pT/pz box)
-    pz_win: tuple | None = None             # muon longitudinal-momentum window [MeV] (MINERvA qelike);
-    #                                         with require_proton=False these give the hadron-inclusive
-    #                                         isCC0pi_MINERvAPTPZ phase space (0 mesons, theta_mu<20).
-    pion_id: str = "pip"                    # "pip" | "pi0" | "anypi" | "none" (CC0pi: veto all pions)
+    pt_hi: float | None = None
+    pz_win: tuple | None = None
+    pion_id: str = "pip"
     count_recoil_neutron: bool = False
-    target: str = "carbon"                  # "carbon" | "hydrogen" | "CH"
+    target: str = "carbon"
     W_conv: str = "vertex"
-    # MINERvA CC1pi+ (arXiv:2605.24224) signal: W_exp < 1.4 GeV/c^2 isolating the Delta(1232), a pion
-    # kinetic-energy window (not the momentum window pi_win), and no lead-proton requirement ("any number
-    # of baryons").  W_exp/Q2 follow the paper's nucleon-at-rest reconstruction, Eqs. (1)-(3), evaluated
-    # with the true Enu (= Enu - Emu at truth level, so no visible-energy convention is needed).
-    tpi_win: tuple | None = None            # pion KINETIC energy window [MeV]; None -> use pi_win (momentum)
-    w_exp_max: float | None = None          # W_exp upper cut [MeV]
-    veto_other_mesons: bool = False         # require zero eta/K/... on top of the pion counts
-    n_ejected: int | None = None            # require EXACTLY this many ejected protons (|p|>eject_thresh)
-    eject_thresh: float = 250.0             # MeV; final-state proton momentum to count as "ejected"
-    ref_proc: tuple | None = None           # restrict ACHILLES reference to these signal_process_id
-                                            #   (200=QE, 401/402=RES); None = all modes
+    tpi_win: tuple | None = None
+    w_exp_max: float | None = None
+    veto_other_mesons: bool = False
+    n_ejected: int | None = None
+    eject_thresh: float = 250.0
+    ref_proc: tuple | None = None
 
     def __post_init__(self):
         self.mu_win = tuple(_resolve_seq(self.mu_win))
@@ -270,16 +227,13 @@ class EleBeamSignalDef:
     electron-scattering figures (inclusive (e,e') omega, and e4nu E_QE/E_cal/P_T).  Its reducers are
     selection.ele_signal / ele_oracle_signal.  Fields default to "no cut" so the inclusive figure (fig01,
     which needs only the electron polar window) leaves the proton/removal fields unset."""
-    beam_energy: float = 0.0            # MeV; incident electron energy E_beam
-    e_min: float | None = None          # MeV; scattered-electron energy floor E_e (None -> no cut)
-    e_theta_win: tuple = (0.0, 180.0)   # deg; scattered-electron polar acceptance [lo, hi]
-    omega_win: tuple | None = None      # MeV; energy-transfer range [lo, hi] (None -> no cut).  Set this to
-                                        # the histogram range: the binning folds out-of-range events INTO the
-                                        # edge bins, so without it the last bin is an integral over all
-                                        # omega above the top edge, drawn as if it were one narrow bin.
-    p_min: float | None = None          # MeV; proton momentum floor for the 1p0pi topology (None -> no lead)
-    p_theta_win: tuple | None = None    # deg; proton polar acceptance [lo, hi] (None -> no lead)
-    removal_energy: float = 0.0         # MeV; nuclear removal/binding energy epsilon in E_QE / E_cal
+    beam_energy: float = 0.0
+    e_min: float | None = None
+    e_theta_win: tuple = (0.0, 180.0)
+    omega_win: tuple | None = None
+    p_min: float | None = None
+    p_theta_win: tuple | None = None
+    removal_energy: float = 0.0
 
     def __post_init__(self):
         self.e_theta_win = tuple(_resolve_seq(self.e_theta_win))
@@ -293,10 +247,9 @@ class EleBeamSignalDef:
 class ObservableSpec:
     key: str
     label: str
-    edges: list | None = None               # explicit edges (may contain sentinels e.g. "pi")
-    linspace: list | None = None            # [lo, hi, n_edges] (sentinels allowed)
-    fit: bool = True                        # enters the Gate-I Fisher / fit?  False = plot-only (e.g.
-    #                                         ppi/cos_pi, MINERvA dphit/lp_p that NUISANCE never released).
+    edges: list | None = None
+    linspace: list | None = None
+    fit: bool = True
 
     def bin_edges(self) -> np.ndarray:
         if self.edges is not None:
@@ -310,17 +263,17 @@ class ObservableSpec:
 @dataclass
 class DataOverlay:
     enabled: bool = False
-    source: str = "npz"                     # "npz" (data/experiment/t2k_cc0pi_stv/) | "nuisance_txt"
+    source: str = "npz"
     path: str = ""
-    names: dict = field(default_factory=dict)   # observable-key -> data key/file
+    names: dict = field(default_factory=dict)
     per_nucleon_cm2: bool = True
     A: int = 12
 
 
 @dataclass
 class AnalysisConfig:
-    inputs: dict = field(default_factory=dict)      # roles: adonis_res, adonis_qe, adonis_h, reference
-    probe: str = "nu"                               # "nu" -> signal is NuSignalDef; "electron" -> EleBeamSignalDef
+    inputs: dict = field(default_factory=dict)
+    probe: str = "nu"
     signal: object = field(default_factory=NuSignalDef)
     observables: list = field(default_factory=list)
     data: DataOverlay = field(default_factory=DataOverlay)
@@ -329,15 +282,11 @@ class AnalysisConfig:
     ratio_band: tuple = (0.9, 1.1)
     ratio_ylim: tuple = (0.5, 1.6)
     carbon_only: bool = True
-    legend_loc: str = ""            # style hint: matplotlib loc for the panel legend ("" -> caller default)
+    legend_loc: str = ""
 
 
 def load_analysis_config(path) -> AnalysisConfig:
     d = yaml.safe_load(Path(path).read_text()) or {}
-    # figure-orchestration keys consumed by analysis/paper/validation (make.py + helper.py): render
-    # hook, its compute/params, make_figure layout, --light flag.  Not AnalysisConfig fields, so pop
-    # them here -- lets a figure spec that also carries a selection (fig10/fig11, electron figs) load
-    # as an AnalysisConfig through the same path as pure-selection multiobs specs.
     for _k in ("name", "render", "compute", "params", "layout", "heavy"):
         d.pop(_k, None)
     _SEL = {"nu": NuSignalDef, "electron": EleBeamSignalDef}
@@ -353,5 +302,4 @@ def load_analysis_config(path) -> AnalysisConfig:
     return _coerce(AnalysisConfig, d)
 
 
-# Back-compat alias: some external jobs/ scripts still import SignalDef by name.
 SignalDef = NuSignalDef

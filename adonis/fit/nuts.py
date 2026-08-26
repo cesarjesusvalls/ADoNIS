@@ -16,7 +16,7 @@ import os, sys, time
 import pathlib
 import numpy as np
 
-MAXDEPTH = 8      # rebound from cfg.stage("nuts")["max_depth"] in run_real()
+MAXDEPTH = 8
 
 
 def leapfrog(q, p, g, eps, Minv, gradf):
@@ -128,18 +128,6 @@ def warmup_stan(q0, gradf, Minv0, nwarm, rng, target=0.8, log=print, dense=True)
     Returns (q, lp, g, eps, Minv, Mchol, info).
     """
     d = len(q0)
-    # THE TERMINAL BUFFER IS THE ONLY PLACE eps CONVERGES, so it gets a quarter of the budget.
-    # With Stan's 10% split (60 its of 600) the step size never settled: a measured warm-up went
-    # 0.4364 -> 0.4317 -> 0.2436 -> 0.4748 -> 0.3505 across windows, i.e. oscillating by 2x, and
-    # sampling then ran at acceptance 0.93 against a 0.80 target at EVERY cell of the grid.  Too
-    # small an eps is not a wrong answer, it is a slow one -- leapfrog steps go as 1/eps -- so the
-    # whole NUTS arm was paying ~2x the gradients it needed and the sampler comparison read as a
-    # property of the algorithm when it was a property of my warm-up schedule.
-    #
-    # Each window also restarts dual averaging with mu = log(10 eps0), which biases eps upward at
-    # the start of every window; the returned exp(lbar) averages over that excursion, so a SHORT
-    # window returns a value dominated by its own transient.  Only the terminal buffer runs against
-    # a frozen metric, so only it can actually converge -- give it room to.
     n_init = max(10, int(0.10 * nwarm))
     n_term = max(50, int(0.25 * nwarm))
     n_mid = max(20, nwarm - n_init - n_term)
@@ -165,18 +153,15 @@ def warmup_stan(q0, gradf, Minv0, nwarm, rng, target=0.8, log=print, dense=True)
             e = float(np.exp(le))
             if collect:
                 got.append(q.copy())
-        # mean alpha over the LAST HALF: the first half is the mu = log(10 eps0) transient, and
-        # averaging it in would report the schedule's excursion rather than where eps settled.
         ab = float(np.mean(alphas[len(alphas) // 2:])) if alphas else float("nan")
         return float(np.exp(lbar)), got, ab
 
     eps, _, _ = _dual(eps, n_init, False)
     log(f"  warmup init {n_init} its -> eps {eps:.4f}")
-    # expanding slow windows: 25, 50, 100, ... capped so the total is n_mid
     w, used, k = max(20, n_mid // 8), 0, 0
     while used < n_mid:
         take = int(min(w, n_mid - used))
-        if n_mid - used - take < take // 2:      # absorb a short tail into this window
+        if n_mid - used - take < take // 2:
             take = n_mid - used
         eps, draws, _ = _dual(eps, take, True)
         Y = np.asarray(draws)
@@ -189,9 +174,6 @@ def warmup_stan(q0, gradf, Minv0, nwarm, rng, target=0.8, log=print, dense=True)
                 f"eps {eps:.4f}")
         used += take; w *= 2; k += 1
     eps, _, abar = _dual(eps, n_term, False)
-    # ACHIEVED acceptance against the frozen final metric.  If this is not near `target`, eps did not
-    # converge and every downstream gradient count is inflated -- so it is logged and stored, not
-    # left to be inferred from the sampling-phase number after the fact.
     info["alpha_term"] = abar
     log(f"  warmup term {n_term} its -> eps {eps:.4f}, achieved alpha {abar:.3f} (target {target:.2f})"
         f"; {len(info['windows'])} metric updates, {info['ndiv']} divergences during warmup")

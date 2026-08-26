@@ -24,15 +24,14 @@ import jax.numpy as jnp
 from adonis.constants import MASS_PDG_PROTON, MASS_PDG_NEUTRON, MASS_PDG_PIP, MASS_PDG_PI0, HBARC2
 
 _GEV = 1000.0
-MN_AVG = (MASS_PDG_PROTON + MASS_PDG_NEUTRON) / 2 / _GEV       # ParticleInfo avg [GeV]
+MN_AVG = (MASS_PDG_PROTON + MASS_PDG_NEUTRON) / 2 / _GEV
 MPI_AVG = (2 * MASS_PDG_PIP + MASS_PDG_PI0) / 3 / _GEV
-MN_HEAVY = MASS_PDG_NEUTRON / _GEV                              # "heavier" choices (integration limits)
+MN_HEAVY = MASS_PDG_NEUTRON / _GEV
 MPI_HEAVY = MASS_PDG_PIP / _GEV
-# Particles.yml delta masses/widths [GeV]
 DELTA_MASS = {"pp": 1230.55 / _GEV, "p": 1234.90 / _GEV, "0": 1231.30 / _GEV, "m": 1230.55 / _GEV}
 DELTA_WIDTH = {"pp": 112.2 / _GEV, "p": 131.1 / _GEV, "0": 112.5 / _GEV, "m": 112.2 / _GEV}
-HBARC_GEVFM = 197.3269804 / 1000.0                             # GeV.fm, full precision (BlattWeisskopf x = k/HBARC)
-HBARC2_GEV2_MB = HBARC2 / 1e6                                   # mb GeV^2
+HBARC_GEVFM = 197.3269804 / 1000.0
+HBARC2_GEV2_MB = HBARC2 / 1e6
 
 _CACHE = {}
 
@@ -115,14 +114,10 @@ def _build_tables(n_s=240, n_m=160, s_lo=None, s_hi=4.0):
     if "sig" in _CACHE:
         return
     s_lo = s_lo or (2 * MN_HEAVY + MPI_HEAVY + 1e-4)
-    # Non-uniform sqrts grid: dense near threshold, where the sigma turn-on is steep enough that a
-    # uniform grid would overshoot under linear interpolation, then coarse above the cascade-relevant
-    # region.  The per-point mass/cos integral is exact vs ACHILLES regardless of grid (n_m/ncos fixed);
-    # only the sqrts table density changes.
     s_knee = min(2.30, s_hi)
     S = np.unique(np.concatenate([np.linspace(s_lo, s_knee, 4 * n_s),
                                   np.linspace(s_knee, s_hi, n_s)]))
-    sig = np.zeros(len(S))                                       # len(S) != n_s (non-uniform grid)
+    sig = np.zeros(len(S))
     icdf = np.zeros((len(S), 65))
     ugrid = np.linspace(0, 1, 65)
     for i, rs in enumerate(S):
@@ -133,12 +128,12 @@ def _build_tables(n_s=240, n_m=160, s_lo=None, s_hi=4.0):
             continue
         M = np.linspace(m_lo, m_hi, n_m)
         d = dsigma_dm(rs, M)
-        sig[i] = np.trapezoid(d, M)                              # mb.GeV / (pcm) applied later
+        sig[i] = np.trapezoid(d, M)
         cdf = np.concatenate([[0.0], np.cumsum(0.5 * (d[1:] + d[:-1]) * np.diff(M))])
         cdf = cdf / cdf[-1] if cdf[-1] > 0 else np.linspace(0, 1, n_m)
         icdf[i] = np.interp(ugrid, cdf, M)
     _CACHE["S"] = S
-    _CACHE["sig"] = sig                                          # integrate dm at pcm=1GeV scale
+    _CACHE["sig"] = sig
     _CACHE["icdf"] = icdf
     _CACHE["u"] = ugrid
 

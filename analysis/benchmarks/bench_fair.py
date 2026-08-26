@@ -56,9 +56,6 @@ import time
 import numpy as np
 
 
-# Accuracy targets, common to every method.  The deepest is bounded from below by the objective's own
-# floor (|chi2_kernel - chi2_host| ~ 1.6e-11 at the closure truth, measured by verify_kernels): a target
-# below that would be measuring float noise rather than a minimiser.
 CHI2_TARGETS = (1.0, 1e-2, 1e-4, 1e-8)
 DIST_TARGETS = (1e-1, 1e-3, 1e-6)
 
@@ -88,7 +85,7 @@ def freeze_sample(eng, ref, log):
             if len(sg) != d["nbin"]:
                 raise SystemExit(f"{d['key']}: reference has {len(sg)} bins, engine has {d['nbin']}")
             d["sigma"] = sg.copy()
-            d["_sigma0"] = sg.copy()          # so set_closure_data cannot recompute it
+            d["_sigma0"] = sg.copy()
             nlive += int(np.isfinite(sg).sum())
     log(f"  sample frozen from reference: {nlive} live bins, sigma fixed (independent of sig_cap)")
     return nlive
@@ -161,36 +158,20 @@ def main(argv=None):
     truth_full, _ = parse_inject(cfg.inject_string(), nominal_knobs())
     th0 = np.asarray(eng.th0, float)
     prior_true = np.asarray(eng.prior, float).copy()
-    if cfg.fit.prior_scale != 1.0:               # MLE: data-only, as in sec4
+    if cfg.fit.prior_scale != 1.0:
         eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
     log(f"estimator {cfg.fit.estimator.upper()} (prior x{cfg.fit.prior_scale:g})")
 
     rows, out, kern = [], {}, None
-    # DESCENDING n: the biggest jacobian is built first, on a device that has not yet been
-    # fragmented by anything else.  Cell order does not affect any result -- each n is independent.
     for n in sorted(ndials, reverse=True):
         subset = sorted(order[:n])
         names = [eng.pnames[k] for k in subset]
         idx = np.asarray(subset, int)
 
-        # TRUTH ON THE FITTED DIALS ONLY.  Injecting the full 17-dial truth and then freezing the ones
-        # outside the subset makes the closure unreachable: the fit chases a data vector it cannot
-        # represent, chi2_min is hundreds instead of ndf, and the n axis stops being apples-to-apples.
         truth = th0.copy(); truth[idx] = truth_full[idx]
         eng.set_closure_data(truth)
         data0 = [np.asarray(d["data"], float).copy() for s in eng.samples for d in s.ds]
 
-        # RELEASE THE PREVIOUS KERNEL BEFORE BUILDING THE NEXT.  Each kernel holds five compiled XLA
-        # executables per sample plus their CUDA graphs, and those do NOT go away when the python object
-        # is rebound.  Building the n=17 kernel while the n=2 kernel's executables were still resident
-        # is what exhausted an 11 GB card at 20k events/sample -- where the actual tangent data is ~3 MB,
-        # so it was never the arithmetic.  Drop the reference, then clear jax's compilation cache.
-        #
-        # AND NO RETRY-ON-OOM.  An earlier version halved the batch and tried again; after a device OOM
-        # the CUDA context is poisoned ("Recorded commands are not empty ... can be recorded at most
-        # once") and the retry fails with an INTERNAL error that is not an OOM, so the fallback both
-        # failed and disguised why.  A clean, loud failure with the flag to set is worth more than a
-        # recovery that cannot be trusted.
         if kern is not None:
             del kern
             kern = None
@@ -199,17 +180,14 @@ def main(argv=None):
         try:
             kern = FitKernel(eng, subset, jac_batch=(a.jac_batch or n))
             kern.warmup()
-        except Exception as e:                        # noqa: BLE001
+        except Exception as e:
             s_ = str(e)
             if "RESOURCE_EXHAUSTED" in s_ or "OUT_OF_MEMORY" in s_.upper():
-                # PRINT XLA'S OWN MESSAGE.  Replacing it with a friendlier one threw away the
-                # allocation size and the memory breakdown -- the only facts that identify WHAT is too
-                # big -- and cost an hour of guessing at a ceiling that could have been read off directly.
                 try:
                     mm = jax.local_devices()[0].memory_stats()
                     log(f"  device at failure: {mm['bytes_in_use']/2**30:.2f}/"
                         f"{mm['bytes_limit']/2**30:.2f} GB in use, peak {mm['peak_bytes_in_use']/2**30:.2f} GB")
-                except Exception:                             # noqa: BLE001
+                except Exception:
                     pass
                 log(f"  XLA said:\n{s_}")
                 raise SystemExit(
@@ -220,14 +198,12 @@ def main(argv=None):
             f"live {kern.n_live} (ref {nlive_ref})")
         assert kern.n_live == nlive_ref, "frozen mask did not hold -- the N axis would be confounded"
 
-        # start: nominal, with Eb_shift lifted off its lower bound
         x0 = th0[idx].copy()
         if "Eb_shift" in names:
             x0[names.index("Eb_shift")] = a.eb_start
         xt = truth[idx]
 
         for tag, seed in ([("asimov", None)] if a.asimov else []) + [(f"noise{s}", s) for s in seeds]:
-            # restore the Asimov data, then throw THIS realisation on top of it
             k = 0
             for s in eng.samples:
                 for d in s.ds:
@@ -251,13 +227,9 @@ def main(argv=None):
                     f"chi2 {r.chi2:.6e}  nfev {r.nfev} njev {r.njev}  "
                     f"{'ok' if r.converged else 'NOT CONVERGED'}")
 
-            # ONE reference minimum per cell: the lowest any method reached.  Grading each method
-            # against its own final chi2 would score a method that stopped early as perfectly accurate.
             c_ref = min(f.chi2 for f in fits.values())
             best = min(fits.values(), key=lambda f: f.chi2)
 
-            # sigma_post from the GN jacobian if we have one -- the covariance is a by-product of the
-            # fit, computed AFTER the clock stopped, never inside it
             spost, cond, smin = None, np.nan, np.nan
             if "gn" in fits and fits["gn"].J is not None:
                 J = fits["gn"].J
@@ -287,12 +259,6 @@ def main(argv=None):
                                  bias=float(np.max(np.abs((f.x - xt) / prior_true[idx])))))
                 out[f"trace_{n}_{tag}_{meth}"] = np.column_stack(f.trace.arrays()[:3])
 
-            # DROP EVERY REFERENCE TO THE KERNEL BEFORE THE NEXT ONE IS BUILT.  Trace keeps `self.k` so
-            # it can tag each objective evaluation with an event-pass count, and FitResult keeps the
-            # Trace -- so the previous cell's `fits` dict pins the whole kernel, and the `del kern` at the
-            # top of the next n block frees nothing.  That is why N=125k built n=17 and then OOMed on
-            # n=12, a SMALLER kernel: the memory was never the new kernel's, it was the old one's.
-            # The trace arrays are already copied into `out` above, so nothing is lost here.
             for f_ in fits.values():
                 f_.trace = None
             del fits, best
@@ -300,7 +266,6 @@ def main(argv=None):
             log(f"  n={n:2d} {tag:>7} chi2_ref {c_ref:.6e}  cond(J) {cond:.3e}  "
                 + (f"Eb on wall: {[m for m, v in eb_wall.items() if v] or 'none'}" if eb_wall else ""))
 
-    # ---- report --------------------------------------------------------------------------------- #
     print(f"\n==== workload at {a.sig_cap:,} events/sample ({10*a.sig_cap:,} resident) ====")
     print(f"{'n':>3} {'case':>7} {'method':>9} {'wall s':>9} {'passes':>9} {'nfev':>6} {'njev':>5} "
           f"{'chi2':>12} {'t(1e-4)':>9} {'p(1e-4)':>9} {'conv':>5}")

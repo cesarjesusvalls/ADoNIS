@@ -51,7 +51,6 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     one = "--one" in argv
     args = [a for a in argv if not a.startswith("--")]
-    # a token containing '=' is a bank spec for the generation figure, not a figure name
     names = [a for a in args if "=" not in a]
     banks = [a for a in args if "=" in a]
     keys = _selected(names)

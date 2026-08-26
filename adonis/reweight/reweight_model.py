@@ -21,11 +21,9 @@ from adonis.reweight.amps2_records import (build_qe_ma_records, build_res_ma_rec
                                         ma_reweight, strength_reweight)
 from adonis.reweight.sf_reweight import sf_grids, sf_reweight, removal_from_struck
 import adonis.fsi.cascade as _CF
-# knob schema (fields, nominal, metadata) lives in ONE place: adonis.core.params.  Re-exported here so
-# existing `from adonis.reweight.reweight_model import nominal_knobs` importers keep working.
-from adonis.core.params import PhysicsParams, nominal_knobs, knob_specs, _NPW, _EB_EPS    # noqa: F401
+from adonis.core.params import PhysicsParams, nominal_knobs, knob_specs, _NPW, _EB_EPS
 
-_DELTA_WAVE = 5     # DCC partial-wave index of the P33 Delta(1232) (tests: test_res_strength_reweight)
+_DELTA_WAVE = 5
 
 
 def _ident_rec(n):
@@ -61,7 +59,7 @@ def _res_records(ra, ip, pp, with_pw, res_joint):
         from adonis.reweight.reduced_amps2 import build_res_reduced
         return {"res_reduced": build_res_reduced(*ra, ip, pp)}
     return dict(res_ma=build_res_ma_records(*ra, ip, pp), res_pp=build_res_pionpole_records(*ra, ip, pp),
-                res_delta=build_res_pw_records(*ra, ip, pp, _DELTA_WAVE),   # P33 Delta(1232) strength knob
+                res_delta=build_res_pw_records(*ra, ip, pp, _DELTA_WAVE),
                 res_pw=[build_res_pw_records(*ra, ip, pp, w) for w in range(_NPW)] if with_pw else None)
 
 
@@ -74,16 +72,13 @@ def build_hv_sf(qe, res, sf, with_pw=True, probe="CC", qe_joint=True, res_joint=
     axial), and the RES hard-vertex records are identity for now (EM-Delta / delta_strength is a v2
     item; the SF reweight still applies to both channels).  qe uses k_e/k_lep/p_out/is_p; res uses
     p_struck."""
-    # SF grids/points are probe-INDEPENDENT (they depend only on the struck-nucleon momenta) -> build once.
     qe_pmag, qe_erem = removal_from_struck(qe["p_struck"])
     res_pmag, res_erem = removal_from_struck(res["p_struck"])
     SF = dict(grids=sf_grids(sf), qe_pmag=qe_pmag, qe_erem=qe_erem, res_pmag=res_pmag, res_erem=res_erem)
 
     if probe == "EM":
-        # k_e = incoming beam e-; k_lep = scattered e-
         qa = (qe["k_e"], qe["k_lep"], qe["p_struck"], qe["p_out"]); isp = np.asarray(qe["is_p"])
         nres = len(np.asarray(res["p_N"]))
-        # RES hard-vertex records are identity for EM (the EM-Delta / delta_strength handle is a v2 item)
         HV = dict(**_qe_records(qa, "EM", isp, qe_joint),
                   res_ma=_ident_rec(nres), res_pp=_ident_rec(nres), res_delta=_ident_rec(nres), res_pw=None)
         return HV, SF
@@ -96,7 +91,7 @@ def build_hv_sf(qe, res, sf, with_pw=True, probe="CC", qe_joint=True, res_joint=
 
 
 def _hv_qe(k, HV):
-    if "qe_reduced" in HV:      # EXACT joint reduced-quadratic path (all cross terms; any-order differentiable)
+    if "qe_reduced" in HV:
         from adonis.reweight.reduced_amps2 import qe_reduced_reweight
         return qe_reduced_reweight(HV["qe_reduced"], k, probe=HV.get("qe_probe", "CC"), is_proton=HV.get("qe_isp"))
     return (ma_reweight(HV["qe_ma"], k.M_A_qe) * strength_reweight(HV["qe_ma"], k.axial_strength)
@@ -106,13 +101,13 @@ def _hv_qe(k, HV):
 
 
 def _hv_res(k, HV):
-    if "res_reduced" in HV:     # EXACT joint reduced-quadratic path (all cross terms; any-order differentiable)
+    if "res_reduced" in HV:
         from adonis.reweight.reduced_amps2 import res_reduced_reweight
         return res_reduced_reweight(HV["res_reduced"], k)
     w = (ma_reweight(HV["res_ma"], k.M_A_res) * strength_reweight(HV["res_ma"], k.res_axial_strength)
          * strength_reweight(HV["res_pp"], k.pion_pole)
-         * strength_reweight(HV["res_delta"], k.delta_strength))   # P33 Delta-strength knob
-    if HV.get("res_pw") is None:                              # pw records skipped (with_pw=False) -> no-op
+         * strength_reweight(HV["res_delta"], k.delta_strength))
+    if HV.get("res_pw") is None:
         return w
     pw = jnp.asarray(k.pw_norm)
     for i in range(_NPW):

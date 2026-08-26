@@ -54,32 +54,32 @@ def _grad_fd(setk, v0, ibin=None):
     return g_ad, g_fd
 
 
-def test_grad_vector_strength():        # hard-vertex amps2 (QE)
+def test_grad_vector_strength():
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(vector_strength=v), 1.1)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-4, (g_ad, g_fd)
 
 
-def test_grad_pion_pole():              # hard-vertex amps2 (RES)
+def test_grad_pion_pole():
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(pion_pole=v), 1.1)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-4, (g_ad, g_fd)
 
 
-def test_grad_s_piN_cex():              # FSI kind-1 pion channel
+def test_grad_s_piN_cex():
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(s_piN_cex=v), 1.2)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)
 
 
-def test_grad_s_NN_inelastic():         # FSI kind-1 nucleon channel (3-vector via scalar)
+def test_grad_s_NN_inelastic():
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(s_NN_inelastic=(v, v, v)), 1.2)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)
 
 
-def test_grad_f_NN_cex():               # branch fraction
+def test_grad_f_NN_cex():
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(f_NN_cex=v), 0.6)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)
 
 
-def test_grad_kF_sf_on_a_bin():         # spectral function, on a single dsigma/dx bin
+def test_grad_kF_sf_on_a_bin():
     nb = len(_EDGES) - 1
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(kF_sf=v), 1.1, ibin=nb // 3)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)

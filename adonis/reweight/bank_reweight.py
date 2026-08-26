@@ -14,8 +14,6 @@ from adonis.fsi.cascade import pool_fsi_reweight
 from adonis.nuclear.spectral import SpectralFunction
 from adonis.nuclear.targets import resolve_targets
 
-# RAGGED kind-1 FSI record (see cascade.compact_fsi_record): flat per-slot arrays + a per-slot event
-# index.  A dense (n, K) layout would be ~97% padding; this is ~40x fewer slots to store and reweight.
 _FSI_F = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c", "p_eidx",
           "hh", "a", "iso", "finel", "inel", "swap", "n_eidx")
 
@@ -28,15 +26,9 @@ def bank_weight(B, knobs, grids):
     """Exact per-event weight w(theta) (N,).  knobs: a PhysicsParams (adonis.core.params); grids: sf_grids output."""
     k = knobs
     if "hv_qe_ma_a" not in B and "hv_qe_mij" not in B:
-        # Fail loud, not with a cryptic deep KeyError.  NC RES-only banks (channels=[res]) never write
-        # hard-vertex records, and NC QE nuclear generation is not implemented, so the differentiable
-        # weight is undefined for NC -- the sec2/sec3 gradient machinery does not support it.  NC
-        # selections go through bank_signal_nc / oracle_signal_nc, which read w0 directly.
         raise KeyError("bank_weight: bank carries no hard-vertex (hv_*) records; NC banks are not "
                        "reweightable through this path (see adonis/workflow NC selection helpers).")
     def ma(name): return (B[f"hv_{name}_a"], B[f"hv_{name}_b"], B[f"hv_{name}_c"], B[f"hv_{name}_Q2"])
-    # QE and RES each take the exact reduced-quadratic M when the bank has been refreshed (hv_qe_mij /
-    # hv_res_mij), else the legacy per-knob product.
     if "hv_qe_mij" in B:
         from adonis.reweight.reduced_amps2 import qe_reduced_reweight
         probe = "EM" if int(np.asarray(B.get("qe_probe_em", 0)).item() if "qe_probe_em" in B else 0) else "CC"
@@ -55,11 +47,11 @@ def bank_weight(B, knobs, grids):
         res_ma = ma("res_ma")
         res = (ma_reweight(res_ma, k.M_A_res) * strength_reweight(res_ma, k.res_axial_strength)
                * strength_reweight(ma("res_pp"), k.pion_pole))
-        if "hv_res_delta_a" in B:                  # optional P33 Delta-strength knob (banks that carry it)
+        if "hv_res_delta_a" in B:
             res = res * strength_reweight(ma("res_delta"), k.delta_strength)
     hv = qe * res
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
-    rec["n_events"] = len(B["w0"])               # ragged reduction needs the event count
+    rec["n_events"] = len(B["w0"])
     fsi = pool_fsi_reweight(rec, k.sabs, 1.0, s_piN_elastic=k.s_piN_elastic, s_piN_cex=k.s_piN_cex,
                             s_conv=k.s_conv, s_NN_elastic=k.s_NN_elastic, s_NN_inelastic=k.s_NN_inelastic,
                             f_NN_cex=k.f_NN_cex)
@@ -77,4 +69,4 @@ def to_jax(B):
     return {k: jnp.asarray(B[k]) for k in keys}
 
 
-weight_jit = jax.jit(bank_weight)        # JB (jnp pytree) stays on device, compiled once, knobs vary
+weight_jit = jax.jit(bank_weight)

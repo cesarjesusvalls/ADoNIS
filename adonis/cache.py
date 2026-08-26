@@ -33,7 +33,6 @@ def _iter_files(dep):
         yield from sorted(q for q in p.rglob("*") if q.is_file())
     elif p.is_file():
         yield p
-    # a missing dep contributes nothing: build() will raise the real error, not the cache
 
 
 def fingerprint(deps=(), params=None):
@@ -59,11 +58,9 @@ def cached(name, build, *, deps=(), params=None, refresh=None):
             if str(z[_FP].item()) == fp:
                 return {k: z[k] for k in z.files if k != _FP}
         except Exception:
-            pass                                  # unreadable/stale entry -> just rebuild it
+            pass
     out = build()
     CACHE.mkdir(parents=True, exist_ok=True)
-    # atomic: a killed run never leaves a half file.  The temp name MUST end in .npz -- np.savez
-    # silently appends the extension otherwise, and the rename then targets a file that is not there.
     tmp = path.with_name(path.name + ".tmp.npz")
     np.savez(tmp, **{_FP: np.array(fp), **{k: np.asarray(v) for k, v in out.items()}})
     os.replace(tmp, path)

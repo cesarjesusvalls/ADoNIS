@@ -48,10 +48,9 @@ from adonis.core.event import EventRecord
 
 E_NU_DEFAULT = 1500.0
 
-# PDG ids per CC channel (matches hadron_xsec.CC_CHANNELS order)
-_PID_NI = np.array([2112, 2112, 2212])     # initial nucleon
-_PID_N = np.array([2212, 2112, 2212])      # final nucleon
-_PID_PI = np.array([111, 211, 211])        # final pion
+_PID_NI = np.array([2112, 2112, 2212])
+_PID_N = np.array([2212, 2112, 2212])
+_PID_PI = np.array([111, 211, 211])
 
 
 def _diff_coeffs(hs: HadronStructure):
@@ -87,20 +86,16 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     Ep = sg(ep_lo + (ep_hi - ep_lo) * jax.random.uniform(klep, (n,)))
     th_lo = jnp.deg2rad(theta_min_deg)
     theta = sg(th_lo + (jnp.deg2rad(theta_max_deg) - th_lo) * jax.random.uniform(kth, (n,)))
-    cos_ts = sg(2.0 * jax.random.uniform(kpi_a, (n,)) - 1.0)        # pion cos(theta*)
-    phi_s = sg(2.0 * jnp.pi * jax.random.uniform(kpi_p, (n,)))       # pion phi*
-    phi_lep = sg(2.0 * jnp.pi * jax.random.uniform(kphi, (n,)))      # lepton azimuth
+    cos_ts = sg(2.0 * jax.random.uniform(kpi_a, (n,)) - 1.0)
+    phi_s = sg(2.0 * jnp.pi * jax.random.uniform(kpi_p, (n,)))
+    phi_lep = sg(2.0 * jnp.pi * jax.random.uniform(kphi, (n,)))
 
     omega = e_nu - Ep
-    # outgoing-lepton 3-momentum magnitude: |p'| = sqrt(E'^2 - m_lep^2). m_lep=0 reproduces
-    # the massless path bit-for-bit; m_lep>0 (e.g. the muon) shifts q, W, Q2 self-consistently.
-    # The CC lepton tensor form is unchanged: the (1∓γ5) projectors kill the m_lep terms, so
-    # the mass enters ONLY through this kinematic magnitude.
     plep = jnp.sqrt(jnp.clip(Ep ** 2 - m_lep ** 2, 0.0, None))
     qx = -plep * jnp.sin(theta)
     qz = e_nu - plep * jnp.cos(theta)
     q_vec2 = qx ** 2 + qz ** 2
-    e_nu_a = jnp.broadcast_to(jnp.asarray(e_nu, float), (n,))     # scalar OR per-event flux
+    e_nu_a = jnp.broadcast_to(jnp.asarray(e_nu, float), (n,))
     k_lab = jnp.stack([e_nu_a, jnp.zeros((n,)), jnp.zeros((n,)), e_nu_a], axis=-1)
     kp_lab = jnp.stack([Ep, plep * jnp.sin(theta), jnp.zeros((n,)), plep * jnp.cos(theta)], axis=-1)
 
@@ -115,30 +110,19 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
     cut = (W > W_THR) & (W < W_MAX) & (Q2_adj > 0.0) & (Q2_adj < Q2_MAX) & (Ep >= m_lep)
 
     k_cm, kp_cm = cm_lepton_momenta(k_lab, kp_lab, p_struck)
-    is_em = probe_spec(current).em_propagator   # raises on unknown/unimplemented, never assumes CC
+    is_em = probe_spec(current).em_propagator
     Lmn = sg(lepton_tensor_em(k_cm, kp_cm) if is_em else lepton_tensor_cc(k_cm, kp_cm))
     e1, e2, e3, P = cm_basis(k_lab, kp_lab, p_struck)
-    # EM photon propagator 1/Q^4 (true leptonic Q^2); CC W-propagator is ~constant -> 1.
     Q2_lep = q_vec2 - omega ** 2
     em_prop = (1.0 / jnp.clip(Q2_lep, 1.0, None) ** 2) if is_em else 1.0
 
-    # per-channel angular kernels at the sampled pion angle (detached numpy -> jnp)
     theta_pi = np.arccos(np.asarray(cos_ts)); phi_np = np.asarray(phi_s)
     Kfac = [jnp.asarray(angular_factor(theta_pi, phi_np, pre[c])) for c in range(len(hs.channels))]
 
-    # lab final state (knob-independent) + leptonic/phase-space prefactor.
-    # The leptonic factor is |p'|/E_nu (the standard |k'|/|k| flux/phase-space ratio), NOT
-    # E'/E_nu: for a massless lepton |p'|=E' so this is unchanged, but for the muon the
-    # momentum magnitude `plep` (not the energy Ep) is what enters d^3p'/(2E').
-    # KINEMATIC pion mass (mpi0 to match ACHILLES) for the final-state on-shell decay; the
-    # amplitude-internal m_pi (=fpio 138.04, passed in as `m_pi`) stays in S["m_pi"] for build_zmtx.
     from adonis.channels.dcc.conventions import kin_m_pi, M_PIP
     m_pi_kin = kin_m_pi(M_PIP)
     p_pi, p_N = two_body_lab(P, e1, e2, e3, jnp.clip(W, 1.0, None), cos_ts, phi_s, m_pi_kin, m_N)
     prefac = (plep / e_nu) * jnp.sin(theta) * (pion_cm_momentum(W) / jnp.clip(W, 1.0, None)) * em_prop
-    # flux-folding: when ep_hi is per-event (= E_nu), the lepton-energy proposal volume
-    # (ep_hi - ep_lo) varies per event and must enter the weight (it is a constant absorbed by
-    # the bridge for the fixed-energy default, so guarded off there).
     if weight_ep_volume:
         prefac = prefac * (jnp.asarray(ep_hi, float) - ep_lo)
     return dict(
@@ -198,20 +182,16 @@ def fold_final_state(knobs: DCCKnobs, key, n=200000, hs: HadronStructure | None 
     return assemble_event(S, w, LWc)
 
 
-# --------------------------------------------------------------------------- #
-#  DCCSinglePion -- the Channel object (sample / weight / event_record contract)
-# --------------------------------------------------------------------------- #
-from adonis.core.channel import Channel              # noqa: E402
-from adonis.core.params import ChainConfig                  # noqa: E402
-from adonis.flux.mono import Monochromatic           # noqa: E402
-from adonis.nuclear.spectral import SpectralFunction  # noqa: E402
+from adonis.core.channel import Channel
+from adonis.core.params import ChainConfig
+from adonis.flux.mono import Monochromatic
+from adonis.nuclear.spectral import SpectralFunction
 
 
 class DCCSinglePion(Channel):
     """CC single-pion production (ANL-Osaka DCC).  Holds the static config + swappable
     flux / nuclear model; exposes the sample/reweight contract."""
 
-    # exact key set of sample_final_state's return (checked by the Generator)
     sample_fields = ("hs", "n", "m_pi", "m_N", "kch", "Wc", "Q2c", "W", "Q2_adj",
                      "cut", "prefac", "Lmn", "Kfac", "mult",
                      "k_lab", "kp_lab", "p_pi", "p_N", "p_struck")
@@ -236,7 +216,6 @@ class DCCSinglePion(Channel):
         w, LWc = self.weight(params, sample)
         return assemble_event(sample, w, LWc)
 
-    # -- per-module self-tests ------------------------------------------------- #
     def closure_test(self, key=None, n=20_000, tol=1e-3, eps=2e-3, **kw):
         """Standalone differentiability: d(total xsec)/dM_A, autodiff vs central FD.
 

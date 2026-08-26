@@ -17,7 +17,7 @@ from adonis.channels import constants as C
 from adonis.channels.currents.dirac import hadron_current_qe_dirac, nc_coupl1
 from adonis.channels.currents.form_factors import nucleon_ff
 
-QUIRK_FACTOR = 1.0 / (2.0 * C.sw)          # = sw / (2*sin2w); ~1.0396
+QUIRK_FACTOR = 1.0 / (2.0 * C.sw)
 
 
 def _kin(n=4):
@@ -38,7 +38,6 @@ def _H(is_proton, use_achilles_nc_coupling=False, **kw):
                                               use_achilles_nc_coupling=use_achilles_nc_coupling, **kw))
 
 
-# ------------------------------------------------------------------------------ D1: the two-sided gate
 def test_the_quirk_factor_is_exactly_1_0396():
     assert nc_coupl1(use_achilles_nc_coupling=True) / nc_coupl1(use_achilles_nc_coupling=False) == pytest.approx(QUIRK_FACTOR, rel=1e-12)
     assert QUIRK_FACTOR == pytest.approx(1.0396, abs=5e-4)
@@ -71,8 +70,6 @@ def test_the_quirk_scales_BOTH_nucleons_F1F2_and_nothing_else(is_proton):
     form-factor scale zeroing the OTHER nucleon's F1/F2), the current is pure coupl1, so the two
     branches must differ by exactly the scalar QUIRK_FACTOR.
     """
-    # ff_scale keys are the SACHS components; zeroing gen+gmn kills F1n and F2n together (and
-    # gep+gmp kills F1p,F2p), which is exactly "switch off the -coupl2 partner".
     ff_off = {"gen": 0.0, "gmn": 0.0} if is_proton else {"gep": 0.0, "gmp": 0.0}
     a = _H(is_proton, use_achilles_nc_coupling=False, axial_scale=0.0, ff_scale=ff_off)
     b = _H(is_proton, use_achilles_nc_coupling=True, axial_scale=0.0, ff_scale=ff_off)
@@ -85,7 +82,7 @@ def test_the_quirk_scales_BOTH_nucleons_F1F2_and_nothing_else(is_proton):
 
 def test_the_quirk_leaves_the_axial_alone():
     """FA carries coupl2, which is identical in both branches, so a pure-axial current must not move."""
-    ff_zero_vec = {"gep": 0.0, "gen": 0.0, "gmp": 0.0, "gmn": 0.0}   # F1p=F1n=F2p=F2n=0
+    ff_zero_vec = {"gep": 0.0, "gen": 0.0, "gmp": 0.0, "gmn": 0.0}
     a = _H(True, use_achilles_nc_coupling=False, ff_scale=ff_zero_vec)
     b = _H(True, use_achilles_nc_coupling=True, ff_scale=ff_zero_vec)
     assert np.allclose(a, b, atol=0), "the use_achilles_nc_coupling leaked into the axial current"
@@ -99,7 +96,6 @@ def test_the_quirk_cannot_touch_cc_or_em():
         assert np.array_equal(a, b), f"{probe} moved when the NC use_achilles_nc_coupling flag changed"
 
 
-# --------------------------------------------------------------------- proton / neutron differential
 def test_proton_and_neutron_are_genuinely_different_currents():
     """D3: NC elastic on a NEUTRON has no CC analogue in this repo, so exercise it explicitly."""
     assert not np.allclose(_H(True), _H(False)), "NC QE gives the same current for p and n"
@@ -107,13 +103,12 @@ def test_proton_and_neutron_are_genuinely_different_currents():
 
 def test_fa_flips_sign_between_proton_and_neutron():
     """FA <- +coupl2 on a proton (:101), -coupl2 on a neutron (:112)."""
-    ff_zero_vec = {"gep": 0.0, "gen": 0.0, "gmp": 0.0, "gmn": 0.0}   # leave only the axial
+    ff_zero_vec = {"gep": 0.0, "gen": 0.0, "gmp": 0.0, "gmn": 0.0}
     hp = _H(True, ff_scale=ff_zero_vec)
     hn = _H(False, ff_scale=ff_zero_vec)
     assert np.allclose(hp, -hn, atol=1e-10), "the NC axial did not flip sign between p and n"
 
 
-# ------------------------------------------------------------------------- the faithfulness pinnings
 def test_no_strange_form_factors_reach_the_nc_current():
     """ACHILLES computes FormFactors::FAs (FormFactor.cc:92,123) and NEVER consumes it:
     FormFactorInfo::Type (FormFactor.hh:22-48) has no strange entry, so CouplingsFF cannot dispatch
@@ -142,11 +137,11 @@ def test_the_induced_pseudoscalar_DOES_contribute_via_the_shifted_transfer(monke
     from adonis.channels.currents.matrix_element import me_cross_section
     k, kp, p, po = _kin()
     mag = np.sqrt(np.sum(kp[:, 1:] ** 2, axis=1))
-    kp = np.column_stack([mag, kp[:, 1:]])          # genuinely massless outgoing lepton
+    kp = np.column_stack([mag, kp[:, 1:]])
     isp = np.full(len(k), True)
     base = np.asarray(me_cross_section(k, kp, p, po, probe="NC", is_proton=isp)["amps2"])
 
-    real_ff = D.nucleon_ff                          # FAP has no ff_scale hook; scale it directly
+    real_ff = D.nucleon_ff
     def big_fap(Q2, ff_scale=None):
         d = dict(real_ff(Q2, ff_scale=ff_scale)); d["FAP"] = d["FAP"] * 137.0
         return d

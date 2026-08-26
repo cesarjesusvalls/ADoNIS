@@ -11,7 +11,7 @@ def test_boost_to_rest_and_roundtrip():
     tot = np.array([1473.8, 120.0, -200.0, 300.0])
     xlr = boost_matrix(tot, to_cm=True)
     cm = xlr @ tot
-    assert np.max(np.abs(cm[1:])) < 1e-6                      # total at rest in CM
+    assert np.max(np.abs(cm[1:])) < 1e-6
     back = boost_matrix(tot, to_cm=False) @ (xlr @ tot)
     assert np.max(np.abs(back - tot)) < 1e-9
 

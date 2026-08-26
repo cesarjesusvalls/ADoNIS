@@ -24,12 +24,11 @@ def _bank(pids_per_event, w=None):
     eidx = np.concatenate([np.full(len(ev), i) for i, ev in enumerate(pids_per_event)]).astype(int) \
         if flat else np.zeros(0, int)
     p4 = np.zeros((len(flat), 4))
-    for i, p in enumerate(flat):                       # give everything a plausible 300 MeV/c
+    for i, p in enumerate(flat):
         p4[i] = [np.sqrt(300.0 ** 2 + 140.0 ** 2), 0.0, 60.0, 294.0]
     return {"w0": np.ones(n) if w is None else np.asarray(w),
             "fs_pid": np.asarray(flat, int), "fs_p4": p4, "_eidx": eidx,
             "channel": np.ones(n, np.int8),
-            # the CC path reads k_lep first; the NC path must never touch it (see the test below)
             "k_lep": np.tile([1000.0, 0.0, 100.0, 990.0], (n, 1))}
 
 
@@ -52,10 +51,10 @@ def test_single_pi0_mirrors_single_pip():
 
 def test_nc_selection_keeps_one_pi0_and_rejects_charged_pions(tmp_path, monkeypatch):
     from adonis.workflow import selection as S
-    B = _bank([[111, 2212],          # signal: 1 pi0 + p
-               [111, 111, 2212],     # 2 pi0 -> reject
-               [111, 211, 2212],     # pi0 + pi+ -> reject
-               [2212]])              # no pion -> reject
+    B = _bank([[111, 2212],
+               [111, 111, 2212],
+               [111, 211, 2212],
+               [2212]])
     monkeypatch.setattr(S.BP, "load_bank", lambda d: B)
     out = S.bank_signal_nc("ignored", _sd())
     assert len(out["w"]) == 1, f"expected exactly the 1-pi0 event, got {len(out['w'])}"
@@ -66,8 +65,8 @@ def test_a_heavy_meson_vetoes_but_a_pi0_does_not(tmp_path, monkeypatch):
     """THE veto test.  A 1pi0 + 1eta event must be rejected; a plain 1pi0 event must survive.  If
     n_other_meson were reused as the veto, BOTH would be rejected -- the signal along with it."""
     from adonis.workflow import selection as S
-    B = _bank([[111, 2212],          # signal
-               [111, 221, 2212]])    # pi0 + eta -> reject
+    B = _bank([[111, 2212],
+               [111, 221, 2212]])
     monkeypatch.setattr(S.BP, "load_bank", lambda d: B)
     out = S.bank_signal_nc("ignored", _sd())
     assert len(out["w"]) == 1, "the eta event was not vetoed, or the pi0 event was"
@@ -97,7 +96,6 @@ def test_nc_observables_are_pion_based_and_carry_no_tki():
         assert absent not in o, f"{absent} is undefined without a lepton but was produced anyway"
 
 
-# ------------------------------------------------------------------- the two config lies, fixed
 def test_anypi_now_differs_from_pip(monkeypatch):
     """`anypi` validated and then did NOTHING -- selection never branched on it, so it was
     byte-identical to `pip`.  A config key that silently does nothing is the same class of defect as

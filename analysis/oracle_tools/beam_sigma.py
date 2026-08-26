@@ -23,10 +23,6 @@ import numpy as np
 
 from adonis.flux.hadron import BEAMS, PIR2_MB
 
-# The sys.path.insert this module used to carry went with it when it moved out of analysis/paper/beams:
-# it was reaching the repo root by counting .parents from a path that no longer exists, and inside the
-# package it is both wrong and forbidden -- `adonis` is importable or the caller's environment is broken.
-# ACHILLES cascade hepmc dir; ACHILLES_BEAM_DIR overrides (e.g. a repro tree with per-shard subdirs).
 ACH_DIR = Path(os.environ.get("ACHILLES_BEAM_DIR", "output/achilles"))
 PION_PIDS = (211, 111, -211)
 
@@ -48,13 +44,11 @@ def _scan(path, beam_pid):
                 p_in = None
                 has_pi = False
             elif t == "A " and "GenCrossSection" in line:
-                n_tried = max(n_tried, int(line.split()[-1]))          # running attempt counter
+                n_tried = max(n_tried, int(line.split()[-1]))
             elif t == "P ":
                 f = line.split()
                 pid = int(f[3]); px = float(f[4]); py = float(f[5]); pz = float(f[6])
                 status = int(f[9])
-                # THE BEAM: status 29, our PID, fired exactly along +z (px = py = 0).  The struck nucleon
-                # is also status 29 with the same PID for a nucleon beam -- hence the px/py test.
                 if p_in is None and status == 29 and pid == beam_pid and px == 0.0 and py == 0.0:
                     p_in = abs(pz)
                 if status == 1 and pid in PION_PIDS:
@@ -73,7 +67,7 @@ _STEM = {
 def source_paths(beam, target="C"):
     """The hepmc files sigma_of_p will scan.  Public so a caller can fingerprint them for a cache
     without re-deriving the stem mapping (which would then be able to drift out of sync)."""
-    return sorted(ACH_DIR.glob(f"**/{_STEM[target][beam]}*.hepmc"))   # flat OR per-shard subdirs
+    return sorted(ACH_DIR.glob(f"**/{_STEM[target][beam]}*.hepmc"))
 
 
 def sigma_of_p(beam, edges, target="C"):
@@ -92,16 +86,15 @@ def sigma_of_p(beam, edges, target="C"):
             continue
         pin = np.array([e[0] for e in evts]); hpi = np.array([e[1] for e in evts])
         idx = np.clip(np.digitize(pin, edges) - 1, 0, nb - 1)
-        second = (~hpi) if species == "PION" else hpi      # absorbed (no pion) | pion-produced
+        second = (~hpi) if species == "PION" else hpi
         for b in range(nb):
             m = idx == b
             n_r[b] += int(m.sum())
             n_s[b] += int((m & second).sum())
-    ntot = n_tried * (np.diff(edges) / (edges[-1] - edges[0]))          # uniform-in-p attempts per bin
+    ntot = n_tried * (np.diff(edges) / (edges[-1] - edges[0]))
     with np.errstate(divide="ignore", invalid="ignore"):
         sr = PIR2_MB * n_r / ntot
         ss = PIR2_MB * n_s / ntot
-        # BINOMIAL error on the reacted/tried efficiency (was Poisson sqrt(n_r)); = Poisson * sqrt(1-eps)
         er = PIR2_MB * np.sqrt(n_r * np.clip(1.0 - n_r / ntot, 0.0, 1.0)) / ntot
         es = PIR2_MB * np.sqrt(n_s * np.clip(1.0 - n_s / ntot, 0.0, 1.0)) / ntot
     return sr, ss, er, es, n_r, n_s, n_tried

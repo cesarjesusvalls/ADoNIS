@@ -20,7 +20,7 @@ import jax
 import jax.numpy as jnp
 
 from adonis.channels.dcc.loader import load_cached, PW_LABELS
-from adonis.core.params import PhysicsParams, DCCKnobs    # DCCKnobs is an alias of PhysicsParams
+from adonis.core.params import PhysicsParams, DCCKnobs
 
 
 class DCCAmplitudes:
@@ -28,9 +28,8 @@ class DCCAmplitudes:
 
     def __init__(self, table=None):
         t = table or load_cached()
-        self.W = jnp.asarray(t.W)                       # (n_w,) MeV
-        self.Q2 = jnp.asarray(t.Q2)                     # (n_q2,) MeV^2
-        # sum the 3 za components (bare+dressed+nonres); squeeze n_gmb=1 -> (n_q2,n_w,n_idx,n_pw)
+        self.W = jnp.asarray(t.W)
+        self.Q2 = jnp.asarray(t.Q2)
         def full(a):
             return jnp.asarray(a.sum(axis=-1)[:, :, :, :, 0])
         self.vec = full(t.vec)
@@ -39,7 +38,6 @@ class DCCAmplitudes:
         self.n_pw = self.vec.shape[-1]
         self.labels = t.labels
 
-    # --- bilinear interpolation on the (Q2, W) grid, batched over events ----- #
     def _interp(self, vals, W, Q2):
         """vals: (n_q2, n_w, ...) complex; W,Q2: scalars -> (...) complex."""
         nw, nq = self.W.shape[0], self.Q2.shape[0]
@@ -97,7 +95,7 @@ class DCCAmplitudes:
         tw = ((W - gw[iw]) / (gw[iw + 1] - gw[iw]))[:, None, None]
         tq = ((Q2 - gq[iq]) / (gq[iq + 1] - gq[iq]))[:, None, None]
 
-        def bil(block):                                    # block (nq,nw,ni,npw)
+        def bil(block):
             v00, v01 = block[iq, iw], block[iq, iw + 1]
             v10, v11 = block[iq + 1, iw], block[iq + 1, iw + 1]
             return (1 - tq) * ((1 - tw) * v00 + tw * v01) + tq * ((1 - tw) * v10 + tw * v11)
@@ -141,7 +139,7 @@ class DCCAmplitudes:
         isv = self._interp(self.isv, W, Q2)
         axial = self._interp(self.axial, W, Q2) * knobs.axial_strength
         if knobs.pw_norm != ():
-            scale = 1.0 + jnp.asarray(knobs.pw_norm)            # (n_pw,)
+            scale = 1.0 + jnp.asarray(knobs.pw_norm)
             vec = vec * scale; isv = isv * scale; axial = axial * scale
         return vec, isv, axial
 

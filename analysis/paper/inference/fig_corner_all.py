@@ -33,41 +33,19 @@ from analysis.paper import style
 from analysis.paper.inference.corner_common import load_views, snap_axis, view_for
 from adonis.analysis import knobs as K
 
-L68, L90 = 2.30, 4.61                  # 2-D Delta-chi2 levels (68% / 90% of a 2-D Gaussian)
-# Cyan: the arrows sit on a grey chi2 surface in panels that carry nothing else, so they only have to
-# stay legible there and clear of the four contour colours.
+L68, L90 = 2.30, 4.61
 C_ARROW = "#00b3c8"
-C_CROP = "k"                           # the crop rectangle is an annotation, not one of the objects
-VIEW_SIG = 3.2                         # display window, in sigma_post, for the contour half
-# Labels come from style.plab and NOTHING is overridden here.  This figure used to relabel Eb_shift as
-# E_b on the theory that physical units meant the axis was the binding energy; it is not.  E_b is a
-# per-event quantity sampled from the spectral function, and the dial rigidly translates that whole
-# distribution: S(p, E_removal - Delta E_b).  Physical units make the axis MeV of SHIFT, so Delta E_b is
-# right here for exactly the same reason it is right everywhere else.
+C_CROP = "k"
+VIEW_SIG = 3.2
 def _lab(nm):
     return style.plab(nm)
-# Laplace and NUTS agree closely, so they take two shades of ONE family -- mid blue and navy -- and
-# their agreement reads as a family resemblance rather than as a coincidence of two unrelated hues.
-# The Gaussian is the one that disagrees, so it gets the high-contrast colour.
-#   Laplace  #1f4b9c blue (filled, two alphas)   NUTS  #07204d navy (lines)
-#   Gaussian #e8871a orange                      BFP   #1a9e57 green (as in figure A)
 C_LAP, C_NUTS, C_GAUS, C_BFP = "#1f4b9c", "#07204d", "#e8871a", "#1a9e57"
-# PROFILE: the same teal closure_demo gives it, so the two figures name the same object identically.
 C_PROF = "#2a9d8f"
-# ONE style everywhere: the Laplace marginal is the filled blue SURFACE (68% dark, 90% light), the
-# profile is teal LINES at the same two levels, NUTS is navy lines over both, and the Gaussian is
-# orange dashed.  The profile used to be omitted here on the grounds that (c)/(d) of figure A carried
-# the volume-factor argument; those panels are no longer produced, and figure A now draws the profile
-# bar itself, so the corner shows it too and the two figures stay consistent.
 
 
-NB_MAX, NB_MIN, NB_TARGET = 36, 12, 250     # adaptive 2-D binning: see _nbins
-# Gaussian smoothing of the NUTS histogram before the HPD level is taken, in grid cells (0 disables).
-# UNLIKE the colour background of the gradient figure, this touches a QUANTITATIVE object: the contour
-# is a credible region, and smoothing slightly inflates narrow features.  Measured cost is printed at
-# render time as the change in enclosed area, and at 1 cell it is well under the sampling error.
-NUTS_SMOOTH = float(os.environ.get("NUTS_SMOOTH", "1.0"))     # largest kernel allowed
-NUTS_SMOOTH_MAXBIAS = float(os.environ.get("NUTS_SMOOTH_MAXBIAS", "0.10"))   # cap on the area change
+NB_MAX, NB_MIN, NB_TARGET = 36, 12, 250
+NUTS_SMOOTH = float(os.environ.get("NUTS_SMOOTH", "1.0"))
+NUTS_SMOOTH_MAXBIAS = float(os.environ.get("NUTS_SMOOTH_MAXBIAS", "0.10"))
 
 
 def _smooth_hist(H):
@@ -151,7 +129,6 @@ def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
         if aa[0] - 1e-9 <= xb <= aa[-1] + 1e-9:
             wall = xb
     top = 0.0
-    # LAPLACE MARGINAL as the filled surface, same object and same two levels as the 2-D panels
     if nm in prof1 and prof1[nm][2] is not None:
         g_, d_, l_ = prof1[nm]
         xf = np.linspace(max(g_.min(), aa[0]), min(g_.max(), aa[-1]), 800)
@@ -165,10 +142,6 @@ def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
                 thr = y[o][min(int(np.searchsorted(cum, frac)), len(o) - 1)]
                 A.fill_between(xf, 0, y, where=(y >= thr), color=C_LAP, alpha=al, lw=0)
             A.plot(xf, y, color=C_LAP, lw=1.2)
-    # PROFILE: exp(-Dchi2/2) ALONE, unit area -- literally the Laplace curve above without its
-    # exp(ld/2) factor, so the gap between the teal line and the filled blue is the volume correction,
-    # the same reading as the 2-D panels and closure_demo panel (a).  Drawn after the fill so the line
-    # sits on top of it, and before NUTS so the exact answer stays the topmost curve.
     if nm in prof1:
         g_, d_, _l = prof1[nm]
         xf = np.linspace(max(g_.min(), aa[0]), min(g_.max(), aa[-1]), 800)
@@ -176,20 +149,15 @@ def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
         if yp.max() > 0 and np.trapezoid(yp, xf) > 0:
             yp = yp / np.trapezoid(yp, xf); top = max(top, yp.max())
             A.plot(xf, yp, color=C_PROF, lw=1.3)
-    if nm in ncol:                                    # NUTS marginal, orange
+    if nm in ncol:
         s_ = U[:, ncol[nm]]
-        # SMOOTHED, like the 2-D panels.  A 40-bin step histogram of 24k samples is mostly sampling
-        # noise at this panel size, and it read as structure next to the smooth Laplace curve it is
-        # meant to be compared with.  Finer bins + a narrow Gaussian: the same information, without the
-        # staircase.  The kernel is small (1.5 cells of a 120-bin grid = 1/80 of the range), so the
-        # 68% mass moves by well under a percent -- this smooths the noise, not the distribution.
         h, e = np.histogram(s_, bins=120, range=(aa[0], aa[-1]), density=True)
         if h.max() > 0:
             from scipy.ndimage import gaussian_filter1d
             c_ = 0.5 * (e[1:] + e[:-1])
             hs = gaussian_filter1d(h, 1.5, mode="nearest")
             A.plot(c_, hs, color=C_NUTS, lw=1.5); top = max(top, hs.max())
-    gx = np.linspace(aa[0], aa[-1], 300)              # Gaussian, teal
+    gx = np.linspace(aa[0], aa[-1], 300)
     gy = np.exp(-0.5 * gx ** 2) / np.sqrt(2 * np.pi)
     A.plot(gx, gy, color=C_GAUS, lw=1.3, ls="--"); top = max(top, gy.max())
     if wall is not None:
@@ -228,7 +196,7 @@ def _grad_panel(A, G, i, j, sub, pos, pn, bfp, crop=None, xbot=True, yleft=True)
     _c = np.log10(np.maximum(d, 1e-3))
     if np.isfinite(_c).all():
         from scipy.ndimage import gaussian_filter
-        _c = gaussian_filter(_c, 1.0, mode="nearest")      # colour only; the arrows are untouched
+        _c = gaussian_filter(_c, 1.0, mode="nearest")
     A.imshow(np.ma.masked_invalid(_c).T, cmap="Greys", origin="lower", aspect="auto",
              extent=(float(axa[0]), float(axa[-1]), float(axb[0]), float(axb[-1])),
              interpolation="bicubic", rasterized=True, alpha=0.75, zorder=0)
@@ -266,7 +234,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
     if GRAD:
         gd = [str(x) for x in gz["dials"]]
         gsel = [int(q) for q in gz["sel_pos"]]
-        # the grad run's dial ORDER need not match the corner's; index by NAME, never by position
         try:
             gidx = [gd.index(d_) for d_ in dials]
             GRAD = {(gidx.index(i), gidx.index(j)) if False else (ii, jj): GRAD[(gidx[ii], gidx[jj])]
@@ -284,9 +251,7 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
         raise SystemExit(f"no NUTS chains for {nuts_label}")
     Zn = [np.load(f, allow_pickle=True) for f in fs]
     nmin = min(len(np.asarray(z["u"])) for z in Zn)
-    U = np.concatenate([np.asarray(z["u"])[-nmin:] for z in Zn])      # (nchain*n, ndial), sigma units
-    # The chains are indexed by SUBSET POSITION, same as sigma_post -- map dial name -> that position via
-    # the chain's own subset, never by assuming it matches the corner file's ordering.
+    U = np.concatenate([np.asarray(z["u"])[-nmin:] for z in Zn])
     npn = [str(x) for x in Zn[0]["pnames"]]; nsub = [int(k) for k in Zn[0]["subset"]]
     ncol = {npn[k]: c for c, k in enumerate(nsub)}
     print(f"[nuts] {len(fs)} chains x {nmin} = {len(U)} samples; "
@@ -294,10 +259,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
 
     nd = len(dials)
 
-    # ---- per-dial axis + column position, ONCE ---------------------------------------------------- #
-    # A corner only reads as one if column k has a single x-axis in every row.  Deriving the limits
-    # per panel (as the pairs-only version did) is safe when each dial appears with one span, but it
-    # cannot align a column against the 1-D panel on the diagonal, which has no partner to inherit from.
     dax, dcol = {}, {}
     for (ni, nj), w in views.items():
         for nm, ax_, cc in ((ni, w["axi"], w["ci"]), (nj, w["axj"], w["cj"])):
@@ -309,10 +270,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
     def _lim(nm):
         """x/y limits for a dial: its scanned span, widened to show the wall band when there is one."""
         aa = dax[nm]; cc = dcol[nm]; kk = sub[cc]; span = aa[-1] - aa[0]
-        # CLAMP to +-VIEW_SIG.  The 1-D profile scan is adaptive and reaches until the density decays,
-        # which for M_A_res is -6.5 sigma; letting that set the axis pushes every contour into a corner
-        # and drags the physical tick labels far below anything the fit supports.  The data is unchanged
-        # -- this is the window we look through.
         lo_, hi_ = max(aa[0], -VIEW_SIG), min(aa[-1], VIEW_SIG)
         for _b, side in ((K.phys_lo(pn[kk]), -1), (K.phys_hi(pn[kk]), +1)):
             if _b is None: continue
@@ -322,8 +279,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
             hi_ = max(hi_, xb + 0.04 * span) if side > 0 else hi_
         return lo_, hi_
 
-    # 1-D PROFILE for the diagonal: the SAME scan Fig A uses, so the diagonal of the corner and the
-    # bars in Fig A are the same object rather than two independent calculations of "the profile".
     prof1 = {}
     _pf = style.ALTGEN / f"{label}_profile.npz"
     if _pf.exists():
@@ -343,22 +298,12 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
-        # nd x nd, NOT sharey: the diagonal's y is a density, the off-diagonal's y is a dial, so a shared
-        # row axis would force one onto the other.  Columns are aligned by explicit set_xlim instead.
         fig, axes = plt.subplots(nd, nd, figsize=(max(4.0, 1.74 * nd), max(3.9, 1.74 * nd)),
                                  squeeze=False)
         for a in range(nd):
             for b in range(nd):
                 A = axes[a, b]
                 if b < a:
-                    # LOWER TRIANGLE: the gradient field over the FULL physical range, in figure C's
-                    # own orientation (x = dial b, y = dial a) so the drawing code is a copy rather
-                    # than a transposition.  Mirroring a vector field means swapping its components as
-                    # well as its axes, and getting that half-right silently rotates every arrow.
-                    # CROP is keyed by the CONTOUR panel's orientation, which is this panel's
-                    # transpose: the contour at (row b, col a) stores (x=dial a, y=dial b) while this
-                    # panel is (x=dial b, y=dial a).  Swap the pairs, or the rectangle comes out
-                    # rotated -- and being a rectangle it would look perfectly plausible.
                     _cr = CROP.get((a, b))
                     _cr = (_cr[2], _cr[3], _cr[0], _cr[1]) if _cr else None
                     if (b, a) in GRAD:
@@ -370,13 +315,10 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                 if b == a:
                     _diag(A, dials[a], dax, dcol, sub, pn, bfp, spost, prof1, U, ncol)
                     A.set_xlim(*_lim(dials[a]))
-                    # the dial NAME lives on the diagonal, so neither triangle has to carry it twice
                     _side = "left" if a < nd // 2 else "right"
                     A.text(0.04 if _side == "left" else 0.96, 0.94, _lab(dials[a]),
                            transform=A.transAxes, ha=_side, va="top", fontsize=11.5)
                     A.tick_params(labelsize=8, top=False, right=False, left=False, labelleft=False)
-                    # no x ticks or label on ANY diagonal: the name is in the corner, and the bottom
-                    # row's scale belongs to the gradient panels beside it, which are a different range
                     A.tick_params(labelbottom=False)
                     continue
                 def _phys_ticks(axis, k_, c_, lo_s, hi_s, n=3):
@@ -400,13 +342,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                 ki, kj = sub[ci], sub[cj]
                 axi = snap_axis(w["axi"], ki, ci, pn, bfp, spost)
                 axj = snap_axis(w["axj"], kj, cj, pn, bfp, spost)
-                # THE DRAWING STAYS IN SIGMA.  Everything that lands on these axes -- the NUTS 2-D
-                # histogram, the Laplace surface, the Gaussian ellipse -- is built in sigma about the
-                # BFP, so converting the axis arrays alone left the data at sigma coordinates on
-                # physical axes and threw most of it off the panel.  Physical units are applied as a
-                # tick FORMATTER instead: the numbers read physical, the recipe is untouched.
-                # from the DISPLAYED limits, not the scanned span: the axes are clamped to +-VIEW_SIG,
-                # so a rectangle built from aa[0]/aa[-1] would outline a window the panel never shows.
                 _cx, _cy = _lim(dials[i]), _lim(dials[j])
                 CROP[(i, j)] = (float(bfp[ki] + _cx[0] * spost[ci]),
                                 float(bfp[ki] + _cx[1] * spost[ci]),
@@ -424,12 +359,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                     A.axis("off"); continue
                 d = d - np.nanmin(d)
 
-                # ---- PROFILE: the SAME surface without the nuisance-volume factor ------------------
-                # exp(-Dchi2/2) treated as a density and cut at its 68/90% HPD levels -- the identical
-                # construction the Laplace gets below, minus exp(ld/2).  Drawn that way on purpose: the
-                # only difference between this contour and the filled one is the volume correction, so
-                # the gap between them IS the correction, exactly as in closure_demo panel (a).  Lines,
-                # not a fill, so it cannot hide the Laplace surface underneath.
                 dp = np.exp(-0.5 * np.maximum(d, 0.0))
                 dp = np.where(np.isfinite(dp), dp, 0.0)
                 if dp.max() > 0:
@@ -438,7 +367,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                         A.contour(X, Y, dp, levels=[p90, p68], colors=C_PROF,
                                   linewidths=[0.8, 1.2], zorder=4)
 
-                # ---- LAPLACE MARGINAL: filled surface at its 68/90% HPD levels ---------------------
                 _ld = w.get("ld")
                 if _ld is not None and np.isfinite(_ld).mean() > 0.99:
                     dm = np.exp(-0.5 * np.maximum(d, 0.0)) * np.exp(0.5 * (_ld - np.nanmax(_ld)))
@@ -448,16 +376,13 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                         A.contourf(X, Y, dm, levels=[l90, l68], colors=[C_LAP], alpha=0.32)
                         A.contourf(X, Y, dm, levels=[l68, dm.max()], colors=[C_LAP], alpha=0.68)
 
-                # ---- NUTS: orange lines over it ----------------------------------------------------
                 if dials[i] in ncol and dials[j] in ncol:
                     sx, sy = U[:, ncol[dials[i]]], U[:, ncol[dials[j]]]
-                    # bin over the SAME window as the profile so the two are read on one footing
                     rng = [[axi[0], axi[-1]], [axj[0], axj[-1]]]
                     H, xe, ye = np.histogram2d(sx, sy, bins=_nbins(sx, sy, rng), range=rng)
                     if H.sum() > 0:
                         lv = hpd_levels(H)
                         Xc = 0.5 * (xe[1:] + xe[:-1]); Yc = 0.5 * (ye[1:] + ye[:-1])
-                        # levels must increase for contour(); HPD levels come out descending
                         H, _sg, _db = _smooth_hist(H)
                         lv = hpd_levels(H)
                         print(f"[smooth] {dials[i]} x {dials[j]}: sigma={_sg:.1f} cells, "
@@ -468,11 +393,10 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                                   linestyles=["--", "-"][:len(_u)])
                         frac = np.mean((sx >= axi[0]) & (sx <= axi[-1])
                                        & (sy >= axj[0]) & (sy <= axj[-1]))
-                        if frac < 0.99:      # never let a clipped marginal masquerade as the whole thing
+                        if frac < 0.99:
                             A.text(0.03, 0.95, f"{100*(1-frac):.0f}% off-panel", transform=A.transAxes,
                                    fontsize=5.5, color=C_NUTS, va="top")
 
-                # ---- GAUSSIAN: the quoted Gauss-Newton curvature ------------------------------------
                 Vp = V0[np.ix_([ci, cj], [ci, cj])]
                 Dp = np.diag(1.0 / np.array([spost[ci], spost[cj]]))
                 Rp = Dp @ Vp @ Dp
@@ -483,9 +407,6 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                     xy = evec @ r
                     A.plot(xy[0], xy[1], ls, color=C_GAUS, lw=lw, zorder=6)
 
-                # ---- walls, best fit, limits --------------------------------------------------------
-                # the wall BAND and line; the panel limits themselves now come from _lim() so that a
-                # column shares one x-axis with the 1-D panel on the diagonal
                 for which, (kk, cc, aa) in (("x", (ki, ci, axi)), ("y", (kj, cj, axj))):
                     span = aa[-1] - aa[0]
                     for _b, side in ((K.phys_lo(pn[kk]), -1), (K.phys_hi(pn[kk]), +1)):
@@ -499,15 +420,10 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                         (A.axvline if which == "x" else A.axhline)(xb, color="k", lw=0.9, ls="--",
                                                                    zorder=4)
                 A.plot(0, 0, "*", color=C_BFP, ms=10, mec="white", mew=0.6, zorder=8)
-                # limits come from the shared per-dial spans, so every panel in a column has one x-axis
-                # and every panel in a row has one y-axis -- the property that makes a corner readable
                 A.set_xlim(*_lim(dials[i])); A.set_ylim(*_lim(dials[j]))
-                # PHYSICAL numbers on sigma axes: the formatter converts at draw time, so the data and
-                # every contour recipe stay in the units they were built in.
                 _xl, _yl = _lim(dials[i]), _lim(dials[j])
                 _phys_ticks(A.xaxis, ki, ci, *_xl)
                 _phys_ticks(A.yaxis, kj, cj, *_yl)
-                # this half sits ABOVE the diagonal, so its outer edge is the top row / right column
                 A.tick_params(labelsize=8, top=True, right=True, bottom=False, left=False,
                               labelbottom=False, labelleft=False,
                               labeltop=(a == 0), labelright=(b == nd - 1), length=2)
@@ -516,27 +432,19 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                 if b == nd - 1:
                     A.set_ylabel(_lab(dials[j]), fontsize=11); A.yaxis.set_label_position("right")
 
-        # SHORT labels, placed inside the empty upper-right block.  What each object IS belongs in
-        # the caption; the legend only has to let a reader tell the three apart on the panel.
         h = [plt.Rectangle((0, 0), 1, 1, fc=C_LAP, alpha=0.68),
              plt.Line2D([], [], color=C_PROF, lw=1.4),
              plt.Line2D([], [], color=C_NUTS, lw=1.6),
              plt.Line2D([], [], color=C_GAUS, lw=1.4),
              plt.Line2D([], [], color=C_BFP, marker="*", ls="", ms=11)]
-        # ABOVE the grid, horizontal.  The upper-right corner used to be empty in a corner plot and
-        # held this legend; the gradient panels now live there, so it has to come out.
         fig.legend(h, ["Laplace", "Profile", "NUTS", "Gaussian", "BFP"],
                    loc="upper center", ncol=5, fontsize=10, frameon=False,
                    bbox_to_anchor=(0.5, 1.0), handletextpad=0.4, columnspacing=1.6)
-        # what each half of the figure is
         fig.tight_layout(rect=(0, 0, 1, 0.968))
         fig.subplots_adjust(hspace=0.10, wspace=0.10)
-        # Named, not label-tagged, to match closure_demo.  A second study point would overwrite it.
         style.save(fig, "corner_plots")
 
 
 if __name__ == "__main__":
     p = [a for a in sys.argv[1:] if not a.startswith("--")]
-    # --allow-partial: draw from a shard set the merge has judged incomplete.  Marked in the log, and
-    # never the default: a downgraded panel is indistinguishable from a healthy one by eye.
     main(*(p[:2] or ["sec4_A"]), allow_partial="--allow-partial" in sys.argv)

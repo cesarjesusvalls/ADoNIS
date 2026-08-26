@@ -44,15 +44,15 @@ PW_LABELS = ["s11", "s31", "p11", "p13", "p31", "p33", "d13", "d15",
 
 @dataclass
 class DCCTable:
-    pw_2J: np.ndarray          # (njLs,) = 2J per partial wave
-    pw_2L: np.ndarray          # (njLs,) = 2L
-    pw_ispin: np.ndarray       # (njLs,)
-    pw_2I: np.ndarray          # (njLs,) = 2*I_total
-    W: np.ndarray              # (n_w,) invariant mass grid [MeV]
-    Q2: np.ndarray             # (n_q2,) momentum transfer grid [MeV^2]
-    vec: np.ndarray            # (n_q2, n_w, n_idx, n_pw, n_gmb, 3) complex
-    isv: np.ndarray            # isoscalar-vector, same shape
-    axial: np.ndarray          # axial, same shape
+    pw_2J: np.ndarray
+    pw_2L: np.ndarray
+    pw_ispin: np.ndarray
+    pw_2I: np.ndarray
+    W: np.ndarray
+    Q2: np.ndarray
+    vec: np.ndarray
+    isv: np.ndarray
+    axial: np.ndarray
 
     @property
     def labels(self):
@@ -67,11 +67,10 @@ def _read_block(lines, start, count, dims):
     raw = np.loadtxt(io.StringIO(text))
     if raw.ndim == 1:
         raw = raw[None, :]
-    idx = raw[:, :6].astype(np.int64) - 1                  # to 0-based
+    idx = raw[:, :6].astype(np.int64) - 1
     ie, iq, ic, ipw, igmb, _ils = idx.T
-    za = (raw[:, 6:12:2] + 1j * raw[:, 7:12:2])            # (count, 3) complex
+    za = (raw[:, 6:12:2] + 1j * raw[:, 7:12:2])
     arr = np.zeros(dims + (3,), dtype=np.complex128)
-    # filter to in-range indices (Fortran skips igmb>mbs, ipw>njLs)
     ok = (iq < dims[0]) & (ie < dims[1]) & (ic < dims[2]) & \
          (ipw < dims[3]) & (igmb < dims[4]) & (iq >= 0) & (ie >= 0) & (ic >= 0)
     arr[iq[ok], ie[ok], ic[ok], ipw[ok], igmb[ok]] = za[ok]
@@ -93,16 +92,9 @@ def parse_dcc_ew(path=None) -> DCCTable:
     Q2 = np.array([float(lines[p + i].split()[0]) for i in range(mxq2)]); p += mxq2
     namp = [int(x) for x in lines[p].split()[:3]]; p += 1
 
-    # The component index `idx` is the Fortran ixi1 = photon-polarization x nucleon-
-    # helicity (zampv/zmtx first dimension, size 8; see amp_dcc_sl.f read_amp):
-    #   ismi(ixi1)=[1,1,0,0,-1,-1,2,2] -> photon pol igm1 in {+1,0,-1,2(charge/time)}
-    #   isbi(ixi1)=[1,-1,1,-1,1,-1,1,-1] -> nucleon helicity sign
-    # Stored sparsely: vec/isv use idx={1,2,3}, AXIAL adds idx=7 (the charge/PCAC
-    # induced-pseudoscalar piece). Sizing n_idx to the vec block's max (3) would
-    # silently DROP the axial idx=7 -> always size to the full ixi1 range (8).
     n_idx = 8
     head = np.loadtxt(io.StringIO("".join(lines[p:p + namp[0]])), usecols=(4,))
-    n_gmb = int(head.max())          # meson-baryon channel (only piN=1 populated)
+    n_gmb = int(head.max())
     dims = (mxq2, maxw, n_idx, njLs, n_gmb)
 
     vec, p = _read_block(lines, p, namp[0], dims)
@@ -138,5 +130,4 @@ if __name__ == "__main__":
     print(f"vec   shape {t.vec.shape}, nonzero {np.count_nonzero(t.vec)}")
     print(f"isv   shape {t.isv.shape}, nonzero {np.count_nonzero(t.isv)}")
     print(f"axial shape {t.axial.shape}, nonzero {np.count_nonzero(t.axial)}")
-    # spot check: first dressed vector entry at (iq=0,ie=0,idx=1,ipw=0,igmb=0)
     print("sample vec[0,0,1,0,0] (bare,dressed,nonres) =", t.vec[0, 0, 1, 0, 0])

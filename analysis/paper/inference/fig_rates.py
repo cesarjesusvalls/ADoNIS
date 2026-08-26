@@ -40,10 +40,7 @@ _OBS = {"dpt": "$\\delta p_T$", "dalphat": "$\\delta\\alpha_T$", "pmu": "$p_\\mu
         "cos_mu": "$\\cos\\theta_\\mu$", "pn": "$p_N$", "dptt": "$\\delta p_{TT}$",
         "pt": "$p_T^\\mu$", "pz": "$p_\\parallel^\\mu$", "omega": "$\\omega$",
         "tpi": "$T_\\pi$", "q2": "$Q^2$"}
-# Observables whose top edge is not a kinematic limit, so the binning piles the tail into the last bin.
 _OVERFLOW = {"t2k_cc0pi:pmu", "ee_omega:omega"}
-# MINERvA's muon momenta run to 15 GeV/c; in MeV/c the axis reads 2000...14000 and the tick labels
-# eat the panel.  Scaled at DRAW time only -- the stored edges stay in bank units.
 _XSCALE = {"pz": 1e-3, "pt": 1e-3}
 _XUNIT = {"dpt": "[MeV/c]", "pn": "[MeV/c]", "dptt": "[MeV/c]", "pmu": "[MeV/c]",
           "pt": "[GeV/c]", "pz": "[GeV/c]", "tpi": "[MeV]", "omega": "[MeV]",
@@ -81,7 +78,6 @@ def main(label="sec4_P1"):
     live = np.isfinite(sig) & (sig > 0)
     print(f"{len(dsk)} samples, {int(live.sum())}/{len(sig)} live bins")
 
-    # 3 x 7 fits the 21 samples exactly; the old 4-wide grid left three empty slots.
     nd = len(dsk); nc = 3; nr = int(np.ceil(nd / nc))
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans"}):
@@ -89,8 +85,6 @@ def main(label="sec4_P1"):
         for i, k in enumerate(dsk):
             A = ax.flat[i]; a, b = row0[i], row0[i + 1]
             m = live[a:b]
-            # bin centres from the stored edges when present, else the bin index -- never silently
-            # renumber, since several samples share an observable name across experiments
             ek = f"{k}_edges"
             if ek in z.files:
                 e = np.asarray(z[ek], float)
@@ -100,25 +94,11 @@ def main(label="sec4_P1"):
             else:
                 x = np.arange(b - a) + 0.5; w = np.ones(b - a)
             d_, p_, q_, s_ = data[a:b], pre[a:b], post[a:b], sig[a:b]
-            # DROP THE OVERFLOW BIN, for the two observables that actually have one.  The binning
-            # clips out-of-range values into the edge bin, so where the top edge is not a kinematic
-            # limit the last bin holds the whole tail above it: 6.85 against 0.41 and 0.40 in its
-            # neighbours for (e,e') omega, 17x for T2K p_mu.  Everywhere else the last bin is a real
-            # bin -- t2k_cc0pi:dpt's wide [510, 1100] is a NUISANCE release bin with a smoothly
-            # falling content -- so this is a NAMED list, not a blanket last-bin cut.  Excluded from
-            # both the drawing and the chi2, so these numbers do not match a chi2 over the full set.
             if k in _OVERFLOW:
                 d_, p_, q_, s_ = d_[:-1], p_[:-1], q_[:-1], s_[:-1]
                 m = m[:-1]
                 if ek in z.files:
                     e = e[:-1]; x = x[:-1]; w = w[:-1]
-            # STAIRS, not step(where="mid").  Stepping about bin CENTRES starts the first riser half a
-            # bin in from the axis and ends the last one half a bin short, so the distribution floated
-            # free of both edges.  stairs() draws on the EDGES, which is what a binned rate is.
-            # NORMALISE per panel.  The absolute scale spans ~15 orders of magnitude across these
-            # samples (1e-9 for T2K CC1pi, ~500 for the beam sigmas) and carries no message here: the
-            # figure is about pre-fit vs post-fit vs data WITHIN a panel.  Dividing by the panel's own
-            # peak also retires the 1e-8-style exponent label that sat above every axis.
             _sc = float(np.nanmax(np.concatenate([p_, q_, d_])))
             _sc = _sc if _sc > 0 else 1.0
             p_, q_, d_, s_ = p_ / _sc, q_ / _sc, d_ / _sc, s_ / _sc
@@ -130,27 +110,18 @@ def main(label="sec4_P1"):
                 A.step(x, q_, where="mid", color=C_POST, lw=1.5, ls="--", label="Post-fit")
             A.errorbar(x[m], d_[m], yerr=s_[m], fmt="o", ms=2.8, lw=0, elinewidth=0.9,
                        color=C_DATA, label="Asimov data", zorder=5)
-            if (~m).any():          # masked bins drawn hollow: the cut is visible, not implied
+            if (~m).any():
                 A.plot(x[~m], d_[~m], "o", ms=2.8, mfc="none", mec="0.45", mew=0.8, zorder=4)
             c_pre = float(np.sum(((p_[m] - d_[m]) / s_[m]) ** 2))
             c_post = float(np.sum(((q_[m] - d_[m]) / s_[m]) ** 2))
-            if (~m).any():          # say how many bins the shading accounts for, per panel
+            if (~m).any():
                 A.text(0.985, 0.62, f"{int(m.sum())}/{len(m)} bins",
                        transform=A.transAxes, ha="right", va="top", fontsize=7.0, color="0.35")
-            # NO CLIPPING: `step(where="mid")` draws about bin CENTRES, so an axis auto-scaled to the
-            # centres cuts the last bin in half whenever it is wider than its neighbours -- which is
-            # exactly the overflow bin these releases end on.  Pin the limits to the outer EDGES.
             if ek in z.files:
                 A.set_xlim(float(e[0]), float(e[-1]))
             A.tick_params(labelsize=8.5, top=False, right=False)
-            # headroom for the in-panel text, without making the panel taller
             A.set_ylim(0, 1.50)
-            # Two ticks, one character each.  The scale is arbitrary, so 0.00/0.25/0.50/... spent four
-            # characters of every panel's width saying nothing.
             A.set_yticks([0, 1]); A.set_yticklabels(["0", "1"])
-            # LEFT or RIGHT, whichever half carries less: several of these peak at the left edge
-            # (delta-p_T, p_n) and several at the right (the beam sigmas), so a fixed corner would
-            # sit on the data in half the panels.
             _n = len(q_); _half = max(_n // 2, 1)
             _side = "right" if np.nansum(q_[:_half]) >= np.nansum(q_[_half:]) else "left"
             _xt, _ha = (0.97, "right") if _side == "right" else (0.03, "left")
@@ -165,18 +136,11 @@ def main(label="sec4_P1"):
         fig.legend(_h, _l, loc="upper center", ncol=3, fontsize=11.5, frameon=False,
                    bbox_to_anchor=(0.5, 1.012))
         fig.supylabel("differential cross-section  (a.u., peak normalised)", fontsize=11, x=0.005)
-        # explicit padding: the per-panel titles carry two lines (name + chi2), and at the
-        # default pad they collided with the axis above.
-        # The mask summary (MC-error cut, live/total bins) used to be stamped across the top of the
-        # figure, where it OVERPRINTED the legend -- one strip of the page was carrying the series key
-        # and the run's provenance at once, and neither read.  It goes to stdout and to the caption
-        # instead; the per-panel "n/N bins" text and the hollow markers still show the cut in place.
         _cut = float(z["mask_mcfrac"]) if "mask_mcfrac" in z.files else float("nan")
         _lv, _tt = int(live.sum()), int(live.size)
         print((f"  mask: MC-error cut {_cut:.0%} of central" if _cut == _cut else "  mask: nominal")
               + f" - {_lv}/{_tt} bins used, {_tt - _lv} masked (open circles)")
         fig.tight_layout(pad=0.9, h_pad=1.0, w_pad=1.1, rect=(0.012, 0, 1, 0.968))
-        # Named, not label-tagged, to match closure_demo.  A second study point would overwrite it.
         style.save(fig, "Asimov_xsec_samples")
 
 

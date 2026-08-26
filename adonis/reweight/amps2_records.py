@@ -20,7 +20,6 @@ import jax.numpy as jnp
 from adonis.channels.currents.matrix_element import me_cross_section
 from adonis.channels.dcc.form_factors import axial_reweight_dipole
 
-# RES channel constants for the amps2 re-evaluation: (ipid, ppid) -> itiz
 RES_ITIZ = {(2112, 211): -1, (2112, 111): -1, (2212, 211): +1}
 
 
@@ -33,7 +32,7 @@ def build_qe_ma_records(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=None
     kn, km, ps, po = (jnp.asarray(x) for x in (k_nu, k_lep, p_struck, p_out))
     _mc = lambda **kw: me_cross_section(kn, km, ps, po, probe=probe, is_proton=is_proton, **kw)["amps2"]
     a1 = np.asarray(_mc(axial_scale=1.0)); a0 = np.asarray(_mc(axial_scale=0.0)); am = np.asarray(_mc(axial_scale=-1.0))
-    q = np.asarray(kn - km); q2 = np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2     # MeV^2
+    q = np.asarray(kn - km); q2 = np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2
     ok = np.isfinite(a0) & np.isfinite(a1) & np.isfinite(am) & (q2 > 0)
     return (np.where(ok, a0, 1.0), np.where(ok, 0.5 * (a1 - am), 0.0),
             np.where(ok, 0.5 * (a1 + am) - a0, 0.0), np.where(ok, q2, 1.0))
@@ -47,7 +46,7 @@ def build_qe_vector_records(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=
     kn, km, ps, po = (jnp.asarray(x) for x in (k_nu, k_lep, p_struck, p_out))
     _mc = lambda **kw: me_cross_section(kn, km, ps, po, probe=probe, is_proton=is_proton, **kw)["amps2"]
     a1 = np.asarray(_mc(vector_scale=1.0)); a0 = np.asarray(_mc(vector_scale=0.0)); am = np.asarray(_mc(vector_scale=-1.0))
-    q = np.asarray(kn - km); q2 = np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2     # MeV^2
+    q = np.asarray(kn - km); q2 = np.sum(q[:, 1:] ** 2, axis=1) - q[:, 0] ** 2
     ok = np.isfinite(a0) & np.isfinite(a1) & np.isfinite(am) & (q2 > 0)
     return (np.where(ok, a0, 1.0), np.where(ok, 0.5 * (a1 - am), 0.0),
             np.where(ok, 0.5 * (a1 + am) - a0, 0.0), np.where(ok, q2, 1.0))
@@ -98,7 +97,7 @@ def build_res_pw_records(k_nu, k_lep, p_struck, p_N, p_pi, ipid, ppid, wave, npw
     ipid = np.asarray(ipid); ppid = np.asarray(ppid)
 
     def _pwknob(s):
-        pw = [0.0] * npw; pw[wave] = s - 1.0          # pw_norm[wave] = s-1 -> scale s on that wave
+        pw = [0.0] * npw; pw[wave] = s - 1.0
         return DCCKnobs(pw_norm=tuple(pw))
 
     for (ip, pp), itiz in RES_ITIZ.items():
@@ -109,7 +108,6 @@ def build_res_pw_records(k_nu, k_lep, p_struck, p_N, p_pi, ipid, ppid, wave, npw
         e1, q2 = dcc.exclusive_amps2_batch(*args, itiz, pp, knobs=_pwknob(1.0), return_q2=True)
         e0 = dcc.exclusive_amps2_batch(*args, itiz, pp, knobs=_pwknob(0.0))
         e2 = dcc.exclusive_amps2_batch(*args, itiz, pp, knobs=_pwknob(2.0))
-        # amps2(s)=a+b s+c s^2 from s=0,1,2:  a=e0, c=(e2-2e1+e0)/2, b=e1-e0-c
         cc = 0.5 * (e2 - 2 * e1 + e0); bb = e1 - e0 - cc
         A[m] = e0; B[m] = bb; Cq[m] = cc; Q2r[m] = q2
     ok = np.isfinite(A) & np.isfinite(B) & np.isfinite(Cq) & (Q2r > 0)

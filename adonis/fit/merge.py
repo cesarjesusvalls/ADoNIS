@@ -23,9 +23,6 @@ from dataclasses import dataclass, field
 from adonis.fit import provenance
 
 
-# Every degradation knowingly accepted in this process, as (what, reason).  A figure is a PNG and has
-# nowhere to keep a `prov_partial` field, so the fact lives here where the renderer can find it without
-# every figure function having to pass a flag along.  See `analysis.paper.style.save`.
 DEGRADED = []
 
 
@@ -34,9 +31,9 @@ class Report:
     what: str
     errors: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
-    digest: str = ""          # the agreed config digest, "" when unknown/unstamped
+    digest: str = ""
     git: str = ""
-    _nw: int = 0              # how much of warnings/errors emit() has already printed
+    _nw: int = 0
     _ne: int = 0
 
     @property
@@ -49,7 +46,6 @@ class Report:
     def warn(self, msg):
         self.warnings.append(msg)
 
-    # ---- checks ------------------------------------------------------------------------------------ #
     def rows(self, covered, grid, what=""):
         """Assert a set of (base, n) row blocks tiles range(grid) exactly.
 
@@ -79,7 +75,6 @@ class Report:
             self.error(f"{len(names)} shard(s) did not finish (complete=False): {sorted(names)[:6]}"
                        + (" ..." if len(names) > 6 else ""))
 
-    # ---- reporting --------------------------------------------------------------------------------- #
     def emit(self, printer=print):
         """Print what has not been printed yet.  A merge checks in stages -- provenance first, coverage
         once the candidates are grouped -- so this is called more than once and must not repeat itself."""

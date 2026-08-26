@@ -17,13 +17,11 @@ from pathlib import Path
 
 import yaml
 
-HERE = Path(__file__).resolve().parent          # .../analysis/paper/validation
-# Repo root = the first ancestor that contains the `adonis` package.  Marker-based, not a hand-counted
-# .parents[N] (which silently breaks if this file moves or if you count from the dir vs the file).
+HERE = Path(__file__).resolve().parent
 ROOT = next(p for p in HERE.parents if (p / "adonis").is_dir())
 sys.path.insert(0, str(ROOT))
-from analysis.paper import style                                 # noqa: E402
-from analysis.paper.validation import helper                # noqa: E402
+from analysis.paper import style
+from analysis.paper.validation import helper
 
 
 def specs_for(names):
@@ -41,7 +39,7 @@ def _load(path):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     one = "--one" in argv
-    no_ratio = "--no-ratio" in argv          # drop the ACH/ADO ratio strip -> *_noratio files (paper figs untouched)
+    no_ratio = "--no-ratio" in argv
     names = [a for a in argv if not a.startswith("--")]
     specs = specs_for(names)
     if not specs:

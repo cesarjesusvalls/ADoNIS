@@ -57,16 +57,9 @@ def main(argv=None):
             m = jax.local_devices()[0].memory_stats()
             return (f"{m['bytes_in_use']/2**30:.2f}/{m['bytes_limit']/2**30:.2f} GB in use, "
                     f"peak {m['peak_bytes_in_use']/2**30:.2f} GB")
-        except Exception:                                        # noqa: BLE001
+        except Exception:
             return "memory_stats unavailable"
 
-    # STAGES ARE TRIED SEPARATELY, LEAST MEMORY FIRST.  The first probe reported "batch 1 OOM" from a
-    # warmup that compiled four programs at once, which said nothing about WHICH of them did not fit --
-    # and the answer matters more than the batch does.  Forward mode (jac) carries one tangent beside
-    # the primal and can discard intermediates as it sweeps; REVERSE mode (grad) must keep the whole
-    # forward tape -- every per-event intermediate of the bank reweight, for every resident event --
-    # alive until the backward pass consumes it.  If reverse mode is what does not fit at production
-    # statistics, that is a property of the METHOD (and MIGRAD+grad depends on it), not a nuisance.
     stages = [s_.strip() for s_ in a.stages.split(",") if s_.strip()]
     ok, k, rows = [], None, []
     log(f"device before anything: {mem()}")
@@ -96,7 +89,7 @@ def main(argv=None):
                 log(f"  batch {B:2d} {st:>9}: OK   compile+run {dt:6.1f}s   {mem()}")
                 if st == "jac":
                     ok.append(B)
-            except Exception as e:                               # noqa: BLE001
+            except Exception as e:
                 s_ = str(e)
                 if "RESOURCE_EXHAUSTED" in s_ or "OUT_OF_MEMORY" in s_.upper():
                     rows.append((B, st, False))

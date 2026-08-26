@@ -17,22 +17,18 @@ class ProbeSpec:
     """One probe's dispatch data.  Every field is explicit; there is no implicit 'same as CC'
     default."""
     name: str
-    dcc_mode: int          # DCC amplitude `mode` (amp_dcc_sl_module.f): 1 CC, 10 EM, -1 NC
-    lep_kind: str          # kind= for currents/leptonic.py::lepton_current
-    spin_avg: float        # initial-state spin/helicity average folded into the cross section
-    em_propagator: bool    # photon 1/q^2 (EM) vs a ~constant W/Z propagator (weak)
-    implemented: bool      # False = registered so the error message is useful, not usable
+    dcc_mode: int
+    lep_kind: str
+    spin_avg: float
+    em_propagator: bool
+    implemented: bool
 
 
 _SPECS = (
-    # nu N -> l N.  spin_avg 1/2 = the single neutrino helicity averaged over 2 nucleon spins.
     ProbeSpec(name="CC", dcc_mode=1, lep_kind="CC_nu", spin_avg=0.5,
               em_propagator=False, implemented=True),
-    # e N -> e' N inclusive (e,e').  spin_avg 1/4 = 2 electron helicities x 2 nucleon spins.
     ProbeSpec(name="EM", dcc_mode=10, lep_kind="EM", spin_avg=0.25,
               em_propagator=True, implemented=True),
-    # nu N -> nu N.  mode=-1 for both nu and nubar (currents_pi_dcc.f90:71-101), so the hadronic
-    # side is identical between them and only leptonic.py's `anti` differs.  spin_avg 1/2 as CC.
     ProbeSpec(name="NC", dcc_mode=-1, lep_kind="NC_nu", spin_avg=0.5,
               em_propagator=False, implemented=True),
 )

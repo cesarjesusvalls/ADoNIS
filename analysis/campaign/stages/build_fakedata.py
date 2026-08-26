@@ -27,16 +27,15 @@ import awkward as ak
 GST = sys.argv[1] if len(sys.argv) > 1 else "output/altgen/genie_t2k_12C_ar23_CCQERES.gst.root"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "output/altgen/fakedata_ccqeres.npz"
 
-# ---- acceptance windows (MeV) -- identical to ADoNIS tune._sel ---------------------------------- #
 MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
 
 
 def load_t2k(obs):
     r = uproot.open(f"../nuisance/data/T2K/CC0pi/STV/{obs}Results.root")
     if obs == "dpt":
-        edges = np.asarray(r["Result"].axis().edges()) * 1000.0        # MeV
+        edges = np.asarray(r["Result"].axis().edges()) * 1000.0
     else:
-        edges = np.asarray(r["Result"].axis().edges())                 # rad
+        edges = np.asarray(r["Result"].axis().edges())
     data = np.asarray(r["Result"].values()) * 1e38
     derr = np.asarray(r["Result"].errors()) * 1e38
     cov = np.asarray(r["Covariance_Matrix"].values())
@@ -58,12 +57,9 @@ def extract_cc0pi(GST):
           f"QE={float(ak.mean(b.qel)):.3f} RES={float(ak.mean(b.res)):.3f} "
           f"MEC={float(ak.mean(b.mec)):.3f} COH={float(ak.mean(b.coh)):.3f}", flush=True)
 
-    # ---- absolute normalisation: <sigma_tot>_Phi [1E-38 cm^2 / struck nucleon] ------------------ #
     X = ak.to_numpy(b.XSec).astype(np.float64)
     Ev = ak.to_numpy(b.Ev).astype(np.float64)
-    sig_harm = N / np.sum(1.0 / X)                                      # harmonic-mean identity (XSec=total)
-    # flux-reweighted: reconstruct sigma_tot(E) as the sum over ALL channels present in the sample
-    # (per-channel mean XSec per E-bin; a channel absent from the run contributes zero).
+    sig_harm = N / np.sum(1.0 / X)
     qel = ak.to_numpy(b.qel).astype(bool); res = ak.to_numpy(b.res).astype(bool)
     mec = ak.to_numpy(b.mec).astype(bool); coh = ak.to_numpy(b.coh).astype(bool)
     ebins = np.linspace(Ev.min(), min(Ev.max(), 10.0), 60)
@@ -73,27 +69,18 @@ def extract_cc0pi(GST):
         num = np.bincount(idx[mask], weights=X[mask], minlength=len(ec))
         cnt = np.bincount(idx[mask], minlength=len(ec))
         return np.where(cnt > 0, num / np.maximum(cnt, 1), 0.0)
-    # T2K flux weight per E-bin
     fedges, fval = _flux()
     fj = np.interp(ec, 0.5 * (fedges[1:] + fedges[:-1]), fval)
     stot = sigE(qel) + sigE(res) + sigE(mec) + sigE(coh)
     sig_flux = np.sum(stot * fj) / np.sum(fj)
     print(f"[norm] <sigma_tot>_Phi  harmonic={sig_harm:.4f}  flux-reweighted={sig_flux:.4f}  "
           f"[1e-38 cm^2/nucleon]  (ratio {sig_harm/sig_flux:.3f})", flush=True)
-    # Harmonic-mean identity is exact in expectation but has huge variance (dominated by tiny
-    # near-threshold XSec -> 1/X outliers). The flux-reweighted sigma(E) integral bin-averages XSec
-    # and is robust, so it is the absolute default. Absolute comparison is secondary; the primary
-    # ADoNIS-vs-GENIE fit is SHAPE (profiled norm), which is normalisation-independent.
-    SIG = sig_flux      # per-event cross section = SIG / N
-    # gst XSec is the process total xsec on the NUCLEUS (12C); T2K STV + the ADoNIS bank are per
-    # NUCLEON -> /12 (verified: without it GENIE lands ~10-15x above T2K data; with it ~0.9-1.3x).
+    SIG = sig_flux
     per_event = SIG / N / 12.0
 
-    # ---- leading proton per event (max |p| among final protons) -------------------------------- #
     isp = b.pdgf == 2212
     pf_p = b.pf[isp]
     has_p = ak.num(pf_p) > 0
-    # index of max-momentum proton (per event), then pick that proton's components
     jlead = ak.argmax(pf_p, axis=1, keepdims=True)
     pxp = ak.to_numpy(ak.fill_none(ak.firsts(b.pxf[isp][jlead]), 0.0))
     pyp = ak.to_numpy(ak.fill_none(ak.firsts(b.pyf[isp][jlead]), 0.0))
@@ -102,13 +89,11 @@ def extract_cc0pi(GST):
     cthp = np.where(pmag > 0, pzp / np.maximum(pmag, 1e-12), 0.0)
     hasp = ak.to_numpy(has_p)
 
-    # ---- muon (final primary lepton), MeV ------------------------------------------------------ #
     pxl = ak.to_numpy(b.pxl) * 1000.0; pyl = ak.to_numpy(b.pyl) * 1000.0
     pzl = ak.to_numpy(b.pzl) * 1000.0
     pmu = np.sqrt(pxl**2 + pyl**2 + pzl**2); cthmu = np.where(pmu > 0, pzl / np.maximum(pmu, 1e-12), 0.0)
     pxp *= 1000.0; pyp *= 1000.0; pmag_mev = pmag * 1000.0
 
-    # ---- CC0pi-Np topological signal + acceptance ---------------------------------------------- #
     cc = ak.to_numpy(b.cc).astype(bool)
     npi = ak.to_numpy(b.nfpip + b.nfpim + b.nfpi0)
     sig_topo = cc & (npi == 0) & hasp
@@ -116,7 +101,6 @@ def extract_cc0pi(GST):
     sel = sig_topo & acc
     print(f"[sel] CC={cc.sum()}  0pi&Np={sig_topo.sum()}  +acceptance={sel.sum()}", flush=True)
 
-    # ---- observables (ADoNIS formulas, MeV) ---------------------------------------------------- #
     dvx = pxl + pxp; dvy = pyl + pyp
     dpt = np.sqrt(dvx**2 + dvy**2)
     num = -(pxl * dvx + pyl * dvy)
@@ -142,7 +126,6 @@ def extract_cc1pi(E):
 
     npip = ak.to_numpy(b.nfpip); npi0 = ak.to_numpy(b.nfpi0); npim = ak.to_numpy(b.nfpim)
     nk = ak.to_numpy(b.nfkp + b.nfkm + b.nfk0)
-    # single pi+ 4-vector (events with exactly one pi+)
     ispip = b.pdgf == 211
     pip_px = ak.to_numpy(ak.fill_none(ak.firsts(b.pxf[ispip]), 0.0)) * 1e3
     pip_py = ak.to_numpy(ak.fill_none(ak.firsts(b.pyf[ispip]), 0.0)) * 1e3
@@ -150,7 +133,6 @@ def extract_cc1pi(E):
     pip_E  = ak.to_numpy(ak.fill_none(ak.firsts(b.Ef[ispip]), 0.0)) * 1e3
     ppi = np.sqrt(pip_px**2 + pip_py**2 + pip_pz**2)
     cpi = np.where(ppi > 0, pip_pz / np.maximum(ppi, 1e-9), 0.0)
-    # leading proton WITHIN the [450,1200) window (T2K CC1pi picks leading ACCEPTED proton)
     pmev = b.pf * 1e3
     inwin = (b.pdgf == 2212) & (pmev >= 450.0) & (pmev < 1200.0)
     pf_w = b.pf[inwin]
@@ -175,8 +157,7 @@ def extract_cc1pi(E):
     vals1 = {"pn":   np.asarray(BPX.pN_1pi(kmu4, lead4, pip4)),
              "dptt": np.asarray(BPX.dptt_1pi(kmu4, lead4, pip4)),
              "daT":  np.degrees(np.asarray(BPX.dat_1pi(kmu4, lead4, pip4)))}
-    per_event_nb_CH = per_event * 12.0 * 1e-5      # 1e-38 cm^2/nucleon -> nb per C(==C-part of CH)
-    # pion kinematics of the SELECTED events (for the extended physfit suite)
+    per_event_nb_CH = per_event * 12.0 * 1e-5
     return dict(sel1=sel1, vals1=vals1, per_event_nb_CH=per_event_nb_CH,
                 ppi=ppi[sel1], cospi=cpi[sel1])
 
@@ -193,9 +174,8 @@ def main():
         edges, tdata, tderr, tcov = load_t2k(obs)
         v = val[sel]
         cnt, _ = np.histogram(v, bins=edges)
-        bw_unit = np.diff(edges) / (1000.0 if obs == "dpt" else 1.0)     # GeV/c or rad
-        dsig = cnt * per_event / bw_unit                                 # 1e-38 cm^2/unit/nucleon
-        # MC stat error on the fake data central value (Poisson counts)
+        bw_unit = np.diff(edges) / (1000.0 if obs == "dpt" else 1.0)
+        dsig = cnt * per_event / bw_unit
         dsig_err = np.sqrt(cnt) * per_event / bw_unit
         out[f"{obs}_edges"] = edges; out[f"{obs}_counts"] = cnt
         out[f"{obs}_dsig"] = dsig; out[f"{obs}_dsig_mcerr"] = dsig_err
@@ -205,10 +185,6 @@ def main():
         for i in range(len(cnt)):
             print(f"[{edges[i]:8.3f},{edges[i+1]:8.3f}] {cnt[i]:8d} {dsig[i]:10.4f} "
                   f"{tdata[i]:10.4f} {dsig[i]/max(tdata[i],1e-9):7.3f}")
-    # ================= CC1pi+Np STV fake datasets (pN, dpTT, daT) =============================== #
-    # Selection + observables factored into extract_cc1pi (single source of truth). Units: nb/unit
-    # per CH -- GENIE-C part only; the frozen ADoNIS free-H offset is added by the fit (identically
-    # to the model, so H cancels in residuals). load_cc1pi gives T2K edges/cov in nb/CH.
     from adonis.measurements.t2k_stv import load_cc1pi
     E1 = extract_cc1pi(E)
     vals1 = E1["vals1"]; per_event_nb_CH = E1["per_event_nb_CH"]
@@ -216,7 +192,7 @@ def main():
     for dkey, v in vals1.items():
         edges, tdata, tcov = load_cc1pi(NAME1[dkey])
         cnt, _ = np.histogram(v, bins=edges)
-        dsig = cnt * per_event_nb_CH / np.diff(edges)              # nb/unit/CH, GENIE-C only (NO free-H)
+        dsig = cnt * per_event_nb_CH / np.diff(edges)
         out[f"cc1pi_{dkey}_edges"] = edges; out[f"cc1pi_{dkey}_counts"] = cnt
         out[f"cc1pi_{dkey}_dsig_C"] = dsig
         out[f"cc1pi_{dkey}_t2k_data"] = tdata; out[f"cc1pi_{dkey}_t2k_cov"] = tcov

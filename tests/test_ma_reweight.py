@@ -32,14 +32,14 @@ def test_qe_nominal_identity():
 def test_qe_quadratic_identity():
     a1, a0, am = _amps2(1.0), _amps2(0.0), _amps2(-1.0)
     a, b, c = a0, 0.5 * (a1 - am), 0.5 * (a1 + am) - a0
-    ok = np.isfinite(a1)                          # rejected draws (w=0) carry NaN kinematics
+    ok = np.isfinite(a1)
     for r in (0.73, 1.31):
         direct = _amps2(r)
         assert np.allclose(direct[ok], (a + b * r + c * r * r)[ok], rtol=1e-12)
 
 
 def test_dipole_knob_nominal_and_grad():
-    q2 = jnp.asarray(np.linspace(1e4, 3e6, 50))   # MeV^2
+    q2 = jnp.asarray(np.linspace(1e4, 3e6, 50))
     assert np.allclose(np.asarray(axial_reweight_dipole(q2, 1.0)), 1.0, atol=1e-14)
     f = lambda ma: jnp.sum(axial_reweight_dipole(q2, ma) ** 2)
     eps = 1e-5

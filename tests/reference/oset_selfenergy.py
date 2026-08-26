@@ -20,14 +20,13 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-# coefficients verbatim from include/Achilles/OsetCrossSections.hh
 C_Q = (-5.19, 15.35, 2.06)
 C_A2 = (1.06, -6.64, 22.66)
 C_A3 = (-13.46, 46.17, -20.34)
 C_ALPHA = (0.382, -1.322, 1.466)
 C_BETA = (-0.038, 0.204, 0.613)
 IM_B0 = 0.035
-M_PI = 139.0          # MeV (pion mass scale for x = T_pi/m_pi)
+M_PI = 139.0
 
 
 def _quad(x, a):
@@ -63,7 +62,7 @@ def absorption_self_energy(T_pi, rho_frac=1.0, c_a2=C_A2, c_a3=C_A3, c_beta=C_BE
             + self_energy_abs_NNN(T_pi, rho_frac, c_a3, c_beta, m_pi))
 
 
-T_PI_REF = 180.0          # MeV, near the Delta absorption peak (the shape normalisation point)
+T_PI_REF = 180.0
 
 
 def absorption_rate_shape(T_pi, c_a2=C_A2, c_a3=C_A3, c_beta=C_BETA, m_pi=M_PI, t_ref=T_PI_REF):

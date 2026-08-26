@@ -104,8 +104,6 @@ def main(argv=None):
     truth_full, _ = parse_inject(cfg.inject_string(), nominal_knobs())
     truth = th0.copy(); truth[idx] = truth_full[idx]
     eng.set_closure_data(truth)
-    # STATISTICALLY FLUCTUATED PSEUDO-DATA, not the Asimov closure, and the SAME throw for every method
-    # and every chain at this n -- otherwise the two samplers would be exploring different posteriors.
     throw(eng, np.random.default_rng(1_000_000 + a.noise_seed))
     if cfg.fit.prior_scale != 1.0:
         eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
@@ -116,12 +114,9 @@ def main(argv=None):
     lo, hi = kern.bounds()
     log(f"n={a.ndials} dials {names}")
 
-    # ---- the shared geometry: Laplace covariance at the best fit ---------------------------------- #
-    # BOTH samplers get this and nothing else.  NUTS uses it as the inverse mass matrix, MH as its
-    # proposal covariance, so neither is handed structure the other lacks.
     x_start = th0[idx].copy()
     if "Eb_shift" in names:
-        x_start[names.index("Eb_shift")] = 2.0            # off the wall, as everywhere else
+        x_start[names.index("Eb_shift")] = 2.0
     fit = gn_fit(kern, x_start, max_nfev=200, gtol=cfg.fit.minimizer.gtol)
     xb = fit.x
     V = kern.covariance_gn(fit.J)
@@ -130,7 +125,6 @@ def main(argv=None):
     Lv = np.linalg.cholesky(V + 1e-12 * np.eye(len(xb)) * np.trace(V) / len(xb))
     log(f"BFP chi2 {fit.chi2:.3f}, sigma_post {np.round(spost, 4)}")
 
-    # ---- the posterior ---------------------------------------------------------------------------- #
     inbox = lambda q: bool(np.all(q > lo) and np.all(q < hi))
 
     def logp(q):
@@ -144,10 +138,9 @@ def main(argv=None):
         c, gr = kern.chi2_and_grad(q)
         return -0.5 * c, -0.5 * gr
 
-    # ---- overdispersed start, SAME region for both ------------------------------------------------ #
     rng = np.random.default_rng(20260817 + 977 * a.chain + 13 * a.ndials)
     for _ in range(200):
-        q = xb + 2.0 * (Lv @ rng.standard_normal(len(xb)))     # 2x the Laplace width
+        q = xb + 2.0 * (Lv @ rng.standard_normal(len(xb)))
         if inbox(q):
             break
     else:
@@ -160,9 +153,9 @@ def main(argv=None):
 
     if a.method == "mh":
         nw = a.warmup or 4000
-        s = 2.38 / np.sqrt(len(xb))                    # Roberts-Gelman-Gilks optimal scaling
+        s = 2.38 / np.sqrt(len(xb))
         lp = logp(q); nacc = 0
-        for i in range(nw):                            # WARM-UP: adapt the scale to 0.234 acceptance
+        for i in range(nw):
             qp = q + s * (Lv @ rng.standard_normal(len(xb)))
             lpp = logp(qp)
             if np.log(rng.random()) < lpp - lp:
@@ -176,7 +169,7 @@ def main(argv=None):
         kern.reset_counts()
         t1 = time.time(); nacc = 0; nit = 0
         while time.time() - t1 < a.sample_seconds:
-            for _ in range(50):                        # check the clock every 50, not every draw
+            for _ in range(50):
                 qp = q + s * (Lv @ rng.standard_normal(len(xb)))
                 lpp = logp(qp)
                 if np.log(rng.random()) < lpp - lp:
@@ -187,21 +180,11 @@ def main(argv=None):
 
     else:
         nw = a.warmup or 300
-        Minv = V                                        # kinetic 1/2 p^T Minv p with M = V^-1
+        Minv = V
         Mchol = np.linalg.cholesky(np.linalg.inv(V) + 1e-12 * np.eye(len(xb)))
         eps = 0.5
         if a.adapt_metric:
-            # Stan-style: dual averaging + expanding windows that RE-ESTIMATE the metric from the draws.
-            # The fixed Laplace metric describes the posterior only where it is close to Gaussian; on a
-            # curved or near-degenerate direction it does not, and the sampler pays in tiny steps and
-            # deep trees.  Measured on a synthetic degenerate Gaussian: adaptation from a deliberately
-            # wrong (identity) metric recovers 7.9 gradients/draw against an oracle 8.0, versus 127.4
-            # unadapted -- a 16x cost reduction for the same answer.
             q, _lp, _g, eps, Minv, Mchol, _inf = NU.warmup_stan(
-                # 2000, not 600: a dense metric in up to 17 dimensions, plus a step size that only
-                # converges in the terminal buffer, needs the room.  Warm-up is excluded from
-                # t_sample for BOTH methods and is a rounding error at production chain lengths, so
-                # the only cost of spending more of it is queue time.
                 q, logp_grad, Minv, max(nw, 2000), rng, log=log)
         else:
             for _ in range(6):
@@ -222,9 +205,6 @@ def main(argv=None):
             draws.extend(list(sm))
             deps.append(np.mean(dep)); accs.append(np.mean(acc))
         t_samp = time.time() - t1
-        # REAL divergences now, from the energy-error criterion inside build_tree.  The previous
-        # expression was multiplied by zero and, even without that, counted trees that did NOT saturate
-        # max depth -- unrelated to divergence.  Every NUTS cell therefore reported exactly 0.
         ndiv = int(np.sum(dv))
         extra = dict(accept=float(np.mean(accs)), scale=eps, ndiv=ndiv,
                      ngrad=int(kern.counts["grad"]), depth=float(np.mean(deps)),

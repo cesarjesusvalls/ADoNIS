@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 from math import factorial
 
-_H = np.array([np.sqrt(float(factorial(n))) for n in range(60)])    # h(n) = sqrt(n!)
+_H = np.array([np.sqrt(float(factorial(n))) for n in range(60)])
 
 
 def boost_matrix(pcm, to_cm=True):
@@ -116,8 +116,8 @@ def fblmmx(l, mf, mi, cc, ss):
 def setdfun(x, jmax):
     """Half-integer Wigner d: returns dfun[lx, mf, mi] for odd lx in 1..jmax, mf,mi in -lx..lx step
     2 (i.e. 2*half-integer indices).  x = cos(theta).  Faithful to setdfun (df1..df4 build)."""
-    n = 2 * 5 - 1                                       # 2*njmx-1 = 9
-    dfun = np.zeros((n + 1, 2 * n + 1, 2 * n + 1))      # index [lx, mf+off, mi+off]
+    n = 2 * 5 - 1
+    dfun = np.zeros((n + 1, 2 * n + 1, 2 * n + 1))
     off = n
     ss = np.sqrt((1.0 - x) / 2.0); cc = np.sqrt((1.0 + x) / 2.0)
     for lx in range(1, jmax + 1, 2):

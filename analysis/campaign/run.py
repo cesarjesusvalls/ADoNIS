@@ -27,7 +27,6 @@ from pathlib import Path
 
 from adonis.fit.config import FitConfig
 
-# Which module implements each stage.  All of them live in analysis.campaign.stages.
 STAGE_MODULE = {
     "closure":    "analysis.campaign.stages.multisample",
     "profile":    "analysis.campaign.stages.multisample_profile",
@@ -37,20 +36,16 @@ STAGE_MODULE = {
     "nuts":       "analysis.campaign.nuts_run",
 }
 
-# Per-job values the runner is allowed to set: which slice of the work this process does.  Everything
-# else must come from the config.
 SHARD_ENV = {
     "profile":    "S4_PROF_BASE",
-    "profile2d":  "S4_PAIR_BASE",     # plus S4_ROW_BASE, set together below
+    "profile2d":  "S4_PAIR_BASE",
     "gradient2d": "S4_PAIR_BASE",
     "toys":       "S4_TOY_BASE",
     "nuts":       "NUTS_CHAIN",
 }
 
-# Environment the runner sets itself; anything else matching S4_/PHYSFIT_/NUTS_/ALTGEN_ is a leftover.
 _OWNED = {"S4_PROF_BASE", "S4_PROF_N", "S4_PAIR_BASE", "S4_NPAIR", "S4_ROW_BASE", "S4_NROW",
           "S4_TOY_BASE", "NUTS_CHAIN", "ADONIS_FIT_CONFIG", "ADONIS_FIT_STAGE",
-          # genuinely per-machine, not per-run: memory/placement knobs with no physics content
           "S4_JAC_BATCH", "S4_JAX_BIN", "S4_GATE_NPZ"}
 
 
@@ -126,9 +121,6 @@ def main(argv=None):
     tag = f"{cfg.name}_{a.stage}" + (f"_{a.shard.replace('/', 'of')}" if a.shard else "")
     (outdir / f"{tag}.manifest.json").write_text(json.dumps(man, indent=2))
 
-    # POOL FRACTION BEFORE JAX.  XLA reads XLA_PYTHON_CLIENT_MEM_FRACTION once, at backend init, so it
-    # has to be set before the stage module (which imports jax) is loaded.  Doing it here means the
-    # device plan lives in the CONFIG rather than in whichever wrapper script happened to export it.
     from adonis.fit.device_plan import apply_env
     apply_env(cfg, log=lambda m: print(f"             {m}", flush=True))
 

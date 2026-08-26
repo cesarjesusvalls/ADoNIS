@@ -18,6 +18,3 @@ class NuclearModel(SelfTestMixin, ABC):
         """Return (p_vec [n,3] MeV, E_removal [n] MeV) -- detached draws."""
         raise NotImplementedError
 
-    # closure_test (no differentiable params -> skipped) / oracle_test inherited
-    # from SelfTestMixin; concrete models override oracle_test (e.g. the spectral
-    # function compares its sampled momentum marginal to the input table).

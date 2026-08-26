@@ -22,20 +22,20 @@ from adonis.reweight.reduced_amps2 import build_qe_reduced, build_res_reduced
 
 _DROP = (tuple(f"hv_qe_{r}_" for r in ("ma", "vec", "gmp", "gmn", "gep", "gen"))
          + tuple(f"hv_res_{r}_" for r in ("ma", "pp", "delta"))
-         + ("hv_qe_mij", "hv_qe_Q2", "hv_res_mij", "hv_res_Q2"))   # also drop any pre-existing M (re-refresh)
+         + ("hv_qe_mij", "hv_qe_Q2", "hv_res_mij", "hv_res_Q2"))
 
 
 def refresh_chunk(inpath, outpath):
     B = dict(np.load(inpath, allow_pickle=True))
     ch = np.asarray(B["channel"]); n = len(ch); qe = ch == 0; res = ch == 1
-    lep = "k_mu" if "k_mu" in B else "k_lep"            # sub-run schema drift on the lepton key
+    lep = "k_mu" if "k_mu" in B else "k_lep"
     kn, km, ps = np.asarray(B["k_nu"]), np.asarray(B[lep]), np.asarray(B["p_struck"])
     Mq = np.zeros((n, 4, 4), np.float32); Q2q = np.zeros(n, np.float32)
     if qe.any():
         p_out = (kn + ps - km)[qe]
         rq = build_qe_reduced(kn[qe], km[qe], ps[qe], p_out, probe="CC")
         Mq[qe] = np.asarray(rq["M"], np.float32); Q2q[qe] = np.asarray(rq["Q2"], np.float32)
-    Mr = np.zeros((n, 6, 6), np.float64); Q2r = np.zeros(n, np.float32)   # RES M float64: the 6x6 form needs it
+    Mr = np.zeros((n, 6, 6), np.float64); Q2r = np.zeros(n, np.float32)
     if res.any():
         rr = build_res_reduced(kn[res], km[res], ps[res], np.asarray(B["res_p_N"])[res],
                                np.asarray(B["res_p_pi"])[res], np.asarray(B["res_ipid"])[res],
@@ -43,13 +43,11 @@ def refresh_chunk(inpath, outpath):
         Mr[res] = np.asarray(rr["M"], np.float64); Q2r[res] = np.asarray(rr["Q2"], np.float32)
     out = {k: v for k, v in B.items() if not k.startswith(_DROP)}
     out.update(hv_qe_mij=Mq, hv_qe_Q2=Q2q, hv_res_mij=Mr, hv_res_Q2=Q2r)
-    tmp = outpath + ".tmp.npz"                          # atomic: a preempted job leaves no half-written chunk
+    tmp = outpath + ".tmp.npz"
     np.savez(tmp, **out); os.replace(tmp, outpath)
     return int(qe.sum()), int(res.sum()), n
 
 
-# The combined-refresh worklist for the paper's CC nu banks (bank, legacy source dir).  T2K reads its legacy
-# backup (merged_perknob); MINERvA/uBooNE their untouched legacy merged.  Used by the --shard array mode.
 _BANKS = [("nu_T2K_C", "merged_perknob"), ("nu_MINERvA_C", "merged"), ("nu_uBooNE_Ar", "merged")]
 
 
@@ -72,7 +70,6 @@ def _ensure_dst():
 
 def main():
     if len(sys.argv) >= 4 and sys.argv[1] == "--shard":
-        # SLURM-array mode: task I of K refreshes worklist[I::K] (round-robin across banks); resumable.
         I, K = int(sys.argv[2]), int(sys.argv[3])
         _ensure_dst()
         mine = _worklist()[I::K]
@@ -92,7 +89,7 @@ def main():
     nq = nr = nt = skip = 0
     for i, c in enumerate(chunks):
         op = os.path.join(dst, os.path.basename(c))
-        if os.path.exists(op):                         # RESUMABLE: skip chunks already written (atomic -> complete)
+        if os.path.exists(op):
             skip += 1
             continue
         q, r, t = refresh_chunk(c, op)

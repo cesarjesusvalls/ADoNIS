@@ -18,14 +18,14 @@ from adonis.nuclear.spectral import SpectralFunction
 from adonis.nuclear.targets import resolve_targets
 from adonis.reweight.reweight_model import build_hv_sf
 
-_ALL = (0.0, 180.0)                      # accept every polar angle (the generate_bank _ALL sentinel)
+_ALL = (0.0, 180.0)
 _sf = SpectralFunction(resolve_targets("C")[0][0].spectral_n)
 _qe = ee_x.generate(256, material="C", seed=1, E_beam=1000.0, records=True, theta_acc=_ALL)
 _res = res_ee_x.generate(256, material="C", seed=2, E_beam=1000.0, records=True, theta_acc=_ALL)
 
 
 def test_em_records_build_without_keyerror():
-    assert len(_qe["k_lep"]) > 0 and len(_res["p_N"]) > 0        # generation produced accepted events
+    assert len(_qe["k_lep"]) > 0 and len(_res["p_N"]) > 0
     HV, SF = build_hv_sf(_qe, _res, _sf, with_pw=False, probe="EM")
     for key in ("qe_ma", "qe_vec", "qe_gmp", "qe_gmn", "qe_gep", "qe_gen", "res_ma", "res_pp", "res_delta"):
         assert key in HV, f"missing EM hard-vertex record {key}"

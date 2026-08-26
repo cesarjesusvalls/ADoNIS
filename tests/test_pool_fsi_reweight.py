@@ -11,22 +11,22 @@ N, KP, KN = 200, 16, 64
 
 def _record(seed=0):
     rng = np.random.default_rng(seed)
-    nh = rng.integers(0, 12, N)                                  # pion IN-SLAB CANDIDATE STEPS per event
-    ns = rng.integers(0, 30, N)                                  # nucleon candidate steps per event
-    bc = rng.integers(0, 4, (N, KP)).astype(np.int32)           # granular channel 0 el/1 cex/2 abs/3 conv
+    nh = rng.integers(0, 12, N)
+    ns = rng.integers(0, 30, N)
+    bc = rng.integers(0, 4, (N, KP)).astype(np.int32)
     sa = rng.uniform(0.2, 3.0, (N, KP)); ss = rng.uniform(0.2, 3.0, (N, KP)); si = rng.uniform(0.0, 0.5, (N, KP))
-    ss_el = ss * rng.uniform(0.0, 1.0, (N, KP))                 # elastic part (<= total scatter)
-    pi_hh = rng.random((N, KP)) < 0.35                          # did this candidate step interact?
-    pi_a = rng.uniform(0.05, 3.0, (N, KP))                      # a = pi*perp2/(sigma_tot*MB_TO_FM2)
+    ss_el = ss * rng.uniform(0.0, 1.0, (N, KP))
+    pi_hh = rng.random((N, KP)) < 0.35
+    pi_a = rng.uniform(0.05, 3.0, (N, KP))
     sa_c = rng.uniform(0.2, 3.0, (N, KP)); ss_c = rng.uniform(0.2, 3.0, (N, KP))
     si_c = rng.uniform(0.0, 0.5, (N, KP))
-    ss_el_c = ss_c * rng.uniform(0.0, 1.0, (N, KP))             # sigma decomposition at the CLOSEST candidate
-    hh = rng.random((N, KN)) < 0.3                              # scattered?
-    a = rng.uniform(0.05, 3.0, (N, KN))                        # a_nom = pi b^2 / sigma_tot
-    iso = rng.integers(0, 3, (N, KN)).astype(np.int32)          # nucleon pair-iso pp/pn/nn
-    finel = rng.uniform(0.0, 0.4, (N, KN))                      # inelastic fraction
-    inel = rng.random((N, KN)) < finel                         # realized inelastic (only matters at a hit)
-    swap = rng.random((N, KN)) < 0.5                           # NN-elastic charge-exchange swap bit
+    ss_el_c = ss_c * rng.uniform(0.0, 1.0, (N, KP))
+    hh = rng.random((N, KN)) < 0.3
+    a = rng.uniform(0.05, 3.0, (N, KN))
+    iso = rng.integers(0, 3, (N, KN)).astype(np.int32)
+    finel = rng.uniform(0.0, 0.4, (N, KN))
+    inel = rng.random((N, KN)) < finel
+    swap = rng.random((N, KN)) < 0.5
     return dict(bc=jnp.asarray(bc), sa=jnp.asarray(sa), ss_el=jnp.asarray(ss_el), ss=jnp.asarray(ss),
                 si=jnp.asarray(si), pi_hh=jnp.asarray(pi_hh), pi_a=jnp.asarray(pi_a),
                 sa_c=jnp.asarray(sa_c), ss_el_c=jnp.asarray(ss_el_c), ss_c=jnp.asarray(ss_c),
@@ -51,7 +51,7 @@ def test_factorization():
     w = np.asarray(pool_fsi_reweight(r, 1.3, 0.7))
     wp = np.asarray(fsi_pion_reweight((r["bc"], r["sa"], r["ss_el"], r["ss"], r["si"], r["pi_hh"],
                                        r["pi_a"], r["sa_c"], r["ss_el_c"], r["ss_c"], r["si_c"], r["nh"]),
-                                      1.3, 0.7, 0.7, 1.0))     # back-compat: s_el=s_cex=sscat, s_conv=1
+                                      1.3, 0.7, 0.7, 1.0))
     wn = np.asarray(nucleon_scat_reweight((r["hh"], r["a"], r["ns"]), 0.7))
     assert np.allclose(w, wp * wn, atol=1e-12)
 
@@ -112,7 +112,7 @@ def test_cex_knob_affects_any_candidate_step():
     base = np.asarray(pool_fsi_reweight(r, 1.0, 1.0))
     bumped = np.asarray(pool_fsi_reweight(r, 1.0, 1.0, s_piN_cex=1.5))
     nh = np.asarray(r["nh"])
-    assert np.all(np.abs(bumped - base)[nh == 0] < 1e-12)       # no pion record at all -> identity
+    assert np.all(np.abs(bumped - base)[nh == 0] < 1e-12)
     assert np.any(np.abs(bumped - base)[nh > 0] > 1e-9)
 
 
@@ -164,7 +164,7 @@ def test_ragged_equals_dense():
                dict(s_piN_elastic=1.2, s_piN_cex=1.2, s_conv=1.2)):
         sabs = kw.pop("sabs", 1.2 if kw else 1.0)
         wd = _np.asarray(pool_fsi_reweight(Rd, sabs, 1.0, **kw))
-        wf = _np.asarray(pool_fsi_reweight(Rf, sabs, 1.0, **kw))   # dispatches on "p_eidx"
+        wf = _np.asarray(pool_fsi_reweight(Rf, sabs, 1.0, **kw))
         assert _np.allclose(wf, wd, rtol=1e-7, atol=1e-9), f"ragged != dense for {kw}"
     wn = _np.asarray(pool_fsi_reweight(Rf, 1.0, 1.0))
     assert _np.abs(wn - 1.0).max() < 1e-12, "ragged nominal identity broken"

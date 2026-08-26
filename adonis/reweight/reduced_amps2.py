@@ -30,7 +30,7 @@ _METRIC = jnp.array([1.0, -1.0, -1.0, -1.0])
 
 def _q2_mev2(k_nu, k_lep):
     q = jnp.asarray(k_nu) - jnp.asarray(k_lep)
-    return jnp.sum(q[..., 1:] ** 2, axis=-1) - q[..., 0] ** 2          # MeV^2
+    return jnp.sum(q[..., 1:] ** 2, axis=-1) - q[..., 0] ** 2
 
 
 def build_qe_reduced(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=None):
@@ -38,17 +38,13 @@ def build_qe_reduced(k_nu, k_lep, p_struck, p_out, probe="CC", is_proton=None):
     Rebuilt from the SAME kinematics the per-knob records used (k_nu,k_lep,p_struck,p_out) -- no bank regen."""
     kn, km, ps, po = (jnp.asarray(x) for x in (k_nu, k_lep, p_struck, p_out))
     spec = probe_spec(probe)
-    L = lepton_current(kn, km, kind=spec.lep_kind)                     # (...,4a,4mu)
+    L = lepton_current(kn, km, kind=spec.lep_kind)
     Hs = hadron_current_qe_dirac(kn, km, ps, po, probe=probe, is_proton=is_proton,
-                                 return_structures=True)               # (...,4s,4b,4mu)
-    Lm = L * _METRIC                                                   # lower mu on L
-    LH = jnp.einsum('...am,...sbm->...sab', Lm, Hs)                    # (...,4s,4a,4b) = L_a . H_s,b
-    m = jnp.einsum('...sab,...tab->...st', jnp.conj(LH), LH)           # (...,4s,4t) Hermitian
-    M = jnp.real(m)                                                    # amps2 = F^T M F  (F real -> Im cancels)
-    # Match the legacy per-knob records' validity mask (ok = q2 > 0): same events counted, so first
-    # derivatives (Jacobian/Fisher) are unchanged.  Near-threshold q2<=0 events (kept by dirac's wider
-    # Q2_FF>-TCUT mask) are dropped identically to the old records; revisiting that acceptance is a
-    # separate change.
+                                 return_structures=True)
+    Lm = L * _METRIC
+    LH = jnp.einsum('...am,...sbm->...sab', Lm, Hs)
+    m = jnp.einsum('...sab,...tab->...st', jnp.conj(LH), LH)
+    M = jnp.real(m)
     Q2 = _q2_mev2(kn, km)
     M = jnp.where((Q2 > 0)[..., None, None], M, 0.0)
     return {"M": np.asarray(M), "Q2": np.asarray(Q2)}
@@ -61,18 +57,18 @@ def qe_F(Q2_mev2, knobs, probe="CC", is_proton=None):
     Q2 = jnp.asarray(Q2_mev2)
     ff = nucleon_ff(Q2 / 1.0e6, ff_scale={"gep": knobs.gep, "gen": knobs.gen,
                                           "gmp": knobs.mu_p, "gmn": knobs.mu_n})
-    dip = axial_reweight_dipole(Q2, knobs.M_A_qe)                      # =1 at M_A=1.0
+    dip = axial_reweight_dipole(Q2, knobs.M_A_qe)
     vs = jnp.asarray(knobs.vector_strength); asc = jnp.asarray(knobs.axial_strength) * dip
     if probe == "EM":
         isp = jnp.asarray(is_proton)
         f1 = jnp.where(isp, ff["F1p"], ff["F1n"]) * vs
         f2 = jnp.where(isp, ff["F2p"], ff["F2n"]) * vs
         fa = jnp.zeros_like(f1); fap = jnp.zeros_like(f1)
-    else:                                                             # CC: isovector difference + axial
+    else:
         f1 = (ff["F1p"] - ff["F1n"]) * vs
         f2 = (ff["F2p"] - ff["F2n"]) * vs
         fa = ff["FA"] * asc; fap = ff["FAP"] * asc
-    return jnp.stack([f1, f2, fa, fap], axis=-1)                       # (...,4)
+    return jnp.stack([f1, f2, fa, fap], axis=-1)
 
 
 def qe_reduced_reweight(record, knobs, probe="CC", is_proton=None, nominal=None):
@@ -88,12 +84,8 @@ def qe_reduced_reweight(record, knobs, probe="CC", is_proton=None, nominal=None)
     return jnp.where(den > 0, num / jnp.where(den > 0, den, 1.0), 1.0)
 
 
-# =============================================================================== RES (paper dials)
-# Atoms = {V,A,P} x {rest, wave5}; the RES dials (M_A_res, res_axial_strength, pion_pole,
-# delta_strength) touch them via nested coefficients g_s(knobs).  pw_norm is dormant (extend the atom
-# set with more wave-splits if it is released).  Unit currents from dcc.exclusive_amps2_batch(return_structures).
 _RES_ATOMS = ("V_rest", "A_rest", "P_rest", "V_w5", "A_w5", "P_w5")
-_RES_ITIZ = {(2112, 211): -1, (2112, 111): -1, (2212, 211): +1}   # (ipid, ppid) -> itiz
+_RES_ITIZ = {(2112, 211): -1, (2112, 111): -1, (2212, 211): +1}
 
 
 def build_res_reduced(k_nu, k_lep, p_struck, p_N, p_pi, ipid, ppid):
@@ -110,18 +102,13 @@ def build_res_reduced(k_nu, k_lep, p_struck, p_N, p_pi, ipid, ppid):
         args = [np.asarray(x)[mm] for x in (k_nu, k_lep, p_struck, p_N, p_pi)]
         st = dcc.exclusive_amps2_batch(*args, itiz, pp, return_structures=True)
         zj, L, gate, norm = st["zj"], st["L"], st["gate"], st["norm"]
-        LH = {s: np.einsum('ncm,nbm,m->ncb', L, zj[s], metric) for s in _RES_ATOMS}   # L_c . zj_s,b
+        LH = {s: np.einsum('ncm,nbm,m->ncb', L, zj[s], metric) for s in _RES_ATOMS}
         Mm = np.zeros((len(args[0]), 6, 6))
         for i, s in enumerate(_RES_ATOMS):
             for j, t in enumerate(_RES_ATOMS):
                 Mm[:, i, j] = np.real(np.sum(np.conj(LH[s]) * LH[t], axis=(1, 2))) / norm
-        # nan_to_num: the DCC atom machinery yields NaN/inf for a ~0.1% tail of high-Q2 kinematics the
-        # gate misses; those events carry negligible amps2, so zeroing M (-> reweight 1, gradient 0) is
-        # safe (a NaN M gives den=NaN -> forced to 1 anyway, but with a NaN gradient).
         M[mm] = np.where(gate[:, None, None], np.nan_to_num(Mm), 0.0)
         Q2[mm] = st["Q2"]
-    # float64 M: the 6x6 quadratic form g^T M g keeps full significance for the tiny high-Q2 RES amps2
-    # (float32 would lose it, though the atoms are exact either way).  QE's 4x4 form is fine in f32.
     return {"M": np.asarray(M, np.float64), "Q2": np.asarray(Q2, np.float32)}
 
 
@@ -131,7 +118,7 @@ def res_g(Q2_mev2, knobs):
     r_ax = axial_reweight_dipole(jnp.asarray(Q2_mev2), knobs.M_A_res) * jnp.asarray(knobs.res_axial_strength)
     pp = jnp.asarray(knobs.pion_pole); dl = jnp.asarray(knobs.delta_strength)
     one = jnp.ones_like(r_ax)
-    return jnp.stack([one, r_ax, r_ax * pp, dl * one, dl * r_ax, dl * r_ax * pp], axis=-1)   # (...,6)
+    return jnp.stack([one, r_ax, r_ax * pp, dl * one, dl * r_ax, dl * r_ax * pp], axis=-1)
 
 
 def res_reduced_reweight(record, knobs, nominal=None):

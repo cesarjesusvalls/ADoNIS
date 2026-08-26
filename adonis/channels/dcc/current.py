@@ -22,8 +22,6 @@ from adonis.channels.dcc.assembly import build_zmtx
 from adonis.channels.dcc.amplitudes import DCCAmplitudes, DCCKnobs
 from adonis.channels.dcc.loader import load_cached
 
-# Lazily built and cached: the ~38 MB amplitude table would otherwise be parsed at import time,
-# requiring ACHILLES inputs to be installed just to import this module.
 class _Tables:
     __slots__ = ("amp", "T", "pw_2J", "pw_2L", "pw_2I", "npw", "jmax")
 
@@ -42,56 +40,21 @@ def _tbl():
         _TBL = n
     return _TBL
 
-_DELTA_WAVE = 5              # DCC partial-wave index of the P33 Delta(1232) (matches reweight_model._DELTA_WAVE)
+_DELTA_WAVE = 5
 _LMAX = 5
-_ISP = {-1: 1, 1: 0}                      # spin index: up(+1)->0, down(-1)->1  (0-based)
+_ISP = {-1: 1, 1: 0}
 _EPS_TPIN = 1e-3
 _METRIC = np.array([1.0, -1.0, -1.0, -1.0])
-# DCC amplitude table validity (currents_pi_dcc.f90:109-120): outside -> J_mu = 0. Without it the
-# spline extrapolates to garbage on high-Enu/high-Q2 events (~1e8x spurious amps2).
 _W_LO = 1076.957; _W_HI = 2000.0; _Q2_HI = 5.0e6
-# First-principles RES normalisation (no fit). ACHILLES builds the hadron current as
-#   H = FResV * zj_raw * fac * (2*xmn/hbarc)   (res_spec_currents; amp_dcc_sl.f:417 fac;
-#   currents_pi_dcc.f90:130  J_mu*=2*xmn/hbarc),  with FResV = Vud*ee/(sw*sqrt2*2) the hadronic
-#   EW coupling (LeptonicCurrent.cc:63; resV=1).  zj_raw here omits FResV, fac and the fm-unit
-#   scalings; assembling those constants (fac^2 = 2/(fnuc^2 4pi) with the fm->MeV scaling fnuc^2,
-#   and (2 m_N/hbarc)^2) gives  1/_NORM = |FResV|^2 * (2 m_N)^2 / (2 pi).
-# ACHILLES's 2*xmn/hbarc uses xmn = the neutron mass (one_body.f90:3, 939.566), not the (mp+mn)/2
-# average -- use C.mn here (norm_m_N()) to match; the absolute scale is derived, not tuned.
-_FRESV = C.Vud * C.ee / (C.sw * np.sqrt(2.0) * 2.0)          # |hadronic CC coupling|
-_NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)   # neutron mass via conventions
-# EM (e,e') RES: the hadronic vertex couples with the photon charge ee (the N->Delta transition FFs
-# are in the DCC vector amplitude), replacing the CC hadronic coupling FResV. Two differences vs _NORM:
-#   1. FResV -> ee   (photon coupling; leptonic side carries -ee*i and i/q^2 via lepton_current kind="EM")
-#   2. the CC isospin factor fac*=sqrt(2) (amp_dcc_sl_module.f:275, mode 1-4 only) is absent for EM
-#      (mode=10) -> the CC fac^2 baked into _NORM carries an extra 2 that EM must not have -> *2 on _NORM_EM.
-# Net: _NORM_EM = 2 * _NORM * (FResV^2/ee^2).
+_FRESV = C.Vud * C.ee / (C.sw * np.sqrt(2.0) * 2.0)
+_NORM = 2.0 * np.pi / (_FRESV ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
 _NORM_EM = 2.0 * (2.0 * np.pi) / (C.ee ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
-# NC RES: same two-step reasoning as EM, with the photon coupling replaced by the Z hadronic coupling.
-#   1. FResV -> coupl3 = ee/(2*cw*sw)   (LeptonicCurrent.cc:96; FResV = FResA = coupl3 for NC, applied
-#      at :102-103 and :112-113 to both nucleons.  res_spectral_model.f90:127,145-149 confirms FResV
-#      multiplies the whole DCC current, while FResA is only a boolean.)
-#   2. the CC isospin factor fac*=sqrt(2) is `mode 1..4 only` (amp_dcc_sl_module.f:275), so like EM
-#      it is absent for NC (mode=-1) -> the extra *2 on the CC-derived normalisation.
-# By this derivation, _NORM_NC/_NORM_EM = ee^2/_FRESV_NC^2 = (2*sw*cw)^2 = 0.7113.
-_FRESV_NC = C.ee / (2.0 * C.sw * C.cw)                       # |hadronic NC coupling| = |coupl3|
+_FRESV_NC = C.ee / (2.0 * C.sw * C.cw)
 _NORM_NC = 2.0 * (2.0 * np.pi) / (_FRESV_NC ** 2 * (2.0 * _conv.norm_m_N()) ** 2)
-# Probe -> RES amplitude normalisation. Kept here, next to the derivations above, rather than in the
-# probes registry (which stays import-light). The KeyError on a missing entry is deliberate: a probe
-# without a derived _NORM must not silently borrow CC's.
 _NORMS = {"CC": _NORM, "EM": _NORM_EM, "NC": _NORM_NC}
 
-# Amplitude(W,Q2) interpolation. Default "spline" is bit-faithful to ACHILLES interpolate_amp and is
-# the only value any reported result may use. "bilinear" is NOT W-faithful (dsigma/dW, especially the
-# high-W tail, deviates well beyond 1%) -- never use it unless explicitly requested for a specific purpose.
 BATCH_INTERP = "spline"
-# Diagnostic override for the amplitude-internal pion mass (build_zmtx: qc, pion-pole facpp).
-# None -> use the per-channel hPID mass.
 AMP_MPI_OVERRIDE = None
-# The DCC partial-wave amplitude is built with the momentum transfer q as the quantization (z) axis
-# (ACHILLES does this via TransformQZ before computing the current). amps2 is a Lorentz scalar but
-# this implementation is only correct when q is along +z, so we rotate every event into that frame.
-# Callers that already pass q-along-z momenta (e.g. ACHILLES RESDUMP) are unaffected (rotation ~ identity).
 ROTATE_QZ = True
 
 
@@ -109,7 +72,7 @@ def _rotate_q_to_z(mom_list, q):
     R[:, 0, 0] = 1 - nx ** 2 / d; R[:, 0, 1] = -nx * ny / d; R[:, 0, 2] = -nx
     R[:, 1, 0] = -nx * ny / d;    R[:, 1, 1] = 1 - ny ** 2 / d; R[:, 1, 2] = -ny
     R[:, 2, 0] = nx;              R[:, 2, 1] = ny;              R[:, 2, 2] = nz
-    R[~safe] = np.array([[1.0, 0, 0], [0, -1.0, 0], [0, 0, -1.0]])  # q along -z -> flip
+    R[~safe] = np.array([[1.0, 0, 0], [0, -1.0, 0], [0, 0, -1.0]])
     return [np.concatenate([p[:, :1], np.einsum('nij,nj->ni', R, p[:, 1:])], axis=1) for p in mom_list]
 
 
@@ -142,16 +105,16 @@ def exclusive_H(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, mode=1, tcrz=1.0, tpi
     wcm = np.sqrt(max(pcm[0] ** 2 - pcm[1:] @ pcm[1:], 1.0))
     Q2 = qsh[1:] @ qsh[1:] - qsh[0] ** 2
     dfun, off = setdfun(xz_q, _tbl().jmax)
-    bleg = np.asarray(legendre_ylm(_LMAX, xz_pin))           # (L+1, 2L+1)
+    bleg = np.asarray(legendre_ylm(_LMAX, xz_pin))
     zphi_pins = {l: zphi_pin ** l for l in range(-_LMAX, _LMAX + 1)}
 
     vec, isv, axial = _tbl().amp.amplitudes_spline(jnp.array([wcm]), jnp.array([Q2]), DCCKnobs())
     zmtx = np.asarray(build_zmtx(vec[0], isv[0], axial[0], wcm, Q2, _tbl().pw_2J, _tbl().pw_2L, _tbl().pw_2I,
-                                 mode=mode, itiz=itiz, m_N=mN, m_pi=_conv.amp_m_pi()))   # (8, npw); centralized convention
+                                 mode=mode, itiz=itiz, m_N=mN, m_pi=_conv.amp_m_pi()))
     tiz = itiz / 2.0; tpinz = tcrz + tiz
     tmax = tm_f + 0.5 + _EPS_TPIN
 
-    zcrnt = np.zeros((2, 2, 4), complex)                     # [isf_idx, lam_idx, igm1_idx(0:-1,1:0,2:1,3:2)]
+    zcrnt = np.zeros((2, 2, 4), complex)
     IGM1 = (-1, 0, 1, 2)
     for ixi1 in range(1, 9):
         igm1 = int(ISMI[ixi1]); igm1x = int(ISMIX[ixi1]); lambda_N = -int(ISBI[ixi1])
@@ -178,33 +141,29 @@ def exclusive_H(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, mode=1, tcrz=1.0, tpi
                             * (zphi_q ** ((-mj + Lambda_i) // 2)))
                 zcrnt[isf_idx, lam_idx, ig_idx] += zfac * zzz
 
-    # helicity -> Cartesian (igm1 idx: 0:-1, 1:0, 2:1, 3:2)
     sq = 1.0 / np.sqrt(2.0)
     zjx = np.zeros((2, 2, 4), complex)
-    zjx[:, :, 0] = zcrnt[:, :, 1]                            # time (igm1=0)
-    zjx[:, :, 3] = zcrnt[:, :, 3]                            # z    (igm1=2)
+    zjx[:, :, 0] = zcrnt[:, :, 1]
+    zjx[:, :, 3] = zcrnt[:, :, 3]
     zjx[:, :, 1] = (zcrnt[:, :, 0] - zcrnt[:, :, 2]) * sq
     zjx[:, :, 2] = (zcrnt[:, :, 0] + zcrnt[:, :, 2]) * sq * 1j
-    # boost 2CM -> lab
-    zj = np.einsum('mn,abn->abm', xlr, zjx)                  # (isf, lam, mu)
-    return zj.reshape(4, 4)                                  # combo=(isf,lam) flattened
+    zj = np.einsum('mn,abn->abm', xlr, zjx)
+    return zj.reshape(4, 4)
 
 
 def exclusive_amps2(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID):
     """amps2 up to the overall constant: sum_{isf,lam} |L.H|^2."""
     tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
     H = exclusive_H(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, tpiz=tpiz)
-    # DCC table validity gate
     q = np.asarray(k_nu) - np.asarray(k_lep); Q2 = q[1:] @ q[1:] - q[0] ** 2
     pcm = np.asarray(p_outN) + np.asarray(p_pi); W = np.sqrt(max(pcm[0] ** 2 - pcm[1:] @ pcm[1:], 0.0))
     if W < _W_LO or W > _W_HI or Q2 < 0 or Q2 > _Q2_HI:
         return 0.0
-    L = np.asarray(lepton_current(jnp.asarray(k_nu)[None], jnp.asarray(k_lep)[None]))[0]  # (4,4)
+    L = np.asarray(lepton_current(jnp.asarray(k_nu)[None], jnp.asarray(k_lep)[None]))[0]
     LH = np.einsum('am,bm,m->ab', L, H, _METRIC)
     return float(np.sum(np.abs(LH) ** 2)) / _NORM
 
 
-# ---- vectorised (batched) version for high-N MC ------------------------------------------ #
 import jax
 from adonis.channels.dcc.wigner import boost_matrix_batch, setdfun_batch
 
@@ -238,7 +197,7 @@ def _zmtx_to_zjx(zmtx, N, itiz, tcrz, tm_f, tpiz, bleg, zphi_pin, dfun, off, zph
             cgi = cbg(1.0, tcrz, 0.5, tiz, tpin, tpinz) * cbg(tm_f, tpiz, 0.5, tpinz - tpiz, tpin, tpinz)
             if cgi == 0:
                 continue
-            zfac = np.sqrt(jpin + 1.0) * cgi * zmtx[:, ixi1 - 1, pw]          # (N,)
+            zfac = np.sqrt(jpin + 1.0) * cgi * zmtx[:, ixi1 - 1, pw]
             for isf in (-1, 1):
                 isf_idx = _ISP[isf]; xs = isf / 2.0
                 zzz = np.zeros(N, complex)
@@ -267,7 +226,7 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     q_direct (N,4): use this q verbatim as the (already de-Forest-shifted) transfer.
     probe: "CC" (default; nu N, weak, mode=1, _NORM). "EM" (inclusive (e,e'): photon leptonic
     current + i/q^2, DCC mode=10 EM isospin, _NORM_EM)."""
-    _spec = probe_spec(probe)      # raises on unknown/unimplemented -- NEVER falls through to CC
+    _spec = probe_spec(probe)
     _mode = _spec.dcc_mode
     _lep_kind = _spec.lep_kind
     _norm = _NORMS[probe]
@@ -275,7 +234,7 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     p_struck = np.asarray(p_struck, float); p_outN = np.asarray(p_outN, float); p_pi = np.asarray(p_pi, float)
     N = k_nu.shape[0]; mN = C.mN
     tpiz = {211: 1.0, 111: 0.0, -211: -1.0}[int(hPID)]
-    mpi = _conv.amp_m_pi()    # amplitude-internal pion mass = isospin-avg fpio 138.04
+    mpi = _conv.amp_m_pi()
     q = k_nu - k_lep
     if ROTATE_QZ:
         mlist = [k_nu, k_lep, p_struck, p_outN, p_pi]
@@ -303,9 +262,8 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     wcm = np.sqrt(np.clip(pcm[:, 0] ** 2 - np.sum(pcm[:, 1:] ** 2, axis=1), 1.0, None))
     Q2 = np.sum(qsh[:, 1:] ** 2, axis=1) - qsh[:, 0] ** 2
     dfun, off = setdfun_batch(xz_q, _tbl().jmax)
-    bleg = legendre_ylm_batch(_LMAX, xz_pin)                                  # (N, L+1, 2L+1)
-    # interp switch: see BATCH_INTERP above ("bilinear" is diagnostic-only, not W-faithful).
-    _kn = knobs if knobs is not None else DCCKnobs()    # pw_norm / axial_strength reweight hook (record-build)
+    bleg = legendre_ylm_batch(_LMAX, xz_pin)
+    _kn = knobs if knobs is not None else DCCKnobs()
     if BATCH_INTERP == "spline":
         vec, isv, axial = _tbl().amp.amplitudes_spline_np(wcm, Q2, _kn)
     else:
@@ -313,20 +271,16 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
     amp_mpi = AMP_MPI_OVERRIDE if AMP_MPI_OVERRIDE is not None else mpi
     r_ax = None if r_axial is None else jnp.asarray(r_axial)
     zmtx = np.asarray(_build_zmtx_vmapped(vec, isv, axial, jnp.asarray(wcm), jnp.asarray(Q2), itiz, amp_mpi,
-                                          r_axial=r_ax, pion_pole=pion_pole, mode=_mode))  # (N,8,npw)
-    ang = (N, itiz, tcrz, tm_f, tpiz, bleg, zphi_pin, dfun, off, zphi_q)      # shared angular kernel
+                                          r_axial=r_ax, pion_pole=pion_pole, mode=_mode))
+    ang = (N, itiz, tcrz, tm_f, tpiz, bleg, zphi_pin, dfun, off, zphi_q)
 
     if return_structures:
-        # Per-atom unit currents for the reduced-quadratic RES amps2. The current zj is linear in zmtx,
-        # and zmtx is linear in the amplitude blocks, so build the block/wave-split zmtx and map each to
-        # a zj. Atoms {V,A,P} x {rest, wave5}: V=vector, A=axial (r=1,pole=0), P=pole only
-        # (=[axial+pole]-axial); wave5 split out for delta_strength. Shared angular kernel `ang` is reused.
         w5 = _DELTA_WAVE if _DELTA_WAVE < _tbl().npw else None
-        def _wmask(a, keep5):                                    # keep only wave 5 (keep5) or all-but-5
+        def _wmask(a, keep5):
             out = np.array(a)
             if w5 is not None:
                 if keep5:
-                    out[:, :, [i for i in range(_tbl().npw) if i != w5]] = 0   # assignment (fancy index copy -> can't .fill)
+                    out[:, :, [i for i in range(_tbl().npw) if i != w5]] = 0
                 else:
                     out[:, :, w5] = 0
             return out
@@ -337,35 +291,33 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
         atoms = {}
         for tag, keep5 in (("rest", False), ("w5", True)):
             vv, ss, aa = _wmask(vec, keep5), _wmask(isv, keep5), _wmask(axial, keep5)
-            zV = _zmtx(vv, ss, zero, 0.0)                        # vector only
-            zA = _zmtx(zero, zero, aa, 0.0)                      # axial only (no pole)
-            zAP = _zmtx(zero, zero, aa, 1.0)                     # axial + pole
+            zV = _zmtx(vv, ss, zero, 0.0)
+            zA = _zmtx(zero, zero, aa, 0.0)
+            zAP = _zmtx(zero, zero, aa, 1.0)
             atoms[f"V_{tag}"] = _zmtx_to_zjx(zV, *ang)
             atoms[f"A_{tag}"] = _zmtx_to_zjx(zA, *ang)
-            atoms[f"P_{tag}"] = _zmtx_to_zjx(zAP - zA, *ang)     # pole only
+            atoms[f"P_{tag}"] = _zmtx_to_zjx(zAP - zA, *ang)
         L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_lep), kind=_lep_kind))
         gate = (wcm >= _W_LO) & (wcm <= _W_HI) & (Q2 >= 0) & (Q2 <= _Q2_HI)
         zjs = {k: np.einsum('nmk,nabk->nabm', xlr, v).reshape(N, 4, 4) for k, v in atoms.items()}
         return dict(zj=zjs, L=L, gate=gate, Q2=Q2, norm=_norm)
 
     zjx = _zmtx_to_zjx(zmtx, *ang)
-    # DIAGNOSTIC frame toggle: amps2 is a Lorentz scalar, so contracting in the 2CM frame
-    # (no boost on zj, boost the leptons in instead) must equal the lab contraction.
     import os as _os
     if _os.environ.get("ADONIS_CONTRACT_FRAME", "lab") == "cm":
         xlrs = boost_matrix_batch(pcm, to_cm=True)
         knu_c = np.einsum('nmk,nk->nm', xlrs, k_nu); kmu_c = np.einsum('nmk,nk->nm', xlrs, k_lep)
-        zj = zjx.reshape(N, 4, 4)                                            # current in 2CM
+        zj = zjx.reshape(N, 4, 4)
         L = np.asarray(lepton_current(jnp.asarray(knu_c), jnp.asarray(kmu_c), kind=_lep_kind))
     else:
-        zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)          # (N, combo, mu)
-        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_lep), kind=_lep_kind))  # (N,4,4)
+        zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)
+        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_lep), kind=_lep_kind))
     if return_zj:
-        return zj                                                            # (N, combo, mu) lab current
+        return zj
     LH = np.einsum('ncm,nbm,m->ncb', L, zj, _METRIC)
     a2 = np.sum(np.abs(LH) ** 2, axis=(1, 2)) / _norm
-    gate = (wcm >= _W_LO) & (wcm <= _W_HI) & (Q2 >= 0) & (Q2 <= _Q2_HI)   # DCC table validity
+    gate = (wcm >= _W_LO) & (wcm <= _W_HI) & (Q2 >= 0) & (Q2 <= _Q2_HI)
     out = np.where(gate, a2, 0.0)
     if return_q2:
-        return out, Q2          # the amplitude-evaluation Q2 [MeV^2] (de-Forest-shifted)
+        return out, Q2
     return out

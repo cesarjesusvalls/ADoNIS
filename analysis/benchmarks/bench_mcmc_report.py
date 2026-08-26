@@ -30,7 +30,7 @@ import numpy as np
 from adonis.fit.mcmc_diag import ess_bulk, ess_tail, split_rhat, tau_int
 
 RHAT_MAX = 1.01
-MCSE_SIGMA = 4.0          # how many combined MCSE two methods' means may differ by
+MCSE_SIGMA = 4.0
 
 
 def load(paths):
@@ -58,7 +58,6 @@ def main(argv=None):
     ns = sorted({k[0] for k in by})
     print(f"loaded {sum(len(v) for v in by.values())} chains over n = {ns}\n")
 
-    # ---- GATE 1: convergence ---------------------------------------------------------------------- #
     print("==== GATE 1: rank-normalised split-Rhat (max over parameters) ====")
     print(f"{'n':>3} {'method':>6} {'chains':>7} {'draws/chain':>12} {'max Rhat':>9} {'min ESS_bulk':>13} "
           f"{'min ESS_tail':>13} {'verdict':>9}")
@@ -80,13 +79,6 @@ def main(argv=None):
             print(f"{n:>3} {m:>6} {len(zs):>7} {nd:>12,} {np.nanmax(rh):9.4f} {np.nanmin(eb):13.1f} "
                   f"{np.nanmin(et):13.1f} {'PASS' if good else 'FAIL':>9}")
 
-    # ---- GATE 2: same stationary distribution ------------------------------------------------------ #
-    # A MEAN COMPARISON CANNOT SEE A TAIL OR SHAPE MISMATCH.  Two distributions can share a mean and a
-    # variance and still differ where a credible interval is read off.  So the primary test is a
-    # two-sample KS on each marginal, with the sample size replaced by the AUTOCORRELATION-CORRECTED
-    # effective N -- using the raw draw count would treat 50,000 correlated MH draws as 50,000
-    # independent ones and reject on nothing.  The mean/MCSE check is kept as a cheap pre-filter, and
-    # the 5%/95% quantiles are compared directly because those are what an interval quotes.
     from scipy.stats import kstwo
     print(f"\n==== GATE 2: MH and NUTS are sampling the SAME distribution ====")
     print(f"{'n':>3} {'worst dial':>20} {'|dmean|/mcse':>13} {'KS D':>8} {'KS p':>8} "
@@ -111,7 +103,6 @@ def main(argv=None):
             dq = []
             for qq in (0.05, 0.95):
                 qa, qb = np.quantile(xa, qq), np.quantile(xb, qq)
-                # quantile MCSE ~ sqrt(q(1-q))/(f(q) sqrt(ESS)); approximate f(q) by a local density
                 w = 0.1 * (np.quantile(xa, 0.75) - np.quantile(xa, 0.25)) + 1e-300
                 fa = max(np.mean(np.abs(xa - qa) < w) / (2 * w), 1e-300)
                 se = np.sqrt(qq * (1 - qq)) / fa * np.sqrt(1 / ea + 1 / eb_)
@@ -123,7 +114,6 @@ def main(argv=None):
         print(f"{n:>3} {worst:>20} {wr:13.2f} {wD:8.4f} {wp:8.3f} {wq5:12.2f} {wq95:12.2f} "
               f"{'PASS' if good else 'FAIL':>9}")
 
-    # ---- efficiency --------------------------------------------------------------------------------- #
     print("\n==== EFFICIENCY (median over parameters of the per-parameter ESS) ====")
     print("hardware-specific ->            | portable ->")
     print(f"{'n':>3} {'method':>6} {'ESSb/s':>9} {'ESSt/s':>9} {'ESSb/1e3 visit':>15} "
@@ -136,19 +126,8 @@ def main(argv=None):
                 continue
             s = S[(n, m)]
             zs = s["zs"]
-            # CHARGE ONLY THE COMPUTE THAT PRODUCED THE DRAWS BEING SCORED.  Chains are truncated to
-            # the shortest so no chain is over-weighted in the ESS -- but the cost must be truncated the
-            # same way, or a method whose chains came out uneven pays full price for draws that were
-            # discarded.  Measured: NUTS at n=17 had chains of 3440/3240/3030/2100, so 71% of its draws
-            # were scored against 100% of its time, deflating its ESS/s by ~30% at exactly the point the
-            # trend appeared to break.  Time, logp, gradient and pass counts all scale with the fraction
-            # of each chain that survived truncation.
             fr = [s["nd"] / float(np.asarray(z["draws"]).shape[0]) for z in zs]
             t = float(np.sum([f * float(z["t_sample"]) for f, z in zip(fr, zs)]))
-            # VISITS, not "logp": a value-and-gradient is ONE forward traversal but it is not a plain
-            # likelihood call, and charging it as one made the per-evaluation column exactly 2x kind to
-            # the gradient method.  `visits` counts forward traversals for both; `passes` charges the
-            # reverse sweep as well.  Older files without the key fall back to n_logp.
             vis = float(np.sum([f * float(z["visits"] if "visits" in z.files else z["n_logp"])
                                 for f, z in zip(fr, zs)]))
             ngr = float(np.sum([f * float(z["n_grad"]) for f, z in zip(fr, zs)]))
@@ -166,7 +145,6 @@ def main(argv=None):
                   f"{1e3*eb/max(pas,1):14.2f} {tau:8.1f} {acc:7.3f} {ngr/max(ndraw,1):10.2f} "
                   f"{ebmin/t:9.2f} {worstpar:>18} {ndv:>6}")
 
-    # ---- the answer ---------------------------------------------------------------------------------- #
     print("\n==== NUTS / MH advantage vs parameter count ====")
     print(f"{'n':>3} {'ESSb/s':>9} {'ESSt/s':>9} {'ESSb/visit':>11} {'ESSb/pass':>11} {'gate':>6}")
     for n in ns:

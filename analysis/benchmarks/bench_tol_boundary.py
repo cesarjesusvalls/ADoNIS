@@ -50,8 +50,6 @@ def _throw(eng, subset, real_prior, rng, wall_dial=EB):
     of width 4.0 about a nominal of 0.01 puts half its mass below the wall and piles those toys onto one
     identical clamped truth -- the pathology that motivated the branch in the first place.
     """
-    # Imported here rather than at module scope: the stages package pulls in jax and the
-    # bank machinery, which this module's --help must not pay for.
     from analysis.campaign.stages.multisample_coverage import _throw_truth
     star = _throw_truth(eng, subset, real_prior, rng)
     k = eng.pnames.index(wall_dial)
@@ -127,21 +125,18 @@ def main(argv=None):
     real_prior = eng.prior.copy()
     if cfg.fit.prior_scale != 1.0:
         eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
-    truth_cfg, _ = parse_inject(cfg.inject_string(), nominal_knobs())   # the closure's own injection
+    truth_cfg, _ = parse_inject(cfg.inject_string(), nominal_knobs())
     names = [eng.pnames[k] for k in subset]
     keb = names.index(EB)
     lo, hi = _bounds(eng, subset)
     x0 = np.asarray(eng.th0)[idx].copy()
     th_init = np.asarray(eng.th0).copy()
     if a.eb_start:
-        # Move BOTH minimisers' start, so the comparison stays paired -- shifting only MIGRAD's would
-        # confound "start point" with "different problem".
         x0[keb] = a.eb_start
         th_init[subset[keb]] = a.eb_start
         log(f"[start] {EB} starts at {a.eb_start} instead of nominal {eng.th0[subset[keb]]:.3g} (= the wall)")
     log(f"{len(subset)} dials; {EB} wall at {K.phys_lo(EB)}, prior {prior_true[keb]}")
 
-    # objectives compiled ONCE, outside every clock (see bench_minimizers for why this matters)
     f_only = eng.chi2_fn(subset)
     vg = eng.chi2_grad_fn(subset)
     log("objectives compiled")
@@ -149,10 +144,7 @@ def main(argv=None):
     rng = np.random.default_rng(a.seed)
     methods = ["gn"] + [f"migrad+g@{t:g}" for t in tols]
     if a.nograd:
-        methods.append(f"migrad@{tols[0]:g}")           # no gradient supplied -> 2n calls per gradient
-    # FIXED TRUTH: draw it once, outside the loop, so every toy shares one likelihood surface and the
-    # only thing varying is the data.  Both minimisers see the SAME data in a given toy by construction
-    # (it is built once per toy, before either runs), so the comparison is paired throw by throw.
+        methods.append(f"migrad@{tols[0]:g}")
     fixed_star = None
     if a.fixed_truth:
         fixed_star = truth_cfg.copy()
@@ -171,8 +163,6 @@ def main(argv=None):
             for d in eng.ds:
                 sd = np.where(np.isfinite(d["sigma"]), d["sigma"], 0.0)
                 d["data"] = d["data"] + sd * rng.standard_normal(len(sd))
-        # Retarget the COMPILED objectives at this toy's data.  Rebuilding them instead would recompile
-        # (~1-2 min of XLA) once per toy and dwarf the ensemble itself.
         Dt, Wt = eng.chi2_data_dev()
         f_only.set_data(Dt, Wt); vg.set_data(Dt, Wt)
         star_eb.append(float(star[subset[keb]])); stars.append(star[idx].copy())
@@ -196,15 +186,6 @@ def main(argv=None):
 
     star_eb = np.array(star_eb)
     wall = K.phys_lo(EB)
-    # ---- A. EXPECTED boundary ("Chernoff") fraction ------------------------------------------------ #
-    # Chernoff: when a parameter's TRUE value sits on its boundary, the MLE lands exactly on that
-    # boundary with asymptotic probability 1/2 -- half the data fluctuations push the unconstrained
-    # optimum outside the allowed region and get clamped.  That is a property of the STATISTICS, not of
-    # the minimiser, so a correct minimiser must reproduce 1/2 and any excess is optimiser failure.
-    #   truth AT the wall + noise -> 1/2, exactly, no nuisance parameters needed.
-    #   truth OFF the wall + noise -> the same argument with the truth displaced: P(MLE < wall) =
-    #     Phi((wall - e)/sigma_post), averaged over the thrown truths.
-    #   no noise (Asimov)          -> 0: the MLE IS the truth, there is nothing to fluctuate.
     from scipy import stats as sstats
     at_wall_truth = bool(a.eb_truth == "wall")
     if not a.noise:
@@ -226,7 +207,6 @@ def main(argv=None):
     for m in methods:
         F = np.array(fits[m]); N = np.array(ncalls[m]); C = np.array(chi2s[m])
         nb = int(sum(_at_bound(EB, v) for v in F[:, keb])); fr = nb / len(F)
-        # binomial 1-sigma on the measured fraction, so "agrees with expectation" is decidable
         se = float(np.sqrt(max(fr * (1 - fr), 1e-12) / len(F)))
         z = (fr - exp_frac) / se if se > 0 else np.inf
         q1, q3 = np.percentile(C, [25, 75])

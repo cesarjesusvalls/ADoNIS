@@ -25,7 +25,7 @@ from adonis.reweight.bank_plot import load_bank, filter_events
 
 
 def rechunk(src, dst, target_bytes=0.5e9, log=print):
-    B = load_bank(src)                                   # w0 = final (/ old n_chunks); sum = cross section
+    B = load_bank(src)
     n = len(B["w0"])
     total = sum(np.asarray(v).nbytes for v in B.values() if isinstance(v, np.ndarray))
     M = max(1, int(round(total / target_bytes)))
@@ -36,7 +36,7 @@ def rechunk(src, dst, target_bytes=0.5e9, log=print):
         m = np.zeros(n, bool); m[edges[i]:edges[i + 1]] = True
         Bc = filter_events(B, m)
         out = {k: v for k, v in Bc.items() if k not in ("_eidx", "n_chunks", "labels")}
-        out["w0"] = np.asarray(Bc["w0"]) * M            # store raw so load_bank_chunk(f, M) -> w0_final
+        out["w0"] = np.asarray(Bc["w0"]) * M
         np.savez(f"{dst}/chunk_{i:04d}.npz", **out)
     man = {}
     try:

@@ -21,16 +21,12 @@ from __future__ import annotations
 
 import numpy as np
 
-# True E_nu [MeV]: one bin below the peak, five across it, 200 MeV steps, then one open bin above 2 GeV.
 FLUX_EDGES = [0.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1200.0, 1400.0, 1700.0, 2000.0, np.inf]
 
-# T2K flux uncertainty (post NA61/SHINE) is ~8-10% near the peak -- larger than the detector's 5%
-# per-reco-bin prior, since a flux parameter moves every bin it touches coherently.
-SIGMA = 0.10          # per-bin prior width
-CORR_LENGTH = 400.0   # MeV; roughly two bins across the peak
+SIGMA = 0.10
+CORR_LENGTH = 400.0
 
 
-# `edges=None` uses FLUX_EDGES, the T2K binning above.
 def n_flux(edges=None) -> int:
     return len(FLUX_EDGES if edges is None else edges) - 1
 
@@ -46,7 +42,7 @@ def bin_centres(edges=None):
     last finite bin's width extrapolated -- so it has a finite distance to its neighbour in the kernel."""
     e = np.array(FLUX_EDGES if edges is None else edges, dtype=float)
     c = 0.5 * (e[:-1] + e[1:])
-    c[-1] = e[-2] + 0.5 * (e[-2] - e[-3])          # top bin: extrapolate the last finite width
+    c[-1] = e[-2] + 0.5 * (e[-2] - e[-3])
     return c
 
 

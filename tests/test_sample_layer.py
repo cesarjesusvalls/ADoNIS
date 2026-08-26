@@ -62,9 +62,6 @@ def test_gate_jacobian_matches_the_fit_config(cfg, beams):
     want = []
     for nm in cfg.samples:
         s = yaml.safe_load(pathlib.Path(f"configs/samples/{nm}.yaml").read_text())
-        # `fit: false` marks an observable that is PLOTTED but does not enter the Fisher/fit -- the
-        # validation extras (t2k_cc1pi_ch ppi/cos_pi, the minerva_stv lepton/proton kinematics).  Only
-        # the fitted ones appear in the Jacobian, so only they belong in this comparison.
         want += [f"{s['name']}:{o['key']}" for o in s["observables"] if o.get("fit", True)]
     for b in cfg.beams:
         want += list(beams["beams"][b]["observables"])

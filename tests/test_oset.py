@@ -15,7 +15,7 @@ def test_absorption_peaks_in_delta_region():
     T = np.array([20, 50, 85, 120, 165, 200, 250, 300.])
     s = np.array([float(absorption_self_energy(t)) for t in T])
     assert np.all(s > 0)
-    assert 150 <= T[int(np.argmax(s))] <= 260            # absorption peaks near the Delta
+    assert 150 <= T[int(np.argmax(s))] <= 260
 
 
 def test_abs_NNN_clamped_low_energy():
@@ -31,7 +31,6 @@ def test_oset_differentiable_in_knobs():
     g = float(jax.grad(total)(1.0))
     fd = (float(total(1.001)) - float(total(0.999))) / 0.002
     assert abs(g - fd) / abs(fd) < 1e-3, (g, fd)
-    # QE channel differentiable in C_Q too
     def qe(scale):
         return self_energy_qe(120.0, c_q=tuple(scale * c for c in C_Q))
     assert np.isfinite(float(jax.grad(qe)(1.0)))

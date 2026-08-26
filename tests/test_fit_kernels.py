@@ -29,7 +29,6 @@ class _Sample:
                         sigma=np.ones(nbin - nbin // 2))]
 
     def _m(self, th, xp):
-        # nonlinear in theta and coupled across dials, so a Jacobian bug cannot hide
         return self.b * xp.exp(0.3 * (self.A @ th)) + self.off
 
     def model_blocks_jax(self, th):
@@ -72,10 +71,7 @@ def _setup(npar=5, subset=(0, 2, 3, 4), dead=(1, 9)):
     eng = _Engine(npar)
     nbin = sum(d["nbin"] for d in eng.ds)
     sig = np.linspace(0.05, 0.2, nbin)
-    sig[list(dead)] = np.inf                    # dead bins, exactly as set_closure_data marks them
-    # The truth moves ONLY the fitted dials.  Displacing an unfitted dial as well makes the closure
-    # unreachable -- the fit is then chasing a truth it is not allowed to represent, which is a
-    # misspecified test, and it is the same mistake that made the earlier n-scan not apples-to-apples.
+    sig[list(dead)] = np.inf
     th_t = eng.th0.copy()
     th_t[np.asarray(subset, int)] += 0.15
     _fill_data(eng, th_t, sig)
@@ -161,7 +157,6 @@ def test_batching_changes_dispatches_and_nothing_else():
         assert np.allclose(k.jac(x), ref, rtol=0, atol=1e-13)
         assert k.nblk == int(np.ceil(k.n / B))
         k.reset_counts(); k.jac(x)
-        # padding is real executed work and is counted as such; it is never quietly dropped
         assert k.counts["tangent"] == k.nblk * B >= k.n
         assert k.counts["tangent_eff"] == k.n
         assert k.counts["primal"] == k.nblk
@@ -182,12 +177,12 @@ def test_refresh_data_retargets_without_rebuilding():
     k = FitKernel(eng, subset).warmup()
     assert k.chi2(th_t[idx]) == pytest.approx(
         float(((th_t[idx] - k.x0) / np.asarray(eng.prior)[idx]) @ ((th_t[idx] - k.x0) / np.asarray(eng.prior)[idx])),
-        rel=1e-10)                                   # closure: data residual vanishes at the truth
+        rel=1e-10)
     th_new = eng.th0.copy(); th_new[idx] += 0.25
     sig = np.concatenate([d["sigma"] for d in eng.ds])
     _fill_data(eng, th_new, sig)
     k.refresh_data()
-    assert k.chi2(th_t[idx]) > 1.0                   # the old truth is no longer the solution
+    assert k.chi2(th_t[idx]) > 1.0
     assert k.chi2(th_new[idx]) == pytest.approx(
         float(((th_new[idx] - k.x0) / np.asarray(eng.prior)[idx]) @ ((th_new[idx] - k.x0) / np.asarray(eng.prior)[idx])),
         rel=1e-10)
@@ -196,9 +191,9 @@ def test_refresh_data_retargets_without_rebuilding():
 def test_mask_can_only_remove_bins():
     eng, subset, idx, _ = _setup(dead=(1,))
     nbin = sum(d["nbin"] for d in eng.ds)
-    m = np.ones(nbin, bool); m[0] = False          # ask to drop bin 0 as well
+    m = np.ones(nbin, bool); m[0] = False
     k = FitKernel(eng, subset, mask=m).warmup()
-    assert k.n_live == nbin - 2                    # bin 0 by the mask, bin 1 by sigma = inf
+    assert k.n_live == nbin - 2
     m2 = np.ones(nbin, bool)
     k2 = FitKernel(eng, subset, mask=m2).warmup()
-    assert k2.n_live == nbin - 1                   # a mask cannot resurrect a sigma = inf bin
+    assert k2.n_live == nbin - 1

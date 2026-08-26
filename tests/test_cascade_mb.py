@@ -29,18 +29,18 @@ def test_dcc_scatter_delta_peaked():
     tot = np.array([cm.channel_sigmas_pn_avg(_W_of_T(T), 0).sum() for T in Ts])
     assert np.all(tot >= 0)
     pk = Ts[int(tot.argmax())]
-    assert 120 <= pk <= 200, pk                              # peaks in the Delta region
-    assert tot.max() > 90, tot.max()                         # ~130 mb at the peak
-    assert tot[-1] < 0.45 * tot.max()                        # falls off sharply above the Delta
+    assert 120 <= pk <= 200, pk
+    assert tot.max() > 90, tot.max()
+    assert tot[-1] < 0.45 * tot.max()
 
 
 def test_charge_exchange_present():
     """pi+ scatters elastically (-> pi+) AND charge-exchanges (-> pi0, on neutrons); no
     double charge flip (pi+ -> pi-)."""
-    sig = cm.channel_sigmas_pn_avg(_W_of_T(164), 0).ravel()         # (3,) to pi+/pi0/pi-
-    assert sig[0] > 0 and sig[1] > 0                          # elastic + charge exchange
-    assert sig[2] == 0.0                                     # no pi+ -> pi-
-    assert sig[1] / sig[0] < 0.5                              # cex sub-dominant to elastic
+    sig = cm.channel_sigmas_pn_avg(_W_of_T(164), 0).ravel()
+    assert sig[0] > 0 and sig[1] > 0
+    assert sig[2] == 0.0
+    assert sig[1] / sig[0] < 0.5
 
 
 def test_jax_matches_numpy():

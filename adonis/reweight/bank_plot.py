@@ -35,16 +35,11 @@ def load_bank(outdir, max_chunks=None):
     man = json.load(open(f"{outdir}/manifest.json"))
     nchunks = man["n_chunks"]; files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
     if max_chunks is not None:
-        files = files[:max_chunks]; nchunks = len(files)   # divide by loaded count (subsampled bank)
+        files = files[:max_chunks]; nchunks = len(files)
     perev = {}; fs_pid = []; fs_chg = []; fs_p4 = []; offs = [np.array([0], np.int64)]
-    ev_off = 0                       # events seen so far -> shifts each chunk's ragged indices
+    ev_off = 0
     for f in files:
         d = np.load(f)
-        # TEMPORARY k_lep compat shim: banks written before the k_mu (CC) / k_e (EM) -> k_lep rename
-        # still carry the old field name.  Alias PER CHUNK, before concatenation, so a directory
-        # caught mid-migration (migrate_k_lep is atomic per chunk) still assembles a full-length
-        # k_lep aligned with w0 -- a global post-concat alias would cover only the migrated chunks.
-        # Remove once every bank under $ADONIS_OUT carries k_lep.
         _lep_alias = None
         if "k_lep" not in d.files:
             _lep_alias = next((o for o in ("k_mu", "k_e") if o in d.files), None)
@@ -53,10 +48,6 @@ def load_bank(outdir, max_chunks=None):
                 continue
             v = d[key]
             if key in ("f_p_eidx", "f_n_eidx"):
-                # PER-SLOT event index of the ragged FSI record: each chunk numbers events from 0, so it
-                # must be shifted into the global numbering before concatenation (as fs_off does for the
-                # ragged final state) -- else every chunk after the first attributes its FSI slots to
-                # the wrong events.
                 v = v.astype(np.int64) + ev_off
             perev.setdefault("k_lep" if key == _lep_alias else key, []).append(v)
         fs_pid.append(d["fs_pid"]); fs_chg.append(d["fs_chg"]); fs_p4.append(d["fs_p4"])
@@ -67,9 +58,9 @@ def load_bank(outdir, max_chunks=None):
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
     B["n_chunks"] = nchunks
-    _coerce_fsi_dtypes(B)                               # empty (free-H) banks default bool/int FSI to float32
+    _coerce_fsi_dtypes(B)
     from adonis.reweight.reweight_model import nominal_knobs, knob_specs
-    B["labels"] = [s[2] for s in knob_specs(nominal_knobs())]   # plotted knobs (no pw_norm, no sscat)
+    B["labels"] = [s[2] for s in knob_specs(nominal_knobs())]
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
     return B
 
@@ -79,10 +70,6 @@ def bank_nchunks(outdir):
     return json.load(open(f"{outdir}/manifest.json"))["n_chunks"]
 
 
-# Canonical dtypes for the integer/bool FSI records.  An EMPTY bank (free hydrogen: no nucleon cascade,
-# so every f_* nucleon/pion record has length 0) lets numpy default those arrays to float32, and jax
-# then rejects a float-typed `iso` used as an index (se[iso]).  Coercing at load is a no-op on a
-# populated carbon bank and fixes the empty-bank schema.
 _FSI_CANON = (("f_iso", np.int8), ("f_bc", np.int8), ("f_hh", bool), ("f_inel", bool),
               ("f_swap", bool), ("f_pi_hh", bool), ("f_p_eidx", np.int32), ("f_n_eidx", np.int32))
 
@@ -94,8 +81,6 @@ def _coerce_fsi_dtypes(B):
     return B
 
 
-# The ragged FSI slot records (bank_reweight._FSI_F) split into a PION family (indexed by f_p_eidx) and a
-# NUCLEON family (indexed by f_n_eidx); filter_events gathers each by its own event index.
 _FSI_PION = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
 _FSI_NUC = ("hh", "a", "iso", "finel", "inel", "swap")
 
@@ -113,7 +98,6 @@ def filter_events(B, keep):
     keep = np.asarray(keep, bool); idx = np.where(keep)[0]; n = len(B["w0"])
     remap = np.full(n, -1, np.int64); remap[idx] = np.arange(len(idx))
     out = {}
-    # ragged final state: rebuild fs_off, gather the selected events' particles
     off = np.asarray(B["fs_off"]); lens = np.diff(off)[idx]
     new_off = np.concatenate([[0], np.cumsum(lens)]).astype(off.dtype)
     part = (np.concatenate([np.arange(off[e], off[e + 1]) for e in idx]) if len(idx)
@@ -121,7 +105,6 @@ def filter_events(B, keep):
     out["fs_off"] = new_off
     for k in ("fs_pid", "fs_chg", "fs_p4"):
         out[k] = np.asarray(B[k])[part]
-    # eidx-indexed ragged families: ks_ summary + the two FSI slot families
     fams = []
     if "ks_eidx" in B:
         fams.append(("ks_eidx", [k for k in B if k.startswith("ks_") and k != "ks_eidx"]))
@@ -134,7 +117,6 @@ def filter_events(B, keep):
         out[eidxname] = remap[e[m]]
         for x in fields:
             out[x] = np.asarray(B[x])[m]
-    # per-event fields (length n): gather by event; scalars / grids pass through
     handled = set(out) | {"_eidx"}
     for k, v in B.items():
         if k in handled:
@@ -155,19 +137,18 @@ def load_bank_chunk(f, nchunks):
     d = np.load(f)
     _lep_alias = None if "k_lep" in d.files else next((o for o in ("k_mu", "k_e") if o in d.files), None)
     B = {}
-    for key in d.files:                                # per-event records (skip the ragged final-state keys)
+    for key in d.files:
         if key in _FS:
             continue
-        B["k_lep" if key == _lep_alias else key] = d[key]   # f_p_eidx/f_n_eidx need no ev_off shift (ev_off=0)
+        B["k_lep" if key == _lep_alias else key] = d[key]
     B["w0"] = B["w0"] / nchunks
     B["fs_pid"] = d["fs_pid"]; B["fs_chg"] = d["fs_chg"]; B["fs_p4"] = d["fs_p4"]; B["fs_off"] = d["fs_off"]
     B["n_chunks"] = nchunks
-    _coerce_fsi_dtypes(B)                               # empty (free-H) banks default bool/int FSI to float32
+    _coerce_fsi_dtypes(B)
     n = len(B["w0"]); B["_eidx"] = np.repeat(np.arange(n), np.diff(B["fs_off"]))
     return B
 
 
-# ---- per-event reductions over the ragged final state ----------------------------------------------- #
 def _event_sum(B, per_particle):
     n = len(B["w0"])
     return np.bincount(B["_eidx"], weights=per_particle, minlength=n)
@@ -195,7 +176,7 @@ def ranked_mom(B, pid_target, k):
     ev = eidx[sel]; mom = np.linalg.norm(p4[sel, 1:], axis=1)
     out = np.zeros(n); has = np.zeros(n, bool)
     if ev.size:
-        order = np.lexsort((-mom, ev)); ev = ev[order]; mom = mom[order]   # within event: |p| descending
+        order = np.lexsort((-mom, ev)); ev = ev[order]; mom = mom[order]
         newgrp = np.r_[True, ev[1:] != ev[:-1]]
         grpstart = np.maximum.accumulate(np.where(newgrp, np.arange(ev.size), 0))
         rank = np.arange(ev.size) - grpstart
@@ -255,11 +236,8 @@ def leading_proton_window(B, pmin, pmax, cth=-1.0):
     return lead, maxk > 0.0
 
 
-# T2K CC1pi+Np STV (PRD 103 112009) -- acceptance windows [MeV] + forward cut + nuclear masses for the p_N
-# reconstruction.  All three particles (mu, pi+, leading p) must be forward: cos(theta) > cos(70 deg), as in
-# workflow.config.SignalDef(cth=COS70) / make_plots.block_cc1pi_stv.
 _MU_LO, _MU_HI = 250.0, 7000.0; _PI_LO, _PI_HI = 150.0, 1200.0; _P_LO, _P_HI = 450.0, 1200.0
-from adonis.constants import COS70 as _CTH, M_12C as _M12C, M_11B as _M11B   # single source
+from adonis.constants import COS70 as _CTH, M_12C as _M12C, M_11B as _M11B
 
 
 
@@ -308,7 +286,6 @@ def dphit_1pi(kmu, lead, pip):
     return np.arccos(np.clip(num / den, -1.0, 1.0))
 
 
-# ---- histograms (accumulate in f64) ----------------------------------------------------------------- #
 def hist_forward(values, B, mask, edges, conv=1.0):
     h, _ = np.histogram(values[mask], bins=edges, weights=B["w0"][mask].astype(np.float64))
     return h / np.diff(edges) * conv

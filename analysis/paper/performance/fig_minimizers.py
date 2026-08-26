@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 HERE = Path(__file__).resolve().parent
 ROOT = next(p for p in HERE.parents if (p / "adonis").is_dir())
 sys.path.insert(0, str(ROOT))
-from analysis.paper import style                                      # noqa: E402
+from analysis.paper import style
 
 METHODS = [("gn", "Gauss–Newton (autodiff Jacobian)", style.C_QE, "o", "-"),
            ("migrad+g", "MIGRAD + reverse-mode gradient", style.C_RES, "s", "-"),
@@ -76,8 +76,6 @@ def main(stem="bench_fair_amp_N60000"):
         A.tick_params(labelsize=8, top=False, right=False)
     ax[0].legend(fontsize=7.5, loc="upper left", frameon=False)
 
-    # The ratio at the largest n is the sentence this figure exists to support; print it rather than
-    # writing it on the canvas, so the caption quotes a number the run actually produced.
     for key in ("wall", "passes"):
         n, g, _, _ = _series(rows, "gn", key)
         _, mg, _, _ = _series(rows, "migrad+g", key)

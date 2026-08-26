@@ -7,13 +7,13 @@ if not files: sys.exit(f"no fsrich npz for {pat}")
 acc = {}; absw = []; N = 0
 for f in files:
     d = np.load(f, allow_pickle=True)
-    if "weight_to_nb" in d.files:                       # extract.py already stored the norm (scalar)
+    if "weight_to_nb" in d.files:
         wtnb = float(d["weight_to_nb"])
-    else:                                               # my reext_fs.py did not -> read the hepmc header
+    else:
         hep = f.rsplit(".fsrich.npz", 1)[0].rsplit(".npz", 1)[0] + ".hepmc"
         wtnb = float(hepmc_norm(hep)["weight_to_nb"])
     for k in d.files:
-        if k == "w" or np.asarray(d[k]).ndim == 0:      # skip w (handled) + scalar meta (gen_xs_pb, ...)
+        if k == "w" or np.asarray(d[k]).ndim == 0:
             continue
         acc.setdefault(k, []).append(d[k])
     absw.append(np.asarray(d["w"]) * wtnb)

@@ -38,21 +38,18 @@ from analysis.paper import style
 from adonis.stats import fisher as FE
 from analysis.paper.grad_info import subsets as SS
 
-plab = style.plab      # knob name -> LaTeX symbol; single-sourced in style.py (identical to sec2's labels)
+plab = style.plab
 
 
 def gate1(J, sigma, prior, rows):
     """(marginalized shrinkage, raw shrinkage, Fisher) for the given bin rows -- via the shared engine."""
-    F, _V, _sig_post, marg, reach = FE.fisher_shrinkage(J, sigma, prior, rows)     # reach = sqrt(diag F)
+    F, _V, _sig_post, marg, reach = FE.fisher_shrinkage(J, sigma, prior, rows)
     with np.errstate(divide="ignore"):
-        raw = np.where(reach > 0, 1.0 / (reach * prior), np.inf)         # raw shrinkage = 1/sqrt(F_kk)/prior
+        raw = np.where(reach > 0, 1.0 / (reach * prior), np.inf)
     return marg, raw, F
 
 
-# ---- figures ---------------------------------------------------------------------------------- #
 
-# The physics-block grouping (knob_group / KNOB_GROUP_*), the perceptual palettes (CMAP_CONSTRAINT,
-# CMAP_GRAD_DIV) and the tab drawer (knob_group_tabs) are shared with the §2 gradient figure -> style.py.
 def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
     """Single marginalized panel, rows grouped by physics: dark = tighter constraint, orange outline = FIT.
     The last column ('all' = every sample combined) is set apart.  The key goes in the caption, not on axes."""
@@ -63,20 +60,12 @@ def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
     nk, ng = M.shape
     cm = style.CMAP_CONSTRAINT
 
-    def _tc(v):                                              # cell text: white on dark, dark on light
+    def _tc(v):
         r, g, b, _ = cm(min(max(v, 0.0), 1.0))
         return "w" if 0.299 * r + 0.587 * g + 0.114 * b < 0.5 else "0.15"
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
-        # SIZING (2026-08-14).  Three separate knobs, kept separate on purpose:
-        #   SCALE     0.8 on both dimensions.  Font sizes stay in POINTS, so shrinking the canvas is
-        #             what makes every label proportionally larger at page width.
-        #   CELL_W    0.736 in per column (was 0.92, -20%): the cells were wider than the two-digit
-        #             number they carry needs.
-        #   MARGIN_W  the non-cell width -- rotated block labels + knob symbols.  Down from 3.6 because
-        #             the colour bar moved to the bottom and no longer occupies horizontal space; the
-        #             height gains the matching allowance instead.
         SCALE, CELL_W, MARGIN_W, CELL_H, MARGIN_H = 0.8, 0.736, 2.9, 0.34, 2.35
         fig, ax = plt.subplots(figsize=(SCALE * (CELL_W * ng + MARGIN_W),
                                         SCALE * (CELL_H * nk + MARGIN_H)))
@@ -92,17 +81,14 @@ def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
         ax.set_xticks(np.arange(-.5, ng, 1), minor=True)
         ax.set_yticks(np.arange(-.5, nk, 1), minor=True)
         ax.grid(which="minor", color="white", lw=1.1); ax.tick_params(which="minor", length=0)
-        style.knob_group_tabs(ax, gid)                       # physics-block separators + colour tabs + labels
-        if names and names[-1] == "all":                     # set the combined column apart
-            ax.axvline(ng - 1.5, color="0.25", lw=1.6, zorder=6)   # above the FIT boxes, as the block rules are
+        style.knob_group_tabs(ax, gid)
+        if names and names[-1] == "all":
+            ax.axvline(ng - 1.5, color="0.25", lw=1.6, zorder=6)
         ax.set_yticks(range(nk)); ax.set_yticklabels(plabels, fontsize=8.5)
         ax.set_xticks(range(ng)); ax.set_xticklabels(labels, fontsize=8.5)
         ax.tick_params(length=0)
         for s in ax.spines.values():
             s.set_visible(False)
-        # HORIZONTAL, under the panel.  Placed via append_axes rather than `fig.colorbar(ax=...)` so the
-        # bar is EXACTLY as wide as the heatmap -- the auto-placed version came out ~80% of it and read
-        # as a misalignment.  `pad` is in inches and has to clear the two-line sample labels.
         from mpl_toolkits.axes_grid1 import make_axes_locatable
         cax = make_axes_locatable(ax).append_axes("bottom", size="1.4%", pad=0.62)
         cb = fig.colorbar(im, cax=cax, orientation="horizontal", ticks=[0.0, 0.5, 1.0])
@@ -111,7 +97,6 @@ def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
         return style.save(fig, figname)
 
 
-# ---- driver ----------------------------------------------------------------------------------- #
 
 def main(label=None):
     style.use()
@@ -132,7 +117,6 @@ def main(label=None):
             _cache[lbl] = (str(src),) + SS.check_schema(np.load(src, allow_pickle=True), str(src))
         return _cache[lbl]
 
-    # the default npz fixes the shared knob basis (pnames/prior) every axis must agree on
     dsrc, dJ, _ds, prior, pnames, ddk, _dr = load(default_label)
     print(f"[sec3] default npz {default_label}: {dJ.shape[0]} bins x {dJ.shape[1]} knobs, {len(ddk)} datasets")
     print(f"       datasets: {ddk}")
@@ -140,7 +124,7 @@ def main(label=None):
     tables = {}
     for aname, axis in cfg["axes"].items():
         axis = dict(axis, _name=aname)
-        alabel = axis.get("npz", default_label)                     # per-axis input; else the file default
+        alabel = axis.get("npz", default_label)
         src, J, sigma, _pr, pn, dskeys, row0 = load(alabel)
         if pn != pnames:
             raise SystemExit(f"[sec3] axis '{aname}' npz {alabel}: knob basis differs from {default_label}")
@@ -163,7 +147,6 @@ def main(label=None):
                   f"[{', '.join(pnames[k] for k in np.where(M[:, c] < fit_cut)[0])}]")
 
         figname = axis.get("figure", f"sec2_shrinkage_{aname}")
-        # Every kept axis is `marginalized_only` -> the single-panel grouped figure (constraints_per_subset).
         fig_shrinkage_grouped(M, pnames, [g[1] for g in groups], names, figname, fit_cut)
         tables[aname] = (M, R, names)
 

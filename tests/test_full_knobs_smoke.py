@@ -23,7 +23,7 @@ _qe, _qw, _res, _rw = T.build_proposal()
 _R = T.build_replica(jax.random.PRNGKey(0), _qe, _qw, _res, _rw)
 _M = T.build_ma_records(_qe, _res)
 _sf = SpectralFunction(resolve_targets("C")[0][0].spectral_n)
-_HV, _SF = build_hv_sf(_qe, _res, _sf, with_pw=False)   # skip the 14 DCC pw records -> fast (pw not tested here)
+_HV, _SF = build_hv_sf(_qe, _res, _sf, with_pw=False)
 _EDGES = np.asarray(T.EDGES); _CONV = T.CONV
 _NOM = nominal_knobs()
 
@@ -49,17 +49,17 @@ def _grad_fd(setk, v0, ibin=None):
     return g_ad, g_fd
 
 
-def test_grad_vector_strength():        # hard-vertex amps2
+def test_grad_vector_strength():
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(vector_strength=v), 1.1)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-4, (g_ad, g_fd)
 
 
-def test_grad_s_piN_cex():              # FSI kind-1
+def test_grad_s_piN_cex():
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(s_piN_cex=v), 1.2)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)
 
 
-def test_grad_kF_sf():                  # spectral function, one bin
+def test_grad_kF_sf():
     nb = len(_EDGES) - 1
     g_ad, g_fd = _grad_fd(lambda v: _NOM._replace(kF_sf=v), 1.1, ibin=nb // 3)
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-3, (g_ad, g_fd)

@@ -31,8 +31,6 @@ _KN, _KM, _PS, _PO = (jnp.asarray(_QE[k]) for k in ("k_nu", "k_lep", "p_struck",
 _REC = build_qe_reduced(_KN, _KM, _PS, _PO)
 _M, _Q2 = np.asarray(_REC["M"]), np.asarray(_REC["Q2"])
 _A_NOM = np.asarray(me_cross_section(_KN, _KM, _PS, _PO)["amps2"])
-# shared validity: physical amps2 AND q2>0 (the legacy records' mask, which build_qe_reduced matches).
-# The near-threshold q2<=0 events get hard-vertex reweight==1 in BOTH paths (placeholder), so exclude them.
 _VALID = np.isfinite(_A_NOM) & (_A_NOM > 0) & (_Q2 > 0)
 
 
@@ -89,7 +87,6 @@ def test_qe_reduced_mixed_second_derivative_nonzero_and_correct():
         w = qe_reduced_reweight(_REC, nom._replace(vector_strength=vs, axial_strength=as_))
         return jnp.log(jnp.sum(jnp.where(keep, w, 0.0)))
     d2_ad = float(jax.grad(jax.grad(logsumw, argnums=0), argnums=1)(1.0, 1.0))
-    # direct finite-difference of the same quantity through me_cross_section (independent of the M path)
     def logsumw_direct(vs, as_):
         a = jnp.asarray(me_cross_section(_KN, _KM, _PS, _PO, vector_scale=vs, axial_scale=as_)["amps2"])
         return jnp.log(jnp.sum(jnp.where(keep, a / jnp.asarray(_A_NOM), 0.0)))
@@ -100,7 +97,6 @@ def test_qe_reduced_mixed_second_derivative_nonzero_and_correct():
     assert abs(d2_ad - d2_fd) / max(abs(d2_fd), 1e-30) < 1e-3, (d2_ad, d2_fd)
 
 
-# ---- wiring (step 1) + first-order invariance (step 2): joint vs the legacy per-knob product ----
 from adonis.reweight.amps2_records import (build_qe_ma_records, build_qe_vector_records,
                                         build_qe_ff_records, ma_reweight, strength_reweight)
 
@@ -155,7 +151,7 @@ def test_qe_mij_exact_em():
     rec = build_qe_reduced(_KN, _KM, _PS, _PO, probe="EM", is_proton=isp)
     Mem = jnp.asarray(rec["M"]); Q2 = jnp.asarray(rec["Q2"])
     a_nom = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, probe="EM", is_proton=isp)["amps2"])
-    valid = np.isfinite(a_nom) & (a_nom > 0) & (np.asarray(Q2) > 0)   # q2>0: the reduced record's mask
+    valid = np.isfinite(a_nom) & (a_nom > 0) & (np.asarray(Q2) > 0)
     for v, fs in [(1.0, {}), (1.2, {"gep": 1.1}), (0.8, {"gmp": 0.9, "gep": 1.05})]:
         ff = nucleon_ff(Q2 / 1.0e6, ff_scale=fs)
         f1 = jnp.where(isp, ff["F1p"], ff["F1n"]) * v; f2 = jnp.where(isp, ff["F2p"], ff["F2n"]) * v

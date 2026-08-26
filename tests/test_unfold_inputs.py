@@ -26,7 +26,6 @@ def _bank(n=2000, seed=0):
     return {"k_lep": p4, "fs_p4": p4.copy(), "fs_pid": np.full(n, 2212), "w0": np.ones(n)}
 
 
-# ---- detector --------------------------------------------------------------------------------------- #
 
 def test_smearing_is_a_function_of_seed_and_chunk_only():
     B, spec = _bank(), SmearSpec()
@@ -45,7 +44,6 @@ def test_resolutions_are_what_the_spec_says():
     u = B["k_lep"][:, 1:] / pt[:, None]
     v = R["k_lep"][:, 1:] / pr[:, None]
     ang = np.degrees(np.arccos(np.clip((u * v).sum(1), -1, 1)))
-    # E|N(0,s)| = s*sqrt(2/pi): the spec quotes the 1-sigma width, not the mean deflection
     assert abs(ang.mean() - 10.0 * np.sqrt(2 / np.pi)) < 0.15
 
 
@@ -80,14 +78,13 @@ def test_untouched_arrays_are_shared_not_copied():
     assert R["k_lep"] is not B["k_lep"]
 
 
-# ---- grids ------------------------------------------------------------------------------------------ #
 
 def test_flat_index_is_dpt_slowest():
-    g = Grid2D([0, 10, 20], [0, 1, 2, 3])           # 2 x 3
+    g = Grid2D([0, 10, 20], [0, 1, 2, 3])
     assert g.n == 6
-    assert g.index([5], [0.5])[0] == 0               # (dpt 0, dat 0)
-    assert g.index([5], [2.5])[0] == 2               # (dpt 0, dat 2)
-    assert g.index([15], [0.5])[0] == 3              # (dpt 1, dat 0)
+    assert g.index([5], [0.5])[0] == 0
+    assert g.index([5], [2.5])[0] == 2
+    assert g.index([15], [0.5])[0] == 3
 
 
 def test_out_of_range_is_minus_one_never_clipped():
@@ -101,8 +98,8 @@ def test_out_of_range_is_minus_one_never_clipped():
 
 def test_projection_matches_the_flattening():
     g = Grid2D([0, 10, 20], [0, 1, 2, 3])
-    v = np.arange(6.0)                               # rows = dpt, cols = dat
-    assert list(g.project(v, "dpt")) == [3.0, 12.0]   # 0+1+2, 3+4+5
+    v = np.arange(6.0)
+    assert list(g.project(v, "dpt")) == [3.0, 12.0]
     assert list(g.project(v, "dat")) == [3.0, 5.0, 7.0]
 
 
@@ -120,7 +117,6 @@ def test_the_dpt_axis_is_open_at_the_top(g):
     assert g.index([9e9], [1.0])[0] >= 0
 
 
-# ---- flux parameters -------------------------------------------------------------------------------- #
 
 def test_flux_grid_is_ten_bins_open_at_the_top():
     from adonis.unfold import flux as FX

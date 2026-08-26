@@ -8,7 +8,7 @@ kinematics lands in one place, and the future NC-QE nuclear sampler builds on th
 """
 import numpy as np
 
-from adonis.kinematics import boost as _boost      # shared JAX CM->lab boost; np.asarray keeps outputs numpy
+from adonis.kinematics import boost as _boost
 
 _TWO_PI = 2 * np.pi
 

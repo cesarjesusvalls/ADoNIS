@@ -22,27 +22,23 @@ def spline4_eval(x, y, xout):
     x0, x1, x2, x3 = x[..., 0], x[..., 1], x[..., 2], x[..., 3]
     y0, y1, y2, y3 = y[..., 0], y[..., 1], y[..., 2], y[..., 3]
 
-    # interval widths h(i) = x(i+1)-x(i)  (kept separate from the reused Fortran d())
     h0, h1, h2 = x1 - x0, x2 - x1, x3 - x2
 
-    # set-up (do 10): c holds divided-difference combinations
-    c1 = (y1 - y0) / h0                  # c(2) before subtraction
-    c2 = (y2 - y1) / h1                  # c(3)
-    c3 = (y3 - y2) / h2                  # c(4)
-    cc1 = c2 - c1                        # c(2)
-    cc2 = c3 - c2                        # c(3)
-    b1 = 2.0 * (h0 + h1)                 # b(2)
-    b2 = 2.0 * (h1 + h2)                 # b(3)
+    c1 = (y1 - y0) / h0
+    c2 = (y2 - y1) / h1
+    c3 = (y3 - y2) / h2
+    cc1 = c2 - c1
+    cc2 = c3 - c2
+    b1 = 2.0 * (h0 + h1)
+    b2 = 2.0 * (h1 + h2)
 
-    # end conditions (n=4): third deriv from divided differences
-    b0 = -h0                             # b(1)
-    b3 = -h2                             # b(4)
+    b0 = -h0
+    b3 = -h2
     c0 = cc2 / (x3 - x1) - cc1 / (x2 - x0)
     c3e = cc2 / (x3 - x1) - cc1 / (x2 - x0)
-    c0 = c0 * h0 ** 2 / (x3 - x0)        # c(1)
-    c3e = -c3e * h2 ** 2 / (x3 - x0)     # c(4)
+    c0 = c0 * h0 ** 2 / (x3 - x0)
+    c3e = -c3e * h2 ** 2 / (x3 - x0)
 
-    # forward elimination (i=2,3,4 -> our indices 1,2,3); diagonals b, rhs c, offdiag h
     t = h0 / b0
     b1 = b1 - t * h0
     cc1 = cc1 - t * c0
@@ -53,13 +49,11 @@ def spline4_eval(x, y, xout):
     b3 = b3 - t * h2
     c3e = c3e - t * cc2
 
-    # back substitution -> c(i) = sigma(i)
     s3 = c3e / b3
     s2 = (cc2 - h2 * s3) / b2
     s1 = (cc1 - h1 * s2) / b1
     s0 = (c0 - h0 * s1) / b0
 
-    # polynomial coefficients b(i), c(i)=3*sigma, d(i)
     B0 = (y1 - y0) / h0 - h0 * (s1 + 2.0 * s0)
     B1 = (y2 - y1) / h1 - h1 * (s2 + 2.0 * s1)
     B2 = (y3 - y2) / h2 - h2 * (s3 + 2.0 * s2)
@@ -68,8 +62,6 @@ def spline4_eval(x, y, xout):
     D2 = (s3 - s2) / h2
     C0, C1, C2 = 3.0 * s0, 3.0 * s1, 3.0 * s2
 
-    # seval: choose interval i with x(i) <= xout <= x(i+1) (clamp to the 3 intervals)
-    # piecewise on (B,C,D) per interval; build via where on the two split points.
     in0 = xout <= x1
     in2 = xout >= x2
     xi = jnp.where(in0, x0, jnp.where(in2, x2, x1))
@@ -154,16 +146,14 @@ def interp2d_spline(grid, Wg, Q2g, W, Q2):
     nw, nq = Wg.shape[0], Q2g.shape[0]
     iw1 = jnp.clip(jnp.searchsorted(Wg, W) - 1, 0, nw - 2)
     iq1 = jnp.clip(jnp.searchsorted(Q2g, Q2) - 1, 0, nq - 2)
-    iW = stencil_start(nw, iw1)[:, None] + jnp.arange(4)    # (N,4)
-    iQ = stencil_start(nq, iq1)[:, None] + jnp.arange(4)    # (N,4)
-    xW = Wg[iW]; xQ = Q2g[iQ]                               # (N,4)
-    block = grid[iQ[:, :, None], iW[:, None, :]]            # (N,4q,4w,C)
+    iW = stencil_start(nw, iw1)[:, None] + jnp.arange(4)
+    iQ = stencil_start(nq, iq1)[:, None] + jnp.arange(4)
+    xW = Wg[iW]; xQ = Q2g[iQ]
+    block = grid[iQ[:, :, None], iW[:, None, :]]
 
-    # spline in W: (N,4q,C,4w); xout=W -> (N,4q,C)
     yW = jnp.moveaxis(block, 2, -1)
     rowW = spline4_eval(jnp.broadcast_to(xW[:, None, None, :], yW.shape), yW,
                         W[:, None, None])
-    # spline in Q2: (N,C,4q); xout=Q2 -> (N,C)
     yQ = jnp.moveaxis(rowW, 1, -1)
     out = spline4_eval(jnp.broadcast_to(xQ[:, None, :], yQ.shape), yQ, Q2[:, None])
     return out

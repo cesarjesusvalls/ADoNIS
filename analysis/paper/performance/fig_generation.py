@@ -30,11 +30,9 @@ import matplotlib.pyplot as plt
 HERE = Path(__file__).resolve().parent
 ROOT = next(p for p in HERE.parents if (p / "adonis").is_dir())
 sys.path.insert(0, str(ROOT))
-from analysis.paper import style                                      # noqa: E402
+from analysis.paper import style
 
 STAGES = [("pre_fsi", "pre-FSI"), ("cascade", "cascade"), ("record_io", "record + I/O")]
-# One hue per stage, from the shared paper palette: the two compute stages take the QE/RES colours
-# (they are the physics), the host-side tail takes neutral grey (it is not).
 S_COLOR = {"pre_fsi": style.C_QE, "cascade": style.C_RES, "record_io": "0.55"}
 
 
@@ -45,7 +43,7 @@ def read_bank(path):
     if not st:
         raise SystemExit(f"{path}/manifest.json has no 'stage_seconds' -- regenerate the bank, or the "
                          f"bank predates the per-stage timing (adonis.workflow.generate_bank).")
-    rows = st[1:] if len(st) > 1 else st          # drop chunk 0: it carries the JIT compile
+    rows = st[1:] if len(st) > 1 else st
     n = float(np.median([r["n_events"] for r in rows]))
     return {k: float(np.median([r[k] for r in rows])) for k, _ in STAGES}, n, len(rows)
 
@@ -67,10 +65,8 @@ def main(*specs):
     fig, ax = plt.subplots(1, 2, figsize=(style.PANEL_W * 2.1, style.PANEL_H * 1.25))
     y = np.arange(len(devs))
 
-    # (a) throughput per stage.  LOG x: the stages span 55 to 1817 ev/s, and on a linear axis the
-    # cascade -- the one the GPU changes -- is invisible next to the hard vertex.
     for k, nm in STAGES:
-        ax[0].barh(y + 0.26 - 0.26 * [s[0] for s in STAGES].index(k), 0, height=0)   # keep colour order
+        ax[0].barh(y + 0.26 - 0.26 * [s[0] for s in STAGES].index(k), 0, height=0)
     h = 0.26
     for si, (k, nm) in enumerate(STAGES):
         ax[0].barh(y + (1 - si) * h, [d[2] / d[1][k] for d in devs], height=h,
@@ -82,8 +78,6 @@ def main(*specs):
     ax[0].tick_params(labelsize=8, top=False, right=False)
     ax[0].set_title("(a) throughput by stage", fontsize=9, loc="left")
 
-    # (b) where the wall clock goes, as a fraction.  Same data, but it answers the other question:
-    # what the GPU buys end to end, and why it is less than the cascade ratio suggests.
     left = np.zeros(len(devs))
     for k, nm in STAGES:
         w = np.array([d[1][k] / sum(d[1].values()) for d in devs])

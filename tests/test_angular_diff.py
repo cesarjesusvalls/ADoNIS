@@ -20,7 +20,6 @@ twoJ, twoL, twoI = np.asarray(t.pw_2J), np.asarray(t.pw_2L), np.asarray(t.pw_2I)
 
 n_theta = n_phi = 16
 
-# common quadrature grid (same g-order as angular_kernel)
 ct, wct = np.polynomial.legendre.leggauss(n_theta)
 phi = 2 * np.pi * np.arange(n_phi) / n_phi
 wphi = 2 * np.pi / n_phi
@@ -63,5 +62,5 @@ print("PASS" if ok else "FAIL")
 
 
 def test_angular_diff_consistency():
-    assert max_zmtx < 1e-10, max_zmtx           # batched == scalar build_zmtx
-    assert max_rel < 1e-9, max_rel              # grid-summed differential == integrated
+    assert max_zmtx < 1e-10, max_zmtx
+    assert max_rel < 1e-9, max_rel

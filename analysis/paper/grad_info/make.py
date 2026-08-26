@@ -26,7 +26,7 @@ FIGURES = {
     "gradients": ("analysis.paper.grad_info.gradients", "main"),
 }
 
-DEFAULT_LABEL = "multisample_carbon"          # the Jacobian behind the published figures
+DEFAULT_LABEL = "multisample_carbon"
 
 
 def _selected(names):

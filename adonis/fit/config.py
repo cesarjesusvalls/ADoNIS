@@ -45,10 +45,9 @@ class Banks:
 @dataclass(frozen=True)
 class Sigma:
     syst: float = 0.05
-    mc_term: bool = False        # add the MC error in quadrature?  In a closure the MC fluctuation is
-                                 # common-mode between data and prediction and cancels in the residual.
-    mask_mcfrac: float = 0.05    # drop bins whose MC error exceeds this fraction of the central value
-    freeze_at: str = "nominal"   # sigma and the mask are computed once, not per toy
+    mc_term: bool = False
+    mask_mcfrac: float = 0.05
+    freeze_at: str = "nominal"
 
     @classmethod
     def parse(cls, d):
@@ -61,8 +60,8 @@ class Sigma:
 
 @dataclass(frozen=True)
 class Data:
-    mode: str = "closure"                       # closure | real
-    inject: dict = field(default_factory=dict)  # dial -> value, or dial -> list/dict for indexed knobs
+    mode: str = "closure"
+    inject: dict = field(default_factory=dict)
     sigma: Sigma = field(default_factory=Sigma)
 
     @classmethod
@@ -80,12 +79,12 @@ class Data:
 class Minimizer:
     method: str = "trf"
     max_nfev: int = 200
-    gtol: float = 1e-8      # the ONLY tolerance allowed to stop the fit early (projected gradient)
-    xtol: float = 1e-14     # kept tight so a small step alone is never mistaken for convergence
-    ftol: float = 1e-14     # kept tight so a small chi2 change alone is never mistaken for convergence
+    gtol: float = 1e-8
+    xtol: float = 1e-14
+    ftol: float = 1e-14
     x_scale: str = "jac"
-    start: str = "nominal"  # nominal | truth  (blind fits start at nominal)
-    newton_tol: float = 1e-6   # Newton-decrement stop: the predicted remaining chi2 gap
+    start: str = "nominal"
+    newton_tol: float = 1e-6
 
     @classmethod
     def parse(cls, d):
@@ -102,8 +101,8 @@ class Minimizer:
 
 @dataclass(frozen=True)
 class Fit:
-    dials: Any = "gate1"                # "gate1" or an explicit list of dial names
-    estimator: str = "mle"              # mle -> prior widened by 1e6 ; map -> prior as-is
+    dials: Any = "gate1"
+    estimator: str = "mle"
     minimizer: Minimizer = field(default_factory=Minimizer)
 
     @classmethod
@@ -132,13 +131,10 @@ class FitConfig:
     banks: Banks
     data: Data
     fit: Fit
-    uncertainty: tuple           # ordered blocks, each a dict with a "method" key
-    # DEFAULTED FIELDS LAST -- a dataclass rejects a non-default field after a defaulted one, so
-    # `compute` (defaulted) must stay after `uncertainty` (required).
-    compute: dict = field(default_factory=dict)   # device-memory plan; see adonis.fit.device_plan
+    uncertainty: tuple
+    compute: dict = field(default_factory=dict)
     path: Path = None
 
-    # ---- loading ---------------------------------------------------------------------------------- #
     @classmethod
     def load(cls, path) -> "FitConfig":
         p = Path(path)
@@ -158,7 +154,6 @@ class FitConfig:
                    fit=Fit.parse(raw.get("fit")),
                    uncertainty=unc, path=p)
 
-    # ---- accessors -------------------------------------------------------------------------------- #
     def stage(self, method: str) -> dict:
         for u in self.uncertainty:
             if u["method"] == method:

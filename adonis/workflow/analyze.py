@@ -32,9 +32,6 @@ def build_adonis(cfg):
     banks = cfg.inputs.get("adonis_bank") or []
     if not banks:
         raise ValueError("no ADoNIS input banks (expected inputs.adonis_bank: [<paper_banks dir>, ...])")
-    # pion_id="pi0" is the NC1pi0 signal and takes the parallel selection path -- see selection.py.
-    # Dispatching here rather than inside bank_signal keeps the CC function free of a lepton-optional
-    # flag, since NC has no visible lepton to attach one to.
     fn = SG.bank_signal_nc if cfg.signal.pion_id == "pi0" else SG.bank_signal
     return _merge([fn(p, cfg.signal) for p in banks])
 
@@ -54,8 +51,6 @@ def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, tit
     ado = build_adonis(cfg); ref = build_reference(cfg)
     specs = [(o.key, o.bin_edges(), o.label) for o in cfg.observables]
     data = load_overlay(cfg, specs)
-    # a config may pin where its legend goes (curves differ panel to panel); the caller's legend_fn
-    # decides what that means, so this stays a hint rather than matplotlib state in the core driver.
     lf = style_kw.pop("legend_fn", None)
     if lf is not None and getattr(cfg, "legend_loc", ""):
         _inner, _loc = lf, cfg.legend_loc
@@ -77,5 +72,3 @@ def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, tit
     return {"results": results, "sigma": sig, "out": str(out)}
 
 
-# run_analysis is a library function, not a CLI. Paper figures render through
-# analysis/paper/validation/make.py, which applies the paper style before calling it.

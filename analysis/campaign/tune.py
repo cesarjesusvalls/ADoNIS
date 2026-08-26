@@ -21,22 +21,19 @@ from adonis.fsi.cascade import DiscreteCascadeConfig
 
 MU_LO, COSMU, P_LO, P_HI, COSP = 250.0, -0.6, 450.0, 1000.0, 0.4
 NQE, NRES = 120000, 120000
-CONV = 1e-33 / 12.0 * 1000.0 * 1e38                       # nb/MeV per-12C -> 1e-38 cm^2/(GeV/c)/nucleon
+CONV = 1e-33 / 12.0 * 1000.0 * 1e38
 
-# ---- observable + T2K CC0pi-Np STV data/covariance (1e-38 units) ------------------------------------
-# _set_obs() loads these into module globals.  IMPORTING tune has no argv/data side effect (it defaults
-# to "dpt" via the call after the observable fns below); main()/callers switch to "dat" via _set_obs("dat").
 def _set_obs(obs="dpt"):
     global OBS, EDGES, DATA, D_ERR, COV, COVINV, CONV, _obs
     assert obs in ("dpt", "dat"), obs
     OBS = obs
     _r = uproot.open(f"../nuisance/data/T2K/CC0pi/STV/{'dpt' if obs == 'dpt' else 'dat'}Results.root")
     if obs == "dpt":
-        EDGES = np.asarray(_r["Result"].axis().edges()) * 1000.0    # MeV
+        EDGES = np.asarray(_r["Result"].axis().edges()) * 1000.0
         CONV = 1e-33 / 12.0 * 1000.0 * 1e38
     else:
-        EDGES = np.asarray(_r["Result"].axis().edges())             # rad
-        CONV = 1e-33 / 12.0 * 1e38                                  # nb/rad per-12C -> 1e-38 cm^2/rad/nucleon
+        EDGES = np.asarray(_r["Result"].axis().edges())
+        CONV = 1e-33 / 12.0 * 1e38
     DATA = jnp.asarray(np.asarray(_r["Result"].values()) * 1e38)
     D_ERR = np.asarray(_r["Result"].errors()) * 1e38
     COV = np.asarray(_r["Covariance_Matrix"].values())
@@ -57,7 +54,7 @@ def _dat(kmu, lead):
     return jnp.arccos(jnp.clip(num / den, -1.0, 1.0))
 
 
-_set_obs("dpt")   # module default (dpt); no import-time argv read -- main()/callers switch via _set_obs
+_set_obs("dpt")
 
 
 def _sel(kmu, lead):
@@ -87,23 +84,9 @@ def build_ma_records(qe, res):
     return dict(qe=(j(qa), j(qb), j(qc), j(qq2)), res=(j(ra), j(rb), j(rc), j(rq2)))
 
 
-# ============================================================================================== #
-# POOL-BACKED blueprint (the differentiable core): ONE joint cascade per channel (cascade_nucleus,
-# engine="pool"), emitting the joint kind-1 FSI record reweighted by pool_fsi_reweight.  The walk is
-# theta-independent and the knobs enter only through the kind-1 reweight; the single validated+fixed
-# pool engine underneath (re-cascades both absorption nucleons, charge-resolved sigma, etc.).
-# ============================================================================================== #
 import adonis.fsi.cascade as _CF
-# Gaussian interaction probability everywhere -> ADoNIS forward + differentiable tuning share ONE model and the
-# kind-1 sigma-reweight is exact (see all-gaussian decision).  max_steps=100000 (= production / the runaway
-# ceiling): with the M=1 serial pool the per-event nstep is the SUM of all particles' steps, so the physics
-# bound is path_budget_R*radius, not a small step cap (a 600 cap wrongly trips the runaway guard at M=1).
 from adonis.fsi.cascade import pool_cascade_config as POOLCFG
-REC_CAPS = (96, 64)            # pion IN-SLAB CANDIDATE steps<=96 (was hits<=32: the pion record now logs
-                               # every candidate step, hit or not, to carry the sigma_tot/mean-free-path
-                               # response -- measured mean 4.8, max 31 over 5.3k events, so 96 leaves tail
-                               # headroom for a 1M-event bank), nucleon candidate steps<=64 (ns_max~43).
-                               # build_walk ASSERTS on overflow, it never truncates -- keep the headroom.
+REC_CAPS = (96, 64)
 _P_BUF = 12
 
 
@@ -121,25 +104,21 @@ def build_walk(kcasc, qe, qw, res, rw):
     walk (leading protons, k_lep, w0, records); bin it into an R with bin_walk (the only obs-dependent step).
     CC0pi-RES = primary pion absorbed (pterm pid==0)."""
     kq, kr = jax.random.split(kcasc, 2); j = jnp.asarray
-    nq = len(qe["w"]); nr = len(res["w"])                       # actual event counts (RES generate != NRES)
-    # QE: struck neutron -> proton through the pool (no pion); record carries only nucleon scatters.
+    nq = len(qe["w"]); nr = len(res["w"])
     _pt, ntq, oflq, _c, recq = _CF.cascade_nucleus(
         jnp.zeros((nq, 4)), j(qe["p_out"]), jnp.zeros(nq, jnp.int32), jnp.full(nq, 2112, jnp.int32),
         jnp.full(nq, 2212, jnp.int32), POOLCFG(seed=2), kq, channel="qe", rec_caps=REC_CAPS)
     q_lead = _lead_proton_pool(ntq[0])
-    # RES: primary pion + recoil through the pool (joint pion+nucleon record).
     ptr, ntr, oflr, _c2, recr = _CF.cascade_nucleus(
         j(res["p_pi"]), j(res["p_N"]), j(res["ppid"]).astype(jnp.int32), j(res["ipid"]).astype(jnp.int32),
         j(res["Npid"]).astype(jnp.int32), POOLCFG(seed=1), kr, channel="res", rec_caps=REC_CAPS)
     r_lead = _lead_proton_pool(ntr[0])
-    absb = (ptr["pid"] == 0).astype(float)                      # primary pion absorbed -> CC0pi
+    absb = (ptr["pid"] == 0).astype(float)
     W = dict(q_kmu=j(qe["k_lep"]), q_lead=q_lead, q_w0=j(qw), q_rec=recq,
              r_kmu=j(res["k_lep"]), r_lead=r_lead, r_w0=j(rw) * absb, r_rec=recr)
     nhmax = max(int(jnp.max(recq["nh"])), int(jnp.max(recr["nh"])))
     nsmax = max(int(jnp.max(recq["ns"])), int(jnp.max(recr["ns"])))
     assert nhmax <= REC_CAPS[0] and nsmax <= REC_CAPS[1], ("rec overflow", nhmax, nsmax)
-    # pool buffer overflow (P stack / M_out finals): production tolerates a handful per 1e4-1e5 events
-    # (logged, not fatal -- those events drop a low-rank particle).  LOG it, don't crash.
     if int(oflq) or int(oflr):
         print(f"  [build_walk] pool buffer overflow: QE={int(oflq)} RES={int(oflr)} "
               f"of (nq={nq}, nr={nr}) events", flush=True)
@@ -184,8 +163,6 @@ def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:6.1f}s] {m}", flush=True)
     _set_obs(sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "dpt")
-    # ENGINE: the pool is the single faithful + differentiable cascade core.  N and NREP are env-tunable;
-    # size them to the statistics the fit needs.
     global NQE, NRES
     NQE = NRES = int(os.environ.get("CC0PI_N", "40000"))
     NREP = int(os.environ.get("CC0PI_NREP", "4"))
@@ -193,7 +170,6 @@ def main():
     log(f"ENGINE=pool (differentiable core)  NQE=NRES={NQE}  NREP={NREP}")
     qe, qw, res, rw = build_proposal(); log("proposal sampled")
 
-    # ---- precompute the cascade-walk replica bank (the sampling step) ------------------------- #
     bank = []
     for r_i in range(NREP):
         bank.append(_build(jax.random.PRNGKey(50 + r_i), qe, qw, res, rw))
@@ -204,7 +180,7 @@ def main():
     r = A * nom - np.asarray(DATA); chi2_nom = float(jnp.asarray(r) @ COVINV @ jnp.asarray(r))
     log(f"NOMINAL chi2/ndf = {chi2_nom/(8-2):.2f}  (A_nom={A:.3f})")
 
-    def loss(theta, R1, R2):                       # two-replica unbiased chi^2 (independent walks)
+    def loss(theta, R1, R2):
         r1 = A * _hist(theta, R1) - DATA; r2 = A * _hist(theta, R2) - DATA
         return r1 @ COVINV @ r2
     vg = jax.jit(jax.value_and_grad(loss))
@@ -214,7 +190,7 @@ def main():
     theta = jnp.array([1.0, 1.0]); m = jnp.zeros(2); v = jnp.zeros(2); lr = 0.02; traj = [np.asarray(theta)]
     t_loop = time.time()
     for it in range(NITERS):
-        off = 1 + (it // NREP) % (NREP - 1)                  # in [1, NREP-1]: R2 is never R1
+        off = 1 + (it // NREP) % (NREP - 1)
         R1 = bank[it % NREP]; R2 = bank[(it + off) % NREP]
         l, g = vg(theta, R1, R2)
         m = 0.9 * m + 0.1 * g; v = 0.999 * v + 0.001 * g ** 2

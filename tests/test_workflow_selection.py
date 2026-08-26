@@ -12,7 +12,7 @@ from adonis.workflow import selection as SG
 
 MU, MP, MPI, MPI0 = 105.658, 938.272, 139.570, 134.977
 _CHG = {2212: 1, 2112: 0, 211: 1, -211: -1, 111: 0}
-_DIR = np.array([0.05, 0.03, 0.9984]); _DIR = _DIR / np.linalg.norm(_DIR)   # near-forward (cos ~ 0.998)
+_DIR = np.array([0.05, 0.03, 0.9984]); _DIR = _DIR / np.linalg.norm(_DIR)
 
 
 def _p4(p, m):
@@ -20,7 +20,6 @@ def _p4(p, m):
     return np.array([np.sqrt(m ** 2 + p ** 2), v[0], v[1], v[2]])
 
 
-# 4 events: [0] CC0pi-1p, [1] CC0pi w/ a pi0 (meson veto), [2] CC0pi-2p, [3] CC1pi+ (1 pi+ + 1 p)
 _EVENTS = [
     [(2212, 700, MP)],
     [(2212, 700, MP), (111, 200, MPI0)],
@@ -84,9 +83,9 @@ def test_bank_signal_cc1pi(tmp_path):
 
 def test_oracle_signal_mirrors_bank(tmp_path):
     o = _write_oracle(tmp_path)
-    assert len(SG.oracle_signal(o, _CC0PI)["w"]) == 2       # events 0, 2
-    assert len(SG.oracle_signal(o, _CC0PI_EQ1)["w"]) == 1   # event 0
+    assert len(SG.oracle_signal(o, _CC0PI)["w"]) == 2
+    assert len(SG.oracle_signal(o, _CC0PI_EQ1)["w"]) == 1
     r1 = SG.oracle_signal(o, _CC1PI)
-    assert len(r1["w"]) == 1                                # event 3
-    assert int(r1["chan"][0]) == 1                          # proc 401 != 200 -> RES
+    assert len(r1["w"]) == 1
+    assert int(r1["chan"][0]) == 1
     assert _KEYS <= set(r1)

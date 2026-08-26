@@ -3,8 +3,8 @@
 """
 import numpy as np
 
-M_E = 0.51099895               # electron mass [MeV] (ACHILLES Particles.yml)
-E_BEAM_JLAB = 2222.0           # JLab Murphy:2019wed point [MeV]
+M_E = 0.51099895
+E_BEAM_JLAB = 2222.0
 
 
 def electron_k(E_beam, n):

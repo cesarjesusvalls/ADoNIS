@@ -26,8 +26,8 @@ from adonis.nuclear.base import NuclearModel
 
 from adonis.channels import constants as C
 
-_ACH = achilles_sibling_root()   # sibling checkout (production paths); single source: adonis.io
-SF_DIR = achilles_data_root() / "Spectral_Functions"             # $ACHILLES_DATA (bare-name paths)
+_ACH = achilles_sibling_root()
+SF_DIR = achilles_data_root() / "Spectral_Functions"
 
 
 def _resolve_sf_path(filename) -> Path:
@@ -36,12 +36,11 @@ def _resolve_sf_path(filename) -> Path:
     p = Path(filename)
     if p.is_absolute():
         return p
-    if p.parent != Path("."):            # has a directory component -> production convention
+    if p.parent != Path("."):
         return _ACH / filename
-    return SF_DIR / filename             # bare name -> eager convention
+    return SF_DIR / filename
 
 
-# interpolation + CDF helpers are generic numerics (not spectral-specific) -> adonis.numerics
 from adonis.numerics import polint as _polint, neville_batch as _neville_batch, trapz_cdf as _trapz_cdf
 
 
@@ -61,13 +60,13 @@ class SpectralFunction(NuclearModel):
             for i in range(ne):
                 energy[i] = float(next(it)); spec[j * ne + i] = float(next(it))
         self.name = str(filename)
-        self.mom = mom; self.energy = energy; self.spec = spec  # spec[j*ne+i] = (mom j, energy i)
+        self.mom = mom; self.energy = energy; self.spec = spec
         self.ne = ne; self.np = np_
         hp = mom[1] - mom[0]; he = energy[1] - energy[0]
         dp_p = np.array([spec[i * ne:(i + 1) * ne].sum() * he for i in range(np_)])
         self.norm = float((mom ** 2 * dp_p * 4 * np.pi * hp).sum())
-        self.pox = polyX + 1; self.poy = polyY + 1                # 4, 2
-        self._sampler = None                                     # lazy SpectralImportanceSampler
+        self.pox = polyX + 1; self.poy = polyY + 1
+        self._sampler = None
 
     def _interp2d(self, x, y):
         kx, ky, kz = self.mom, self.energy, self.spec
@@ -97,25 +96,24 @@ class SpectralFunction(NuclearModel):
         Cubic (4-pt) in p, linear (2-pt) in E."""
         p = np.asarray(p, float); E = np.asarray(E, float)
         kx, ky, kz = self.mom, self.energy, self.spec
-        nY = self.ne; pox, poy = self.pox, self.poy           # 4, 2
+        nY = self.ne; pox, poy = self.pox, self.poy
         in_grid = (p >= kx[0]) & (p <= kx[-1]) & (E >= ky[0]) & (E <= ky[-1])
         pc = np.clip(p, kx[0], kx[-1]); Ec = np.clip(E, ky[0], ky[-1])
         ix = np.searchsorted(kx, pc, side="left")
-        ix = np.clip(ix, pox // 2, len(kx) - (pox // 2 + pox % 2))     # window fits -> start ix-2
+        ix = np.clip(ix, pox // 2, len(kx) - (pox // 2 + pox % 2))
         iy = np.searchsorted(ky, Ec, side="left")
-        iy = np.clip(iy, poy // 2, len(ky) - (poy // 2 + poy % 2))     # start iy-1
-        x0 = ix - pox // 2; y0 = iy - poy // 2                          # window starts
-        xi = x0[:, None] + np.arange(pox)                              # (N,4)
-        yi = y0[:, None] + np.arange(poy)                              # (N,2)
-        z = kz[(xi[:, :, None] * nY) + yi[:, None, :]]                 # (N,4,2)
-        xk = kx[xi]; yk = ky[yi]                                        # (N,4),(N,2)
+        iy = np.clip(iy, poy // 2, len(ky) - (poy // 2 + poy % 2))
+        x0 = ix - pox // 2; y0 = iy - poy // 2
+        xi = x0[:, None] + np.arange(pox)
+        yi = y0[:, None] + np.arange(poy)
+        z = kz[(xi[:, :, None] * nY) + yi[:, None, :]]
+        xk = kx[xi]; yk = ky[yi]
         t = (Ec - yk[:, 0]) / (yk[:, 1] - yk[:, 0])
-        tmp2 = z[:, :, 0] + (z[:, :, 1] - z[:, :, 0]) * t[:, None]      # (N,4)
+        tmp2 = z[:, :, 0] + (z[:, :, 1] - z[:, :, 0]) * t[:, None]
         val = _neville_batch(xk, tmp2, pc)
         r = val / self.norm
         return np.where(in_grid & (r > 0), r, 0.0)
 
-    # -- NuclearModel: the detached struck-nucleon proposal (jax-facing, one numpy sampler) --------- #
     def sample_nucleon(self, key, n):
         if self._sampler is None:
             self._sampler = SpectralImportanceSampler(self)
@@ -159,10 +157,10 @@ class SpectralImportanceSampler:
         pf = np.linspace(mom[0], mom[-1], max(int((mom[-1] - mom[0]) / 1.0) + 1, np_))
         PP, EE = np.meshgrid(pf, Ef, indexing="ij")
         Sff = np.clip(sf.batch(PP.ravel(), EE.ravel()).reshape(len(pf), len(Ef)), 0, None)
-        n_p = Sff.sum(axis=1) * (Ef[1] - Ef[0])                  # int S dE  (momentum marginal)
+        n_p = Sff.sum(axis=1) * (Ef[1] - Ef[0])
         self.mom = pf; self.energy = Ef
-        self.p_cdf = _trapz_cdf(pf ** 2 * n_p)                    # |p| ~ |p|^2 n_p (fine grid)
-        self.e_cdf = np.stack([_trapz_cdf(Sff[j]) for j in range(len(pf))])  # E | p (fine grid)
+        self.p_cdf = _trapz_cdf(pf ** 2 * n_p)
+        self.e_cdf = np.stack([_trapz_cdf(Sff[j]) for j in range(len(pf))])
 
     def sample(self, n, rng):
         up = rng.random(n)
@@ -183,9 +181,6 @@ class SpectralImportanceSampler:
         return pvec, E_rm
 
 
-# --------------------------------------------------------------------------- #
-#  Back-compat shims for the eager/jax callers (one numpy sampler underneath)
-# --------------------------------------------------------------------------- #
 def load_spectral(name: str = "pke12p_tot.data") -> SpectralFunction:
     """A SpectralFunction IS the parsed table now (kept for the DCC eager callers)."""
     return SpectralFunction(name)

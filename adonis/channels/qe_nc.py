@@ -40,7 +40,7 @@ from adonis.nuclear.targets import spectral_inputs
 from adonis.flux.spectrum import SpectrumFlux
 from adonis.nuclear.spectral import SpectralFunction, SpectralImportanceSampler
 
-SPIN_AVG_NC = 0.5               # 1 neutrino helicity x 2 nucleon spins
+SPIN_AVG_NC = 0.5
 _MN = C.mN
 _TWO_PI = 2 * np.pi
 
@@ -52,9 +52,9 @@ def _two_body_cm(k_nu, m_N, u):
     total 4-momentum is k_nu + N-at-rest, m1=0, m2=m_N.  The general boost reduces exactly to the former
     hand-written +z boost because P is along +z here (validated against the G6(2) free-nucleon sigma)."""
     n = len(k_nu)
-    P = k_nu + np.column_stack([np.full(n, m_N), np.zeros((n, 3))])          # + nucleon at rest
+    P = k_nu + np.column_stack([np.full(n, m_N), np.zeros((n, 3))])
     k_lep, p_out, pcm, sqs, _s, _lam = isotropic_two_body_cm(P, 0.0, m_N, u[:, 0], u[:, 1])
-    phi2 = pcm / (4.0 * np.pi * sqs)                                         # pstar / (4 pi sqrt(s))
+    phi2 = pcm / (4.0 * np.pi * sqs)
     return k_lep, p_out, phi2
 
 
@@ -90,17 +90,15 @@ def _sample_species_nc(n, rng, flux, minE, m_species, is_proton, sf, n_target, u
     so the two-body threshold is Smin = m_species^2.  Mirrors ee._sample_species (both species, species
     mass) + qe.sample_importance (flux + SF + removal-energy ceiling), with the NC current from the
     free-nucleon function above."""
-    u = rng.random((n, 3))                                   # 1 beam + 2 final (the SF sampler draws its own)
+    u = rng.random((n, 3))
     E_GeV, J_beam = flux.sample_beam(u[:, 0], minE)
     Enu = E_GeV * 1000.0
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
     pvec, E_rm = SpectralImportanceSampler(sf).sample(n, rng)
-    p_struck = np.concatenate([(m_species - E_rm)[:, None], pvec], axis=1)   # species mass (strikes p AND n)
+    p_struck = np.concatenate([(m_species - E_rm)[:, None], pvec], axis=1)
     P = k_nu + p_struck
     k_lep, p_out, pcm, sqrts, s, lam = isotropic_two_body_cm(P, 0.0, m_species, u[:, 1], u[:, 2])
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
-    # removal-energy ceiling (HadronicMapper.cc), massless outgoing lepton -> Smin = m_species^2, neutrino
-    # beam so beam momentum = Enu (kz -> Enu).  emax uses the average nucleon mass, as in ee/qe.
     Smin = m_species ** 2
     mom_s = np.linalg.norm(pvec, axis=1)
     det = Enu ** 2 + mom_s ** 2 + 2 * pvec[:, 2] * Enu + Smin
@@ -130,29 +128,29 @@ def generate(n, material="C", seed=0, chunk=500_000, return_events=False, use_ac
     Z, N, sf_p_path, sf_n_path = spectral_inputs(material)
     sf_p = SpectralFunction(sf_p_path); sf_n = SpectralFunction(sf_n_path)
     flux = SpectrumFlux()
-    minE = flux.seed_min_GeV(m_lep=0.0)                       # massless outgoing lepton -> no muon threshold
+    minE = flux.seed_min_GeV(m_lep=0.0)
     species = [(True, MASS_PDG_PROTON, sf_p, Z), (False, MASS_PDG_NEUTRON, sf_n, N)]
     cols = ("w", "k_nu", "k_lep", "p_struck", "p_out", "pid")
     acc = {k: [] for k in cols}
     for si, (is_p, m_sp, sf, n_tgt) in enumerate(species):
-        n_s = n // 2 + (1 if si < n % 2 else 0)              # split n across the two species
+        n_s = n // 2 + (1 if si < n % 2 else 0)
         done = 0; sd = seed * 100 + (0 if is_p else 50)
         while done < n_s:
             m = min(chunk, n_s - done)
             rng = np.random.default_rng(sd); sd += 1
             r = _sample_species_nc(m, rng, flux, minE, m_sp, is_p, sf, n_tgt, use_achilles_nc_coupling)
-            r["w"] = r["w"] / n_s                             # per-species MC norm -> sum(w) = sigma_species
+            r["w"] = r["w"] / n_s
             for k in cols:
                 acc[k].append(r[k])
             done += m
     B = {k: np.concatenate(v) for k, v in acc.items()}
-    sigma = float(B["w"].sum())                              # flux-averaged nuclear NC-QE sigma [nb]
+    sigma = float(B["w"].sum())
     if not return_events:
         return {"sigma": sigma}
     nev = len(B["w"])
     ev = dict(w=B["w"], k_nu=B["k_nu"].astype(np.float32), p_struck=B["p_struck"].astype(np.float32),
               k_lep=B["k_lep"].astype(np.float32), p_N=B["p_out"].astype(np.float32),
-              p_pi=np.zeros((nev, 4), np.float32), ppid=np.zeros(nev, np.int32),   # no pion in QE
-              ipid=B["pid"].astype(np.int32),           # struck nucleon
-              Npid=B["pid"].astype(np.int32))           # elastic: outgoing nucleon PID == struck
+              p_pi=np.zeros((nev, 4), np.float32), ppid=np.zeros(nev, np.int32),
+              ipid=B["pid"].astype(np.int32),
+              Npid=B["pid"].astype(np.int32))
     return {"events": ev, "sigma": sigma}

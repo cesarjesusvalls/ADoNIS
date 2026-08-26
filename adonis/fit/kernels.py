@@ -48,16 +48,7 @@ import jax.numpy as jnp
 from adonis.analysis import knobs as _K
 
 
-# ---- event-pass accounting ------------------------------------------------------------------------ #
-# Event passes are a hardware-independent cost unit: a traversal of the resident event set.
-#   primal model evaluation   1 pass
-#   one JVP tangent column    1 pass   (the shared primal is counted once per DISPATCH, not per column)
-#   one VJP                   2 passes (forward sweep + reverse sweep)
-# The VJP/HVP factors below are a stated convention; raw counts are kept separately so they can be
-# re-weighted.
 VJP_PASSES = 2.0
-# A hessian-vector product is a forward sweep carried through a reverse sweep (primal, tangent,
-# cotangent): counted as 3 passes on the same convention.
 HVP_PASSES = 3.0
 
 
@@ -82,12 +73,9 @@ class FitKernel:
         self.idx = np.asarray(self.subset, int)
         self.n = len(self.subset)
         self.pnames = [eng.pnames[k] for k in self.subset]
-        # th_fixed holds the dials NOT in `subset` -- a profile node pins the scanned dial here while the
-        # rest are re-minimised.  The prior centre stays at eng.th0 regardless: pinning a dial away from
-        # nominal must not drag the prior along with it.
         self.th0 = np.asarray(eng.th0 if th_fixed is None else th_fixed, float)
         self.x0 = np.asarray(eng.th0, float)[self.idx].copy()
-        self.pw = 1.0 / np.asarray(eng.prior, float)[self.idx]      # prior residual weights
+        self.pw = 1.0 / np.asarray(eng.prior, float)[self.idx]
         self.nbin_s = [int(sum(d["nbin"] for d in s.ds)) for s in eng.samples]
         self.nbin = int(sum(self.nbin_s))
         self.row0_s = np.cumsum([0] + self.nbin_s)
@@ -99,11 +87,6 @@ class FitKernel:
         self.nblk = int(np.ceil(self.n / self.B))
 
         _idx = jnp.asarray(self.idx)
-        # Fixed dials are a runtime argument, not a captured constant.  A profile scan re-minimises the
-        # same free subset at node after node, changing only where the scanned dial is pinned.  If that
-        # vector were closed over, every node would need its own FitKernel -- and every kernel loads
-        # ~50 CUBIN modules that jax.clear_caches() does not unload, so a multi-node scan would exhaust
-        # the CUDA context.  As an argument of fixed shape, changing it costs only a host-to-device copy.
         self._thf = jnp.asarray(self.th0)
 
         def _mk_f(s):
@@ -112,26 +95,21 @@ class FitKernel:
             return f
         self._f = [_mk_f(s) for s in eng.samples]
 
-        # Eager bin-cache warm, before any jax.jit exists (see module docstring).
         for f in self._f:
             np.asarray(f(jnp.asarray(self.x0), self._thf))
 
-        # ---- the jitted objects, all derived from the one f --------------------------------------- #
         def _mk(f):
-            def r(x, thf, D, R):                  # whitened residual block for this sample
+            def r(x, thf, D, R):
                 return (f(x, thf) - D) * R
 
-            def c(x, thf, D, R):                  # its chi2 contribution -- literally sum(r*r)
+            def c(x, thf, D, R):
                 rr = r(x, thf, D, R)
                 return jnp.sum(rr * rr)
 
-            def jc(x, thf, D, R, T):              # (B, nbin_s) tangent block: d r / d x . T
+            def jc(x, thf, D, R, T):
                 return jax.vmap(lambda t: jax.jvp(lambda u: r(u, thf, D, R), (x,), (t,))[1])(T)
 
-            def hs(x, thf, D, R, V):              # (B, n) Hessian rows: FORWARD-OVER-REVERSE
-                # One HVP is a jvp through the gradient, i.e. ~one extra forward sweep on top of the
-                # VJP -- so the exact Hessian costs O(n) passes, against ~2n^2 objective evaluations for
-                # a finite-difference HESSE.
+            def hs(x, thf, D, R, V):
                 return jax.vmap(lambda v: jax.jvp(
                     lambda u: jax.grad(c)(u, thf, D, R), (x,), (v,))[1])(V)
 
@@ -140,7 +118,6 @@ class FitKernel:
         (self._j_r, self._j_c, self._j_g, self._j_J, self._j_m,
          self._j_H, self._j_vg) = (list(z) for z in zip(*[_mk(f) for f in self._f]))
 
-        # ONE tangent shape for every block: (B, n), zero-padded on the last one.
         E = np.eye(self.n)
         self._T = []
         for lo in range(0, self.n, self.B):
@@ -160,7 +137,6 @@ class FitKernel:
         self._thf = jnp.asarray(self.th0)
         return self
 
-    # ---- data ------------------------------------------------------------------------------------- #
     def refresh_data(self):
         """Re-read (data, sigma) from eng.ds -- call after set_closure_data() or a toy throw.
 
@@ -189,14 +165,13 @@ class FitKernel:
         """The stacked whitening vector 1/sigma (0 on dead bins) -- the same w trf_fit builds."""
         return np.concatenate([np.asarray(r) for r in self._R])
 
-    # ---- counters --------------------------------------------------------------------------------- #
     def reset_counts(self):
         self.counts = dict(chi2=0, vg=0, resid=0, grad=0, jac=0, model=0,
-                           primal=0,        # full forward passes over the events
-                           tangent=0,       # JVP tangent columns actually EXECUTED (padding included)
-                           tangent_eff=0,   # tangent columns that carried a real dial (padding excluded)
-                           vjp=0,           # reverse-mode sweeps
-                           hvp=0,           # hessian-vector products (forward-over-reverse)
+                           primal=0,
+                           tangent=0,
+                           tangent_eff=0,
+                           vjp=0,
+                           hvp=0,
                            hess=0)
         return self
 
@@ -215,7 +190,6 @@ class FitKernel:
         return float(c["primal"] + c["tangent"] + VJP_PASSES * c["vjp"]
                      + HVP_PASSES * c["hvp"])
 
-    # ---- the objective ---------------------------------------------------------------------------- #
     def model(self, x):
         """Binned model (unwhitened, prior-free) at x -- the device counterpart of eng.model()."""
         xj = jnp.asarray(np.asarray(x, float))
@@ -266,9 +240,6 @@ class FitKernel:
         """
         xj = jnp.asarray(np.asarray(x, float))
         out = [f(xj, self._thf, D, R) for f, D, R in zip(self._j_vg, self._D, self._R)]
-        # Counted separately from chi2/grad: folding a value-and-gradient call into those counters would
-        # make it indistinguishable from a plain likelihood evaluation downstream.  `visits()` (one
-        # forward traversal, with or without a reverse sweep) is the shared denominator across methods.
         self.counts["vg"] += 1
         self.counts["grad"] += 1
         self.counts["vjp"] += 1
@@ -285,10 +256,10 @@ class FitKernel:
         for i, (f, D, R) in enumerate(zip(self._j_J, self._D, self._R)):
             blocks = []
             for T, lo, m in self._T:
-                blocks.append(np.asarray(f(xj, self._thf, D, R, T))[:m])   # (m, nbin_s)
+                blocks.append(np.asarray(f(xj, self._thf, D, R, T))[:m])
             out[self.row0_s[i]:self.row0_s[i + 1]] = np.vstack(blocks).T
         self.counts["jac"] += 1
-        self.counts["primal"] += self.nblk          # one primal per DISPATCH, shared by its B tangents
+        self.counts["primal"] += self.nblk
         self.counts["tangent"] += self.nblk * self.B
         self.counts["tangent_eff"] += self.n
         return out
@@ -322,12 +293,9 @@ class FitKernel:
             H[lo:lo + m_] = np.asarray(acc)[:m_]
             nblk += 1
         self.counts["hess"] += 1
-        # The reverse sweep is shared across the dispatch, as jac_data shares its primal: grad(c)(x)
-        # does not depend on the tangent direction, so a vmapped dispatch of B HVP columns costs one
-        # VJP plus B marginal passes, not HVP_PASSES per column.
         self.counts["vjp"] += nblk
         self.counts["tangent"] += nblk * B
-        H = 0.5 * (H + H.T)                      # symmetrise: the two sweeps round differently
+        H = 0.5 * (H + H.T)
         return H + 2.0 * np.diag(self.pw ** 2)
 
     def covariance_gn(self, J):
@@ -339,7 +307,6 @@ class FitKernel:
         covariance is (H/2)^-1 and reduces to (J^T J)^-1 exactly when the residual term vanishes."""
         return np.linalg.pinv(0.5 * self.hessian(x, batch=batch), rcond=1e-12)
 
-    # ---- setup ------------------------------------------------------------------------------------ #
     def warmup(self, x=None, which=("model", "residuals", "chi2", "grad", "jac")):
         """Compile the jitted objects on the exact shapes the timed loop will use, then zero the
         counters.  Nothing after this call may trigger an XLA compile.
@@ -373,19 +340,6 @@ class FitKernel:
                    else ""))
 
 
-# ---- event chunking -------------------------------------------------------------------------------- #
-# The model is a SUM over events, m_b = sum_{e in b} coef_e w_e(theta), so it decomposes exactly over
-# event windows: m = sum_w m^(w).  That is what makes chunking the event axis free -- unlike splitting
-# the DIAL axis, which costs one extra full primal pass per additional dispatch.  Peak memory becomes
-# O(C) instead of O(n_events).
-#
-# THE RAGGED PART.  A bank is not one array.  hv_*/p_struck/w0/channel are per-EVENT and slice directly,
-# but the FSI records (f_bc, f_sa, ... with f_p_eidx / f_n_eidx) are per-INTERACTION SLOT with an event
-# index, and pool_fsi_reweight reduces them over `n_events`.  So a window needs its slots SELECTED and
-# its event indices REBASED, and the selection is ragged -- different windows hold different slot counts.
-# Pad to a common length with a TRASH event index at C, run the reduction over C+1 events, and drop the
-# last: padded slots then contribute to an event nobody reads, whatever their values are.  Same device as
-# the trash bin in BinSpec.chunks.
 _PION_SLOT = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
 _NUC_SLOT = ("hh", "a", "iso", "finel", "inel", "swap")
 
@@ -412,7 +366,6 @@ def bank_chunk_plan(JB, n_events, chunk):
     """
     wins, C, nch = event_windows(n_events, chunk)
     pe = np.asarray(JB["f_p_eidx"]); ne = np.asarray(JB["f_n_eidx"])
-    # own[e] = the window that owns event e; clamped so the shifted last window does not double count
     own = np.minimum(np.arange(n_events) // C, nch - 1)
     p_own, n_own = own[pe], own[ne]
     Lp = int(np.bincount(p_own, minlength=nch).max())
@@ -421,7 +374,7 @@ def bank_chunk_plan(JB, n_events, chunk):
     for w, (s, _) in enumerate(wins):
         ip = np.where(p_own == w)[0]
         inn = np.where(n_own == w)[0]
-        pp = np.full(Lp, 0, np.int64); pe_l = np.full(Lp, C, np.int64)      # C == trash event
+        pp = np.full(Lp, 0, np.int64); pe_l = np.full(Lp, C, np.int64)
         nn = np.full(Ln, 0, np.int64); ne_l = np.full(Ln, C, np.int64)
         pp[:len(ip)] = ip; pe_l[:len(ip)] = pe[ip] - s
         nn[:len(inn)] = inn; ne_l[:len(inn)] = ne[inn] - s
@@ -466,14 +419,9 @@ def bank_windows(JB, n_events, chunk, drop_source=False):
         B["f_p_eidx"] = jnp.asarray(pl["p_eidx"])
         B["f_n_eidx"] = jnp.asarray(pl["n_eidx"])
         subs.append(B)
-    # OWNERSHIP IS THE SAME RULE bank_chunk_plan USES for the ragged FSI slots: event e belongs to
-    # window min(e//C, nch-1).  In GLOBAL indices that is [w C, (w+1) C) for every window, with the last
-    # one running to n_events.  Note this is NOT the window's slice: the last window is SHIFTED BACK to
-    # start at n-C so every window shares one compiled shape, so its slice [n-C, n) is wider than the
-    # events it owns, and a reader extracting from it must offset by `starts[w]`, not by `lo`.
     owns = [(int(w * C), int(min((w + 1) * C, n_events))) for w in range(nch)]
     if drop_source:
-        JB.clear()                       # the windows hold everything; free the undivided arrays
+        JB.clear()
     return nch, C, subs, owns
 
 

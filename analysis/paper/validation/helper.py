@@ -21,17 +21,15 @@ from pathlib import Path
 
 import numpy as np
 
-# Repo root = the first ancestor that contains the `adonis` package (marker-based, not a hand-counted
-# .parents[N]).  make.py resolves it the same way; the two must not drift.
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "adonis").is_dir())
 sys.path.insert(0, str(ROOT))
 
-from adonis.workflow.analyze import run_analysis                 # noqa: E402
-from adonis.workflow.config import load_analysis_config   # noqa: E402
-from adonis.workflow import selection as SG                      # noqa: E402
-from adonis.workflow.plotting import make_figure, chi2_ratio_panel   # noqa: E402
-from analysis.paper import style                                 # noqa: E402
-from adonis import cache as plotcache                             # noqa: E402
+from adonis.workflow.analyze import run_analysis
+from adonis.workflow.config import load_analysis_config
+from adonis.workflow import selection as SG
+from adonis.workflow.plotting import make_figure, chi2_ratio_panel
+from analysis.paper import style
+from adonis import cache as plotcache
 
 
 def _p(spec):
@@ -42,7 +40,6 @@ def _rel(path):
     return str(ROOT / path)
 
 
-# =============================================================== shared panel packer (all `panels` figs)
 def _assemble(panels):
     """panels: list of {key, edges, label, ado:(values,w,chan), ref:(values,w,chan)}.
     Pack into the (specs, ado_sel, ref_sel) make_figure wants: one shared 'w'/'chan' per side, each key
@@ -78,7 +75,6 @@ def _suppress_breakdown(p, ado_sel, ref_sel):
         ref_sel["chan"] = np.zeros(len(ref_sel["w"]), int)
 
 
-# =============================================================== COMPUTE: sliced selection (figs 10, 11)
 def _compute_sliced(spec):
     """Selection histogrammed in SLICES of a second variable -> (specs, ado_sel, ref_sel, layout).
     Config: params.slice_by/slice_edges (the slice variable + its edges), params.obs/obs_edges (the
@@ -92,14 +88,13 @@ def _compute_sliced(spec):
 
     slice_by = p["slice_by"]; s_edges = np.asarray(p["slice_edges"], float)
     obs = p["obs"]; nslice = len(s_edges) - 1
-    # obs_edges: one uniform edge list (linspace lo,hi,n) OR one explicit list per slice; scaled by edge_scale
     if "obs_linspace" in p:
         lo_, hi_, n_ = p["obs_linspace"]; oe = [np.linspace(lo_, hi_, int(n_))] * nslice
     else:
         raw = p["obs_edges"]
         oe = [np.asarray(raw, float)] * nslice if np.ndim(raw[0]) == 0 else [np.asarray(e, float) for e in raw]
-    edge_scale = float(p.get("edge_scale", 1.0))     # GeV->MeV etc. on the OBSERVABLE bin edges (not values)
-    slice_scale = float(p.get("slice_scale", 1.0))   # e.g. rad->deg on the SLICE variable
+    edge_scale = float(p.get("edge_scale", 1.0))
+    slice_scale = float(p.get("slice_scale", 1.0))
     stex = p.get("slice_tex", slice_by)
 
     sv_a = np.asarray(ado[slice_by], float) * slice_scale
@@ -117,17 +112,11 @@ def _compute_sliced(spec):
     specs, ado_sel, ref_sel = _assemble(panels)
     _suppress_breakdown(p, ado_sel, ref_sel)
     layout = dict(ratio_band=tuple(cfg.ratio_band), ratio_ylim=tuple(cfg.ratio_ylim),
-                  panel_kw=_panel_kw(p))   # no title -> caption carries it
+                  panel_kw=_panel_kw(p))
     return specs, ado_sel, ref_sel, layout
 
 
-# =============================================================== COMPUTE: electron (e,e') beam (figs 1, 4-6)
-# One config-driven compute for both electron figures.  The (e,e') physics (omega, E_QE, E_cal, P_T +
-# leading proton) lives in selection.ele_signal / ele_oracle_signal; here we only pick, per params.panels
-# entry, an observable under a topology (incl / 0pi / 1p0pi), fetch the reduction (memoized per bank/ref),
-# and hand the panels to _assemble.  fig01 = omega across two nuclei (per-panel bank); fig0456 = three
-# observables + topologies on one bank.  Nothing electron-specific is hardcoded -- cuts/paths/edges are YAML.
-_NUC_TEX = {"C": r"$^{12}$C", "Ar": r"$^{40}$Ar"}   # also used by render_beam_sigma (fig 3)
+_NUC_TEX = {"C": r"$^{12}$C", "Ar": r"$^{40}$Ar"}
 _TOPO = {"incl": lambda o: np.ones(len(o["w"]), bool),
          "0pi": lambda o: o["npi"] == 0,
          "1p0pi": lambda o: (o["npi"] == 0) & (o["nprot"] == 1)}
@@ -143,7 +132,7 @@ def _edges_of(ps):
 def _compute_ele(spec):
     p = _p(spec)
     cfg = load_analysis_config(_rel(spec["_path"]))
-    sd = cfg.signal                                          # EleBeamSignalDef
+    sd = cfg.signal
     ado_cache, ref_cache = {}, {}
 
     def ado_for(bank):
@@ -157,7 +146,7 @@ def _compute_ele(spec):
             parts = []
             for i, pth in enumerate(refs):
                 r = SG.ele_oracle_signal(_rel(pth), sd)
-                r["chan"] = np.full(len(r["w"]), i, int)     # file order: qe -> 0 (QE), res -> 1 (RES)
+                r["chan"] = np.full(len(r["w"]), i, int)
                 parts.append(r)
             ref_cache[keyt] = {k: np.concatenate([r[k] for r in parts]) for k in parts[0]}
         return ref_cache[keyt]
@@ -169,36 +158,34 @@ def _compute_ele(spec):
         ado = ado_for(ps.get("bank") or default_bank)
         ref = ref_for(ps.get("ref") or default_ref)
         am = _TOPO[ps.get("topo", "incl")](ado); rm = _TOPO[ps.get("topo", "incl")](ref)
-        sc = float(ps.get("value_scale", 1.0))               # e.g. MeV -> GeV on the plotted omega
+        sc = float(ps.get("value_scale", 1.0))
         key = f'{ps["obs"]}_{i}'
         panels.append({"key": key, "edges": _edges_of(ps), "label": ps["label"],
                        "ado": (ado[ps["obs"]][am] * sc, ado["w"][am], ado["chan"][am]),
                        "ref": (ref[ps["obs"]][rm] * sc, ref["w"][rm], ref["chan"][rm])})
         if ps.get("annotate"):
             ann[key] = ps["annotate"]
-        if ps.get("ratio_xmax") is not None:                 # stop the ratio at a kinematic cliff (E_cal)
+        if ps.get("ratio_xmax") is not None:
             rxmax[key] = float(ps["ratio_xmax"])
     specs, ado_sel, ref_sel = _assemble(panels)
-    _suppress_breakdown(p, ado_sel, ref_sel)                  # breakdown: false -> single IBM-blue line (fig0456)
+    _suppress_breakdown(p, ado_sel, ref_sel)
     layout = dict(ratio_ylim=tuple(cfg.ratio_ylim), annotations=ann, ylabel=p.get("ylabel"),
-                  ratio_xmax=rxmax or None, panel_kw=_panel_kw(p))   # no title -> caption carries it
+                  ratio_xmax=rxmax or None, panel_kw=_panel_kw(p))
     return specs, ado_sel, ref_sel, layout
 
 
 _COMPUTE = {"sliced": _compute_sliced, "ele": _compute_ele}
 
 
-# =================================================================================== RENDER: multiobs
 def render_multiobs(spec, show_ratio=True):
     """Pure selection-histogram figure: straight through run_analysis under the paper style.
     show_ratio=False drops the ACH/ADO ratio strip and writes to a *_noratio file (paper fig untouched)."""
     cfg = load_analysis_config(_rel(spec["_path"]))
     if not show_ratio:
         cfg.out_path = cfg.out_path.replace(".png", "_noratio.png")
-    return run_analysis(cfg, title="", show_ratio=show_ratio, **style.paper_run_analysis_kw())   # title -> caption
+    return run_analysis(cfg, title="", show_ratio=show_ratio, **style.paper_run_analysis_kw())
 
 
-# =================================================================================== RENDER: panels
 def render_panels(spec, show_ratio=True):
     """Compute a panel set (compute selected by spec['compute']) and draw it with make_figure -- the
     shared grid-of-chi2_ratio_panel builder.  Layout kwargs come from the compute + spec['layout'].
@@ -209,7 +196,7 @@ def render_panels(spec, show_ratio=True):
               panel_w=style.PANEL_W, fig_h=style.PANEL_H, min_w=style.PANEL_W, max_cols=style.STD_COLS,
               legend_fn=style.panel_legend, label_as_xlabel=True,
               panel_kw=layout.pop("panel_kw", style.panel_kw(ratio_yticks=[0.8, 1.0, 1.2])),
-              rect_top=1.0)   # no title on the plot (the caption carries it) -> pack flush to the top
+              rect_top=1.0)
     kw.update(layout)
     kw["show_ratio"] = show_ratio
     out = ROOT / f"output/paper/{spec['name']}{'' if show_ratio else '_noratio'}.png"
@@ -244,10 +231,8 @@ def render_beam_sigma(spec, show_ratio=True):
                              params={"beam": BEAM, "target": nuc, "nbins": nbins})
         return d["edges"], d["sr"], d["ss"], d["er"], d["es"], d["hr"], d["hs"], d["her"], d["hes"]
 
-    # 2x2 of (top+ratio) blocks at the shared panel proportions: 2 cols x PANEL_W, 2 rows x PANEL_H.
-    # no ratio -> each block is a single axis; shrink the row height to the top panel's 3/4 share.
     style.use(); fig = plt.figure(figsize=(2 * style.PANEL_W, 2 * style.PANEL_H * (1.0 if show_ratio else 0.75)))
-    outer = fig.add_gridspec(2, 2, hspace=0.18, wspace=0.28); ax = {}   # tight row gap (matches make_figure)
+    outer = fig.add_gridspec(2, 2, hspace=0.18, wspace=0.28); ax = {}
     for ni in range(2):
         for oi in range(2):
             if show_ratio:
@@ -273,12 +258,9 @@ def render_beam_sigma(spec, show_ratio=True):
             if ni == 0:
                 a0.set_title(lab, fontsize=9); (a1 if show_ratio else a0).set_xlabel("")
             a0.text(0.97, 0.95, rf"$\pi^+$ {_NUC_TEX[nuc]}", transform=a0.transAxes, fontsize=8, va="top", ha="right")
-    style.save(fig, spec["name"] + ("" if show_ratio else "_noratio"))   # no title -> caption carries it
+    style.save(fig, spec["name"] + ("" if show_ratio else "_noratio"))
 
 
-# Only the three renderers the paper's specs actually select.  render_sigma_channels (fig 2) and
-# render_dcc (fig 13) were removed with their figures: no spec named them, so they were reachable
-# only by editing this table.
 RENDERERS = {"multiobs": render_multiobs, "panels": render_panels,
              "beam_sigma": render_beam_sigma}
 

@@ -59,8 +59,7 @@ def test_res_axial_strength_autodiff_equals_fd():
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-6
 
 
-# ---- pw_norm: per-partial-wave DCC norm (1+pw_norm[w]); weight = strength_reweight(rec, 1+pw) ----
-_WAVES = (5, 0)                                          # P33 (Delta, dominant) + S11
+_WAVES = (5, 0)
 _PWREC = {w: build_res_pw_records(*_ARG, _IP, _PP, w) for w in _WAVES}
 
 
@@ -98,7 +97,6 @@ def test_pw_autodiff_equals_fd():
         assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-6, w
 
 
-# ---- pion_pole (induced pseudoscalar / F_P) ----
 _PPREC = build_res_pionpole_records(*_ARG, _IP, _PP)
 
 

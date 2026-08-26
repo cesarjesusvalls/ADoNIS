@@ -31,7 +31,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     import jax.numpy as jnp
     from adonis.workflow.generate_bank import load_bank as _load_bank
     from adonis.reweight.reweight_model import nominal_knobs
-    from adonis.analysis import knobs as PF        # SPEC / knobs_of / theta_nominal: the core copy
+    from adonis.analysis import knobs as PF
     from adonis.stats import fisher as FE
     from adonis.stats.gaussian import bin_sigma as _bin_sigma
 
@@ -41,28 +41,15 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     p = np.asarray(B["beam_p"], float)
     edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
     idx = np.clip(np.digitize(p, edges) - 1, 0, nbins - 1)
-    n_tried = np.bincount(idx, minlength=nbins).astype(float)        # theta-INDEPENDENT
+    n_tried = np.bincount(idx, minlength=nbins).astype(float)
     from adonis.workflow import records as REC
-    _fl = REC.derive_flags(B)                            # reacted/absorbed derived from prim_fate + nsc_prim
+    _fl = REC.derive_flags(B)
     is_pion = man["species"] == "PION"
     react = _fl["reacted"].astype(float)
     second = _fl["absorbed"].astype(float) if is_pion else (np.asarray(B["n_pi_out"]) > 0).astype(float)
     PIR2 = man["pir2_mb"]
     keys = [f"{beam}_react", f"{beam}_abs" if is_pion else f"{beam}_pipro"]
 
-    # N_selected for the beams: the reaction observables sigma_X = PIR2 * sum(X_i w_i) / n_tried involve only
-    # REACTED events (non-reacted carry w==1, contribute 0 to the react/second numerators AND have zero
-    # gradient), while n_tried (the denominator, over ALL events) is already computed above and is
-    # theta-independent.  So compact to the reacted events before building the reweight record -- only ~8%
-    # goes on device.  The beam bank has no w0/hv_/fs_ this path needs, only the f_* FSI slot record (pion
-    # family via f_p_eidx, nucleon via f_n_eidx), so compact THAT directly, remapping the event index.
-    # The beam sample's SIGNAL is `reacted` -- the same role the CC0pi/CC1pi conditions play for the neutrino
-    # samples (sigma_X involves only reacted events; the rest carry w==1 and have zero gradient).  Naming it
-    # as the signal is what makes the event cap below apply here exactly as it does everywhere else.
-    #
-    # Event cap (fit-side).  Cap on EVENTS, exactly: keep the prefix of TRIED events that contains the first
-    # `cap` signal (reacted) events and recompute n_tried over exactly that prefix.  The retained set is then
-    # a smaller but COMPLETE beam exposure, so sigma_X = PIR2*sum(X_i w_i)/n_tried needs no rescaling.
     if cap and int(react.sum()) > cap:
         M = int(np.searchsorted(np.cumsum(react), cap) + 1)
         keep_ev = np.zeros(len(react), bool); keep_ev[:M] = True
@@ -74,7 +61,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     log(f"[events] beam {beam:<4} N={len(ridx):>9,} signal=reacted  (of {M:,} tried"
         f"{'' if M == len(react) else ', cap=%s' % f'{cap:,}'}, {max_chunks} chunks)")
     remap = np.full(len(rmask), -1, np.int64); remap[ridx] = np.arange(len(ridx))
-    idx = idx[rmask]; second = second[rmask]; react = np.ones(len(idx))   # reacted subset (react == 1)
+    idx = idx[rmask]; second = second[rmask]; react = np.ones(len(idx))
     _PION = ("bc", "sa", "ss_el", "ss", "si", "pi_hh", "pi_a", "sa_c", "ss_el_c", "ss_c", "si_c")
     _NUC = ("hh", "a", "iso", "finel", "inel", "swap")
     mp = remap[np.asarray(B["f_p_eidx"])] >= 0; mn = remap[np.asarray(B["f_n_eidx"])] >= 0
@@ -96,10 +83,6 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     w0 = np.asarray(w_of(th0))
     assert np.abs(w0 - 1).max() < 1e-9, f"nominal identity broken on the {beam} bank: {np.abs(w0-1).max():.2e}"
 
-    # SAME binning primitive every other sample uses (IC.BinSpec): m_b = scale_b * sum_b coef_e * w_e.
-    # This used to be a second, independent np.bincount implementation; unifying it is what lets the
-    # device path -- and hence reverse-mode differentiation -- cover the WHOLE model instead of the
-    # BankSamples only.
     from adonis.analysis.binning import BinSpec
     _scale = PIR2 / np.maximum(n_tried, 1)
     spec_r = BinSpec(idx, nbins, _scale, coef=react)
@@ -113,19 +96,13 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
         return jnp.concatenate([spec_r.apply_dev(w), spec_s.apply_dev(w)])
 
     central = binned(w0)
-    # MC error: sqrt(N) on the counts in each bin (the reweight is 1 at nominal)
     nr = np.bincount(idx, weights=react, minlength=nbins)
     ns = np.bincount(idx, weights=second, minlength=nbins)
     mcerr = PIR2 * np.concatenate([np.sqrt(nr), np.sqrt(ns)]) / np.maximum(np.concatenate([n_tried] * 2), 1)
-    # EMPTY bins (pion production is EXACTLY zero below the NN->NNpi threshold -> central=mcerr=0) get
-    # sigma=inf, not 0, so 0/0 does not put NaN into the Fisher (bin_sigma's var==0 == this empty test).
     sig = _bin_sigma(central, mcerr, syst)
     jvp = jax.jit(lambda th, tang: jax.jvp(w_of, (th,), (tang,))[1])
-    # Batched: ONE vmapped jvp over a (nsub, NPAR) tangent matrix -- same saving as the bank samples.
     jvpv = jax.jit(lambda th, T: jax.vmap(lambda t: jax.jvp(w_of, (th,), (t,))[1])(T))
-    # 2nd directional derivative d^2/dt^2 w(theta + t*tang) via nested jvp (for the higher-order corner)
     jvp2 = jax.jit(lambda th, tang: jax.jvp(lambda t: jax.jvp(w_of, (t,), (tang,))[1], (th,), (tang,))[1])
-    # 3rd MIXED directional derivative d^3 w /(du dw dx) via triple-nested jvp (for the 4th-order corner)
     jvp3 = jax.jit(lambda th, u, w, x: jax.jvp(
         lambda t3: jax.jvp(lambda t2: jax.jvp(lambda t1: w_of(t1), (t2,), (u,))[1], (t3,), (w,))[1],
         (th,), (x,))[1])
@@ -136,9 +113,6 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
                 n_events=len(ridx))
 
 
-# beam_jacobian moved here too: analysis.campaign.gate1 -- the Gate-I builder, now core -- calls it to
-# stack the beam half of the Jacobian.  It was left on the paper side as 'figure driver'; that was
-# wrong, and only showed up because the layering test forced the import to be named explicitly.
 def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     """(J (2*nbins, NPAR), sigma (2*nbins,), central, edges, n_tried) for one beam bank.  Rows: reaction
     bins, then the second observable's bins (absorption for pi+, pion production for p/n).  One jax.jvp
@@ -159,7 +133,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
         J = np.zeros((2 * nbins, NPAR))
         for k in range(NPAR):
             g = m["jvp"](m["th0"], jnp.zeros(NPAR).at[k].set(1.0))
-            J[:, k] = m["binned"](g)                                # d sigma_bin / d theta_k (exact)
+            J[:, k] = m["binned"](g)
         return dict(J=J, sigma=m["sigma"], central=m["central"], edges=m["edges"], n_tried=m["n_tried"])
 
     d = plotcache.cached(f"beam_jac_{beam}_n{nbins}_s{syst:g}", _compute,
@@ -167,14 +141,8 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     return d["J"], d["sigma"], d["central"], d["edges"], d["n_tried"]
 
 
-# ------------------------------------------------------------------ beam cross sections from a bank ---
-# Moved from analysis/paper/beams/make_figs.py.  Turning a tagged-beam bank into sigma_reaction(p) and
-# sigma_absorption(p) is sample-layer machinery, not a figure: the validation plot and the Gate-I beam
-# model both need it, and it was previously reachable only by importing a figure script.
 
 def bank_sigma(beam, nbins, target="C", suffix=""):
-    # `suffix` selects an alternative bank build (e.g. "_bpfix" = pion birth-position fix).  A beam that
-    # has no suffixed bank falls back to the canonical one, so a partial regeneration still plots.
     import os
     from adonis.workflow.generate_bank import load_bank as _load_bank
     pattern = os.environ.get("ADONIS_BEAM_PATTERN", "output/beam_{beam}_{target}{suffix}")
@@ -183,13 +151,13 @@ def bank_sigma(beam, nbins, target="C", suffix=""):
         path = pattern.format(beam=beam, target=target, suffix="")
     B = _load_bank(path)
     man = B["manifest"]
-    bank_sigma.last = (path, int(man.get("n_total", 0)))    # for labelling the panel
+    bank_sigma.last = (path, int(man.get("n_total", 0)))
     p = np.asarray(B["beam_p"], float)
     edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
     idx = np.clip(np.digitize(p, edges) - 1, 0, nbins - 1)
     ntry = np.bincount(idx, minlength=nbins).astype(float)
     from adonis.workflow import records as REC
-    _fl = REC.derive_flags(B)                            # reacted/absorbed derived from prim_fate + nsc_prim
+    _fl = REC.derive_flags(B)
     react = _fl["reacted"].astype(float)
     second = _fl["absorbed"].astype(float) if man["species"] == "PION" \
         else (np.asarray(B["n_pi_out"]) > 0).astype(float)
@@ -198,7 +166,6 @@ def bank_sigma(beam, nbins, target="C", suffix=""):
     PIR2 = man["pir2_mb"]
     with np.errstate(divide="ignore", invalid="ignore"):
         sr, ss = PIR2 * nr / ntry, PIR2 * ns / ntry
-        # BINOMIAL error on the reacted/tried efficiency (was Poisson sqrt(nr)); = Poisson * sqrt(1-eps)
         er = PIR2 * np.sqrt(nr * np.clip(1.0 - nr / ntry, 0.0, 1.0)) / ntry
         es = PIR2 * np.sqrt(ns * np.clip(1.0 - ns / ntry, 0.0, 1.0)) / ntry
     return edges, sr, ss, er, es

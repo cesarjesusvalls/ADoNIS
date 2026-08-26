@@ -57,27 +57,23 @@ def fold_full_events(knobs: DCCKnobs, key, n=400000, hs: HadronStructure | None 
     Ep = jax.lax.stop_gradient(ep_lo + (ep_hi - ep_lo) * jax.random.uniform(klep, (n,)))
     theta = jax.lax.stop_gradient(jnp.deg2rad(theta_max_deg) * jax.random.uniform(kth, (n,)))
 
-    # leptonic transfer (true q): nu along +z, lepton in x-z plane
     omega = e_nu - Ep
     qx = -Ep * jnp.sin(theta)
     qz = e_nu - Ep * jnp.cos(theta)
     q_vec2 = qx ** 2 + qz ** 2
-    Q2_lep = q_vec2 - omega ** 2                    # observable (true leptonic Q^2)
+    Q2_lep = q_vec2 - omega ** 2
     k_lab = jnp.stack([jnp.full((n,), e_nu), jnp.zeros((n,)), jnp.zeros((n,)),
                        jnp.full((n,), e_nu)], axis=-1)
     kp_lab = jnp.stack([Ep, Ep * jnp.sin(theta), jnp.zeros((n,)), Ep * jnp.cos(theta)], axis=-1)
 
-    # struck nucleon: off-shell energy E_struck = mqe - E_removal
     p_vec, E_rm = SpectralSampler(load_spectral(sf)).sample(ksf, n)
     p2 = jnp.sum(p_vec ** 2, axis=1)
     p_struck = jnp.concatenate([(MQE - E_rm)[:, None], p_vec], axis=1)
 
-    # W^2 = (q + p_struck)^2 (true q); detached
     tot = jnp.stack([omega, qx, jnp.zeros((n,)), qz], axis=-1) + p_struck
     W2 = tot[:, 0] ** 2 - jnp.sum(tot[:, 1:] ** 2, axis=1)
     W = jnp.sqrt(jnp.clip(W2, 1.0, None))
 
-    # on-shell rebalanced photon energy -> Q2_adj for the amplitude + cut
     T_N = jnp.sqrt(p2 + MQE ** 2) - MQE
     qp0 = omega - E_rm - T_N
     Q2_adj = q_vec2 - qp0 ** 2
@@ -86,16 +82,13 @@ def fold_full_events(knobs: DCCKnobs, key, n=400000, hs: HadronStructure | None 
     Q2_adj = jax.lax.stop_gradient(Q2_adj)
     Q2_lep = jax.lax.stop_gradient(Q2_lep)
 
-    # faithful ACHILLES cuts (currents_pi_dcc.f90: current = 0 outside)
     cut = (W > W_THR) & (W < W_MAX) & (Q2_adj > 0.0) & (Q2_adj < Q2_MAX)
 
-    # lepton tensor (true q, piN-CM, q along z) x full hadron tensor at (W, Q2_adj)
     k_cm, kp_cm = cm_lepton_momenta(k_lab, kp_lab, p_struck)
     Lmn = lepton_tensor_cc(k_cm, kp_cm)
     Wmn = hs.tensor_at(W, jnp.clip(Q2_adj, 1.0, None), knobs)
     LW = contract(Lmn, Wmn)
 
-    # weight: leptonic phase space x piN phase space x L.W, zeroed outside the cuts
     kpi = pion_cm_momentum(W)
     w = jnp.where(cut, (Ep / e_nu) * jnp.sin(theta) * (kpi / W) * LW, 0.0)
     return W, Q2_lep, w

@@ -12,12 +12,6 @@ Top-level convenience API:
 """
 __version__ = "0.1.0"
 
-# Lazy re-exports (PEP 562).  Importing the generator stack eagerly here would pull JAX into every
-# consumer of the package, so e.g. `import adonis.workflow.plotting` (pure numpy+matplotlib) would pay
-# a JAX import it never uses.  The convenience API below still works -- `from adonis import Generator`
-# imports the submodule on first use -- while lightweight consumers (plotting, config, analysis I/O)
-# never pull JAX in.  Submodule access (`from adonis import kinematics`, `from adonis.analysis import
-# fit`) works via the normal import machinery.
 _LAZY = {
     "PhysicsParams": "adonis.core.params", "ChainConfig": "adonis.core.params", "DCCKnobs": "adonis.core.params",
     "Generator": "adonis.core.chain", "DCCSinglePion": "adonis.channels.dcc.channel",
@@ -26,7 +20,7 @@ _LAZY = {
 }
 
 
-def __getattr__(name):                       # PEP 562 module-level lazy attribute
+def __getattr__(name):
     import importlib
     target = _LAZY.get(name)
     if target is not None:

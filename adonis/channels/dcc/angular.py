@@ -66,22 +66,18 @@ from __future__ import annotations
 
 import numpy as np
 
-# --- decoded index conventions (1-based ixi1 = file idx) --------------------- #
-# index 0 unused (pad) so ISBI[ixi1] reads with the Fortran 1-based ixi1.
-ISBI = np.array([0, 1, -1, 1, -1, 1, -1, 1, -1])      # nucleon-helicity sign
-ISMI = np.array([0, 1, 1, 0, 0, -1, -1, 2, 2])        # photon polarization igm1
+ISBI = np.array([0, 1, -1, 1, -1, 1, -1, 1, -1])
+ISMI = np.array([0, 1, 1, 0, 0, -1, -1, 2, 2])
 ISMIX = np.array([0, 1, 1, 0, 0, -1, -1, 0, 0])
-IXI_CNV = np.array([0, 1, 2, 5, 6, 3, 4, 7, 8])       # ixi1p -> ixi1 reordering
+IXI_CNV = np.array([0, 1, 2, 5, 6, 3, 4, 7, 8])
 
-# photon-polarization values actually stored per current:
-VEC_IDX = (1, 2, 3)            # igm1 = +1(hel+), +1(hel-), 0(hel+)
-AXIAL_IDX = (1, 2, 3, 7)       # adds igm1 = 2 (charge/time, PCAC)
+VEC_IDX = (1, 2, 3)
+AXIAL_IDX = (1, 2, 3, 7)
 
 PW_LABELS = ("s11", "s31", "p11", "p13", "p31", "p33",
              "d13", "d15", "d33", "d35", "f15", "f17", "f35", "f37")
 
 
-# --- Wigner-d functions (port of setdfun + fblmmx) --------------------------- #
 from math import factorial as _fact, sqrt as _sqrt
 
 

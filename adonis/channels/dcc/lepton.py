@@ -20,11 +20,10 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
-from adonis.kinematics import mink_dot as _mink_dot, boost_to_rest   # single-source primitives
+from adonis.kinematics import mink_dot as _mink_dot, boost_to_rest
 
-ETA = jnp.array([1.0, -1.0, -1.0, -1.0])           # metric diag (+,-,-,-)
+ETA = jnp.array([1.0, -1.0, -1.0, -1.0])
 
-# Levi-Civita eps^{mu nu alpha beta} with eps^{0123} = +1
 _EPS = np.zeros((4, 4, 4, 4))
 for _p in __import__("itertools").permutations(range(4)):
     _i, _j, _k, _l = _p

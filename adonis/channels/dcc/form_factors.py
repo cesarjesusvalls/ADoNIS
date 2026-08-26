@@ -17,9 +17,8 @@ reweight/amps2_records.py; `M_PI_GEV` by fsi/interactions/meson_baryon_amplitude
 """
 from __future__ import annotations
 
-# --- constants from FormFactors.yml ----------------------------------------- #
-MA_NOMINAL = 1.000          # axial mass [GeV]
-GAN1 = 1.2694               # g_A (axial coupling at Q^2=0)
+MA_NOMINAL = 1.000
+GAN1 = 1.2694
 M_PI_GEV = 0.13957
 
 

@@ -45,17 +45,16 @@ def _kin(q2_scale):
     q = np.sqrt(q2_scale)
     E = max(5000.0, 4.0 * q)
     p_in = np.array([[E, 0.0, 0.0, E]])
-    pz = np.sqrt(E ** 2 - q ** 2)                    # massless outgoing lepton, |p_out| = E
+    pz = np.sqrt(E ** 2 - q ** 2)
     return p_in, np.array([[E, q, 0.0, pz]])
 
 
-# --------------------------------------------------------------------------------- the closed forms
 def _c_nc():
-    return (C.cw * C.ee * 1j) / (2 * C.sw) + (C.ee * 1j * C.sw) / (2 * C.cw)   # LeptonicCurrent.cc:31-36
+    return (C.cw * C.ee * 1j) / (2 * C.sw) + (C.ee * 1j * C.sw) / (2 * C.cw)
 
 
 def _c_cc():
-    return C.ee * 1j / (C.sw * np.sqrt(2.0))                                   # LeptonicCurrent.cc:24-30
+    return C.ee * 1j / (C.sw * np.sqrt(2.0))
 
 
 def test_nc_coupling_equals_the_textbook_form():
@@ -66,12 +65,11 @@ def test_nc_coupling_equals_the_textbook_form():
 
 def test_nc_over_cc_amps2_reduces_to_the_analytic_ratio():
     """G5(1).  At Q^2 << M_Z^2 the ratio must be |c_NC/c_CC|^2 * (M_W^2/M_Z^2)^2 to <= 1e-3."""
-    q2 = (50.0) ** 2                                    # 50 MeV: Q^2/M_Z^2 ~ 3e-7
+    q2 = (50.0) ** 2
     p_in, p_out = _kin(q2)
     r = _amps2(lepton_current(p_in, p_out, kind="NC_nu")) / \
         _amps2(lepton_current(p_in, p_out, kind="CC_nu"))
     want = abs(_c_nc() / _c_cc()) ** 4 * (C.MW ** 2 / C.MZ ** 2) ** 4
-    # |L|^2 is quadratic in the coupling and in the propagator; amps2 here is |L.L*|^2 -> 4th power.
     assert r == pytest.approx(want, rel=1e-3), f"NC/CC = {r:.6e}, analytic {want:.6e}"
 
 
@@ -107,7 +105,6 @@ def test_the_propagator_runs_with_q2_exactly_as_the_z_pole_demands():
         p_in, p_out = _kin(q2)
         got = _amps2(lepton_current(p_in, p_out, kind="NC_nu")) / \
               _amps2(lepton_current(p_in, p_out, kind="CC_nu"))
-        # the current's own q^2 convention: q = p_in - p_out, q2 = E^2 - |p|^2 (spacelike -> negative)
         q = p_in - p_out
         qq = q[0, 0] ** 2 - np.sum(q[0, 1:] ** 2)
         prop_ratio = (qq - C.MW ** 2 - 1j * C.MW * C.GAMW) / (qq - C.MZ ** 2 - 1j * C.MZ * C.GAMZ)
@@ -129,6 +126,6 @@ def test_nc_is_purely_left_handed_for_a_neutrino():
 def test_unknown_lepton_kind_still_raises():
     from adonis.channels.currents.leptonic import _couplings
     with pytest.raises(ValueError):
-        _couplings("NC")          # the PROBE name, not the leptonic kind -- must not silently work
+        _couplings("NC")
     with pytest.raises(ValueError):
         _couplings("garbage")

@@ -13,7 +13,7 @@ from adonis.channels.currents import spinor as sp
 
 def _pslash(p):
     g = np.asarray(sp.GAMMA)
-    return p[0] * g[0] - p[1] * g[1] - p[2] * g[2] - p[3] * g[3]   # E g0 - px g1 - ...
+    return p[0] * g[0] - p[1] * g[1] - p[2] * g[2] - p[3] * g[3]
 
 
 def test_ubar_u_equals_2m():

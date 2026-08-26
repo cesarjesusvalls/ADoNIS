@@ -15,10 +15,9 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from adonis.constants import M_12C as _M_A, M_11B as _M_A1   # carbon TKI longitudinal-inference masses
+from adonis.constants import M_12C as _M_A, M_11B as _M_A1
 
 
-# =============================================================================== primitives ==========
 def mink_dot(a, b):
     """Minkowski dot a.b = a0 b0 - vec a . vec b, batched over a leading axis."""
     return a[..., 0] * b[..., 0] - jnp.sum(a[..., 1:] * b[..., 1:], axis=-1)
@@ -71,10 +70,6 @@ def boost_from_rest(P, a):
     return jnp.concatenate([a0[..., None], avec], axis=-1)
 
 
-# =============================================================================== formula core =========
-# Each TKI/STV formula written ONCE on raw lab 4-vectors; the EventRecord wrappers and the raw-array API
-# both call these -- a single source per observable (the `had` partner is the recoil nucleon in the
-# reweight path, the leading proton in the selection path -- same formula, different arg).
 def _mag(v3):
     return jnp.sqrt(jnp.sum(v3 ** 2, axis=-1))
 
@@ -146,8 +141,6 @@ def _p_N_tki(kp, p_pi, had_partner):
     return jnp.sqrt(jnp.clip(dpt2 + dpL ** 2, 0.0, None))
 
 
-# =============================================================================== EventRecord API ======
-# ev exposes k (neutrino), kp (out lepton), p_pi, p_N (recoil nucleon), p_struck (initial nucleon).
 def enu(ev):
     return ev.k[:, 0]
 
@@ -239,7 +232,6 @@ def p_N_tki(ev):
     return _p_N_tki(ev.kp, ev.p_pi, ev.p_N)
 
 
-# carbon-target mass aliases (kept public: a few analysis scripts import them)
 M_A_12C = _M_A
 M_A_11B = _M_A1
 
@@ -253,11 +245,6 @@ OBSERVABLES = {
 }
 
 
-# =============================================================================== raw-4-vector API =====
-# For the numpy selection + info-content paths.  Same formula core as the EventRecord API above;
-# inputs are (n,4) lab 4-vectors, outputs jnp arrays (callers np.asarray at the histogram boundary).
-# The NUISANCE hydrogen-daT randomization is a data-comparison overlay applied by the caller, not an
-# observable, so `tki` here is deterministic.
 def mom(p4):
     """|vec p| [MeV] of a 4-vector (batch)."""
     return _mag(jnp.atleast_2d(p4)[..., 1:])

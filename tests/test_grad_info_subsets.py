@@ -51,7 +51,6 @@ def _declared_dskeys():
     return out
 
 
-# ---- schema contract ---------------------------------------------------------------------------- #
 
 def test_check_schema_accepts_and_returns(tmp_path):
     J, sigma, prior, pnames, dskeys, row0 = SS.check_schema(_npz(tmp_path))
@@ -59,9 +58,9 @@ def test_check_schema_accepts_and_returns(tmp_path):
 
 
 @pytest.mark.parametrize("over, msg", [
-    (dict(sigma=np.ones(3)), "sigma"),                       # bins disagree with J
-    (dict(prior=np.full(9, 0.2)), "prior/pnames"),           # knobs disagree with J
-    (dict(row0=np.array([0, 3, 25])), "offsets"),            # row0 length != len(dskeys)+1
+    (dict(sigma=np.ones(3)), "sigma"),
+    (dict(prior=np.full(9, 0.2)), "prior/pnames"),
+    (dict(row0=np.array([0, 3, 25])), "offsets"),
 ])
 def test_check_schema_rejects_inconsistent(tmp_path, over, msg):
     with pytest.raises((ValueError, KeyError), match=msg):
@@ -80,7 +79,6 @@ def test_row0_must_span_J(tmp_path):
         SS.check_schema(_npz(tmp_path, row0=np.array([0, 3, 6, 10, 12, 14, 19, 24])), "short")
 
 
-# ---- group resolution --------------------------------------------------------------------------- #
 
 def test_literals_globs_and_refs():
     got = SS.resolve_axis(_axis("""
@@ -92,7 +90,7 @@ def test_literals_globs_and_refs():
     assert [(n, ks) for n, _l, ks in got] == [
         ("lepton", ["pmu", "cosmu"]),
         ("mnv", ["mnv_dpt", "mnv_pn"]),
-        ("both", ["pmu", "cosmu", "mnv_dpt", "mnv_pn", "e_qe"]),   # ref order preserved, de-duped
+        ("both", ["pmu", "cosmu", "mnv_dpt", "mnv_pn", "e_qe"]),
     ]
     assert got[1][1] == "MINERvA"
 
@@ -106,8 +104,8 @@ def test_absent_sample_drops_its_column_but_keeps_the_rest():
           neut: {keys: ["neut_*"]}
           all:  {keys: ["<t2k>", "<neut>"]}
     """), ["pmu", "cosmu"], log=logs.append)
-    assert [n for n, _l, _k in got] == ["t2k", "all"]          # 'neut' dropped, 'all' survives
-    assert got[-1][2] == ["pmu", "cosmu"]                      # <neut> contributed nothing
+    assert [n for n, _l, _k in got] == ["t2k", "all"]
+    assert got[-1][2] == ["pmu", "cosmu"]
     assert any("DROPPED" in m for m in logs)
 
 
@@ -128,12 +126,10 @@ def test_bare_list_group_is_accepted():
     assert got[0][2] == ["pmu", "cosmu"]
 
 
-# ---- row slicing -------------------------------------------------------------------------------- #
 
 def test_rows_for_picks_the_right_bins(tmp_path):
     *_, dskeys, row0 = SS.check_schema(_npz(tmp_path))
     assert list(SS.rows_for(["e_qe"], dskeys, row0)) == [14, 15, 16, 17, 18]
-    # order-independent, and the union is the sorted concatenation
     assert (SS.rows_for(["pip_react", "pmu"], dskeys, row0)
             == np.array([0, 1, 2, 19, 20, 21, 22, 23, 24])).all()
 
@@ -151,17 +147,12 @@ def test_config_file_resolves_against_the_multisample_datasets():
     dskeys = _declared_dskeys()
     axes = {a: SS.resolve_axis(dict(spec, _name=a), dskeys, log=lambda *_: None)
             for a, spec in cfg["axes"].items()}
-    # ONE axis survives the sec2 prune: sec2_shrinkage_subsets.  The sample_ladder and samples_alone
-    # figures were dropped from the paper, and their assertions went with them.
     assert list(cfg["axes"]) == ["by_probe"]
     assert [n for n, _l, _k in axes["by_probe"]] == ["nu", "ebeam", "hadr", "all"]
     keys = {n: k for n, _l, k in axes["by_probe"]}
-    # The three probe groups PARTITION the stack: every dataset claimed exactly once, nothing left over.
-    # Asserted as a partition rather than as three magic counts, so adding a sample cannot make this test
-    # wrong -- only a mis-grouped one can.
     assert set(keys["nu"]) | set(keys["ebeam"]) | set(keys["hadr"]) == set(dskeys)
     assert len(keys["nu"]) + len(keys["ebeam"]) + len(keys["hadr"]) == len(dskeys)
-    assert set(keys["all"]) == set(dskeys)                        # ALL = every sample combined
+    assert set(keys["all"]) == set(dskeys)
     assert all(k.startswith(("t2k_", "minerva_")) for k in keys["nu"])
     assert all(k.startswith("ee_") for k in keys["ebeam"])
 

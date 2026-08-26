@@ -42,19 +42,13 @@ def test_res_current_matches_achilles():
         r_all.append(ratio)
         (r_pip if r["hPID"] == 211 else r_pi0).append(ratio)
         my_l.append(my); ach_l.append(r["amps2"])
-        w_l.append(r["flux"] * r["initwgt"] * 0.5 * r["psw"])    # per-event xsec weight (sans amps2)
+        w_l.append(r["flux"] * r["initwgt"] * 0.5 * r["psw"])
     r_all = np.array(r_all); my_l = np.array(my_l); ach_l = np.array(ach_l); w_l = np.array(w_l)
     assert len(r_all) > 50
-    # absolute scale correct (normalised): mean ratio ~1
     assert abs(r_all.mean() - 1.0) < 0.05, r_all.mean()
-    # per-event scatter small (angular/frame assembly bit-exact; residual = interpolation)
     assert r_all.std() / r_all.mean() < 0.06, r_all.std() / r_all.mean()
-    # channel-independent
     assert abs(np.mean(r_pip) - np.mean(r_pi0)) / np.mean(r_all) < 0.02
-    # NO large per-event outliers (the spline-stencil off-by-one under-shot the low-W/low-Q^2
-    # edge by up to 25% -- invisible to mean/std, but it biased sigma_RES by ~27%).
     assert np.max(np.abs(r_all - 1.0)) < 0.03, f"max amps2 dev {np.max(np.abs(r_all-1)):.3f}"
-    # the SIGMA-weighted ratio (what actually sets sigma_RES) must be ~1
     sig_ratio = np.sum(my_l * w_l) / np.sum(ach_l * w_l)
     assert abs(sig_ratio - 1.0) < 0.02, f"xsec-weighted amps2 ratio {sig_ratio:.4f}"
 

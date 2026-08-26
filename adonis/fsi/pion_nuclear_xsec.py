@@ -15,25 +15,23 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-# --- constants (Achilles/Constants.hh) --------------------------------------- #
 from adonis.constants import (HBARC, mN as M_N, mdelta as M_DELTA,
                               mpip as M_PIP, mpi0 as M_PI0)
 
-# --- Oset parametrisation constants (OsetCrossSections.hh) -------------------- #
-CONST_FACTOR = 1.0 / 12.0 / jnp.pi          # fConstFactor
-COUPLING_CONSTANT = 0.36 * 4.0 * jnp.pi     # fCouplingConstant
-NORMAL_DENSITY = 0.17                        # fm^-3
-NORM_FACTOR = 197.327 * 197.327 * 10.0       # fNormFactor (-> mb)
+CONST_FACTOR = 1.0 / 12.0 / jnp.pi
+COUPLING_CONSTANT = 0.36 * 4.0 * jnp.pi
+NORMAL_DENSITY = 0.17
+NORM_FACTOR = 197.327 * 197.327 * 10.0
 IM_B0 = 0.035
 
-C_Q = jnp.array([-5.19, 15.35, 2.06])        # fCoefCQ  (QE self-energy)
-C_A2 = jnp.array([1.06, -6.64, 22.66])       # fCoefCA2 (2N absorption)
-C_A3 = jnp.array([-13.46, 46.17, -20.34])    # fCoefCA3 (3N absorption)
-C_ALPHA = jnp.array([0.382, -1.322, 1.466])  # fCoefAlpha (QE density exponent)
-C_BETA = jnp.array([-0.038, 0.204, 0.613])   # fCoefBeta  (abs density exponent)
-C_SIGMA = jnp.array([-0.01334, 0.06889, 0.19753])  # fCoefSigma (s-wave QE)
-C_B = jnp.array([-0.01866, 0.06602, 0.21972])      # fCoefB
-C_D = jnp.array([-0.08229, 0.37062, -0.03130])     # fCoefD
+C_Q = jnp.array([-5.19, 15.35, 2.06])
+C_A2 = jnp.array([1.06, -6.64, 22.66])
+C_A3 = jnp.array([-13.46, 46.17, -20.34])
+C_ALPHA = jnp.array([0.382, -1.322, 1.466])
+C_BETA = jnp.array([-0.038, 0.204, 0.613])
+C_SIGMA = jnp.array([-0.01334, 0.06889, 0.19753])
+C_B = jnp.array([-0.01866, 0.06602, 0.21972])
+C_D = jnp.array([-0.08229, 0.37062, -0.03130])
 
 
 def _quad(x, a):
@@ -54,7 +52,6 @@ def _self_energy_abs_NNN(pion_KE, m_pi, density):
     x = pion_KE / m_pi
     beta = _quad(x, C_BETA)
     raw = _quad(x, C_A3)
-    # C++: if(absNNN<0) absNNN=0; else absNNN *= (rho/rho0)^(2 beta)   (<0 for T_k < ~50 MeV)
     return jnp.where(raw < 0.0, 0.0, raw * (density / NORMAL_DENSITY) ** (2.0 * beta))
 
 
@@ -72,7 +69,6 @@ def _reduced_half_width(pionE, m_pi, cms_mom, fermimom, sqrts):
     deltamom = jnp.sqrt(pion_mom ** 2 + 0.6 * fermimom ** 2)
     n_energy_cms = jnp.sqrt(cms_mom ** 2 + M_N ** 2)
     mu0 = (deltaE * n_energy_cms - fermi_energy * sqrts) / deltamom / cms_mom
-    # delta_reduction: 0 for mu0<-1, 1 for mu0>1, else (mu0^3+mu0+2)/4
     dr = (mu0 ** 3 + mu0 + 2.0) / 4.0
     delta_reduction = jnp.where(mu0 < -1.0, 0.0, jnp.where(mu0 > 1.0, 1.0, dr))
     return (CONST_FACTOR * coupling * M_N * cms_mom ** 3 / sqrts * delta_reduction)
@@ -114,7 +110,6 @@ def abs_cross_section(pionE, m_pi, pion_mom, vrel, fermimom, total_density):
     return p_abs + s_abs
 
 
-# pion-in/pion-out channel keys (PID): 211 pi+, 111 pi0, -211 pi-
 QE_CHANNELS = [(211, 211), (211, 111), (211, -211),
                (111, 211), (111, 111), (111, -211),
                (-211, 211), (-211, 111), (-211, -211)]

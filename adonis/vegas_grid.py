@@ -24,12 +24,10 @@ import numpy as np
 class VegasGrid:
     def __init__(self, ndim, nbins=50):
         self.ndim = int(ndim); self.nbins = int(nbins)
-        # per-axis edges, uniform to start: shape (ndim, nbins+1), edge[:,0]=0, edge[:,-1]=1
         self.edges = np.tile(np.linspace(0.0, 1.0, self.nbins + 1), (self.ndim, 1))
-        self.acc = np.zeros((self.ndim, self.nbins))   # accumulated f^2 per bin
+        self.acc = np.zeros((self.ndim, self.nbins))
         self.frozen = False
 
-    # ---- sampling ----
     def map(self, y):
         """y:(n,ndim) ~U[0,1] -> x:(n,ndim) in [0,1], jac:(n,) = prod_axis dx/dy (>0)."""
         y = np.asarray(y, float)
@@ -59,7 +57,6 @@ class VegasGrid:
             dens *= 1.0 / (N * np.clip(e[i + 1] - e[i], 1e-300, None))
         return dens
 
-    # ---- adaptation ----
     def accumulate(self, x, fval):
         """Add f^2 (f = full weight including the current grid jac) into the x-bin per axis."""
         x = np.asarray(x, float); f2 = np.asarray(fval, float) ** 2
@@ -81,8 +78,7 @@ class VegasGrid:
         for ax in range(self.ndim):
             d = self.acc[ax].astype(float).copy()
             if d.sum() <= 0:
-                continue                                    # no info this axis -> leave edges
-            # 3-point smoothing (ACHILLES Adapt), edge-aware
+                continue
             sm = d.copy()
             if self.nbins > 1:
                 sm[1:-1] = (d[:-2] + d[1:-1] + d[2:]) / 3.0
@@ -91,20 +87,20 @@ class VegasGrid:
             norm = sm.sum()
             if norm <= 0:
                 continue
-            r = sm / norm                                   # per-bin importance fraction
+            r = sm / norm
             with np.errstate(divide="ignore", invalid="ignore"):
-                fac = (r - 1.0) / np.log(r)                 # Lepage damping kernel
-            fac = np.where(np.abs(r - 1.0) < 1e-12, 1.0, fac)   # (r-1)/ln r -> 1 at r=1
+                fac = (r - 1.0) / np.log(r)
+            fac = np.where(np.abs(r - 1.0) < 1e-12, 1.0, fac)
             fac = np.where(r > 0, np.clip(fac, 1e-300, None), 1e-300)
             imp = fac ** alpha
-            cum = np.concatenate([[0.0], np.cumsum(imp)])    # cumulative importance at OLD edges
+            cum = np.concatenate([[0.0], np.cumsum(imp)])
             tot = cum[-1]
             if tot <= 0:
                 continue
             targets = np.linspace(0.0, tot, self.nbins + 1)
-            e_new = np.interp(targets, cum, self.edges[ax])  # invert: x where cum = target
+            e_new = np.interp(targets, cum, self.edges[ax])
             e_new[0] = 0.0; e_new[-1] = 1.0
-            e_new = np.maximum.accumulate(e_new)             # guard monotonicity
+            e_new = np.maximum.accumulate(e_new)
             self.edges[ax] = e_new
         self.acc[:] = 0.0
 
@@ -112,7 +108,6 @@ class VegasGrid:
         self.frozen = True
         return self
 
-    # ---- persistence ----
     def save(self, path):
         np.savez(path, edges=self.edges, nbins=self.nbins, ndim=self.ndim)
 

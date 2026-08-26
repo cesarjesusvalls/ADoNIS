@@ -35,7 +35,7 @@ def test_strength_matches_direct_amps2():
     Exclude the record's identity placeholders (rejected draws -> (a,b,c)=(1,0,0))."""
     a, b, c, _ = (np.asarray(x) for x in _REC)
     a1 = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, axial_scale=1.0)["amps2"])
-    valid = np.isfinite(a1) & (a1 > 0) & ~((b == 0.0) & (c == 0.0))    # drop placeholder events
+    valid = np.isfinite(a1) & (a1 > 0) & ~((b == 0.0) & (c == 0.0))
     for s in (0.6, 1.4):
         direct = np.asarray(me_cross_section(_KN, _KM, _PS, _PO, axial_scale=s)["amps2"])
         w = np.asarray(strength_reweight(_REC, s))
@@ -50,7 +50,6 @@ def test_strength_autodiff_equals_fd():
     assert abs(g_ad - g_fd) / max(abs(g_fd), 1e-30) < 1e-6
 
 
-# ---- vector_strength (QE vector-current scale): same flat-scale ratio on the vector record ----
 def test_vector_nominal_identity():
     assert np.allclose(np.asarray(strength_reweight(_VREC, 1.0)), 1.0, atol=1e-12)
 
@@ -80,7 +79,6 @@ def test_qe_nominal_amps2_unchanged():
     assert np.array_equal(base, both)
 
 
-# ---- per-Sachs-FF knobs: mu_p (gmp), mu_n (gmn), gep, gen ----
 def test_ff_nominal_identity():
     for k, rec in _FFREC.items():
         assert np.allclose(np.asarray(strength_reweight(rec, 1.0)), 1.0, atol=1e-12), k

@@ -7,11 +7,10 @@ sigma(p) etc.) lives in the analysis layer.
 """
 import numpy as np
 
-# beam key -> (PID, cascade species, charge)   charge: pion index {0:pi+,1:pi0,2:pi-}; nucleon 1=p, 0=n
 BEAMS = {"pip": (211, "PION", 0), "prot": (2212, "NUCLEON", 1), "neut": (2112, "NUCLEON", 0)}
 
-R_DISK = 10.0                                  # beam impact-parameter disk [fm] (card Params/radius)
-PIR2_MB = np.pi * R_DISK ** 2 * 10.0           # pi R^2 in mb (1 fm^2 = 10 mb) = 3141.6 mb
+R_DISK = 10.0
+PIR2_MB = np.pi * R_DISK ** 2 * 10.0
 
 
 class HadronBeam:
@@ -28,10 +27,10 @@ class HadronBeam:
         bit-for-bit).  z0: start-z [fm] = -1.05*R_nuc.  Returns (mom (n,), p4 (n,4), pos0 (n,3))."""
         import jax
         import jax.numpy as jnp
-        mom = jax.random.uniform(k_mom, (n,), minval=pmin, maxval=pmax)          # TAGGED beam momentum
+        mom = jax.random.uniform(k_mom, (n,), minval=pmin, maxval=pmax)
         u = jax.random.uniform(k_disk, (n, 2))
-        br = R_DISK * jnp.sqrt(u[:, 0]); th = 2 * jnp.pi * u[:, 1]               # uniform in the disk
+        br = R_DISK * jnp.sqrt(u[:, 0]); th = 2 * jnp.pi * u[:, 1]
         E = jnp.sqrt(mom ** 2 + self.mass ** 2)
-        p4 = jnp.stack([E, jnp.zeros(n), jnp.zeros(n), mom], axis=1)             # along +z
+        p4 = jnp.stack([E, jnp.zeros(n), jnp.zeros(n), mom], axis=1)
         pos0 = jnp.stack([br * jnp.cos(th), br * jnp.sin(th), jnp.full((n,), z0)], axis=1)
         return mom, p4, pos0

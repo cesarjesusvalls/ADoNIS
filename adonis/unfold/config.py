@@ -103,7 +103,6 @@ class UnfoldConfig:
     budget: tuple = ("stat", "xsec", "flux", "det")
     figures: Figures = field(default_factory=Figures)
 
-    # ---- loading ------------------------------------------------------------------------------- #
     @classmethod
     def load(cls, path):
         d = yaml.safe_load(Path(path).read_text()) or {}
@@ -124,7 +123,6 @@ class UnfoldConfig:
                    max_chunks=d.get("max_chunks"),
                    studies=tuple(studies), budget=tuple(d.get("budget", cls.budget)), **sub)
 
-    # ---- resolved objects ---------------------------------------------------------------------- #
     def smear_spec(self):
         from adonis.detector import SmearSpec
         return SmearSpec(**asdict(self.detector))

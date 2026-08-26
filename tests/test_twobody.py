@@ -36,7 +36,7 @@ def _inline(P, m1, m2, ucos, uphi):
 
 def _random_totals(seed, n=1000):
     rng = np.random.default_rng(seed)
-    E = rng.uniform(1000.0, 3000.0, n)                 # a struck-nucleon-boosted total energy scale
+    E = rng.uniform(1000.0, 3000.0, n)
     px = rng.uniform(-80.0, 80.0, n); py = rng.uniform(-80.0, 80.0, n); pz = rng.uniform(300.0, 2200.0, n)
     return np.column_stack([E + _M_N, px, py, pz]), rng.random(n), rng.random(n)
 

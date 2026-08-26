@@ -32,7 +32,6 @@ def _load(files):
     return [np.load(f, allow_pickle=True) for f in files]
 
 
-# ---- provenance round-trip ------------------------------------------------------------------------- #
 
 def test_stamp_reads_back(tmp_path):
     f = _shard(tmp_path, "s", rows=(0, 7))
@@ -52,7 +51,6 @@ def test_stamp_survives_no_config_in_env(monkeypatch):
     assert s["prov_digest"] == "" and s["prov_row_base"] == 3 and s["prov_git"]
 
 
-# ---- cross-shard consistency ----------------------------------------------------------------------- #
 
 def test_one_run_definition_passes(tmp_path):
     fs = [_shard(tmp_path, f"s{i}", rows=(7 * i, 7)) for i in range(3)]
@@ -81,10 +79,9 @@ def test_unstamped_shards_warn_but_do_not_block(tmp_path):
     fs = [_shard(tmp_path, f"s{i}", stamped=False) for i in range(3)]
     rep = MG.check(fs, _load(fs))
     assert rep.ok and rep.warnings and "no provenance" in rep.warnings[0]
-    rep.raise_if_bad()          # does not raise
+    rep.raise_if_bad()
 
 
-# ---- coverage -------------------------------------------------------------------------------------- #
 
 def test_row_blocks_tiling_the_grid_pass():
     rep = MG.Report("x")
@@ -123,12 +120,11 @@ def test_run_compression(xs, want):
     assert MG._runs(xs) == want
 
 
-# ---- the escape hatch and the mark it leaves ------------------------------------------------------- #
 
 def test_allow_partial_merges_but_marks_the_product(tmp_path):
     fs = [_shard(tmp_path, "a", rows=(0, 7), complete=False)]
     rep = MG.check(fs, _load(fs))
-    rep.raise_if_bad(allow_partial=True)          # does not raise
+    rep.raise_if_bad(allow_partial=True)
     assert rep.stamp()["prov_partial"] is True
 
 
@@ -147,7 +143,6 @@ def test_emit_does_not_repeat_itself(tmp_path, capsys):
     assert capsys.readouterr().out.count("no provenance") == 1
 
 
-# ---- the mark a knowingly-partial run leaves on a FIGURE -------------------------------------------- #
 
 def test_allow_partial_registers_a_degradation(tmp_path):
     """A figure is a PNG with nowhere to keep prov_partial, so the fact is registered process-wide for

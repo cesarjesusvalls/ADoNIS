@@ -19,7 +19,7 @@ def _run(flat, n=300, seed=0):
     from adonis.channels import qe as qe_xsec
     from analysis.campaign import tune as T
     CF.FLAT_FSI_REC = flat
-    caps = (n * 8, n * 24) if flat else T.REC_CAPS       # flat: TOTAL budget; dense: per-event K
+    caps = (n * 8, n * 24) if flat else T.REC_CAPS
     qe = qe_xsec.sample_importance(n, seed=seed)
     res = CF.cascade_nucleus(jnp.zeros((n, 4)), jnp.asarray(qe["p_out"]), jnp.zeros(n, jnp.int32),
                              jnp.full(n, 2112, jnp.int32), jnp.full(n, 2212, jnp.int32),
@@ -34,7 +34,6 @@ def test_flat_equals_dense_qe_cascade():
     wf, sf = _run(flat=True)
     wd, sd = _run(flat=False)
     assert sf == sd, f"slot counts differ: flat {sf} vs dense {sd}"
-    # nominal (knob set 0) is exactly bit-identical; off-nominal agree to float64 precision (1-2 ULP)
     assert np.array_equal(wf[0], wd[0]), "nominal reweight not bit-identical"
     assert np.allclose(wf, wd, rtol=1e-12, atol=0), f"max|dw|={np.abs(wf-wd).max():.2e}"
 

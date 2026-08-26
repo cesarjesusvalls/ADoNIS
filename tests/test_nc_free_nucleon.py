@@ -23,16 +23,15 @@ pytestmark = pytest.mark.slow
 
 E_NU = 1500.0
 
-# ACHILLES absolute cross sections [nb] -- see the cards above.  DO NOT adjust these to fit.
-ACH_RES = {(+1, 111): 1.2133283286710014e-06,      # p -> p pi0
-           (+1, 211): 7.257765372213459e-07,       # p -> n pi+
-           (-1, 111): 1.2202023330896117e-06,      # n -> n pi0
-           (-1, -211): 7.414840641825235e-07}      # n -> p pi-
-ACH_QE = {True: 1.436153729102368e-06,             # nu p -> nu p   (proc 251)
-          False: 2.0569151722972532e-06}           # nu n -> nu n   (proc 250)
+ACH_RES = {(+1, 111): 1.2133283286710014e-06,
+           (+1, 211): 7.257765372213459e-07,
+           (-1, 111): 1.2202023330896117e-06,
+           (-1, -211): 7.414840641825235e-07}
+ACH_QE = {True: 1.436153729102368e-06,
+          False: 2.0569151722972532e-06}
 
-MEAN_BAND = 0.02          # |mean(ACH/ADO) - 1| must be under this
-SPREAD_BAND = 0.01        # relative scatter of ACH/ADO across channels
+MEAN_BAND = 0.02
+SPREAD_BAND = 0.01
 
 
 def _mean_spread(ratios):
@@ -95,7 +94,7 @@ def test_the_rotated_isovector_form_beats_the_raw_vec_one():
     good = spread_now()
     old = D.NC_ISV_SIGN
     try:
-        D.NC_ISV_SIGN = 0.0            # drop the isoscalar term: a DIFFERENT, worse form
+        D.NC_ISV_SIGN = 0.0
         degraded = spread_now()
     finally:
         D.NC_ISV_SIGN = old

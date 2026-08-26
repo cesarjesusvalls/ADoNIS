@@ -20,32 +20,16 @@ import numpy as np
 
 PI = float(np.pi)
 
-# Equal-occupancy edges, from weighted quantiles of the nominal sample (truth edges from the true
-# distribution, reco edges from the smeared one): no bin's count is small enough for sqrt(N) to stop
-# being a meaningful uncertainty.
-#
-# The last delta-p_T bin is open. Smearing pushes the reco tail out to ~4.9 GeV, and an event outside a
-# closed grid would not be binned at all -- it would silently drop out of the fit, and true signal above
-# the top edge would be reclassified as background.
 RECO_DPT = [0.0, 80.0, 120.0, 150.0, 185.0, 220.0, 260.0, 310.0, 380.0, 520.0, np.inf]
-# delta-alpha_T [rad], likewise equal-occupancy.  pi is a hard kinematic bound, so these axes are closed.
 RECO_DAT = [0.0, 0.68, 1.34, 1.91, 2.38, 2.78, PI]
 
-# Two truth grids, both equal-occupancy, selected via DEFAULT_TRUTH. Kept side by side because they
-# answer different questions:
-#
-#   "3x3"  9 cells. Every delta-p_T bin wider than the 106-152 MeV resolution. cond(A) = 41, c_err
-#          0.23 -- the grid the detector supports.
-#   "5x6"  30 cells. Occupancy is ample (min 134 signal events/cell), but delta-p_T widths (42.8-95.6
-#          MeV) are all narrower than the resolution: c_err 0.98, a x27 inflation from conditioning
-#          alone.
 TRUTH_EDGES = {
     "3x3": ([0.0, 150.0, 350.0, np.inf], [0.0, 1.2, 2.2, PI]),
     "5x6": ([0.0, 84.4, 127.2, 175.7, 271.3, np.inf],
             [0.0, 0.627, 1.218, 1.745, 2.216, 2.669, PI]),
 }
 DEFAULT_TRUTH = "3x3"
-TRUE_DPT, TRUE_DAT = TRUTH_EDGES[DEFAULT_TRUTH]     # module-level pair, for the rectangular default
+TRUE_DPT, TRUE_DAT = TRUTH_EDGES[DEFAULT_TRUTH]
 
 
 class Grid2D:
@@ -83,17 +67,8 @@ class Grid2D:
         return f"Grid2D({self.name}: {self.ndpt} dpt x {self.ndat} dat = {self.n} cells)"
 
 
-# "stv" is the transverse-kinematic pair; "lep" is muon momentum/angle on the published T2K binning.
-# delta-p_T is a vector sum of muon and proton momenta, so it inherits both resolutions and ends up
-# coarser than either, while p_mu and cos theta_mu are measured directly: every STV truth bin is
-# narrower than its resolution, while 54 of 58 lepton bins are wider.
-#
-# `obs` is a function argument, not a module global, so the observable pair and the truth grid cannot
-# silently disagree.
 
 
-# `obs` selects a family of binning, not a specific measurement: "lep" resolves through
-# adonis.measurements, since published bin edges are reference data, not part of this framework.
 def truth_grid(obs="stv", variant=DEFAULT_TRUTH):
     """Truth binning: "stv" -> rectangular Grid2D from TRUTH_EDGES[variant]; "lep" -> a published staircase."""
     if obs == "lep":

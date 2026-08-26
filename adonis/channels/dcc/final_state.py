@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from adonis.kinematics import boost_to_rest, boost_from_rest, mink_dot as _mink_dot   # single-source primitives
+from adonis.kinematics import boost_to_rest, boost_from_rest, mink_dot as _mink_dot
 
 
 def _unit(v, axis=-1, eps=1e-12):
@@ -32,7 +32,6 @@ def cm_basis(k, kp, p_struck):
     q_r = boost_to_rest(P, q)
     kp_r = boost_to_rest(P, kp)
     e3 = _unit(q_r[..., 1:])
-    # lepton transverse part (perp to e3); fallback handled by _unit's eps clip
     kp_perp = kp_r[..., 1:] - jnp.sum(kp_r[..., 1:] * e3, axis=-1, keepdims=True) * e3
     e1 = _unit(kp_perp)
     e2 = jnp.cross(e3, e1)
@@ -52,7 +51,6 @@ def two_body_lab(P, e1, e2, e3, W, cos_t, phi, m_pi, m_N):
     E_N = (W ** 2 + m_N ** 2 - m_pi ** 2) / (2.0 * W)
     kpi = jnp.sqrt(jnp.clip(E_pi ** 2 - m_pi ** 2, 0.0, None))
     sin_t = jnp.sqrt(jnp.clip(1.0 - cos_t ** 2, 0.0, 1.0))
-    # pion 3-momentum in the CM (lab axes) = kpi (sinT cosPhi e1 + sinT sinPhi e2 + cosT e3)
     dir_pi = (sin_t[..., None] * jnp.cos(phi)[..., None] * e1
               + sin_t[..., None] * jnp.sin(phi)[..., None] * e2
               + cos_t[..., None] * e3)

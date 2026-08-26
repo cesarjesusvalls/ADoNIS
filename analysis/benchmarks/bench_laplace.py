@@ -47,12 +47,6 @@ def main(argv=None):
     ap.add_argument("--sig-cap", type=int, default=60000)
     ap.add_argument("--ndials", type=int, default=17)
     ap.add_argument("--nodes", type=int, default=4, help="how many scan nodes to measure")
-    # ONE KERNEL PER PROCESS.  Each FitKernel loads ~50-60 CUBIN modules onto the device and
-    # jax.clear_caches() does not unload them, so a process that builds the BFP kernel and then one
-    # kernel per node exhausts the CUDA context regardless of free memory.  The first version of this
-    # script did exactly that and died on all three configurations -- the same failure the workload
-    # grid had already been restructured to avoid.  Stage 1 fits the BFP and writes it out; stage 2 is
-    # one process per node that loads it and builds a single kernel.
     ap.add_argument("--stage", choices=("bfp", "node"), default="bfp")
     ap.add_argument("--node", type=int, default=0, help="which scan node (stage=node)")
     ap.add_argument("--bfp", default="", help="npz written by stage=bfp")
@@ -97,23 +91,16 @@ def main(argv=None):
     if cfg.fit.prior_scale != 1.0:
         eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
 
-    # ---- stage 1: the fit this scan belongs to, written out for the node jobs --------------------- #
     if a.stage == "bfp":
         kern = FitKernel(eng, subset)
-        kern.warmup(which=("residuals", "jac"))            # a GN fit needs nothing else
+        kern.warmup(which=("residuals", "jac"))
         x0 = th0[idx].copy()
         if "Eb_shift" in kern.pnames:
-            x0[kern.pnames.index("Eb_shift")] = 2.0        # off the wall, as everywhere else
+            x0[kern.pnames.index("Eb_shift")] = 2.0
         r_bfp = gn_fit(kern, x0, max_nfev=200, gtol=cfg.fit.minimizer.gtol)
         Vb = kern.covariance_gn(r_bfp.J)
         spost = np.sqrt(np.abs(np.diag(Vb)))
         log(f"BFP: chi2 {r_bfp.chi2:.4f}, {r_bfp.nfev} evals, sigma_post {np.round(spost, 4)}")
-        # THE ONLY REAL NULL CONTROL.  At an UNPINNED Asimov best fit the residual is identically zero,
-        # so the dropped term sum_b r_b d2m_b vanishes and J^T W J IS the exact Hessian -- they must
-        # agree to round-off.  A profile NODE is not this control, however noiseless the data: pinning a
-        # dial off the minimum leaves a residual by construction, so J^T W J is approximate there too.
-        # (Asserted here because an earlier reading of this benchmark treated the Asimov nodes as a null
-        # and would have accepted a broken Hessian.)
         kern.warmup(which=("hess",))
         H = kern.hessian(r_bfp.x)
         Vex = np.linalg.pinv(0.5 * H, rcond=1e-12)
@@ -131,7 +118,6 @@ def main(argv=None):
         log(f"[out] {out}")
         return
 
-    # ---- stage 2: ONE node, ONE kernel ------------------------------------------------------------ #
     z = np.load(a.bfp, allow_pickle=True)
     xb, spost = np.asarray(z["xb"], float), np.asarray(z["spost"], float)
     assert list(np.asarray(z["subset"], int)) == subset, "bfp file is for a different dial subset"
@@ -145,25 +131,21 @@ def main(argv=None):
         kn.warmup(which=("residuals", "chi2", "grad", "jac", "hess"))
         xn0 = np.array([xb[j] for j, s in enumerate(subset) if s != kdial])
 
-        # the inner fit -- BOTH routes pay this, so it is not part of the comparison
         rn = gn_fit(kn, xn0, max_nfev=200, gtol=cfg.fit.minimizer.gtol)
         xn = rn.x
 
-        # ---- A: Gauss-Newton, from the jacobian the fit already built ----------------------------- #
         kn.reset_counts()
         t1 = time.perf_counter()
         Va = kn.covariance_gn(rn.J)
         sa, lda = np.linalg.slogdet(Va)
         ta, pa = time.perf_counter() - t1, kn.event_passes()
 
-        # ---- B: exact hessian by forward-over-reverse HVPs ---------------------------------------- #
         kn.reset_counts()
         t1 = time.perf_counter()
         Vb_ex = kn.covariance_exact(xn)
         sb, ldb = np.linalg.slogdet(Vb_ex)
         tb, pb = time.perf_counter() - t1, kn.event_passes()
 
-        # ---- C: MINUIT HESSE, finite differences -------------------------------------------------- #
         lo, hi = kn.bounds()
         kn.reset_counts()
         names = list(kn.pnames)
@@ -188,7 +170,6 @@ def main(argv=None):
         log(f"    cost     :  GN {ta*1e6:.1f}us / {pa:.0f} passes | exact {tb:.3f}s / {pb:.0f} | "
             f"HESSE {tc:.2f}s / {pc:.0f} ({nc} calls)")
 
-    # ---- report ----------------------------------------------------------------------------------- #
     R = rows
     print(f"\n==== Laplace/Occam factor per profile node "
           f"({len(subset)} dials, {len(subset)-1} free, {10*a.sig_cap:,} events, "
@@ -213,7 +194,6 @@ def main(argv=None):
           f"{np.median([r['p_hesse'] for r in R]):14.0f} "
           f"{int(np.median([r['n_hesse_calls'] for r in R])):11d}")
 
-    # extrapolation to the real scans
     N1D, N2D = 221, 7938
     tg, te, th_ = (np.median([r[k] for r in R]) for k in ("t_gn", "t_exact", "t_hesse"))
     pg, pe, ph = (np.median([r[k] for r in R]) for k in ("p_gn", "p_exact", "p_hesse"))

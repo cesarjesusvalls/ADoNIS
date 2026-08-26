@@ -31,7 +31,7 @@ FIGURES = {
     "corr":     ("analysis.paper.unfolding.fig_correlation", "main"),
 }
 
-DEFAULT_LABEL = "sec5f10"          # the run behind the published figures
+DEFAULT_LABEL = "sec5f10"
 
 
 def _selected(names):

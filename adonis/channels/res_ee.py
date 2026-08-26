@@ -23,17 +23,16 @@ from adonis.channels.dcc.current import exclusive_amps2_batch
 from adonis.channels.res import _boost_to_lab, _sqlam, M_PIP, M_PI0
 
 _MN = C.mN
-from adonis.flux.electron import M_E as _M_E, E_BEAM_JLAB, electron_k    # e- beam (adonis/flux)
+from adonis.flux.electron import M_E as _M_E, E_BEAM_JLAB, electron_k
 _TWO_PI = 2 * np.pi
 THETA_ACC = (14.0, 17.0)
-SPIN_AVG_EM = 0.25              # 2 e- helicities x 2 nucleon spins
+SPIN_AVG_EM = 0.25
 
-# (struck pid, itiz, pion pid, m_Nf [MeV], is_proton_struck)
 EM_CHANNELS = [
-    (2212, +1, 111, MASS_PDG_PROTON,  True),    # p -> p pi0
-    (2212, +1, 211, MASS_PDG_NEUTRON, True),    # p -> n pi+
-    (2112, -1, 111, MASS_PDG_NEUTRON, False),   # n -> n pi0
-    (2112, -1, -211, MASS_PDG_PROTON, False),   # n -> p pi-
+    (2212, +1, 111, MASS_PDG_PROTON,  True),
+    (2212, +1, 211, MASS_PDG_NEUTRON, True),
+    (2112, -1, 111, MASS_PDG_NEUTRON, False),
+    (2112, -1, -211, MASS_PDG_PROTON, False),
 ]
 _M_PI = {111: M_PI0, 211: M_PIP, -211: M_PIP}
 
@@ -72,7 +71,7 @@ def _sample_channel_ee(n, rng, E_beam, m_pi, m_Nf, m_struck, imp):
     kz = np.sqrt(E_beam ** 2 - _M_E ** 2)
     k_e = electron_k(E_beam, n)
     u = rng.random((n, 10))
-    pvec, energy = imp.sample(n, rng)                      # |p|^2 S importance (initwgt -> N constant)
+    pvec, energy = imp.sample(n, rng)
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
     tb = _sample_3body_ee(k_e, p_struck, m_pi, m_Nf, _M_E, u[:, 5:10])
@@ -100,18 +99,14 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
     keys = ["c", "omega", "theta"] + (["k_e", "k_lep", "p_struck", "p_N", "p_pi",
                                         "ppid", "Npid", "ipid"] if records else [])
     out = {k: [] for k in keys}
-    # n is the TOTAL draw count, SPLIT across the 4 EM channels (was n per channel -> 4n) so generate(n)
-    # yields ~n events -- the SAME stratified convention as the neutrino res.generate_importance (m=n//nch).
-    # Each channel's weighted sum is an unbiased estimate of sigma_channel regardless of its draw count, so
-    # SUM(c)=sigma is preserved (at the nu statistics, not 4x).
     nch = len(EM_CHANNELS)
     for ci, (spid, itiz, ppid, m_Nf, is_p) in enumerate(EM_CHANNELS):
         imp = imp_p if is_p else imp_n
         n_tgt = Z if is_p else N
         m_struck = MASS_PDG_PROTON if is_p else MASS_PDG_NEUTRON
-        Npid = 2212 if m_Nf == MASS_PDG_PROTON else 2112     # final nucleon pid from its mass
+        Npid = 2212 if m_Nf == MASS_PDG_PROTON else 2112
         m_pi = _M_PI[ppid]
-        n_ch = n // nch + (1 if ci < n % nch else 0)         # this channel's share of n
+        n_ch = n // nch + (1 if ci < n % nch else 0)
         done = 0; sd = seed * 1000 + ci * 100
         while done < n_ch:
             m = min(chunk, n_ch - done)
@@ -119,8 +114,6 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
             s = _sample_channel_ee(m, rng, E_beam, m_pi, m_Nf, m_struck, imp)
             a2 = np.zeros(m); v = s["valid"]
             if v.any():
-                # tcrz = current isospin_z: 0 for the PHOTON (isovector Iz=0), NOT the CC W+ value 1.
-                # With the CC default the isospin CG <1,tcrz;1/2,tiz|tpi,tpiz> kills the pi0/pi- channels.
                 a2[v] = exclusive_amps2_batch(s["k_e"][v], s["k_lep"][v], s["p_struck"][v],
                                               s["p_N"][v], s["p_pi"][v], itiz, ppid, probe="EM", tcrz=0.0)
             fl = np.asarray(flux_factor(s["k_e"], s["p_struck"], had_mass=m_struck))
@@ -131,13 +124,8 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
             kmag = np.linalg.norm(k_lep[:, 1:], axis=1)
             theta = np.degrees(np.arccos(np.clip(k_lep[:, 3] / np.clip(kmag, 1e-9, None), -1, 1)))
             if records:
-                # keep valid events INSIDE the angular acceptance (same cut QE applies) -- this is what
-                # excludes the forward 1/q^4 photon-propagator divergence.  theta_acc=None -> all angles.
                 sel = v if theta_acc is None else (v & (theta >= theta_acc[0]) & (theta <= theta_acc[1]))
                 out["c"].append((w / n_ch)[sel]); out["omega"].append(omega[sel]); out["theta"].append(theta[sel])
-                # lepton kinematics (in/out e- + struck nucleon) -- needed to fill the unified generation
-                # bank schema: the INCOMING beam electron k_e is stored as k_nu (see the k_nu note in P3);
-                # the OUTGOING electron is k_lep, the same key the CC banks use.
                 out["k_e"].append(s["k_e"][sel]); out["k_lep"].append(s["k_lep"][sel])
                 out["p_struck"].append(s["p_struck"][sel])
                 out["p_N"].append(s["p_N"][sel]); out["p_pi"].append(s["p_pi"][sel])
@@ -146,7 +134,7 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
                 out["Npid"].append(np.full(nk, Npid, np.int32))
                 out["ipid"].append(np.full(nk, spid, np.int32))
             else:
-                out["c"].append(w / n_ch)      # per-event contribution; SUM over all chunks+channels = sigma
+                out["c"].append(w / n_ch)
                 out["omega"].append(omega); out["theta"].append(theta)
             done += m
     return {k: np.concatenate(v) for k, v in out.items()}
@@ -159,7 +147,7 @@ def dsigma_domega(res, edges, theta_acc=THETA_ACC):
     return h / np.diff(edges)
 
 
-from adonis.core.sample import Sampler       # noqa: E402
+from adonis.core.sample import Sampler
 
 
 class RESEEChannel(Sampler):

@@ -28,9 +28,8 @@ import numpy as np
 
 from analysis.benchmarks.bench_minimizers import _bounds
 
-# The 1-D and 2-D profile scans this feeds, for the extrapolation at the end.
-N_NODES_1D = 221      # 17 dials x 13 grid nodes  (grids_sigma in sec4_P1_profile.npz)
-N_NODES_2D = 7938     # 441 nodes x 18 pair shards (sec4_P1_corner2d_prof_n21_*.npz)
+N_NODES_1D = 221
+N_NODES_2D = 7938
 
 
 def main(argv=None):
@@ -70,20 +69,16 @@ def main(argv=None):
     idx = np.array(subset, int)
     log(f"{n} dials; timing {a.nodes} nodes at {a.offset} sigma from the BFP")
 
-    # BFP + its covariance, so the node offsets are in real sigma_post units
     th_b, V_b, *_ = trf_fit(eng, subset, "bfp", nit=a.nit)
     spost = np.sqrt(np.abs(np.diag(V_b)))
     log(f"BFP done; sigma_post {np.round(spost, 4)}")
 
     rows = []
     for k in range(min(a.nodes, n)):
-        # ONE NODE: dial k pinned at bfp + offset*sigma, the other n-1 free.  This is exactly what the
-        # profile scan does at every grid point.
         free = [s for j, s in enumerate(subset) if j != k]
         pin = float(th_b[idx[k]] + a.offset * spost[k])
         th_i = th_b.copy(); th_i[idx[k]] = pin
 
-        # ---- AUTODIFF ROUTE: the inner fit returns V_nuis; the log-det is what it costs ------------ #
         t1 = time.perf_counter()
         th_n, V_n, *_ = trf_fit(eng, free, "node", nit=a.nit, th_init=th_i)
         t_fit = time.perf_counter() - t1
@@ -91,9 +86,8 @@ def main(argv=None):
         sign, ld = np.linalg.slogdet(V_n)
         t_logdet = time.perf_counter() - t2
 
-        # ---- MINUIT ROUTE: same node, then hesse() on the n-1 free dials --------------------------- #
         f_only = eng.chi2_fn(subset)
-        f_only(th_b[idx])                                     # compile, untimed
+        f_only(th_b[idx])
         names = [eng.pnames[s] for s in subset]
         lo, hi = _bounds(eng, subset)
 
@@ -103,7 +97,7 @@ def main(argv=None):
             for i, nm in enumerate(names):
                 m.limits[nm] = (None if not np.isfinite(lo[i]) else lo[i],
                                 None if not np.isfinite(hi[i]) else hi[i])
-            m.fixed[names[k]] = True                          # the scanned dial is FIXED -> (n-1)^2
+            m.fixed[names[k]] = True
             t_ = time.perf_counter(); m.hesse(); return time.perf_counter() - t_, m
 
         hs = []

@@ -49,10 +49,9 @@ from __future__ import annotations
 
 import os
 
-# Below the ~50k dial-events/GB where the measurements above cross from ok to OOM.
 BUDGET_PER_GB = 40_000
-HVP_BATCH_DEFAULT = 4          # the hessian program is built ON TOP of residuals+jacobian; keep it small
-POOL_HEADROOM = 2.5            # pool = this x the resident bank bytes, so the rest is free for CUBINs
+HVP_BATCH_DEFAULT = 4
+POOL_HEADROOM = 2.5
 
 
 def _cfg(cfg):
@@ -83,10 +82,9 @@ def device_gb():
         if d.platform != "gpu":
             return None
         m = d.memory_stats()
-        # bytes_limit is the POOL, not the card; divide by the fraction actually in force to recover it
         frac = float(os.environ.get("XLA_PYTHON_CLIENT_MEM_FRACTION", 0.75))
         return float(m["bytes_limit"]) / max(frac, 1e-6) / 2 ** 30
-    except Exception:                                        # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -108,7 +106,7 @@ def resolve(cfg, n_dials, n_events_max, log=print):
         log(f"[compute] plan {plan} (explicit or non-GPU)")
         return plan
 
-    budget = int(c.get("budget_per_gb", BUDGET_PER_GB)) * gb        # dial-events the device can hold
+    budget = int(c.get("budget_per_gb", BUDGET_PER_GB)) * gb
     need = n_dials * n_events_max
     if need <= budget:
         log(f"[compute] {gb:.0f} GB device, {n_dials} dials x {n_events_max:,} events "

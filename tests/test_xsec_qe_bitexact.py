@@ -20,7 +20,6 @@ from adonis.channels.currents.matrix_element import me_cross_section, MASS_PDG_N
 
 DUMP = Path(__file__).resolve().parent / "data" / "qe_dump_achilles.txt"
 
-# ACHILLES QEDUMP parser (inlined from the retired scripts/validate_qe_matrix_element.py).
 _NUM = r"[-+0-9.eE]+"
 _PAT = re.compile(
     r"QEDUMP pid=(-?\d+) "

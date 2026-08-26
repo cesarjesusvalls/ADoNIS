@@ -19,24 +19,12 @@ from pathlib import Path
 
 import numpy as np
 
-# Was analysis.paper.style.ALTGEN -- the builder reached into the PLOTTING module for its output
-# path.  Same default, owned here.
 ALTGEN = Path(os.environ.get('ADONIS_OUT', 'output')) / 'altgen'
 
-from analysis.campaign.sample import SampleSet, gate1_from     # noqa: E402
-from adonis.analysis import knobs as K                        # noqa: E402
-from analysis.campaign import beams as BF   # beam_model/BEAM_DIRS; the figure driver stays on
-                                          # the paper side
+from analysis.campaign.sample import SampleSet, gate1_from
+from adonis.analysis import knobs as K
+from analysis.campaign import beams as BF
 
-# minerva_cc1pip_{tpi,q2} (arXiv:2605.24224) add the RES Q2 lever arm: the RES axial block enters as
-# dipole(Q2; M_A_res) * res_axial_strength, so M_A_res (Q2 SHAPE) and C5A (NORMALISATION) are only
-# separable with Q2 reach.  NOTE the two are the SAME 91,843 events binned two ways -- stacking both into
-# one Fisher double-counts them; keep that in mind when reading the combined Gate I.
-# The sample list and the beam observable keys are NOT declared here.  They come from the fit config
-# (configs/fits/*.yaml) and configs/samples/beams.yaml respectively, because this Jacobian and the sec4
-# engine must describe the SAME stack -- multisample.py asserts its dskeys against this npz, and when the
-# two lists lived in two files, adding MINERvA CC1pi+ meant editing both in step or getting an assertion
-# hours into a run.  BEAM_OBS was additionally duplicated in grad_info/build_multisample.py.
 _BEAMS_CFG = "configs/samples/beams.yaml"
 
 
@@ -60,12 +48,12 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
     log(f"from {fit_config}: {len(samples)} samples + {len(beams)} beams; beams from {_BEAMS_CFG}")
 
     ss = SampleSet.from_configs([f"configs/samples/{s}.yaml" for s in samples])
-    r = ss.gate1(max_chunks=max_chunks, log=log)                         # the 5 experiment samples
+    r = ss.gate1(max_chunks=max_chunks, log=log)
     J = [r["J"]]; sigma = [r["sigma"]]; dskeys = list(r["keys"]); row0 = list(r["row0"])
     edges = {f"{k}_edges": r["edges"][k] for k in r["keys"]}
     central = {f"{k}_central": r["central"][k] for k in r["keys"]}
 
-    for beam in beams:                                                   # FSI-only beam Jacobians (cached)
+    for beam in beams:
         Jb, sb, _c, e_beam, _n = BF.beam_jacobian(beam, nbins=nbins, syst=syst)
         J.append(np.asarray(Jb)); sigma.append(np.asarray(sb))
         for key in bspec[beam]["observables"]:
@@ -73,12 +61,9 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
         log(f"  + beam {beam} ({np.asarray(Jb).shape[0]} bins)")
 
     J = np.vstack(J); sigma = np.concatenate(sigma); row0 = np.asarray(row0)
-    F, V, _sig_post, shrink, _reach = gate1_from(J, sigma, K.PRIOR)      # joint Gate I on the FULL stack
+    F, V, _sig_post, shrink, _reach = gate1_from(J, sigma, K.PRIOR)
 
     ALTGEN.mkdir(parents=True, exist_ok=True)
-    # STAMP THE RESOLVED CONFIG.  sec2 and sec3 read this npz, never the yaml, so without this the
-    # figures cannot state which sample list, chunk caps or syst produced the Jacobian they plot --
-    # and the yaml can change afterwards.  Additive key; every existing key is untouched.
     import json
     stamp = json.dumps({"fit_config": str(fit_config), "samples": list(samples),
                         "beams": list(beams), "nbins": nbins, "syst": syst,

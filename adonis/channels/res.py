@@ -22,9 +22,6 @@ from adonis.channels.dcc.current import exclusive_amps2_batch
 from adonis.nuclear.spectral import SpectralImportanceSampler
 
 _MN = C.mN
-# Callers thread the target's spectral functions in; these carbon defaults serve a call that passes
-# none.  Built ON FIRST USE, not at import: reading a data file to import a module makes the package
-# un-importable wherever the ACHILLES tables are not installed, including to inspect it.
 _SF_CACHE = {}
 
 
@@ -35,7 +32,6 @@ def _default_sf(which):
     return _SF_CACHE[key]
 
 
-# The |p|^2 S_n importance proposal, cached per SpectralFunction object (built once, reused across seeds).
 _IMP_CACHE = {}
 def _imp_for(sf_n):
     k = id(sf_n)
@@ -46,27 +42,23 @@ from adonis.constants import MASS_PDG_MUON as M_MU
 _TWO_PI = 2 * np.pi
 N_NUC = 6
 M_PIP = C.mpip; M_PI0 = C.mpi0
-M_P = MASS_PDG_PROTON; M_N = MASS_PDG_NEUTRON   # channel rest masses go through ParticleInfo (Particles.yml)
+M_P = MASS_PDG_PROTON; M_N = MASS_PDG_NEUTRON
 SPIN_AVG = 0.5
 
-# Pion KINEMATIC mass for the 3-body phase space.  Single source of truth: conventions.kin_m_pi
-# (mpi0=134.98 to match ACHILLES, else the physical per-channel mass).  This was THE dominant
-# RES normalization deficit -- see conventions.py and the [[res-norm-deficit-is-pion-mass]] note.
 from adonis.channels.dcc import conventions as _conv
-MATCH_ACHILLES_PION_MASS = _conv.MATCH_ACHILLES        # back-compat alias; toggle lives in conventions
+MATCH_ACHILLES_PION_MASS = _conv.MATCH_ACHILLES
 def _pi_kin_mass(physical_mpi):
     """Kinematic pion mass for the 3-body phase space (delegates to conventions.kin_m_pi)."""
     return _conv.kin_m_pi(physical_mpi)
-# =================================================================================================
 
 CHANNELS = [
-    (2112, -1, M_N, 211, M_PIP, MASS_PDG_NEUTRON),     # n -> n pi+
-    (2112, -1, M_P, 111, M_PI0, MASS_PDG_NEUTRON),     # n -> p pi0
-    (2212, +1, M_P, 211, M_PIP, MASS_PDG_PROTON),      # p -> p pi+
+    (2112, -1, M_N, 211, M_PIP, MASS_PDG_NEUTRON),
+    (2112, -1, M_P, 111, M_PI0, MASS_PDG_NEUTRON),
+    (2212, +1, M_P, 211, M_PIP, MASS_PDG_PROTON),
 ]
 
 
-from adonis.kinematics import kallen   # Kallen lambda(s,s1,s2) (adonis.kinematics)
+from adonis.kinematics import kallen
 
 
 def _sqlam(s, s1, s2):
@@ -93,7 +85,6 @@ def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
     sqrts = np.sqrt(np.clip(s, 1e-9, None))
     s23max = (sqrts - m_pi) ** 2; s23min = max((M_MU + m_Nf) ** 2, 1e-8)
     s23 = s23min + (s23max - s23min) * u[:, 0]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
-    # split A: total -> muN + pi
     EmuN = (s + s23 - m_pi ** 2) / (2 * sqrts); pA = sqrts * _sqlam(s, s23, m_pi ** 2) / 2
     ctA = 2 * u[:, 1] - 1; stA = np.sqrt(np.clip(1 - ctA ** 2, 0, None)); phA = _TWO_PI * u[:, 2]
     dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
@@ -101,7 +92,6 @@ def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
     pi_cm = np.concatenate([np.sqrt(m_pi ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
     p_muN = _boost_to_lab(muN_cm, P); p_pi = _boost_to_lab(pi_cm, P)
     I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, s23, m_pi ** 2), 1e-12, None)
-    # split B: muN -> mu + N
     Emu = (s23 + M_MU ** 2 - m_Nf ** 2) / (2 * rs23); pB = rs23 * _sqlam(s23, M_MU ** 2, m_Nf ** 2) / 2
     ctB = 2 * u[:, 3] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 4]
     dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
@@ -116,21 +106,11 @@ def _sample_3body(k_nu, p_struck, m_pi, m_Nf, u):
     return dict(k_lep=k_lep, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
 
 
-# ===== ACHILLES ThreeBodyMapper: t-channel pion split + isotropic mu/N split ================== #
-# Bit-faithful port of scripts/achilles_mirror_gen (validated vs ACHILLES RESDUMP), generalized to
-# arbitrary k_nu / p_struck.  ADoNIS's default _sample_3body uses an ISOTROPIC pion split (same
-# integral, higher variance); ACHILLES uses this t-channel map (FinalStateMapper.cc TChannelMomenta).
 _TBM_ALPHA, _TBM_CTMAX, _TBM_CTMIN, _TBM_AMCT = 0.9, 1.0, -1.0, 1.0
-SAMPLER_3BODY = "resonance"          # "resonance" (BW-importance hadronic mass, DEFAULT; 2x the N_eff of
-                                     #   the ACHILLES-faithful "tchannel" because it rotates the Delta
-                                     #   resonance onto a sampling axis -- physics-neutral, validated) |
-                                     #   "tchannel" (ACHILLES ThreeBodyMapper, faithful reference) |
-                                     #   "isotropic" (legacy).  Empirically the resonance is the ONLY
-                                     #   sharp off-axis structure: invariant + pairwise-correlation scans
-                                     #   found no other importance map above ~noise (Q2/angle <=+3%).
+SAMPLER_3BODY = "resonance"
 
 
-def _m2(p):   # Minkowski invariant p.p over a batch (N,4); res-private numpy (ACHILLES ThreeBodyMapper path)
+def _m2(p):
     return p[:, 0] ** 2 - np.sum(p[:, 1:] ** 2, axis=1)
 
 
@@ -173,9 +153,6 @@ def _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u):
     s = _m2(P); sqrts = np.sqrt(np.clip(s, 1e-9, None))
     s23max = (sqrts - m_pi) ** 2; s23min = max((M_MU + m_Nf) ** 2, 1e-8)
     s23 = s23min + (s23max - s23min) * u[:, 0]; rs23 = np.sqrt(np.clip(s23, 1e-9, None))
-    # --- TChannelMomenta: pion (mass^2 s4) split off; p1out = (muN) mass^2 s23 ---
-    # ACHILLES TChannelMomenta(p1in=mom[0]=STRUCK nucleon, p2in=mom[1]=nu): the t-channel reference
-    # axis AND s1in are the STRUCK NUCLEON, not the neutrino (FinalStateMapper.cc:181-222).
     s1in = _m2(p_struck); s2in = _m2(k_nu)
     p1inhE = (s + s1in - s2in) / (2 * sqrts); p1inmass = sqrts * _sqlam(s, s1in, s2in) / 2
     p1outhE = (s + s23 - s4) / (2 * sqrts); p1outmass = sqrts * _sqlam(s, s23, s4) / 2
@@ -185,14 +162,13 @@ def _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u):
     a = np.where(np.abs(a - _TBM_CTMAX) < 1e-14, _TBM_CTMAX, a)
     aminct = _tj1(_TBM_ALPHA, a - _TBM_CTMIN, a - _TBM_CTMAX, u[:, 1]); ct = a - aminct
     st = np.sqrt(np.clip(1 - ct ** 2, 0, None)); phi = _TWO_PI * u[:, 2]
-    ref_cm = _boost_to_rest(p_struck, P)              # axis = struck nucleon (mom[0]), per ACHILLES
+    ref_cm = _boost_to_rest(p_struck, P)
     e1, e2, nhat = _basis_from(ref_cm[:, 1:])
     dirv = (st * np.cos(phi))[:, None] * e1 + (st * np.sin(phi))[:, None] * e2 + ct[:, None] * nhat
     p1out_cm = np.concatenate([p1outhE[:, None], p1outmass[:, None] * dirv], axis=1)
     p_muN = _boost_to_lab(p1out_cm, P); p_pi = P - p_muN
     tcw = 2.0 * sqrts / (-(a - ct) ** _TBM_ALPHA * _hj1(_TBM_ALPHA, a - _TBM_CTMIN, a - _TBM_CTMAX)
                          * np.clip(p1outmass, 1e-30, None) * np.pi)
-    # --- Isotropic2Momenta: muN -> mu + N (IDENTICAL to _sample_3body split B) ---
     Emu = (s23 + s2 - s3) / (2 * rs23); pB = rs23 * _sqlam(s23, s2, s3) / 2
     ctB = 2 * u[:, 3] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 4]
     dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
@@ -207,17 +183,7 @@ def _sample_3body_tchannel(k_nu, p_struck, m_pi, m_Nf, u):
     return dict(k_lep=k_lep, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
 
 
-# ===== Resonance-importance proposal: lepton-first split + Breit-Wigner hadronic mass =========== #
-# The DCC amplitude peaks at the Delta(1232) in the hadronic (N pi) invariant mass.  The default
-# samplers split the PION off first (s23 = mu-N mass sampled flat), so W_Npi is never a sampling
-# variable -> the proposal over-samples threshold and under-samples the resonance (heavy-tailed w).
-# This proposal splits the LEPTON off first (total -> mu + Had), making the N-pi mass m_H a direct
-# variable importance-sampled from a truncated Cauchy/Breit-Wigner around M_Delta.  SAME 3-body
-# phase-space integral with an exact Jacobian -> identical expectation, far higher N_eff.  The
-# mu/Had and N/pi splits are isotropic (same as _sample_3body).  Proposal params are tunable knobs
-# of the SAMPLER only (they never enter the physics: w = a2 * fl * iw * J cancels the proposal).
-_BW_M0, _BW_GAMMA = 1232.0, 350.0     # Cauchy center/width for the N-pi mass proposal (MeV); wide
-                                      #   on purpose so the tails of W stay well-covered.
+_BW_M0, _BW_GAMMA = 1232.0, 350.0
 
 
 def _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u):
@@ -229,18 +195,15 @@ def _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u):
     s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
     sqrts = np.sqrt(np.clip(s, 1e-9, None))
     mHmin = m_Nf + m_pi; mHmax = np.clip(sqrts - M_MU, mHmin + 1e-6, None)
-    # truncated Cauchy(M0, Gamma/2) in m_H:  m_H = M0 + (G/2) tan(theta), theta in [atan(a), atan(b)]
     hg = _BW_GAMMA / 2.0
     a = (mHmin - _BW_M0) / hg; b = (mHmax - _BW_M0) / hg
     ata, atb = np.arctan(a), np.arctan(b)
     theta = ata + (atb - ata) * u[:, 0]
     m_H = _BW_M0 + hg * np.tan(theta)
     sH = m_H ** 2
-    # proposal density in m_H (normalized over [mHmin,mHmax]) -> in sH via |dm_H/dsH| = 1/(2 m_H)
-    Z = (atb - ata) / hg                                  # int_{min}^{max} dm /((m-M0)^2+(G/2)^2)
+    Z = (atb - ata) / hg
     pdf_m = 1.0 / np.clip(Z * ((m_H - _BW_M0) ** 2 + hg ** 2), 1e-300, None)
     pdf_sH = pdf_m / np.clip(2.0 * m_H, 1e-12, None)
-    # split A: total -> Had(sH) + mu, isotropic
     EHad = (s + sH - M_MU ** 2) / (2 * sqrts); pA = sqrts * _sqlam(s, sH, M_MU ** 2) / 2
     ctA = 2 * u[:, 1] - 1; stA = np.sqrt(np.clip(1 - ctA ** 2, 0, None)); phA = _TWO_PI * u[:, 2]
     dA = np.stack([stA * np.cos(phA), stA * np.sin(phA), ctA], axis=1)
@@ -248,7 +211,6 @@ def _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u):
     mu_cm = np.concatenate([np.sqrt(M_MU ** 2 + pA ** 2)[:, None], -pA[:, None] * dA], axis=1)
     p_Had = _boost_to_lab(Had_cm, P); k_lep = _boost_to_lab(mu_cm, P)
     I2W_A = 2.0 / np.pi / np.clip(_sqlam(s, sH, M_MU ** 2), 1e-12, None)
-    # split B: Had -> N + pi, isotropic (in the Had rest frame)
     EN = (sH + m_Nf ** 2 - m_pi ** 2) / (2 * m_H); pB = m_H * _sqlam(sH, m_Nf ** 2, m_pi ** 2) / 2
     ctB = 2 * u[:, 3] - 1; stB = np.sqrt(np.clip(1 - ctB ** 2, 0, None)); phB = _TWO_PI * u[:, 4]
     dB = np.stack([stB * np.cos(phB), stB * np.sin(phB), ctB], axis=1)
@@ -260,7 +222,6 @@ def _sample_3body_resonance(k_nu, p_struck, m_pi, m_Nf, u):
     J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
     valid3 = ((mHmax > mHmin) & (_sqlam(s, sH, M_MU ** 2) > 0) & (_sqlam(sH, m_Nf ** 2, m_pi ** 2) > 0)
               & np.isfinite(J_3body) & (J_3body > 0))
-    # s23 (mu-N invariant mass^2) returned for compatibility with downstream validity (s>Smin uses s)
     muN = k_lep + p_N
     s23 = muN[:, 0] ** 2 - np.sum(muN[:, 1:] ** 2, axis=1)
     return dict(k_lep=k_lep, p_N=p_N, p_pi=p_pi, J_3body=J_3body, s=s, s23=s23, valid3=valid3)
@@ -287,8 +248,8 @@ def free_nucleon_weights(k_nu, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, u, chunk
     w is already filtered finite & > 0 (but NOT divided by n and NOT multiplied by any flux Jacobian)."""
     n = len(k_nu)
     m_pi = _pi_kin_mass(m_pi_phys)
-    p_struck = np.tile([had_mass, 0.0, 0.0, 0.0], (n, 1)).astype(float)   # nucleon at rest (incoming mass)
-    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u)            # honors SAMPLER_3BODY
+    p_struck = np.tile([had_mass, 0.0, 0.0, 0.0], (n, 1)).astype(float)
+    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u)
     k_lep, p_N, p_pi, J3, valid = tb["k_lep"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
     a2 = np.zeros(n)
     idx = np.where(valid & (J3 > 0))[0]
@@ -307,7 +268,7 @@ def sigma_free_nucleon(Enu_MeV, channel, n=80_000, seed=0):
     -> sigma = <w>.  `channel` is a row of res.CHANNELS: (pdg_in, itiz, m_Nf, pi_pid, m_pi_phys, had_mass)."""
     _pdg_in, itiz, m_Nf, pi_pid, m_pi_phys, had_mass = channel
     rng = np.random.default_rng(seed)
-    u = rng.random((n, 6))                                                # col 0 unused: keep the generate_H stream
+    u = rng.random((n, 6))
     E = float(Enu_MeV); k_nu = np.stack([np.full(n, E), np.zeros(n), np.zeros(n), np.full(n, E)], axis=1)
     w, _ = free_nucleon_weights(k_nu, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, u[:, 1:6])
     return float(w.mean()), float(w.std() / np.sqrt(n))
@@ -328,27 +289,25 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None, d
     imp = imp or _imp_for(_default_sf('n'))
     u = rng.random((n, 10))
     jac_grid = 1.0; x_grid = u[:, 4:10]
-    if grid is not None and defensive > 0.0:                    # defensive mixture over the 6 active dims
+    if grid is not None and defensive > 0.0:
         a = 1.0 - defensive
         xv, _ = grid.map(u[:, 4:10])
-        ub = rng.random(n) >= a                                # uniform-branch mask (fraction `defensive`)
-        x_grid = np.where(ub[:, None], u[:, 4:10], xv)         # sample from the mixture
-        q = a * grid.density(x_grid) + defensive               # mixture density at the sampled x
-        jac_grid = 1.0 / np.clip(q, 1e-300, None)              # = 1/q, bounded by 1/defensive
+        ub = rng.random(n) >= a
+        x_grid = np.where(ub[:, None], u[:, 4:10], xv)
+        q = a * grid.density(x_grid) + defensive
+        jac_grid = 1.0 / np.clip(q, 1e-300, None)
         u = u.copy(); u[:, 4:10] = x_grid
-    elif grid is not None:                                      # pure Vegas: warp the 6 active dims
+    elif grid is not None:
         x_grid, jac_grid = grid.map(u[:, 4:10]); u = u.copy(); u[:, 4:10] = x_grid
     Smin = (M_MU + m_Nf + m_pi) ** 2
-    # BeamMapper seed is PROCESS-dependent (BeamMapper.cc); validated bit-exact vs RESDUMP psw.
     minE = max((Smin - m_Nf ** 2) / (2 * m_Nf) / 1000.0, flux.min_energy)
-    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0   # BEAM_MODE toggle
+    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
-    pvec, energy = imp.sample(n, rng)                           # importance: |p|^2 S (low variance)
+    pvec, energy = imp.sample(n, rng)
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
-    J_had = np.ones(n)                                          # |p|^2 S J_had absorbed -> N_NUC
-    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u[:, 5:10])  # isotropic | tchannel | resonance
-    # ACHILLES QESpectralMapper removal-energy ceiling (HadronicMapper.cc:50-53), Smin = 3-body thr.
+    J_had = np.ones(n)
+    tb = _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u[:, 5:10])
     det_e = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
     emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
@@ -358,13 +317,6 @@ def _sample_channel(n, rng, flux, minE, maxE, m_pi, m_Nf, imp=None, grid=None, d
                 E_GeV=E_GeV, valid=valid, x_grid=x_grid)
 
 
-# --- ACHILLES-faithful ProcessGroup mirror -------------------------------------------------- #
-# ACHILLES groups the 3 CC-1pi channels by multiplicity into ONE group, builds the phase space
-# from process[0] = (n -> p pi0) ONLY (masses m_p, m_pi0; Smin0), generates ONE point, evaluates
-# ALL 3 channels' amps2 at the SHARED momenta, and sums (Process.cc:287-302,323-327,357;
-# XSecBackend.cc:72; verified from the dump: every channel carries m_p, m_pi0).  Struck nucleon is
-# sampled FLAT (QESpectralMapper) so initwgt = N*S_channel is EXPLICIT per channel -- no S_p/S_n
-# reweight trick (that only arises from an S_n importance proposal).
 _M_SHARED_NF, _M_SHARED_PI = M_P, M_PI0
 _SMIN0 = (M_MU + M_P + M_PI0) ** 2
 
@@ -375,9 +327,8 @@ def _sample_shared(n, rng, flux, maxE):
     u = rng.random((n, 10))
     mpi, mNf, Smin = _M_SHARED_PI, _M_SHARED_NF, _SMIN0
     minE = max((Smin - mNf ** 2) / (2 * mNf) / 1000.0, flux.min_energy)
-    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0   # BEAM_MODE toggle
+    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
-    # FLAT struck nucleon (HadronicMapper.cc:30-65), process[0] Smin
     radical = np.clip(Enu ** 2 + 2 * Enu * _MN + _MN ** 2 - Smin, 0, None)
     pmin = np.clip(Enu - np.sqrt(radical), 0, None); pmax = np.clip(Enu + np.sqrt(radical), None, 800.0)
     dp = pmax - pmin; mom = dp * u[:, 0] + pmin
@@ -389,7 +340,7 @@ def _sample_shared(n, rng, flux, maxE):
     emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
     energy = emax * u[:, 3] - 1e-8
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
-    J_had = mom ** 2 * dp * (cosTm + 1) * _TWO_PI * emax          # inverse QESpectralMapper density
+    J_had = mom ** 2 * dp * (cosTm + 1) * _TWO_PI * emax
     P = k_nu + p_struck
     s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1); sqrts = np.sqrt(np.clip(s, 1e-9, None))
     s23max = (sqrts - mpi) ** 2; s23min = max((M_MU + mNf) ** 2, 1e-8)
@@ -411,7 +362,7 @@ def _sample_shared(n, rng, flux, maxE):
     density = (2 * np.pi) ** 5 * I2W_A * I2W_B / (s23max - s23min)
     J_3body = np.where(density > 0, 1.0 / np.clip(density, 1e-300, None), 0.0)
     valid = ((dp > 0) & (emax > 0) & (s > Smin) & (s23max > s23min) & (energy < emax)
-             & (energy > imp.energy[0])          # SF grid start (0 for Ar, 2.5 for C); NOT hardcoded 2.5
+             & (energy > imp.energy[0])
              & (_sqlam(s, s23, mpi ** 2) > 0) & (_sqlam(s23, M_MU ** 2, mNf ** 2) > 0))
     return dict(k_nu=k_nu, p_struck=p_struck, k_lep=k_lep, p_N=p_N, p_pi=p_pi,
                 J=J_beam * J_had * J_3body, mom=mom, energy=energy, valid=valid)
@@ -424,9 +375,9 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
     sf_n/sf_p = the nucleus's neutron/proton SpectralFunction (default = carbon);
     n_neutron/n_proton = target species counts (A-Z / Z) for the N*S scaling."""
     sf_n = sf_n or _default_sf('n'); sf_p = sf_p or _default_sf('p')
-    group = [(2112, -1, 111, sf_n, n_neutron, MASS_PDG_NEUTRON),  # [0] n -> p pi0
-             (2112, -1, 211, sf_n, n_neutron, MASS_PDG_NEUTRON),  # [1] n -> n pi+
-             (2212, +1, 211, sf_p, n_proton, MASS_PDG_PROTON)]    # [2] p -> p pi+
+    group = [(2112, -1, 111, sf_n, n_neutron, MASS_PDG_NEUTRON),
+             (2112, -1, 211, sf_n, n_neutron, MASS_PDG_NEUTRON),
+             (2212, +1, 211, sf_p, n_proton, MASS_PDG_PROTON)]
     rng = np.random.default_rng(seed)
     flux = SpectrumFlux(); maxE = flux.max_energy
     s = _sample_shared(n, rng, flux, maxE)
@@ -437,7 +388,7 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
         if len(idx):
             a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_lep"][idx], s["p_struck"][idx],
                                             s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
-        initwgt = ncount * sf.batch(s["mom"], s["energy"])       # EXPLICIT N * S_channel (per channel)
+        initwgt = ncount * sf.batch(s["mom"], s["energy"])
         fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=hadmass))
         w_c = np.where(v, a2 * fl * initwgt * SPIN_AVG * s["J"], 0.0)
         w_c = np.where(np.isfinite(w_c) & (a2 > 0), w_c, 0.0)
@@ -450,9 +401,6 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
     return out
 
 
-# Default RES estimator: "faithful" (ACHILLES ProcessGroup transliteration, flat struck, explicit
-# N*S, no reweight; higher variance) or "importance" (S_n importance struck + S_p/S_n reweight on
-# the proton channel; low variance, same integral).  Override per call via generate(..., method=).
 RES_METHOD = "importance"
 
 
@@ -461,15 +409,13 @@ def _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton):
     w = a2 * flux * (N species) * SPIN_AVG * J * (S_p/S_n reweight on the proton channel).  Shared by
     generate_importance and warmup_vegas (single source of truth for the weight assembly)."""
     n = len(s["valid"]); v = s["valid"]
-    iw = n_neutron if ipid == 2112 else n_proton                # target species count (importance: |p|^2 S)
+    iw = n_neutron if ipid == 2112 else n_proton
     a2 = np.zeros(n)
     idx = np.where(v & (s["energy"] > sf_n.energy[0]) & (s["energy"] < 400) & (s["J"] > 0))[0]
     if len(idx):
         a2[idx] = exclusive_amps2_batch(s["k_nu"][idx], s["k_lep"][idx], s["p_struck"][idx],
                                         s["p_N"][idx], s["p_pi"][idx], itiz, ppid)
     fl = np.asarray(flux_factor(s["k_nu"], s["p_struck"], had_mass=mstr))
-    # D3: struck nucleon is proposed from pke12n (|p|^2 S_n) for every channel, but the PROTON-initiated
-    # channel's integrand carries S_p, not S_n.  Importance-reweight it by S_p/S_n (=1 for n channels).
     if ipid == 2212:
         sn = sf_n.batch(s["mom"], s["energy"]); sp = sf_p.batch(s["mom"], s["energy"])
         reweight = np.where(sn > 0, sp / np.clip(sn, 1e-300, None), 0.0)
@@ -548,30 +494,28 @@ def generate_importance(n=20000, seed=0, return_events=False, sf_n=None, sf_p=No
     flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     out = {}; sig = 0.0
     ev = {k: [] for k in ("k_nu", "k_lep", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
-    nch = len(CHANNELS); m = max(1, n // nch)          # n = TOTAL draws across channels; m per channel
+    nch = len(CHANNELS); m = max(1, n // nch)
     for (ipid, itiz, mNf, ppid, mpi, mstr) in CHANNELS:
         Npid = 2212 if mNf == M_P else 2112
         s = _sample_channel(m, rng, flux, minE, maxE, _pi_kin_mass(mpi), mNf, imp=imp, grid=grid,
-                            defensive=defensive)  # mpi0 like ACHILLES
+                            defensive=defensive)
         w = _channel_weight(s, ipid, itiz, ppid, mstr, sf_n, sf_p, n_neutron, n_proton)
-        sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc   # E[w] over m draws -- unbiased, just noisier
+        sc = w.mean(); out[(ipid, ppid)] = sc; sig += sc
         if return_events:
             keep = w > 0
             ev["k_nu"].append(s["k_nu"][keep]); ev["k_lep"].append(s["k_lep"][keep])
             ev["p_struck"].append(s["p_struck"][keep]); ev["p_N"].append(s["p_N"][keep])
             ev["p_pi"].append(s["p_pi"][keep])
-            # weight per event so that sum(w_event) over the sampled set = sigma_channel (divide by the
-            # PER-CHANNEL draw count m, not n)
             ev["w"].append(w[keep] / m)
             ev["ppid"].append(np.full(keep.sum(), ppid)); ev["Npid"].append(np.full(keep.sum(), Npid))
-            ev["ipid"].append(np.full(keep.sum(), ipid))   # struck (initial) nucleon: 2112 n / 2212 p
+            ev["ipid"].append(np.full(keep.sum(), ipid))
     out["sigma"] = sig
     if return_events:
         out["events"] = {k: np.concatenate(ev[k]) if ev[k] else np.empty((0,)) for k in ev}
     return out
 
 
-from adonis.core.sample import Sampler       # noqa: E402
+from adonis.core.sample import Sampler
 
 
 class RESChannel(Sampler):

@@ -37,7 +37,7 @@ def neville_batch(xa, ya, x):
     """Vectorised Neville (Polint) over the last axis (n points) for a batch.  xa,ya (N,n)."""
     n = xa.shape[1]
     c = ya.astype(float).copy(); d = ya.astype(float).copy()
-    dif = np.abs(x[:, None] - xa); ns = np.argmin(dif, axis=1)          # nearest point
+    dif = np.abs(x[:, None] - xa); ns = np.argmin(dif, axis=1)
     y = ya[np.arange(len(x)), ns].astype(float); ns = ns - 1
     for m in range(n - 1):
         for i in range(n - m - 1):

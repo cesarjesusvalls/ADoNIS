@@ -1,2 +1,2 @@
 """Detector effects: the true -> reconstructed map used by the section-5 unfolding study."""
-from adonis.detector.smear import SmearSpec, smear_chunk        # noqa: F401
+from adonis.detector.smear import SmearSpec, smear_chunk

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run an ACHILLES run card via Apptainer on S3DF (the no-Docker replacement for
 analysis/utils/run_achilles.py's `docker run`).
 
@@ -29,7 +28,7 @@ import yaml
 
 REPO = Path("/sdf/home/c/cjesus/DIFFGEN/ADoNIS")
 sys.path.insert(0, str(REPO))
-from analysis.oracle_tools.run_achilles import _image_for, _output_name  # tested logic (P4: analysis.utils -> adonis.oracle)
+from analysis.oracle_tools.run_achilles import _image_for, _output_name
 
 IMG = "/sdf/data/neutrino/cjesus/software/images"
 SIF = {
@@ -57,9 +56,6 @@ def _seed_the_card(raw, seed):
         dump = yaml.safe_dump(opts, default_flow_style=False, sort_keys=False)
         indented = "".join("  " + ln + "\n" for ln in dump.splitlines())
         raw = raw[:m.start()] + "Options:\n" + indented + raw[m.end():]
-    # top-level Initialize/seed for RunCascade (and harmless for EventGen, which reads Options/...).
-    # The cascade cards ALREADY have `Initialize:\n  seed: <n>` — REPLACE the value (inserting a second
-    # `seed:` key makes yaml-cpp abort with NonUniqueMapKey).
     m2 = re.search(r'^Initialize:[ \t]*\n((?:[ \t]+\S.*\n)*)', raw, re.M)
     if m2:
         block = m2.group(0)
@@ -75,7 +71,7 @@ def _seed_the_card(raw, seed):
 def write_card(card_path, outdir, nevents, seed):
     """Copy the card into <outdir>/<stem>_s<seed>.yml with NEvents + real per-shard seed + unique hepmc."""
     raw = Path(card_path).read_text()
-    base_hepmc = _output_name(raw)                        # e.g. /out/T2K_H.hepmc
+    base_hepmc = _output_name(raw)
     stem = Path(base_hepmc).name[:-len(".hepmc")]
     new_hepmc = f"/out/{stem}_s{seed}.hepmc"
     raw = raw.replace(base_hepmc, new_hepmc)
@@ -103,23 +99,13 @@ def main():
         sys.exit(f"image not built yet: {sif}  (card {Path(a.card).name} needs {image})")
     os.makedirs(a.out, exist_ok=True)
     card_name, hepmc = write_card(a.card, a.out, a.nevents, a.seed)
-    # Bind the extracted ACHILLES data/flux over /achilles/{data,flux} so every image (the Debian
-    # oracle AND the alpine-built cascade images) reads the identical single-source-of-truth inputs.
-    # NOTE: no --fakeroot — the alpine cascade images lack the `faked` daemon and --fakeroot breaks
-    # exec there; --writable-tmpfs alone gives ACHILLES a writable /achilles for its log/References.
     data = os.environ.get("ACHILLES_DATA", "/sdf/data/neutrino/cjesus/ADoNIS/software/achilles_data")
     flux = os.environ.get("ACHILLES_FLUX", "/sdf/data/neutrino/cjesus/ADoNIS/software/achilles_flux")
-    # ACHILLES writes achilles.log + References.txt to its CWD (/achilles, root-owned in the image).
-    # Without --fakeroot (which the alpine cascade images can't use) those writes are permission-denied
-    # intermittently. Bind WRITABLE host files over those two paths so the writes land in <out> instead.
     alog = Path(a.out) / "achilles.log"; arefs = Path(a.out) / "References.txt"
     alog.touch(exist_ok=True); arefs.touch(exist_ok=True)
     host_bin = os.environ.get("ACHILLES_HOST_BIN")
     run_env = dict(os.environ); cwd = None
     if host_bin:
-        # HOST-BINARY mode (rebuilt-from-source achilles; fixes the oracle-image (e,e')+cascade SIGSEGV).
-        # No container: rewrite the card's /out/ paths to the real out dir and run from a workdir whose
-        # data/flux symlink to ACHILLES_DATA/FLUX (identical inputs), with ACH_LD on LD_LIBRARY_PATH.
         cf = Path(a.out) / card_name
         cf.write_text(cf.read_text().replace("/out/", str(Path(a.out).resolve()) + "/"))
         wd = Path(a.out) / "_wd"; wd.mkdir(exist_ok=True)
@@ -127,8 +113,6 @@ def main():
             lk = wd / nm
             if not lk.exists():
                 lk.symlink_to(tgt)
-        # the binary reads top-level config files (FormFactors.yml, ...) from its CWD -> symlink them from
-        # the source tree so a per-shard _wd is self-contained (and parallel shards don't clobber each other).
         src = Path(os.environ.get("ACHILLES_SRC", "/sdf/data/neutrino/cjesus/ADoNIS/software/Achilles-src"))
         for p in src.glob("*.yml"):
             lk = wd / p.name

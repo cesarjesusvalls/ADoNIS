@@ -24,21 +24,13 @@ import jax.numpy as jnp
 from adonis.core.autodiff import Adam
 
 
-# --- per-module self-test contract ------------------------------------------- #
-# Every module (Channel, NuclearModel, FluxModel, FSIModel) exposes two uniform
-# self-tests so the chain can be validated component-by-component (and from CI):
-#   closure_test() -- the module's standalone differentiability (autodiff == FD
-#                     on its differentiable output), and
-#   oracle_test()  -- its physics validity vs the ACHILLES oracle, where applicable.
-# Modules with no differentiable parameter (a detached sampler) or no oracle return
-# a SKIPPED result rather than failing, so the contract is uniform across the tree.
 class TestResult(NamedTuple):
-    name: str            # e.g. "DCCSinglePion.closure"
-    kind: str            # "closure" | "oracle"
-    passed: bool         # True if it ran and met tolerance (True when skipped)
-    skipped: bool        # True if not applicable to this module
-    detail: str          # one-line human summary
-    metrics: dict        # raw numbers (rel errors, chi2/ndf, ...)
+    name: str
+    kind: str
+    passed: bool
+    skipped: bool
+    detail: str
+    metrics: dict
 
     def __bool__(self):
         return self.passed
@@ -99,7 +91,6 @@ def chi2_ndf(model, model_err, oracle, oracle_err, *, floor=0.0):
     return chi2, int(good.sum())
 
 
-# --- (F) forward agreement --------------------------------------------------- #
 class ForwardAgreement(NamedTuple):
     max_abs_diff: float
     max_rel_diff: float
@@ -116,7 +107,6 @@ def check_forward_agreement(hard_hist, weighted_hist, n_data, n_model, n_sigma=5
     hard = np.asarray(hard_hist, dtype=float)
     model = np.asarray(weighted_hist, dtype=float)
     diff = np.abs(hard - model)
-    # combined statistical error on the difference (both are MC estimates)
     err = np.sqrt(np.maximum(hard, 1.0) * (1.0 + n_data / n_model))
     mc_tol = float(n_sigma * np.max(err))
     rel = diff / np.maximum(np.abs(hard), 1.0)
@@ -124,7 +114,6 @@ def check_forward_agreement(hard_hist, weighted_hist, n_data, n_model, n_sigma=5
     return ForwardAgreement(float(diff.max()), float(rel.max()), mc_tol, passed)
 
 
-# --- (G) finite-difference gradient check ------------------------------------ #
 class GradCheck(NamedTuple):
     autodiff: np.ndarray
     finite_diff: np.ndarray
@@ -159,11 +148,8 @@ def check_expected_jacobian(hist_fn, theta, key, eps=3e-3, tol=5e-2,
     def mean_hist(t):
         return jnp.mean(jnp.stack([hist_fn(t, k) for k in keys]), axis=0)
 
-    # forward-mode: with few parameters and many output bins this is far cheaper
-    # (and far lighter on memory) than reverse-mode, which would vmap one cotangent
-    # per bin through the whole trajectory graph.
     jac_fn = jax.jit(jax.jacfwd(lambda t, k: hist_fn(t, k)))
-    J_ad = np.mean([np.asarray(jac_fn(theta, k)) for k in keys], axis=0)  # (n_bins, n_params)
+    J_ad = np.mean([np.asarray(jac_fn(theta, k)) for k in keys], axis=0)
 
     base = np.asarray(theta, dtype=float)
     J_fd = np.zeros_like(J_ad)
@@ -176,7 +162,6 @@ def check_expected_jacobian(hist_fn, theta, key, eps=3e-3, tol=5e-2,
     mask = ref > count_floor_frac * ref.max()
     denom = np.maximum(np.abs(J_ad) + np.abs(J_fd), 1e-12)
     rel = np.abs(J_ad - J_fd) / denom
-    # weight the relative error by bin occupancy so tiny bins don't dominate
     w = (ref * mask)[:, None]
     weighted = float((rel * w).sum() / np.maximum(w.sum() * J_ad.shape[1], 1e-12) * J_ad.shape[1])
     max_rel = float(rel[mask].max())
@@ -218,7 +203,6 @@ def check_gradient(loss_fn, theta, key, eps=1e-4, tol=1e-2, n_keys=1):
     return GradCheck(g_ad, g_fd, max_rel, bool(max_rel <= tol))
 
 
-# --- (C) closure test -------------------------------------------------------- #
 class Closure(NamedTuple):
     theta_true: np.ndarray
     theta_fit: np.ndarray
@@ -273,7 +257,6 @@ def run_closure(loss_fn, to_params, init_unconstrained, key,
                    theta_fit, np.asarray(loss_hist), np.asarray(param_hist), max_err)
 
 
-# --- gradient signal-to-noise ------------------------------------------------ #
 def measure_snr(grad_fn, theta, keys):
     """Gradient SNR = |E[g]| / std[g] per parameter, over a batch of PRNG keys.
 

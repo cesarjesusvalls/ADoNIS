@@ -33,16 +33,16 @@ def parse_events(path):
                 continue
             elif tag == "W ":
                 tok = line.split()[1]
-                if tok != "CV":                            # skip the HepMC3 weight-NAMES declaration
+                if tok != "CV":
                     evt["w"] = float(tok)
             elif tag == "A " and "GenCrossSection" in line:
                 evt["gen_xs"] = float(line.split()[3])
             elif tag == "A " and "signal_process_id" in line:
                 evt["proc"] = int(line.split()[3])
             elif tag == "P ":
-                f = line.split()                           # P id vtx pid px py pz E m status
+                f = line.split()
                 pid = int(f[3])
-                p4 = np.array([float(f[7]), float(f[4]), float(f[5]), float(f[6])])   # (E,px,py,pz)
+                p4 = np.array([float(f[7]), float(f[4]), float(f[5]), float(f[6])])
                 evt["parts"].append((pid, int(f[9]), p4))
     if evt is not None:
         yield evt
@@ -64,10 +64,10 @@ def hepmc_norm(path):
             if t == "W ":
                 tok = line.split()[1]
                 if tok == "CV":
-                    continue                               # HepMC3 weight-NAMES declaration (header)
+                    continue
                 sum_w += float(tok); n += 1
             elif t == "A " and "GenCrossSection" in line:
-                gen_xs_pb = float(line.split()[3])         # running estimate; last value = final
+                gen_xs_pb = float(line.split()[3])
     if gen_xs_pb is None:
         raise ValueError(f"{path}: no GenCrossSection header found")
     if sum_w <= 0:

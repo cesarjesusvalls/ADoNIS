@@ -43,31 +43,13 @@ from adonis.reweight.reweight_model import nominal_knobs
 from adonis.analysis import knobs as K
 
 C_FIT, C_GAUSS, C_ENS = "#1f4b9c", "0.55", "#c8842a"
-# The best-fit marker must NOT reuse the colour of any interval: it used to be C_FIT, so a reader could
-# not tell whether the diamond belonged to the profile bar or was its own statement.
 C_BFP = "#1a9e57"
-# the two objects that were missing from this figure: the Laplace (Occam) correction of the profile,
-# and the EXACT marginal from NUTS.  They should land on top of each other -- that is the check.
 C_OCC, C_NUTS = "#6a3d9a", "#e08214"
-# PROFILE sits between the Gaussian and the Laplace correction, so it takes a hue between the neutral
-# grey and the purple: a desaturated teal, distinct from both and from the orange NUTS at four nested
-# ribbons deep.  (Chosen for separability at small linewidth, not for meaning.)
 C_PROF = "#2a9d8f"
-# Panel (b) is drawn from the SAME ramp as the section-2 constraint heatmap
-# (style.CMAP_CONSTRAINT = #07204d -> #1f4b9c -> #4f7fe0 -> #8fb2f5 -> ...): the toys take its mid tone
-# and the chi2 reference its darkest, so the two sections read as one palette instead of one blue each.
 C_TOYS_FILL, C_TOYS_EDGE, C_CHI2 = "#8fb2f5", "#4f7fe0", "#07204d"
 
-# Panel (d) shows ONE dial in detail as the non-Gaussian counterpart to the boundary case in (c).
-# C5A is the right choice: it is far from every bound, so its departure from the quadratic cannot be
-# blamed on clamping, and its profile and toys agree -- which is what makes it a demonstration that the
-# profile is right rather than an open question (M_A_res and delta_strength, whose profiles carry the
-# mirror basin of the quadratic RES weight, do not yet agree and belong in their own figure).
 NONGAUSS_DIAL = "res_axial_strength"
 
-# MASS carried by every interval bar in the figure.  0.6827 = "1 sigma", 0.9545 = "2 sigma".  Set once
-# here (and overridable from the command line) because (a), (c) and (d) must all quote the SAME level --
-# a 1-sigma bar in (a) beside a 2-sigma bar in (d) would be unreadable.
 MASS = 0.6827
 MASS_NAME = {0.6827: r"68% ($1\sigma$)", 0.9545: r"95% ($2\sigma$)", 0.90: "90%"}
 
@@ -152,9 +134,6 @@ def _hpd_density(grid, prof, mass=0.6827):
     cum = np.cumsum(d[o]) * (xf[1] - xf[0]); cum /= cum[-1]
     thr = d[o][min(int(np.searchsorted(cum, mass)), len(o) - 1)]
     idx = np.where(d >= thr)[0]
-    # CLIPPED: the region reached an end of the SCAN, so the reported endpoint is where the scan stopped,
-    # not where the likelihood fell away.  Harmless at 68% (the adaptive reach is >=3 sigma) but the
-    # binding constraint at 95%, which is why it is flagged rather than silently returned.
     clipped = bool(idx[0] == 0 or idx[-1] == len(xf) - 1)
     return float(xf[idx[0]]), float(xf[idx[-1]]), bool(np.any(np.diff(idx) > 1)), clipped
 
@@ -246,8 +225,6 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
     zp = np.load(style.ALTGEN / f"{label}_profile.npz", allow_pickle=True)
     sub = [int(k) for k in zp["subset"]]; pn = [str(x) for x in zp["pnames"]]
     grid = np.asarray(zp["grid_sigma"]); prof = np.asarray(zp["prof_dobj"])
-    # PER-DIAL axes: a bounded dial is scanned from its boundary upward, so it does NOT share the nominal
-    # +-3 sigma axis.  Old npz lack this -- warn rather than silently integrate a fictitious region.
     grids = np.asarray(zp["grids_sigma"]) if "grids_sigma" in zp.files else None
     if grids is None:
         print("[warn] profile npz predates the bounds-aware scan; credible intervals on BOUNDED dials "
@@ -258,14 +235,10 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
     print(f"NUTS: {n_nuts} samples, {sum(1 for k in sub if pn[k] in NU)}/{len(sub)} dials")
     nom = np.asarray(theta_nominal(nominal_knobs())); prior = np.asarray(PRIOR)
     order = sorted(range(len(sub)), key=lambda c: (style.knob_group(pn[sub[c]]), sub[c]))
-    # the Gaussian bar is the +-z sigma that carries the SAME mass as the water-filled bars
     ZQ = float(stats.norm.ppf(0.5 + MASS / 2.0))
     MNAME = MASS_NAME.get(round(MASS, 4), f"{100*MASS:.1f}%")
     print(f"interval level: {MNAME}  (Gaussian bar = +-{ZQ:.3f} sigma)")
 
-    # SHARD FILES ONLY: `<ens>_<base>.npz` with a NUMERIC suffix.  A bare `{ens}_*.npz` also matches
-    # sidecars that share the prefix -- `sec4_P1_ens_conv.npz`, the per-fit convergence record, has no
-    # `th_fit` key and made this crash.  Match the contract, not the prefix.
     F = sorted(f for f in glob.glob(str(style.ALTGEN / f"{ens}_*.npz"))
                if Path(f).stem[len(Path(ens).name) + 1:].isdigit())
     Z = [np.load(f, allow_pickle=True) for f in F]
@@ -274,53 +247,25 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
     nlive = int(Z[0]["nbins_live"]) if Z and "nbins_live" in Z[0].files else None
     ndf = (nlive if nlive else (int(Z[0]["nbins"]) if Z else 0)) - len(sub)
 
-    # (no separate `<label>_ebwall.npz` is read any more -- panel (d) is built from THIS fit's own E_b
-    # profile below, which is what stops it going stale against a different truth.)
 
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
-        # TWO stacked full-width panels.  (c)/(d) are gone: the corner figure makes the same point
-        # about non-Gaussian shape with more information, so keeping them was duplication.  A single
-        # column each also lets (a) use the full width for 17 dials, which is what it was short of.
         fig = plt.figure(figsize=(4.2, 6.8))
         gs = fig.add_gridspec(2, 1, height_ratios=[3.70, 1.0], hspace=0.20,
                               left=0.155, right=0.98, top=0.905, bottom=0.065)
         axA = fig.add_subplot(gs[0, 0])
         axB = fig.add_subplot(gs[1, 0])
 
-        # ---- (a) recovery ------------------------------------------------------------------------ #
         yy = np.arange(len(order)); gid = [style.knob_group(pn[sub[c]]) for c in order]
         for i, c in enumerate(order):
             k = sub[c]; p = max(prior[k], 1e-12)
             _g = grids[c] if grids is not None else grid
-            # ANCHOR EVERYTHING ON THE ASIMOV BEST FIT.  This used to sit at bfp + mode*sigma, the HPD
-            # MODE of exp(-Dchi2/2).  On a near-degenerate direction the inner re-minimisation of the
-            # profile scan stops short, which displaces that mode (measured: -0.32 sigma for C5A), and the
-            # Gaussian bar, the profile bar and the marker all slid with it while the truth star did not --
-            # making the closure look broken when the fit is exact (bfp == truth to 1e-15).
             _ok = np.isfinite(_g) & np.isfinite(prof[c])
-            # PROFILE BAR = 68% WATER-FILL of exp(-Dchi2/2) -- the same construction as the toy band
-            # below (shortest interval holding 68%), so the two are directly comparable.  Neither is
-            # anchored on the best fit: an interval that must carry 34.1% on each side of the BFP does
-            # not exist for the strongly one-sided RES profiles, so that construction was clipping.
             hlo, hhi, hdj, hcl = _hpd_density(_g[_ok], prof[c][_ok], MASS)
             xhat = (bfp[k] - nom[k]) / p
             sc = spost[c] / p
-            # FOUR PREDICTIONS, all from the SAME single dataset, stacked so they can be read against
-            # each other, in the order they build on one another:
-            #   Gaussian  the quadratic sigma at the best fit
-            #   Profile   the likelihood profile -- exact in the dial, but no nuisance volume
-            #   Laplace   that profile times the nuisance volume factor (the Occam correction)
-            #   NUTS      the exact marginal, by sampling
-            # so the Profile->Laplace step IS the volume correction, visible as one bar moving.  It used
-            # to be omitted here because panels (c) and (d) made that point; those panels are no longer
-            # produced, so without it the correction had nothing to correct.
-            # No toys -- a histogram of best fits is a spread, not an interval, and belongs with the
-            # coverage test in (b).  All four share ONE line per dial as nested ribbons -- widest and
-            # faintest behind, narrowest and solid in front -- so a dial stays one row and the relative
-            # widths are read directly rather than across four stacked rows.
             rows = [(C_GAUSS, -ZQ, ZQ, 8.0, 0.40, 2)]
-            rows.append((C_PROF, hlo, hhi, 5.4, 0.65, 3))   # already in sigma_post units, like `oc`
+            rows.append((C_PROF, hlo, hhi, 5.4, 0.65, 3))
             oc = _occam(_g, prof[c], logdet[c], MASS) if logdet is not None else None
             if oc is not None:
                 rows.append((C_OCC, oc[0], oc[1], 3.0, 0.95, 4))
@@ -332,7 +277,7 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
             for col, lo_, hi_, lw, al, zo in rows:
                 axA.plot([xhat + lo_ * sc, xhat + hi_ * sc], [yy[i]] * 2, color=col, lw=lw,
                          alpha=al, solid_capstyle="butt", zorder=zo)
-            for xe in (xhat - ZQ * sc, xhat + ZQ * sc):      # Gaussian extent, readable when overlaid
+            for xe in (xhat - ZQ * sc, xhat + ZQ * sc):
                 axA.plot([xe] * 2, [yy[i] - 0.22, yy[i] + 0.22], color=C_GAUSS, lw=0.9, zorder=2)
             if hdj or hcl:
                 axA.plot(xhat, yy[i] - 0.34, marker=("v" if hdj else "x"), ms=2.4, color=C_FIT, zorder=4)
@@ -365,20 +310,12 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
              plt.Line2D([], [], color=C_NUTS, lw=1.6)]
         axA.legend(h, ["Injected truth", "BFP", "Gaussian", "Profile",
                        "Marginal (Laplace)", "Marginal (NUTS)"],
-                   # OUTSIDE the axes, above.  At a legible size there is no empty region left inside:
-                   # every candidate spot collides with a dial's interval (lower-left ran into N_SRC).
                    fontsize=7.8, loc="lower center", bbox_to_anchor=(0.5, 1.005), ncol=3,
                    frameon=False, borderpad=0.2, labelspacing=0.35, handlelength=1.8,
                    columnspacing=1.3)
         axA.text(0.035, 0.978, "a)", transform=axA.transAxes, ha="left", va="top",
                  fontsize=11, fontweight="bold", zorder=9)
 
-        # ---- (b) do the intervals COVER? ---------------------------------------------------------
-        # The likelihood ratio at the TRUE point, Dchi2 = chi2(theta_true) - chi2(theta_hat), is the
-        # statistic whose distribution defines coverage: Wilks says chi2(k) for k fitted dials, so the
-        # region {Dchi2 < q_cl} is a cl-confidence region.  This is NOT the goodness-of-fit chi2 that
-        # used to live here -- that one (chi2 at the best fit vs chi2(ndf-k)) asks whether the MODEL
-        # fits, which is a different claim and is quoted in the caption instead.
         if e_chi2 is not None:
             c2t = _chi2_at_truth(label, F)
             dch = c2t - e_chi2
@@ -412,17 +349,10 @@ def main(label="sec4_ref", ens="sec4_ens", mass=None):
             for sp in ("top", "right"):
                 a_.spines[sp].set_visible(False)
 
-        # LABEL-tagged: the study points (P1 = all dials off nominal, P2 = nominal but E_b) are separate
-        # figures and must not overwrite each other.  `sec4_ref` keeps the historical filename.
-        # Named as asked.  NOTE: no longer label-tagged, so a second study point (P2) rendered from
-        # this script overwrites the first instead of sitting beside it.
         base = "closure_demo"
-        # a non-default interval level gets its own file, so the 1-sigma and 2-sigma versions can be
-        # compared side by side instead of one silently replacing the other
         style.save(fig, base if abs(MASS - 0.6827) < 1e-6 else f"{base}_{round(100*MASS)}")
 
 
 if __name__ == "__main__":
-    # third arg = interval mass, e.g. 0.9545 for 2 sigma (default 0.6827)
     p = [a for a in sys.argv[1:] if not a.startswith("--")]
     main(*(p[:3] or []))

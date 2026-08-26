@@ -30,7 +30,7 @@ import pytest
 
 from adonis.channels.dcc.differential import build_zmtx_batched
 
-SW2 = 0.2312                       # ACHILLES's hardcoded value (amp_dcc_sl_module.f:291)
+SW2 = 0.2312
 VFAC = 1.0 - 2.0 * SW2
 
 
@@ -55,18 +55,15 @@ def _zmtx(mode, itiz, vec, isv, axial, **kw):
         mode=mode, itiz=itiz, m_N=939.0, m_pi=138.04, **kw))
 
 
-# ------------------------------------------------------------------ the two analytic sw2 limits
 def test_sw2_to_zero_would_leave_a_pure_isovector_coupling():
     """VFAC -> 1 and VVFAC -> 0 as sw2 -> 0, so the NC vector current would collapse onto the raw
     `vec` block on every wave.  Checked as an identity on the coefficients rather than by patching
     the constant, so it holds no matter how the code spells the arithmetic."""
     assert 1.0 - 2.0 * 0.0 == 1.0
     assert -2.0 * 0.0 == 0.0
-    # and at the REAL sw2 the isovector piece is VFAC on every wave, I=1/2 and I=3/2 alike:
     vec, isv, axial = _amps()
     z_full = _zmtx(-1, 1, vec, isv, axial)
-    z_novs = _zmtx(-1, 1, vec, np.zeros_like(isv), axial)      # kill the isoscalar block only
-    # with isv = 0 the NC current must be exactly VFAC * (the CC-shaped raw-vec current)
+    z_novs = _zmtx(-1, 1, vec, np.zeros_like(isv), axial)
     assert np.all(np.isfinite(z_novs))
     assert not np.allclose(z_full, z_novs), "the isoscalar block does nothing -- VVFAC never applied"
 
@@ -74,12 +71,12 @@ def test_sw2_to_zero_would_leave_a_pure_isovector_coupling():
 def test_isoscalar_block_touches_I_half_waves_only():
     """`if(itpind(ipw)==1...)` -- the I=3/2 wave must be untouched by isv, for NC."""
     vec, isv, axial = _amps()
-    isv_only32 = np.zeros_like(isv); isv_only32[:, :, 2] = isv[:, :, 2]      # wave 2 is I=3/2
+    isv_only32 = np.zeros_like(isv); isv_only32[:, :, 2] = isv[:, :, 2]
     a = _zmtx(-1, 1, vec, np.zeros_like(isv), axial)
     b = _zmtx(-1, 1, vec, isv_only32, axial)
     assert np.allclose(a, b), "an I=3/2 isoscalar amplitude leaked into the NC current"
 
-    isv_only12 = np.zeros_like(isv); isv_only12[:, :, 0] = isv[:, :, 0]      # wave 0 is I=1/2
+    isv_only12 = np.zeros_like(isv); isv_only12[:, :, 0] = isv[:, :, 0]
     c = _zmtx(-1, 1, vec, isv_only12, axial)
     assert not np.allclose(a, c), "the I=1/2 isoscalar amplitude is being ignored"
 
@@ -101,7 +98,7 @@ def test_proton_and_neutron_differ_only_by_the_vvfac_sign():
     zn = _zmtx(-1, -1, vec, isv, axial)
     old = D.NC_ISV_SIGN
     try:
-        D.NC_ISV_SIGN = 0.0                                # drop the isoscalar term, keep isovector
+        D.NC_ISV_SIGN = 0.0
         z0 = _zmtx(-1, +1, vec, isv, axial)
     finally:
         D.NC_ISV_SIGN = old
@@ -110,7 +107,6 @@ def test_proton_and_neutron_differ_only_by_the_vvfac_sign():
     assert not np.allclose(zp, zn), "p and n are identical -- VVFAC is not being applied at all"
 
 
-# ---------------------------------------------------------------------------- axial / pion pole
 def test_nc_has_an_axial_current_and_em_does_not():
     """`if(mode.lt.10)` gates the axial block, so NC (mode=-1) keeps it and EM (mode=10) loses it."""
     vec, isv, axial = _amps()
@@ -129,13 +125,11 @@ def test_the_pion_pole_knob_has_exactly_zero_effect_on_nc():
     a = _zmtx(-1, 1, vec, isv, axial, pion_pole=1.0)
     b = _zmtx(-1, 1, vec, isv, axial, pion_pole=3.7)
     assert np.array_equal(a, b), "the pion-pole knob moved the NC current"
-    # and it DOES move CC, so the test above is not vacuous
     c = _zmtx(1, 1, vec, isv, axial, pion_pole=1.0)
     d = _zmtx(1, 1, vec, isv, axial, pion_pole=3.7)
     assert not np.allclose(c, d), "the pion-pole knob does nothing for CC either -- test is vacuous"
 
 
-# --------------------------------------------------------------- CC must not have moved at all
 def test_cc_and_em_are_bit_identical_to_the_isv_recombination_they_were_validated_with():
     """G4(1) in miniature.  The governing rule is that NC work must not regress CC, so the CC branch
     must still compute i32*vec + (1-i32)*0.5*(vec-isv) exactly, and EM its own forms."""
@@ -150,7 +144,6 @@ def test_cc_and_em_are_bit_identical_to_the_isv_recombination_they_were_validate
     assert np.allclose(got, ref), "the CC vector recombination changed"
 
 
-# ------------------------------------------------------------------- G5(3): the pre-registration
 def test_norm_nc_over_norm_em_matches_the_value_registered_before_measurement():
     from adonis.channels.dcc.current import _NORM_NC, _NORM_EM
     from adonis.channels import constants as C
@@ -169,6 +162,5 @@ def test_nc_qe_demands_the_struck_nucleon_species():
     z = np.zeros((1, 4))
     with pytest.raises(ValueError, match="is_proton"):
         hadron_current_qe_dirac(z, z, z, z, probe="NC")
-    # with it supplied, the current is finite and non-trivial
     h = np.asarray(hadron_current_qe_dirac(z, z, z, z, probe="NC", is_proton=np.array([True])))
     assert np.all(np.isfinite(h))

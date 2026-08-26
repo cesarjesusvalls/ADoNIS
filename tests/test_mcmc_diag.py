@@ -60,7 +60,6 @@ def test_rhat_detects_offset_chains():
 
 
 def test_rhat_detects_within_chain_drift():
-    # each chain drifts across its own length: the chains AGREE overall, so only SPLIT Rhat sees it
     rng = np.random.default_rng(5)
     n = 4000
     x = rng.standard_normal((4, n)) + np.linspace(-2, 2, n)[None, :]
@@ -72,20 +71,19 @@ def test_tail_ess_is_finite_and_below_bulk_for_ar1():
     x = _ar1(20000, 0.9, rng)
     et, eb = ess_tail(x), ess_bulk(x)
     assert np.isfinite(et) and et > 0
-    assert et < 3 * eb                       # tail is never wildly larger than bulk
+    assert et < 3 * eb
 
 
 def test_repeated_values_do_not_break_rank_normalisation():
-    # a Metropolis chain REPEATS its state on rejection; ties must not corrupt the normal scores
     rng = np.random.default_rng(7)
     x = rng.standard_normal((4, 3000))
-    keep = rng.random((4, 3000)) < 0.6       # 40% rejections -> long runs of identical values
+    keep = rng.random((4, 3000)) < 0.6
     for i in range(4):
         for t in range(1, 3000):
             if not keep[i, t]:
                 x[i, t] = x[i, t - 1]
     assert np.isfinite(split_rhat(x)) and np.isfinite(ess_bulk(x))
-    assert ess_bulk(x) < x.size              # correlated by construction
+    assert ess_bulk(x) < x.size
 
 
 def test_frozen_chain_has_no_effective_samples():

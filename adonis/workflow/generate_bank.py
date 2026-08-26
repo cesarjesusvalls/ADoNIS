@@ -17,7 +17,7 @@ import numpy as np
 from adonis.workflow import records as REC
 
 
-def _idma(n):  # amps2 identity (a,b,c,Q2)=(1,0,0,1) on the OTHER channel
+def _idma(n):
     return [np.ones(n, np.float32), np.zeros(n, np.float32), np.zeros(n, np.float32), np.ones(n, np.float32)]
 
 
@@ -56,7 +56,6 @@ def generate_bank(cfg, outdir=None, log=None):
     return _generate_hardvertex(cfg, outdir, log, t0)
 
 
-# =========================================================================== weak / EM hard vertex ===
 def _generate_hardvertex(cfg, outdir, log, t0):
     import jax
     jax.config.update("jax_enable_x64", True)
@@ -65,8 +64,6 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     from adonis.nuclear.spectral import SpectralFunction
     import adonis.fsi.cascade as CF
 
-    # Probe dispatch. `EM` is a local boolean because the EM branch's record shape differs (monochromatic
-    # beam, c/omega/theta records); NC shares CC's shape, so it is a third branch rather than a fourth.
     EM = (cfg.probe == "EM")
     NC = (cfg.probe == "NC")
     CHUNK = cfg.chunk or cfg.n_per_seed
@@ -84,11 +81,11 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     POOL = lambda **k: CF.pool_cascade_config(nucleus=tgt.density_p, density_n=tgt.density_n,
                                               configs=tgt.configs, **k)
 
-    LACC = tuple(cfg.theta_acc)             # outgoing-lepton polar acceptance, UNIFORM across all channels
-    _ALL = (0.0, 180.0)                     # channels sample all-angle; the ONE acceptance is applied below
+    LACC = tuple(cfg.theta_acc)
+    _ALL = (0.0, 180.0)
     if EM:
         from adonis.channels import ee as ee_x, res_ee as res_ee_x
-        sf = SpectralFunction(tgt.spectral_n)         # SF grids for the (e,e') hard-vertex reweight records
+        sf = SpectralFunction(tgt.spectral_n)
         EB = float(cfg.e_beam)
 
         def gen_qe(n, seed):
@@ -96,19 +93,19 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             r = _accept_lepton(r, LACC, theta=r["theta"])
             pid = np.where(r["is_p"], 2212, 2112).astype(np.int32)
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
-                        k_lep=np.asarray(r["k_lep"]),            # outgoing e- 4-vector (for TKI/P_T)
+                        k_lep=np.asarray(r["k_lep"]),
                         p_N=np.asarray(r["p_out"]), p_pi=np.zeros((len(pid), 4)),
-                        ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid, _raw=r)   # _raw: hv records
+                        ppid=np.zeros(len(pid), np.int32), ipid=pid, Npid=pid, _raw=r)
 
         def gen_res(n, seed):
             r = res_ee_x.generate(n, material=cfg.material, seed=seed, E_beam=EB, records=True, theta_acc=_ALL)
             r = _accept_lepton(r, LACC, theta=r["theta"])
             return dict(c=np.asarray(r["c"]), omega=np.asarray(r["omega"]), theta=np.asarray(r["theta"]),
-                        k_lep=np.asarray(r["k_lep"]),               # outgoing e- 4-vector (for TKI/P_T)
+                        k_lep=np.asarray(r["k_lep"]),
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
-                        Npid=np.asarray(r["Npid"], np.int32), _raw=r)   # _raw: p_struck for the SF reweight
-        m_extra = dict(E_beam=EB, theta_acc=list(LACC))   # probe added below, from cfg.probe
+                        Npid=np.asarray(r["Npid"], np.int32), _raw=r)
+        m_extra = dict(E_beam=EB, theta_acc=list(LACC))
     elif NC:
         from adonis.channels import qe_nc as qe_nc_x, res_nc as res_nc_x
 
@@ -116,8 +113,6 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             r = qe_nc_x.generate(n, material=cfg.material, seed=seed, return_events=True,
                                  use_achilles_nc_coupling=bool(cfg.achilles_coupl1_quirk),
                                  theta_acc=LACC)["events"]
-            # NO _accept_lepton: the outgoing neutrino is invisible, so a polar cut is meaningless
-            # (generate refuses a non-trivial theta_acc, like res_nc).
             return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]),
                         p_struck=np.asarray(r["p_struck"]), k_lep=np.asarray(r["k_lep"]),
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
@@ -127,14 +122,12 @@ def _generate_hardvertex(cfg, outdir, log, t0):
         def gen_res(n, seed):
             r = res_nc_x.generate(n, material=cfg.material, seed=seed, return_events=True,
                                   theta_acc=LACC)["events"]
-            # NO _accept_lepton: res_nc.generate already REFUSES a non-trivial theta_acc, because a
-            # polar cut on an invisible outgoing neutrino is meaningless and would bias the sample.
             return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]),
                         p_struck=np.asarray(r["p_struck"]), k_lep=np.asarray(r["k_lep"]),
                         p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32), _raw=r)
-        m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))   # probe added below, from cfg.probe
+        m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))
     else:
         from adonis.reweight.reweight_model import build_hv_sf
         from adonis.channels import qe as qe_x, res as res_x
@@ -142,7 +135,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
 
         def gen_qe(n, seed):
             q = qe_x.sample_importance(n, seed=seed, sf=sf, n_neutron=n_neutron)
-            q = _accept_lepton(q, LACC, kkey="k_lep"); nq = len(q["w"])   # outgoing-muon acceptance
+            q = _accept_lepton(q, LACC, kkey="k_lep"); nq = len(q["w"])
             return dict(w=np.asarray(q["w"]) / CHUNK, k_nu=np.asarray(q["k_nu"]), p_struck=np.asarray(q["p_struck"]),
                         k_lep=np.asarray(q["k_lep"]), p_N=np.asarray(q["p_out"]), p_pi=np.zeros((nq, 4)),
                         ppid=np.zeros(nq, np.int32), ipid=np.full(nq, 2112, np.int32),
@@ -151,14 +144,14 @@ def _generate_hardvertex(cfg, outdir, log, t0):
         def gen_res(n, seed):
             r = res_x.generate(n, seed=seed, return_events=True, sf_n=sf, sf_p=sf_p,
                                n_neutron=n_neutron, n_proton=n_proton)["events"]
-            r = _accept_lepton(r, LACC, kkey="k_lep")                    # outgoing-muon acceptance
+            r = _accept_lepton(r, LACC, kkey="k_lep")
             return dict(w=np.asarray(r["w"]), k_nu=np.asarray(r["k_nu"]), p_struck=np.asarray(r["p_struck"]),
                         k_lep=np.asarray(r["k_lep"]), p_N=np.asarray(r["p_N"]), p_pi=np.asarray(r["p_pi"]),
                         ppid=np.asarray(r["ppid"], np.int32), ipid=np.asarray(r["ipid"], np.int32),
                         Npid=np.asarray(r["Npid"], np.int32), _raw=r)
-        m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))   # probe added below, from cfg.probe
+        m_extra = dict(flux=cfg.flux, theta_acc=list(LACC))
 
-    def cascade(ev, key, caps, chan):     # returns (pterm,nterms,ofl,created,fsi_rec,prim_fate)
+    def cascade(ev, key, caps, chan):
         return CF.cascade_nucleus(jnp.asarray(ev["p_pi"]), jnp.asarray(ev["p_N"]),
                                   jnp.asarray(ev["ppid"]).astype(jnp.int32), jnp.asarray(ev["ipid"]).astype(jnp.int32),
                                   jnp.asarray(ev["Npid"]).astype(jnp.int32),
@@ -175,25 +168,20 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     CAPS_qe = CAPS_res = (64, 64)
     if do_qe: CAPS_qe = cal_caps(gen_qe, "qe"); log(f"flat FSI caps qe -> {CAPS_qe}")
     if do_res: CAPS_res = cal_caps(gen_res, "res"); log(f"flat FSI caps res -> {CAPS_res}")
-    # probe is always cfg.probe, never a literal, so the manifest can never disagree with the config
-    # that produced it. Guarded by tests/test_probe_naming.py::test_manifest_probe_equals_config_probe.
     manifest = dict(n_chunks=n_chunks, chunk=CHUNK, n_total=CHUNK * n_chunks, material=cfg.material,
                     channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res),
                     probe=cfg.probe, achilles_coupl1_quirk=bool(cfg.achilles_coupl1_quirk), **m_extra)
 
-    stage_t = []                # per-chunk stage wall clock -> manifest['stage_seconds']
+    stage_t = []
     for c in range(n_chunks):
         kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)
         evs, cols, rec_blocks, out_blocks, ns, pterms = [], [], [], [], [], []
-        t_pre = t_cas = 0.0     # per-stage wall clock: the hard vertex and the cascade scale differently
+        t_pre = t_cas = 0.0
         for chan, key, caps in ([("qe", kq, CAPS_qe)] if do_qe else []) + ([("res", kr, CAPS_res)] if do_res else []):
             _t0 = time.time()
             ev = (gen_qe if chan == "qe" else gen_res)(CHUNK, SEED0 + c); nb = len(ev["p_N"])
             _t1 = time.time()
             _pt, nt, _o, _cr, rec, pf = cascade(ev, key, caps, chan)
-            # Must block before stopping the clock: jax dispatch is asynchronous, so without this the
-            # cascade returns unfinished device arrays and its cost is charged to whatever touches them
-            # next -- on a GPU that would be the record-building step.
             jax.block_until_ready((nt[0], pf))
             t_pre += _t1 - _t0; t_cas += time.time() - _t1
             evs.append((chan, ev)); cols.append(np.zeros(nb, np.int8) if chan == "qe" else np.ones(nb, np.int8))
@@ -201,7 +189,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             ns.append(nb); pterms.append(_pt)
         log(f"chunk {c+1}/{n_chunks}: cascades done ({', '.join('%s=%d' % (e[0], n) for e, n in zip(evs, ns))})"
             f" | pre-FSI {t_pre:.1f}s, cascade {t_cas:.1f}s")
-        t_rec0 = time.time()      # record building + npz write: host-side, no GPU in it
+        t_rec0 = time.time()
 
         save, meta = REC.cascade_outcome_record(out_blocks, rec_blocks, ns)
         if meta["ndrop"]: log(f"chunk {c+1}: dropped {meta['ndrop']} non-physical final-state particles")
@@ -212,11 +200,10 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             cat = lambda k: np.concatenate([e[1][k] for e in evs])
             save.update(c=cat("c").astype(np.float64), omega=cat("omega").astype(np.float32),
                         theta=cat("theta").astype(np.float32),
-                        k_lep=cat("k_lep").astype(np.float32))     # outgoing e- 4-vector (TKI/P_T: Fig 6)
-            if do_qe and do_res:                                 # differentiable (e,e') hard-vertex records
+                        k_lep=cat("k_lep").astype(np.float32))
+            if do_qe and do_res:
                 from adonis.reweight.reweight_model import build_hv_sf
                 nq = ns[0]; nr = ns[-1]; qraw = evs[0][1]["_raw"]; rraw = evs[-1][1]["_raw"]
-                # qe_joint=False: keep storing the legacy per-knob (a,b,c) records until the M-record refresh
                 HV, _SF = build_hv_sf(qraw, rraw, sf, with_pw=False, probe="EM", qe_joint=False, res_joint=False)
                 hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
                 hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
@@ -225,7 +212,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                           qe_gen=hv_q(HV["qe_gen"]), res_pp=hv_r(HV["res_pp"]), res_delta=hv_r(HV["res_delta"]))
                 save.update({f"hv_{nm}_{abc}": comp[i].astype(np.float32) for nm, comp in hv.items()
                              for i, abc in enumerate(["a", "b", "c", "Q2"][:len(comp)])})
-                save.update(w0=cat("c").astype(np.float64),      # bank_weight base weight (= EM per-event c)
+                save.update(w0=cat("c").astype(np.float64),
                             p_struck=np.concatenate([np.asarray(qraw["p_struck"]),
                                                      np.asarray(rraw["p_struck"])]).astype(np.float32))
         else:
@@ -236,11 +223,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                         k_nu=np.concatenate([e[1]["k_nu"] for e in evs]).astype(np.float32),
                         p_struck=np.concatenate([e[1]["p_struck"] for e in evs]).astype(np.float32),
                         k_lep=np.concatenate([e[1]["k_lep"] for e in evs]).astype(np.float32))
-            # hv_* are the CC differentiable hard-vertex records (build_hv_sf + `sf` live only in the CC
-            # branch).  NC banks carry none: they reweight through w0 / bank_signal_nc, and bank_weight
-            # fails loud on a bank without hv_* (see adonis/reweight/bank_reweight).
             if do_qe and do_res and not NC:
-                HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False, qe_joint=False, res_joint=False)   # legacy per-knob storage
+                HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False, qe_joint=False, res_joint=False)
                 hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
                 hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
                 qe_ma = [np.concatenate([np.asarray(HV["qe_ma"][i], np.float32), _idma(nr)[i]]) for i in range(4)]
@@ -257,10 +241,6 @@ def _generate_hardvertex(cfg, outdir, log, t0):
 
         np.savez(f"{outdir}/chunk_{c:03d}.npz", **save)
         del evs, out_blocks, save; _gc.collect()
-        # Per-chunk stage wall clock, into the manifest rather than only the log.  The three stages
-        # scale differently -- the hard vertex is host-bound and gains nothing from a GPU, the cascade
-        # is the part that does -- so a single end-to-end number hides which one a machine is good at.
-        # Chunk 0 carries JIT compilation; read the steady state from chunk 1 onward.
         stage_t.append(dict(chunk=c, n_events=int(sum(ns)), pre_fsi=t_pre, cascade=t_cas,
                             record_io=time.time() - t_rec0))
         log(f"chunk {c+1}/{n_chunks}: written")
@@ -270,7 +250,6 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     return outdir
 
 
-# =========================================================================== tagged hadron beam =====
 def _generate_hadron(cfg, outdir, log, t0):
     import jax
     jax.config.update("jax_enable_x64", True)
@@ -287,9 +266,9 @@ def _generate_hadron(cfg, outdir, log, t0):
                                  step=cfg.cascade.step, pauli=cfg.pauli, nn_inelastic=cfg.cascade.nn_inelastic,
                                  engine="pool")
     _rg, _rp, _rn, radius = _load_density(ccfg.nucleus, ccfg.density_n)
-    z0 = -1.05 * float(radius)                   # InitCrossSection: 5% outside the nuclear surface
+    z0 = -1.05 * float(radius)
     mass = float(_CH_MASS[charge]) if species == "PION" else (_MP_PHYS if charge == 1 else _MN_PHYS)
-    hb = HadronBeam(cfg.beam, mass)              # on-shell beam particle (adonis/flux/hadron)
+    hb = HadronBeam(cfg.beam, mass)
     CHUNK = cfg.chunk or cfg.n_per_seed
     n_total = CHUNK * cfg.n_seeds
     n_chunks = cfg.n_seeds
@@ -303,7 +282,7 @@ def _generate_hadron(cfg, outdir, log, t0):
         mom, p4, pos0 = hb.sample(k_mom, k_disk, m, cfg.pmin, cfg.pmax, z0)
         kn, kp = jax.random.split(k_nuc, 2)
         npos, nmom, nisp = sample_nucleons(kn, m, ccfg); A = nisp.shape[1]
-        _sc = max(1, -(-A // 12))                # ceil(A/12): FSI record caps scale with the nucleus
+        _sc = max(1, -(-A // 12))
         su = dict(npos=npos, nmom=nmom, nisp=nisp, pos0=pos0, consumed0=jnp.zeros((m, A), bool),
                   ch0=jnp.full(m, charge if species == "PION" else 0, jnp.int32), kp=kp)
         _k1, knuc, _k2 = jax.random.split(su["kp"], 3)
@@ -313,7 +292,7 @@ def _generate_hadron(cfg, outdir, log, t0):
         g0["charge"] = jnp.full((m, 1), charge, jnp.int32)
         g0["p4"] = p4[:, None, :]; g0["pos"] = pos0[:, None, :]
         g0["origin"] = jnp.full((m, 1), CF._ORIG_PRIM_PI, jnp.int32)
-        g0["external_test"] = jnp.ones((m, 1), bool)   # CrossSection beam -> z-plane escape
+        g0["external_test"] = jnp.ones((m, 1), bool)
         _base = jax.vmap(lambda e: jax.random.fold_in(knuc, e))(jnp.arange(m))
         g0["pkey"] = jax.vmap(lambda b: jax.random.fold_in(b, 0))(_base)[:, None, :]
         stepper = CF.make_pool_stepper(su, ccfg, with_rec=True)
@@ -327,9 +306,9 @@ def _generate_hadron(cfg, outdir, log, t0):
         comp = CF.compact_fsi_record({k: np.asarray(v) for k, v in rec.items()})
         save, meta = REC.cascade_outcome_record([(O, np.asarray(prim_fate))], [comp], [m])
         save["beam_p"] = np.asarray(mom, np.float32)
-        save["w0"] = np.full(m, PIR2_MB, np.float64)     # pi R^2 [mb]; sigma(bin) = <w0 * X * w(theta)>
+        save["w0"] = np.full(m, PIR2_MB, np.float64)
         np.savez(f"{outdir}/chunk_{c:03d}.npz", **save)
-        _fl = REC.derive_flags(save)                     # reacted/absorbed are views over prim_fate+nsc_prim
+        _fl = REC.derive_flags(save)
         log(f"chunk {c+1}/{n_chunks}: written | reacted {_fl['reacted'].mean():.3f} | absorbed "
             f"{_fl['absorbed'].mean():.3f} | <n_pi_out> {save['n_pi_out'].mean():.3f}")
         del O, save, out
@@ -340,7 +319,6 @@ def _generate_hadron(cfg, outdir, log, t0):
     return outdir
 
 
-# =========================================================================== bank reader ============
 def load_bank(outdir, max_chunks=None):
     """Concatenate the chunk_*.npz of a bank dir into one in-memory dict (+ ["manifest"]).  Ragged
     per-slot event indices (FSI f_*_eidx, escaped-list ks_eidx) are offset into the global event
@@ -349,15 +327,15 @@ def load_bank(outdir, max_chunks=None):
     man = json.load(open(f"{outdir}/manifest.json"))
     files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
     if max_chunks is not None:
-        files = files[:max_chunks]                       # subsampled bank (beams self-normalize via n_tried)
+        files = files[:max_chunks]
     per, ev_off = {}, 0
     for f in files:
         d = np.load(f)
-        nev = len(d["prim_fate"])                        # per-event ground truth present in EVERY probe
+        nev = len(d["prim_fate"])
         for k in d.files:
             v = d[k]
             if k in ("f_p_eidx", "f_n_eidx", "ks_eidx"):
-                v = v.astype(np.int64) + ev_off          # per-slot event index -> global numbering
+                v = v.astype(np.int64) + ev_off
             per.setdefault(k, []).append(v)
         ev_off += nev
     B = {k: np.concatenate(v) for k, v in per.items()}

@@ -49,19 +49,6 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
     ap.add_argument("--sig-cap", type=int, default=20000, help="events/sample (0 = the config's)")
-    # TOLERANCES ARE SET FROM WHAT TWO CORRECT IMPLEMENTATIONS ACTUALLY ACHIEVE, not from a round number.
-    # Measured at 20k/sample: model 2.6e-11 relative, residuals 2.6e-7 sigma, gradient 5.3e-8, jacobian
-    # 1.8e-7, and chi2 1.6e-11 absolute at the closure truth.  The decomposition below shows ALL of it is
-    # XLA fusion -- the binning agrees to 1.1e-17 and vmap to 2.1e-16 -- so this is the floor between two
-    # correct float64 programs, not an error budget that better code would shrink.
-    #
-    # The gate sits ~2 decades above each measurement.  That is loose enough never to fail on float noise
-    # and tight enough to catch what it is for: a wrong bin map, a dropped free-H offset, a mis-indexed
-    # dial or a missing prior block are all O(1) or worse, not O(1e-6).
-    #
-    # (The plan asked for 1e-12.  That was the RESIDUAL SCALE of the Asimov fit -- chi2 = 1.8e-24 means
-    # residuals ~1e-12 -- and never a statement about implementation agreement.  Against a sigma that is
-    # 5% of the bin content, 1e-8 per bin is eight orders below anything physical.)
     ap.add_argument("--tol", type=float, default=1e-9, help="relative tol on the MODEL")
     ap.add_argument("--resid-tol", type=float, default=1e-5, help="absolute tol on residuals, in SIGMA")
     ap.add_argument("--deriv-tol", type=float, default=1e-5, help="relative tol on gradient and jacobian")
@@ -85,16 +72,11 @@ def main(argv=None):
     from analysis.campaign.stages import multisample as MS
     from adonis.reweight.reweight_model import nominal_knobs
 
-    # AFTER the imports: x64 is enabled by them, so reading the flag first would report False and the
-    # log would say the objective is single precision when it is not.
     log(f"jax {jax.__version__}  devices={jax.devices()}  x64={jax.config.jax_enable_x64}")
     if jax.devices()[0].platform != "gpu":
         log("[warn] not on a GPU -- correctness still holds, but run the acceptance on the device the "
             "benchmark will use, since that is where a numerical difference would appear")
 
-    # The REFERENCE must be the host binning path.  If S4_JAX_BIN is set, eng.model already bins on
-    # device and this script would be comparing the new device path against the old device path --
-    # a weaker test that would miss a disagreement common to both.
     if MS._JAX_BIN:
         raise SystemExit("S4_JAX_BIN=1: the reference here must be the HOST path. Unset it and re-run.")
 
@@ -126,7 +108,6 @@ def main(argv=None):
         f"{np.allclose(kern.pw, pw, rtol=0, atol=0)}")
     kern.warmup(x0)
 
-    # ---- host reference, written out exactly as trf_fit writes it -------------------------------- #
     def h_model(x):
         th = th0.copy(); th[idx] = x
         return eng.model(th)
@@ -145,18 +126,11 @@ def main(argv=None):
     rng = np.random.default_rng(a.seed)
     pts = [("start", x0), ("truth", xt), ("mid", 0.5 * (x0 + xt)),
            ("random", x0 + rng.normal(0, 0.05, size=len(idx)) * np.abs(x0))]
-    # Nothing may leave the physical box -- a point outside it is not a point the fit can visit, and
-    # comparing two implementations there tests clipping behaviour rather than the model.
     lo, hi = kern.bounds()
     pts = [(nm, np.clip(x, lo + 1e-9, hi - 1e-9)) for nm, x in pts]
 
-    # SCALES ARE FIXED AT THE START POINT, not taken from whatever is being compared.  At the closure
-    # truth the residual and the gradient are both ~0 by construction, so dividing by their own norm
-    # turns float noise into a "1.5e+00 disagreement" and a "1e+08 disagreement" -- which is what the
-    # first run of this script reported, and it means nothing at all.  Every column below is therefore an
-    # absolute difference divided by a scale that does not depend on the point.
     S_model = float(np.max(np.abs(h_model(x0))))
-    S_resid = 1.0                       # residuals are already in units of sigma: 1 = a one-sigma bin
+    S_resid = 1.0
     S_grad = float(np.max(np.abs(2.0 * (h_jac(x0).T @ h_resid(x0)))))
     S_jac = float(np.max(np.abs(h_jac(x0))))
 
@@ -171,16 +145,13 @@ def main(argv=None):
 
         d_m = _rel(m_k, m_h, S_model)
         d_r = _rel(r_k, r_h, S_resid)
-        d_c = abs(c_k - c_h)                                    # ABSOLUTE: chi2 -> 0 at the truth
+        d_c = abs(c_k - c_h)
         d_J = _rel(J_k, J_h, S_jac)
 
-        # gradient vs the host Jacobian: grad chi2 = 2 J^T r  (J and r BOTH already whitened, and the
-        # prior block is part of both, so this is the whole gradient with nothing left implicit)
         g_h = 2.0 * (J_h.T @ r_h)
         g_k = kern.grad(x)
         d_g = _rel(g_k, g_h, S_grad)
 
-        # ... and vs a central finite difference of the host chi2, which knows nothing about any Jacobian
         hstep = 1e-5 * np.maximum(np.abs(x), 1.0)
         g_fd = np.empty(len(x))
         for i in range(len(x)):
@@ -189,10 +160,6 @@ def main(argv=None):
             g_fd[i] = (h_chi2(xp) - h_chi2(xm)) / (2 * hstep[i])
         d_gfd = _rel(g_k, g_fd, S_grad)
 
-        # WHICH BIN IS WORST, in its own units.  The global max/max above divides by the largest bin in
-        # the stack, so a small bin with heavy cancellation can carry a per-bin relative error orders
-        # larger and never show.  That is exactly the gap between "model agrees to 2.6e-11" and
-        # "residuals disagree by 2.6e-7 sigma", and it has to be named rather than inferred.
         lv_ = w > 0
         pb = np.abs(m_k - m_h)[lv_] / np.maximum(np.abs(m_h)[lv_], 1e-300)
         jb = int(np.argmax(pb))
@@ -206,57 +173,30 @@ def main(argv=None):
                             ("jacobian", d_J, a.deriv_tol)):
             if not np.isfinite(v) or v > tol:
                 fails.append(f"{nm}: {tag} disagrees by {v:.3e} (tol {tol:.0e})")
-    # The FLOOR: chi2 at the closure truth, where the exact answer is 0.  This is the number that bounds
-    # how deep a Phase-3 convergence target may go, so it is asserted rather than merely printed.
     floor = abs(kern.chi2(xt) - h_chi2(xt))
     print(f"\nobjective floor at the closure truth: |chi2_kernel - chi2_host| = {floor:.3e}  "
           f"-> convergence targets must stay above it")
     if floor > a.floor_tol:
         fails.append(f"chi2 floor at the truth is {floor:.3e} (tol {a.floor_tol:.0e})")
 
-    # ---- WHERE does any disagreement come from? --------------------------------------------------- #
-    # If the kernel does not reproduce the host path to round-off, the difference is one of exactly
-    # three things, and guessing which is not good enough.  Each stage below changes ONE of them:
-    #
-    #   host      np.bincount over bank-ordered events, derivative from a separately-jitted vmapped jvp
-    #   host/loop same binning, but ONE jvp per dial in a python loop  -> isolates vmap
-    #   eager     device segment_sum over bin-sorted events, executed op by op -> isolates the BINNING
-    #   jit       the same device program, fused by XLA                -> isolates FUSION
-    #
-    # Summation order is not an implementation detail here: bincount sums a bin's ~600-6000 events in
-    # bank order, segment_sum sums them bin-sorted, and XLA is free to reassociate and contract into
-    # FMA once the whole chain is one program.  All three are equally correct; they differ in the last
-    # digits, and the size of that difference sets the floor on how small a chi2 any fit on this
-    # objective can reach -- which is exactly what a "converged to 1e-24" claim depends on.
     print("\n---- decomposition of the host-vs-kernel difference, at the start point ----")
     xd = x0
     thd = th0.copy(); thd[idx] = xd
     m_host = eng.model(thd)
-    m_eager = np.asarray(eng.model_jax(jnp.asarray(thd)))       # device binning, NOT fused
+    m_eager = np.asarray(eng.model_jax(jnp.asarray(thd)))
     m_jit = kern.model(xd)
     print(f"  model  host vs eager-device (binning only) : {_rel(m_eager, m_host, S_model):.3e}")
     print(f"  model  eager-device vs jitted kernel (fusion): {_rel(m_jit, m_eager, S_model):.3e}")
     print(f"  model  host vs jitted kernel (both)         : {_rel(m_jit, m_host, S_model):.3e}")
 
-    # LIVE BINS ONLY.  The kernel's jacobian is whitened, so a dead bin's row is exactly zero, while
-    # eng.jac is unweighted and its dead rows are perfectly ordinary numbers.  Comparing the two over
-    # all 325 bins therefore contrasts 0 against a real derivative on the 174 dead rows and reports a
-    # 12% "disagreement" that is entirely the mask.  (First run of this diagnostic did exactly that.)
     lv = w > 0
     J_host = eng.jac(thd, subset)[lv]
     J_loop = np.vstack([s.jac_blocks_ref(thd, subset) for s in eng.samples])[lv]
-    J_kern = kern.jac_data(xd)[lv] / w[lv][:, None]                 # un-whiten, to compare like with like
+    J_kern = kern.jac_data(xd)[lv] / w[lv][:, None]
     SJ = float(np.max(np.abs(J_host)))
     print(f"  jac    host vmapped vs host looped (vmap)   : {_rel(J_loop, J_host, SJ):.3e}")
     print(f"  jac    host vs jitted kernel (fusion)       : {_rel(J_kern, J_host, SJ):.3e}")
 
-    # AND WHERE INSIDE THE FUSION?  Two candidates, and they call for different responses:
-    #   (a) the WEIGHT computation is re-optimised when it is inlined into a bigger program (the bank
-    #       reweight is already its own jit, `_wf`; the kernel jits a function that calls it, and jax
-    #       inlines rather than nesting), or
-    #   (b) the segment_sum REDUCTION picks a different algorithm once it is fused with its producer.
-    # Probe: re-jit the weights ALONE, with the same theta plumbing the kernel uses but no binning.  If
-    # that already differs from `_wf`, it is (a) and the binning is innocent.
     s0 = eng.samples[0]
     if hasattr(s0, "_wf"):
         _i, _t0 = jnp.asarray(idx), jnp.asarray(th0)
@@ -266,33 +206,21 @@ def main(argv=None):
         print(f"  weights  _wf vs re-jitted _wf (no binning) : "
               f"{_rel(w_rejit, w_direct, Sw):.3e}   <- (a) weight re-optimisation")
 
-    # ---- batching invariance --------------------------------------------------------------------- #
-    # A batch narrower than the dial count must change dispatch count and peak memory and NOTHING else.
-    # Only the JACOBIAN program depends on the batch, so these kernels are warmed on jac ALONE.  A full
-    # warmup() compiles five XLA programs per sample and takes minutes; paying that three more times to
-    # test one of them is the kind of waste that turns a correctness gate into an afternoon.
-    # ONE extra batch width, not three.  Each extra kernel holds its own compiled executables on the
-    # device, and building three of them is what exhausted an 11 GB card the first time this ran.  The
-    # exhaustive batch sweep (widths 1, 2, 3, padded and unpadded) lives in tests/test_fit_kernels.py,
-    # which needs no banks and no GPU; what has to be shown HERE is that padding and un-padding survive
-    # contact with the real 10-sample binning.
     print(f"\n{'jac batch':>10} {'dispatches':>11} {'tangents run':>13} {'vs batch=n':>12}")
     Jref = kern.jac(x0)
     print(f"{kern.n:>10} {kern.nblk:>11} {kern.n:>13} {0.0:12.2e}")
     for B in (5,):
         k2 = FitKernel(eng, subset, jac_batch=B)
-        k2.jac(x0)                                    # compile, untimed
+        k2.jac(x0)
         k2.reset_counts()
         d = _rel(k2.jac(x0), Jref)
         print(f"{B:>10} {k2.nblk:>11} {k2.counts['tangent']:>13} {d:12.2e}")
         if d > a.tol:
             fails.append(f"jac batch {B} differs from batch {kern.n} by {d:.3e}")
-        # the padded columns must be counted as executed work, never quietly dropped
         assert k2.counts["tangent"] == k2.nblk * k2.B
         assert k2.counts["tangent_eff"] == k2.n
 
-    # ---- counters -------------------------------------------------------------------------------- #
-    k3 = kern.reset_counts()                          # already warm; a fresh kernel would only recompile
+    k3 = kern.reset_counts()
     k3.chi2(x0); k3.chi2(x0); k3.grad(x0); k3.jac(x0)
     c = k3.counts
     print(f"\ncounters after 2 chi2 + 1 grad + 1 jac: {c}")

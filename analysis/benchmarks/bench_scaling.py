@@ -79,16 +79,8 @@ def main(argv=None):
         if nd > len(full):
             log(f"[skip] {nd} dials requested, only {len(full)} in the Gate-I set")
             continue
-        # PREFIX of the Gate-I subset, in its own order.  Arbitrary but reproducible, and the point here
-        # is the SCALING with n, not which n dials -- every method sees the identical subset.
         sub = list(full[:nd])
         idx = np.array(sub, int)
-        # DATA REBUILT PER n, displacing ONLY the dials that float.  Injecting the full 17-dial truth and
-        # then freezing 17-n of them makes every n<17 point a MISSPECIFIED fit: measured chi2_min of 610,
-        # 516 and 434 at n = 4, 8, 12 against 1e-23 at n = 17, with the fit unable to reach the truth by
-        # construction.  Iteration counts from such points say nothing about scaling in n -- they say the
-        # model could not match the data.  With the truth restricted to the fitted dials every n is a
-        # closure in its own right and chi2_min = 0 throughout, so the only thing varying is n.
         star = np.asarray(eng.th0).copy()
         star[idx] = np.asarray(truth_full)[idx]
         eng.set_closure_data(star)
@@ -100,7 +92,7 @@ def main(argv=None):
 
         f_only = eng.chi2_fn(sub)
         vg = eng.chi2_grad_fn(sub)
-        f_only(x0); vg(x0); eng.jac(np.asarray(eng.th0), sub)      # compile + first touch, untimed
+        f_only(x0); vg(x0); eng.jac(np.asarray(eng.th0), sub)
 
         def _t(fn, n=5):
             fn(); ts = []

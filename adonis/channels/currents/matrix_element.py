@@ -19,16 +19,14 @@ from adonis.channels.currents.leptonic import lepton_current
 from adonis.channels.currents.dirac import hadron_current_qe_dirac
 
 _METRIC = jnp.array([1.0, -1.0, -1.0, -1.0])
-# initial-nucleon mass used by FluxFactor = ParticleInfo(<had_in>).Mass() -- the rounded
-# Particles.yml values (neutron 939.57, proton 938.27), NOT the precise Constant::mn/mp.
-from adonis.constants import MASS_PDG_NEUTRON, MASS_PDG_PROTON  # noqa: E402
+from adonis.constants import MASS_PDG_NEUTRON, MASS_PDG_PROTON
 _MASS_BY_PID = {2112: MASS_PDG_NEUTRON, 2212: MASS_PDG_PROTON}
 
 
 def _contract(L, H):
     """L (...,a,4), H (...,b,4) -> amps2 = sum_a sum_b |L_a . H_b|^2 (Minkowski dot)."""
-    Lm = L * _METRIC                                              # lower the index on L
-    LH = jnp.einsum('...am,...bm->...ab', Lm, H)                  # (...,a,b) complex
+    Lm = L * _METRIC
+    LH = jnp.einsum('...am,...bm->...ab', Lm, H)
     return jnp.sum(jnp.abs(LH) ** 2, axis=(-2, -1))
 
 
@@ -53,7 +51,7 @@ def me_cross_section(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, spin_avg=None, ha
     form factors -- needs is_proton (bool, broadcast over events).
     spin_avg=None takes the probe's registry value (CC 1/2, EM 1/4 = 2 e helicities x 2 nucleon
     spins); pass it explicitly to override."""
-    spec = probe_spec(probe)          # raises on unknown/unimplemented -- NEVER falls through to CC
+    spec = probe_spec(probe)
     if spin_avg is None:
         spin_avg = spec.spin_avg
     L = lepton_current(p_in_lep, p_out_lep, kind=spec.lep_kind, anti=False)

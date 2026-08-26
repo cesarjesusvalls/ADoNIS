@@ -22,7 +22,6 @@ def _channel():
     return DCCSinglePion(ChainConfig(spline=False))
 
 
-# -- closure (standalone differentiability) ----------------------------------- #
 def test_channel_closure():
     r = _channel().closure_test(key=jax.random.PRNGKey(0), n=N)
     assert not r.skipped
@@ -31,17 +30,12 @@ def test_channel_closure():
 
 
 def test_detached_modules_closure_skip():
-    # detached samplers / passthroughs have no differentiable parameter -> skipped
     for m in (SpectralFunction(), Monochromatic(), NoFSI()):
         r = m.closure_test()
         assert r.skipped and r.passed
 
 
-# -- oracle (physics validity) ------------------------------------------------ #
 def test_nuclear_oracle():
     r = SpectralFunction().oracle_test(n=N_ORACLE)
     assert not r.skipped
     assert r.passed, r.detail
-# (test_channel_oracle removed: the DCC-vs-ACHILLES final-state chi2 gate needed the external
-#  oracle_finalstate.npz and only shows discrepancies at high statistics -- validation lives in
-#  the analysis/paper pipeline, not a unit test.)

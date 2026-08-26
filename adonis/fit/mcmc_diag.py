@@ -47,8 +47,6 @@ def _rank_normalise(a):
     order = np.argsort(flat, kind="stable")
     ranks = np.empty(flat.size, float)
     ranks[order] = np.arange(1, flat.size + 1, dtype=float)
-    # average ranks over ties, so a sampler that repeats a value (a REJECTED Metropolis step) is not
-    # given a spurious ordering -- rejections are common and would otherwise bias the statistic
     u, inv, cnt = np.unique(flat, return_inverse=True, return_counts=True)
     if cnt.max() > 1:
         sums = np.zeros(u.size)
@@ -77,33 +75,16 @@ def _ess_from_chains(a):
     m, n = a.shape
     if n < 4:
         return float(m * n)
-    # A FROZEN CHAIN CARRIES NO INFORMATION, so its ESS is 0 -- not N.  The old code fell through to
-    # `return m*n` whenever var_plus <= 0, i.e. it reported a stuck chain as PERFECTLY INDEPENDENT.
-    # Worse, that test is a float comparison on an FFT result: a chain frozen at 3.14 gave ESS = N while
-    # one frozen at 7.77 gave ESS = 8, decided by round-off.  Sticking on a flat direction is precisely
-    # the failure mode of a random walk, so the bug rewarded the sampler it should have penalised.
-    # Test the RAW spread up front instead of trusting a downstream float comparison.
     if np.ptp(a) <= 1e-12 * max(np.abs(a).max(), 1.0):
         return 0.0
-    acov = np.stack([_autocov(a[i]) for i in range(m)])            # (m, n)
+    acov = np.stack([_autocov(a[i]) for i in range(m)])
     chain_var = acov[:, 0] * n / (n - 1.0)
-    # var_plus = W (n-1)/n + B/n, with B = 0 for a single chain.  The (n-1)/n factor applies EITHER
-    # WAY; keeping it inside the m>1 branch made single-chain ESS too small by n/(n-1).
     var_plus = chain_var.mean() * (n - 1.0) / n
     if m > 1:
         var_plus = var_plus + a.mean(axis=1).var(ddof=1)
     if not np.isfinite(var_plus) or var_plus <= 0:
         return float(m * n)
-    # rho_t averaged over chains
-    rho = 1.0 - (chain_var[:, None] - acov).mean(axis=0) / var_plus     # rho[0] == 1
-    # Geyer: sum consecutive PAIRS while positive, then enforce monotonicity.
-    # THE PAIRING STARTS AT LAG 0: P_t = rho_{2t} + rho_{2t+1}, so P_0 = 1 + rho_1 and
-    #     tau = -1 + 2 sum_t P_t = 1 + 2 sum_{t>=1} rho_t,
-    # which is the definition.  Starting at lag 1 instead drops that leading 1 and returns
-    # tau = -1 + 2 sum_{t>=1} rho_t -- measured tau = 0.91 against a true 3.00 on AR(1) rho=0.5, i.e. ESS
-    # overestimated 3.3x, and the error VANISHES as rho -> 1 (1.02x at rho=0.95), so it would have looked
-    # harmless on exactly the badly-mixing chains a sampler comparison cares least about and wrong on the
-    # well-mixing ones it cares most about.
+    rho = 1.0 - (chain_var[:, None] - acov).mean(axis=0) / var_plus
     t = 0
     pair = []
     while t + 1 < n:
@@ -115,7 +96,7 @@ def _ess_from_chains(a):
     if not pair:
         return float(m * n)
     pair = np.array(pair)
-    pair = np.minimum.accumulate(pair)          # monotone non-increasing
+    pair = np.minimum.accumulate(pair)
     tau = -1.0 + 2.0 * pair.sum()
     tau = max(tau, 1.0 / np.log10(max(m * n, 11)))
     return float(m * n / tau)

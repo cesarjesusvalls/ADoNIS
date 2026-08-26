@@ -35,11 +35,6 @@ def test_sf_norm_is_multiplier():
 
 
 def test_sf_autodiff_equals_fd():
-    # (name, v0, eps, tol, f).  Eb_shift is checked at its OPERATING POINT (nominal _EB_EPS=1e-2 MeV,
-    # full_knobs) on the smooth one-sided branch -- NOT at a far-from-nominal v0 that would hide the
-    # near-zero corner.  The removal-energy reweight S(p,E-Eb)/S(p,E) is steep there (heavy-tailed SF), so
-    # FD closure is ~1% (not 1e-4); the tight 1e-4 machinery check is carried by the other three knobs,
-    # which share the same _bspline2d interpolation.
     cases = [
         ("kF_sf", 1.1, 1e-4, 1e-4, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, kF_sf=v))),
         ("Eb_shift", 1e-2, 5e-4, 1e-2, lambda v: jnp.sum(sf_reweight(_G, _PMAG, _EREM, Eb_shift=v))),

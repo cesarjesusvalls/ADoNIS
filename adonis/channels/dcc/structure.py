@@ -28,45 +28,38 @@ from adonis.channels.dcc.loader import load_cached
 from adonis.channels.dcc.assembly import build_zmtx, angular_kernel, current_and_tensor
 from adonis.channels.dcc.form_factors import axial_reweight_dipole
 from adonis.channels.dcc.spline import interp2d_spline
-from adonis.constants import MQE as M_N, M_PI    # exact ACHILLES masses (938.919, 138.04)
+from adonis.constants import MQE as M_N, M_PI
 
 
 @dataclass(frozen=True)
 class Channel:
-    itiz: int          # 2*target-nucleon isospin_z (+1 p, -1 n)
-    tiz: float         # target-nucleon isospin_z
-    tpinz: float       # total piN isospin_z
-    tpiz: float        # final-pion isospin_z
-    mult: float        # nucleon-count weight
-    tcrz: float = 1.0  # current isospin_z (CC nu = +1)
-    mode: int = 1      # 1 = CC nu
+    itiz: int
+    tiz: float
+    tpinz: float
+    tpiz: float
+    mult: float
+    tcrz: float = 1.0
+    mode: int = 1
 
 
 CC_CHANNELS = (
-    Channel(itiz=-1, tiz=-0.5, tpinz=0.5, tpiz=0.0, mult=6.0),   # n -> p pi0
-    Channel(itiz=-1, tiz=-0.5, tpinz=0.5, tpiz=1.0, mult=6.0),   # n -> n pi+
-    Channel(itiz=+1, tiz=+0.5, tpinz=1.5, tpiz=1.0, mult=6.0),   # p -> p pi+
+    Channel(itiz=-1, tiz=-0.5, tpinz=0.5, tpiz=0.0, mult=6.0),
+    Channel(itiz=-1, tiz=-0.5, tpinz=0.5, tpiz=1.0, mult=6.0),
+    Channel(itiz=+1, tiz=+0.5, tpinz=1.5, tpiz=1.0, mult=6.0),
 )
 
-# EM (photon) channels: current isospin_z tcrz=0, mode=10.  Four channels (vs 3 CC):
-# the photon doesn't change the nucleon charge, so each nucleon has two pion channels.
-# tpinz (total piN isospin_z) = tiz + tpiz: proton -> +1/2, neutron -> -1/2.
 EM_CHANNELS = (
-    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=10),  # p -> p pi0
-    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=1.0, mult=1.0, tcrz=0.0, mode=10),  # p -> n pi+
-    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=10),  # n -> n pi0
-    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=-1.0, mult=1.0, tcrz=0.0, mode=10), # n -> p pi-
+    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=10),
+    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=1.0, mult=1.0, tcrz=0.0, mode=10),
+    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=10),
+    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=-1.0, mult=1.0, tcrz=0.0, mode=10),
 )
 
-# NC (Z exchange) channels: current isospin_z tcrz=0, mode=-1.  Same four final states as
-# EM (the lepton charge is unchanged -> hadronic charge conserved per nucleon), but the
-# hadronic current carries the sin^2(theta_W) weak-mixing couplings (build_zmtx mode<=-1)
-# plus the axial current (no pion pole).
 NC_CHANNELS = (
-    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=-1),  # p -> p pi0
-    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=1.0, mult=1.0, tcrz=0.0, mode=-1),  # p -> n pi+
-    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=-1),  # n -> n pi0
-    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=-1.0, mult=1.0, tcrz=0.0, mode=-1), # n -> p pi-
+    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=-1),
+    Channel(itiz=+1, tiz=+0.5, tpinz=+0.5, tpiz=1.0, mult=1.0, tcrz=0.0, mode=-1),
+    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=0.0, mult=1.0, tcrz=0.0, mode=-1),
+    Channel(itiz=-1, tiz=-0.5, tpinz=-0.5, tpiz=-1.0, mult=1.0, tcrz=0.0, mode=-1),
 )
 
 
@@ -75,15 +68,11 @@ class HadronStructure:
 
     def __init__(self, amp: DCCAmplitudes | None = None, channels=CC_CHANNELS,
                  n_theta=12, n_phi=12, subsample_w=1, spline=True):
-        # spline=True (DEFAULT): ACHILLES-faithful FMM cubic interp.  spline=False = bilinear: NOT
-        # W-FAITHFUL -- the dsigma/dW shape (high-W tail) deviates >1%.  NEVER use bilinear unless the
-        # user has EXPLICITLY requested it for a specific purpose.
         self.spline = spline
         t = load_cached()
         self.amp = amp or DCCAmplitudes(t)
         self.twoJ = np.asarray(t.pw_2J); self.twoL = np.asarray(t.pw_2L)
         self.twoI = np.asarray(t.pw_2I)
-        # native grid (optionally W-subsampled for speed); Q2 kept full
         self.Wg = np.asarray(t.W)[::subsample_w]
         self.Q2g = np.asarray(t.Q2)
         self.channels = channels
@@ -91,7 +80,6 @@ class HadronStructure:
                                     tcrz=c.tcrz, tiz=c.tiz, tpinz=c.tpinz, tpiz=c.tpiz,
                                     n_theta=n_theta, n_phi=n_phi)
                      for c in channels]
-        # mesh of grid points (flattened) for a single vmap
         QQ, WW = np.meshgrid(self.Q2g, self.Wg, indexing="ij")
         self._Wf = jnp.asarray(WW.ravel()); self._Q2f = jnp.asarray(QQ.ravel())
         self._shape = WW.shape
@@ -139,7 +127,7 @@ class HadronStructure:
         """(W_T, W_L) at event kinematics W,Q2 (batched), differentiable in knobs.
         Uses ACHILLES's FMM cubic spline (see spline.py)."""
         WTg, WLg = self._tensor_grid(knobs)
-        g = jnp.stack([WTg, WLg], axis=-1)                # (nq,nw,2)
+        g = jnp.stack([WTg, WLg], axis=-1)
         out = self._interp2d(g, W, Q2)
         return out[:, 0], out[:, 1]
 
@@ -152,7 +140,7 @@ class HadronStructure:
     def tensor_at(self, W, Q2, knobs: DCCKnobs):
         """Full complex W^{mu,nu}[event,4,4] at event kinematics (batched),
         differentiable in knobs. Interp: FMM cubic spline (spline=True) or bilinear."""
-        Wg = self._full_grid(knobs)                       # (nq,nw,4,4) complex
+        Wg = self._full_grid(knobs)
         flat = Wg.reshape(Wg.shape[0], Wg.shape[1], 16)
-        out = self._interp2d(flat, W, Q2)                 # (N,16)
+        out = self._interp2d(flat, W, Q2)
         return out.reshape(-1, 4, 4)

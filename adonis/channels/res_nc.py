@@ -40,15 +40,14 @@ from adonis.channels.res import _pi_kin_mass, M_PIP, M_PI0
 from adonis.channels.res_ee import _sample_3body_ee
 
 _MN = C.mN
-M_LEP_NC = 0.0                  # the outgoing lepton is a neutrino
-SPIN_AVG_NC = 0.5               # 1 neutrino helicity x 2 nucleon spins (CC's value, not EM's 1/4)
+M_LEP_NC = 0.0
+SPIN_AVG_NC = 0.5
 
-# (struck pid, itiz, pion pid, m_Nf [MeV], is_proton_struck) -- same four as EM_CHANNELS.
 NC_RES_CHANNELS = [
-    (2212, +1, 111, MASS_PDG_PROTON,  True),     # p -> p pi0   (ACHILLES proc 452, 62.7% on 1H)
-    (2212, +1, 211, MASS_PDG_NEUTRON, True),     # p -> n pi+   (ACHILLES proc 451, 37.3% on 1H)
-    (2112, -1, 111, MASS_PDG_NEUTRON, False),    # n -> n pi0   (ACHILLES proc 451, 62.4% on 1N)
-    (2112, -1, -211, MASS_PDG_PROTON, False),    # n -> p pi-   (ACHILLES proc 452, 37.6% on 1N)
+    (2212, +1, 111, MASS_PDG_PROTON,  True),
+    (2212, +1, 211, MASS_PDG_NEUTRON, True),
+    (2112, -1, 111, MASS_PDG_NEUTRON, False),
+    (2112, -1, -211, MASS_PDG_PROTON, False),
 ]
 _M_PI = {111: M_PI0, 211: M_PIP, -211: M_PIP}
 
@@ -67,7 +66,7 @@ def free_nucleon_weights_nc(k_nu, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, u, ch
     """
     n = len(k_nu)
     m_pi = _pi_kin_mass(m_pi_phys)
-    p_struck = np.tile([had_mass, 0.0, 0.0, 0.0], (n, 1)).astype(float)      # nucleon at rest
+    p_struck = np.tile([had_mass, 0.0, 0.0, 0.0], (n, 1)).astype(float)
     tb = _sample_3body_ee(k_nu, p_struck, m_pi, m_Nf, M_LEP_NC, u)
     k_lep, p_N, p_pi, J3, valid = tb["k_lep"], tb["p_N"], tb["p_pi"], tb["J_3body"], tb["valid3"]
     a2 = np.zeros(n)
@@ -95,7 +94,7 @@ def sigma_free_nucleon_nc(Enu_MeV, channel, n=80_000, seed=0):
     _pdg_in, itiz, pi_pid, m_Nf, _is_p = channel
     had_mass = MASS_PDG_PROTON if _is_p else MASS_PDG_NEUTRON
     rng = np.random.default_rng(seed)
-    u = rng.random((n, 6))                       # col 0 unused: keeps the res.free_proton u-stream
+    u = rng.random((n, 6))
     E = float(Enu_MeV)
     k_nu = np.stack([np.full(n, E), np.zeros(n), np.zeros(n), np.full(n, E)], axis=1)
     w, _ = free_nucleon_weights_nc(k_nu, itiz, m_Nf, pi_pid, _M_PI[pi_pid], had_mass, u[:, 1:6])
@@ -114,7 +113,6 @@ def sigma_free_nucleon_nc_total(Enu_MeV, is_proton, n=80_000, seed=0):
     return tot, float(np.sqrt(var))
 
 
-# =========================================================================== nucleus-level generator
 
 
 def _sample_channel_nc(n, rng, flux, minE, maxE, m_pi, m_Nf, had_mass, imp):
@@ -126,11 +124,11 @@ def _sample_channel_nc(n, rng, flux, minE, maxE, m_pi, m_Nf, had_mass, imp):
     Enu = E_GeV * 1000.0
     J_beam = ((maxE - minE) * flux.f(E_GeV)) / flux.flux_integral
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
-    pvec, energy = imp.sample(n, rng)                     # |p|^2 S importance (initwgt -> N constant)
+    pvec, energy = imp.sample(n, rng)
     mom = np.linalg.norm(pvec, axis=1)
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
     tb = _sample_3body_ee(k_nu, p_struck, m_pi, m_Nf, M_LEP_NC, u[:, 5:10])
-    Smin = (M_LEP_NC + m_Nf + m_pi) ** 2                  # no lepton-mass term: NC has no threshold
+    Smin = (M_LEP_NC + m_Nf + m_pi) ** 2
     det = Enu ** 2 + mom ** 2 + 2 * pvec[:, 2] * Enu + Smin
     emax = _MN + Enu - np.sqrt(np.clip(det, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom), 400.0)
@@ -162,7 +160,7 @@ def generate(n=20000, material="C", seed=0, return_events=False, chunk=250_000,
     imp_p = SpectralImportanceSampler(SpectralFunction(sf_p_path))
     imp_n = SpectralImportanceSampler(SpectralFunction(sf_n_path))
     flux = SpectrumFlux()
-    minE = flux.seed_min_GeV(m_lep=M_LEP_NC); maxE = flux.max_energy   # NC has no lepton threshold
+    minE = flux.seed_min_GeV(m_lep=M_LEP_NC); maxE = flux.max_energy
     ev = {k: [] for k in ("k_nu", "k_lep", "p_struck", "p_N", "p_pi", "w", "ppid", "Npid", "ipid")}
     sig = 0.0
     nch = len(NC_RES_CHANNELS)

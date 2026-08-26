@@ -25,7 +25,7 @@ _TWO_PI = 2 * np.pi
 N_NEUTRON = 6
 
 
-from adonis.channels.twobody import isotropic_two_body_cm   # shared isotropic 2-body CM->lab (qe/ee/qe_nc)
+from adonis.channels.twobody import isotropic_two_body_cm
 
 
 def sample(n, seed=0):
@@ -33,12 +33,10 @@ def sample(n, seed=0):
     rng = np.random.default_rng(seed)
     u = rng.random((n, 7))
     flux = SpectrumFlux()
-    # ---- beam ----
     minE = flux.seed_min_GeV()
-    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE)        # 'is' (default) | 'flat'  -- BEAM_MODE toggle
+    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE)
     Enu = E_GeV * 1000.0
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
-    # ---- struck nucleon (QESpectralMapper) ----
     radical = Enu ** 2 + 2 * Enu * _MN + _MN ** 2 - _SMIN
     radical = np.clip(radical, 0, None)
     pmin = np.clip(Enu - np.sqrt(radical), 0, None)
@@ -50,17 +48,15 @@ def sample(n, seed=0):
     cosT = (cosTm + 1) * u[:, 1] - 1; sinT = np.sqrt(np.clip(1 - cosT ** 2, 0, None))
     phi = _TWO_PI * u[:, 2]
     pvec = np.stack([mom * sinT * np.cos(phi), mom * sinT * np.sin(phi), mom * cosT], axis=1)
-    det = Enu ** 2 + mom ** 2 + 2 * (pvec[:, 2] * Enu) + _SMIN          # pvec.k_nu = pz*Enu
+    det = Enu ** 2 + mom ** 2 + 2 * (pvec[:, 2] * Enu) + _SMIN
     emax = _MN + Enu - np.sqrt(np.clip(det, 0, None))
     emax = np.minimum(emax, _MN - mom); emax = np.clip(emax, None, 400.0)
-    energy = emax * u[:, 3] - 1e-8                                       # removal energy
+    energy = emax * u[:, 3] - 1e-8
     p_struck = np.concatenate([(_MN - energy)[:, None], pvec], axis=1)
     J_had = mom ** 2 * dp * (cosTm + 1) * _TWO_PI * emax
-    # ---- two-body final state (TwoBodyMapper), fixed-z CM axis (rotation-irrelevant) ----
     p01 = k_nu + p_struck
     k_lep, p_out, pcm, sqrts, s, lam = isotropic_two_body_cm(p01, M_MU, M_P, u[:, 5], u[:, 6])
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
-    # validity mask
     valid = (dp > 0) & (emax > 0) & (s > _SMIN) & (lam > 0) & (radical >= 0)
     J = J_beam * J_had * J_2body
     J = np.where(valid, J, 0.0)
@@ -70,12 +66,10 @@ def sample(n, seed=0):
 def generate(n, seed=0, sf=None):
     s = sample(n, seed)
     sf = sf or SpectralFunction("data/Spectral_Functions/pke12n_tot.data")
-    # matrix-element factors (amps2 * flux * spinavg)
     d = me_cross_section(jnp.asarray(s["k_nu"]), jnp.asarray(s["k_lep"]),
                          jnp.asarray(s["p_struck"]), jnp.asarray(s["p_out"]),
                          spin_avg=0.5, had_mass=MASS_PDG_NEUTRON)
     me = np.asarray(d["me_xsec"])
-    # initial-state weight (spectral), vectorised: removal energy = energy (= mN - E_struck)
     iw = N_NEUTRON * sf.batch(s["mom"], s["energy"])
     w = me * iw * s["J"]
     w = np.where(np.isfinite(w), w, 0.0)
@@ -96,44 +90,27 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     u = rng.random((n, 7))
     flux = SpectrumFlux()
     minE = flux.seed_min_GeV()
-    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0   # BEAM_MODE toggle
+    E_GeV, J_beam = flux.sample_beam(u[:, 4], minE); Enu = E_GeV * 1000.0
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
     sf = sf or _SF("data/Spectral_Functions/pke12n_tot.data")
     samp = SpectralImportanceSampler(sf)
     pvec, E_rm = samp.sample(n, rng)
     p_struck = np.concatenate([(_MN - E_rm)[:, None], pvec], axis=1)
-    # ThreeBody->TwoBody: total -> mu + p, isotropic CM (same as sample())
     P = k_nu + p_struck
     k_lep, p_out, pcm, sqrts, s, lam = isotropic_two_body_cm(P, M_MU, M_P, u[:, 5], u[:, 6])
-    # writeable copies -- the degenerate-row fixup below assigns in-place, and the helper's asarray view
-    # of the JAX boost is read-only.
     k_lep = np.array(k_lep); p_out = np.array(p_out)
-    # Kinematically-degenerate events (s->0 => CM boost beta->1) blow the boost up to ~1e17 MeV.
-    # They are rejected below (valid=False => w=0), but the garbage momenta are toxic to any downstream
-    # consumer: the FSI cascade (absurd momenta sit on escape/Pauli thresholds -> CPU/GPU divergence)
-    # AND me_cross_section (degenerate kinematics -> NaN amps2).  Replace the bad rows' FULL kinematics
-    # with a valid event's, so every consumer sees finite, self-consistent QE kinematics.  w=0 (set
-    # below via `valid`, which is computed from the ORIGINAL per-row s/lam/E_rm) keeps physics identical.
     _bad = (~np.isfinite(p_out).all(1) | ~np.isfinite(k_lep).all(1)
             | (np.linalg.norm(p_out[:, 1:], axis=1) > 1.0e6)
             | (np.linalg.norm(k_lep[:, 1:], axis=1) > 1.0e6))
     if _bad.any() and not _bad.all():
-        _ref = int(np.argmin(_bad))                     # first finite row
+        _ref = int(np.argmin(_bad))
         for _a in (k_nu, k_lep, p_struck, p_out):
             _a[_bad] = _a[_ref]
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
-    # ACHILLES QESpectralMapper restricts the removal energy to [0, emax]; the importance sampler
-    # draws E_rm from the full spectral grid, so the SAME kinematic ceiling must be imposed or the
-    # high-|p|/high-E tail (-> high delta_pT) is over-populated.  emax = min(mN+E0-sqrt(det),
-    # mN-mom, 400), det = E0^2 + mom^2 + 2 (p.k_nu) + Smin  (HadronicMapper.cc:50-53).
     mom_s = np.linalg.norm(pvec, axis=1)
     det_e = Enu ** 2 + mom_s ** 2 + 2 * pvec[:, 2] * Enu + (M_MU + M_P) ** 2
     emax = _MN + Enu - np.sqrt(np.clip(det_e, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom_s), 400.0)
-    # Lower removal-energy bound = the SF's OWN grid start (NOT a hardcoded 2.5, which was the carbon
-    # pke12 grid start: a no-op for C but for Ar (pke40 grid from 0) it wrongly discarded ~0.7% of the
-    # spectral strength in [0, 2.5] MeV that ACHILLES keeps -- ACHILLES samples E_rm from 0 with no floor
-    # (HadronicMapper.cc), the SF's own 0-outside-grid does the flooring).  Fixes the ~1% Ar QE deficit.
     valid = (s > (M_MU + M_P) ** 2) & (lam > 0) & (E_rm > sf.energy[0]) & (E_rm < emax)
     d = me_cross_section(jnp.asarray(k_nu), jnp.asarray(k_lep), jnp.asarray(p_struck),
                          jnp.asarray(p_out), spin_avg=0.5, had_mass=MASS_PDG_NEUTRON)
@@ -143,7 +120,7 @@ def sample_importance(n, seed=0, sf=None, n_neutron=N_NEUTRON):
     return dict(w=w, k_nu=k_nu, k_lep=k_lep, p_struck=p_struck, p_out=p_out, sigma=w.mean())
 
 
-from adonis.core.sample import Sampler       # noqa: E402
+from adonis.core.sample import Sampler
 
 
 class QEChannel(Sampler):

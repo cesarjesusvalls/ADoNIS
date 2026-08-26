@@ -18,14 +18,10 @@ import numpy as np
 from adonis.numerics import polint as _polint
 
 from adonis.io import achilles_sibling_root
-_ACH = achilles_sibling_root()   # single source: adonis.io
+_ACH = achilles_sibling_root()
 from adonis.constants import MASS_PDG_MUON as M_MU, MASS_PDG_PROTON as M_P
 
 
-# Default flux table, overridable so a whole generation runs a non-T2K beam without threading a flux
-# argument through every generator.  ADONIS_FLUX_FILE is a path relative to the sibling Achilles/ dir,
-# e.g. "flux/minerva_numu_fhc.dat".  Unset -> byte-identical T2K behaviour.  Read at CONSTRUCTION time
-# (not import) so a caller that sets the env after importing this module still gets the right beam.
 def _default_flux():
     return _os.environ.get("ADONIS_FLUX_FILE", "flux/T2K_nu.dat")
 
@@ -49,8 +45,8 @@ def _parse_spectrum(path):
             rows.append(nums)
     if not rows:
         raise ValueError(f"no numeric flux rows parsed from {path}")
-    col0_is_index = all(abs(r[0] - i) < 1e-9 for i, r in enumerate(rows))   # 0,1,2,... -> T2K layout
-    o = 1 if col0_is_index else 0                                           # column offset
+    col0_is_index = all(abs(r[0] - i) < 1e-9 for i, r in enumerate(rows))
+    o = 1 if col0_is_index else 0
     los = [r[o] for r in rows]; his = [r[o + 1] for r in rows]; hts = [r[o + 2] for r in rows]
     edges = np.array(los + his[-1:])
     return edges, np.array(hts)
@@ -64,12 +60,11 @@ class SpectrumFlux:
         path = _ACH / (filename if filename is not None else _default_flux())
         self.edges, self.heights0 = _parse_spectrum(path)
         self.flux_integral = float(np.sum(np.diff(self.edges) * self.heights0))
-        # padded bin centres + heights for the linear interpolator
         centres = [self.edges[0]] + [(self.edges[i] + self.edges[i - 1]) / 2 for i in range(1, len(self.edges))] + [self.edges[-1]]
         hpad = [self.heights0[0]] + list(self.heights0) + [self.heights0[-1]]
         self.centres = np.array(centres); self.hpad = np.array(hpad)
-        self.min_energy = self.edges[0]            # GeV
-        self.max_energy = self.edges[-1]           # GeV
+        self.min_energy = self.edges[0]
+        self.max_energy = self.edges[-1]
 
     def f(self, E_GeV):
         """m_flux(E_GeV): linear (2-pt Polint) interpolation on padded centres."""
@@ -89,8 +84,8 @@ class SpectrumFlux:
         (the outgoing lepton is a massless neutrino), and the CC value would silently truncate the
         flux below ~112 MeV -- harmless for CC, a real low-energy bias for NC."""
         Smin = (m_lep + M_P) ** 2
-        seed = (Smin - M_P ** 2) / (2 * M_P)       # MeV
-        return max(seed / 1000.0, self.min_energy)  # GeV
+        seed = (Smin - M_P ** 2) / (2 * M_P)
+        return max(seed / 1000.0, self.min_energy)
 
     def sample_beam(self, u, minE, mode=None):
         """Map the single beam uniform u[:,4] -> (E_GeV, J_beam), in one of two modes that estimate
@@ -119,22 +114,17 @@ class SpectrumFlux:
             return E, J
         if mode != "is":
             raise ValueError(f"unknown beam mode {mode!r} (expected 'is' or 'flat')")
-        # importance: inverse-CDF of the piecewise-constant raw flux on [minE, maxE]
         lo = np.maximum(self.edges[:-1], minE)
         hi = np.minimum(self.edges[1:], maxE)
-        width = np.clip(hi - lo, 0.0, None)            # in-range width per bin
-        mass = width * self.heights0                   # unnormalised prob mass per bin
-        Z = float(mass.sum())                          # int_minE^maxE flux_piecewise_const dE
+        width = np.clip(hi - lo, 0.0, None)
+        mass = width * self.heights0
+        Z = float(mass.sum())
         cdf = np.concatenate([[0.0], np.cumsum(mass)]) / Z
         bi = np.clip(np.searchsorted(cdf, u, side="right") - 1, 0, len(self.heights0) - 1)
         frac = (u - cdf[bi]) / np.clip(cdf[bi + 1] - cdf[bi], 1e-30, None)
         E = lo[bi] + frac * width[bi]
-        # J = target_density(E)/proposal_density(E) = [f(E)/flux_integral] / [h_bin/Z]
         J = np.asarray(self.f(E)) * Z / (self.flux_integral * np.clip(self.heights0[bi], 1e-30, None))
         return E, J
 
 
-# Beam-sampling mode toggle: 'is' = flux importance sampling (default, ~30x effective stats), 'flat' =
-# legacy uniform-in-energy ACHILLES transliteration.  Set adonis.flux.spectrum.BEAM_MODE = 'flat' (or
-# env ADONIS_BEAM_MODE=flat) to restore the legacy sampler.
 BEAM_MODE = _os.environ.get("ADONIS_BEAM_MODE", "is")

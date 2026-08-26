@@ -14,7 +14,6 @@ from adonis.fit.config import FitConfig
 
 CFG = "configs/fits/sec4_P1.yaml"
 
-# The literal string the campaign ran with, recovered from the submitters.  Do not reformat.
 CAMPAIGN_INJECT = (
     "M_A_qe=1.12,M_A_res=0.85,axial_strength=1.1,res_axial_strength=0.8,delta_strength=0.9,"
     "sabs=1.18,s_piN_elastic=0.88,s_conv=1.15,s_NN_elastic[0]=0.82,s_NN_elastic[1]=1.25,"
@@ -39,10 +38,9 @@ def test_the_numbers_that_define_the_run(cfg):
     assert cfg.fit.minimizer.method == "trf"
     assert cfg.fit.minimizer.max_nfev == 200
     assert cfg.fit.minimizer.gtol == 1e-8
-    # xtol/ftol stay tight on purpose: stopping on a small step is how LM false-converged
     assert cfg.fit.minimizer.xtol == 1e-14 and cfg.fit.minimizer.ftol == 1e-14
     assert cfg.data.sigma.syst == 0.05
-    assert cfg.data.sigma.mc_term is False          # syst-only; the MC term is a mask input, not a sigma
+    assert cfg.data.sigma.mc_term is False
     assert cfg.data.sigma.mask_mcfrac == 0.05
     assert cfg.banks.sig_cap == 250_000
     assert len(cfg.samples) == 7 and len(cfg.beams) == 3

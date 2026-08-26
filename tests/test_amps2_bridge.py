@@ -21,7 +21,7 @@ from adonis.nuclear.free import FreeNucleon
 
 
 def test_amps2_generator_equals_diffpath_LW_bridge():
-    hs = HadronStructure()                                  # CC channels (ch2 = p->p pi+)
+    hs = HadronStructure()
     S = sample_final_state(jax.random.PRNGKey(0), 4000, hs=hs, e_nu=1000.0,
                            ep_lo=105.7, ep_hi=1000.0, nuclear=FreeNucleon(), m_lep=105.7)
     _, LWc = weight_from_sample(DCCKnobs(), S, use_spline=True)

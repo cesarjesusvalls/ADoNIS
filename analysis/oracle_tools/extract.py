@@ -19,14 +19,13 @@ from adonis.oracle.hepmc import hepmc_norm
 
 MU, NU_MU, PIP, PROT, NEUT = 13, 14, 211, 2212, 2112
 from adonis.constants import (PDG_PIONS as PIONS, PDG_MESONS as MESONS, PDG_NUCLEONS as NUCLEONS,
-                              M_12C as M_A, M_11B as M_A1, COS70)   # single source (adonis.constants)
+                              M_12C as M_A, M_11B as M_A1, COS70)
 COS20 = np.cos(20.0 * np.pi / 180.0)
 
-# CC0pi muon/proton acceptance windows per experiment: (p_lo, p_hi|None, cos_lo).
 CC0PI_CUTS = {
-    "t2k":       dict(mu=(250.0, None, -0.6), prot=(450.0, 1000.0, 0.4)),       # arXiv:1802.05078
+    "t2k":       dict(mu=(250.0, None, -0.6), prot=(450.0, 1000.0, 0.4)),
     "minerva":   dict(mu=(1500.0, 10000.0, COS20), prot=(450.0, 1200.0, COS70)),
-    "microboone": dict(mu=(100.0, None, -1.0), prot=(300.0, 1200.0, -1.0)),     # ~4pi Ar acceptance (CC0pi-Np)
+    "microboone": dict(mu=(100.0, None, -1.0), prot=(300.0, 1200.0, -1.0)),
 }
 
 
@@ -34,7 +33,6 @@ def _mom(p4):
     return np.sqrt(p4[1] ** 2 + p4[2] ** 2 + p4[3] ** 2)
 
 
-# --------------------------------------------------------------------------- CC0pi-Np STV
 def cc0pi(path, experiment="t2k", **_):
     cuts = CC0PI_CUTS[experiment]
     (mu_lo, mu_hi, mu_cos), (p_lo, p_hi, p_cos) = cuts["mu"], cuts["prot"]
@@ -44,9 +42,9 @@ def cc0pi(path, experiment="t2k", **_):
         mu = None; protons = []; n_meson = 0; nu = None; pstr = None
         for pid, status, p4 in evt["parts"]:
             if pid == NU_MU and (nu is None or p4[0] > nu[0]):
-                nu = np.asarray(p4)                 # beam neutrino (max energy)
+                nu = np.asarray(p4)
             if status == 2 and pid in NUCLEONS and pstr is None:
-                pstr = np.asarray(p4)               # struck (initial-state) nucleon for vertex W
+                pstr = np.asarray(p4)
             if status != 1:
                 continue
             if pid == MU:
@@ -60,7 +58,6 @@ def cc0pi(path, experiment="t2k", **_):
         pmu = _mom(mu)
         if pmu < mu_lo or (mu_hi is not None and pmu > mu_hi) or mu[3] / pmu < mu_cos:
             continue
-        # NUISANCE CC0pi STV: the HIGHEST-momentum proton must itself pass the window
         lead = max(protons, key=_mom); pl = _mom(lead)
         if not (p_lo < pl < p_hi and lead[3] / pl > p_cos):
             continue
@@ -84,7 +81,6 @@ def cc0pi(path, experiment="t2k", **_):
                 pmu=np.array(pmu_m), pmu_T=np.array(pmu_t), pmu_L=np.array(pmu_l), cos_mu=np.array(cmu_l))
 
 
-# --------------------------------------------------------------------------- CC1pi+ STV
 def cc1pi(path, seed=0, **_):
     """T2K CC1pi+ tight signal (PRD 103 112009): mu 250-7000, pi+ 150-1200, lead p 450-1200, theta<70."""
     MU_LO, MU_HI = 250.0, 7000.0; PI_LO, PI_HI = 150.0, 1200.0; P_LO, P_HI = 450.0, 1200.0
@@ -135,9 +131,8 @@ def cc1pi(path, seed=0, **_):
         zhat = np.cross(beam, mu3); zhat = zhat / (np.linalg.norm(zhat) + 1e-9)
         had3 = pi3 + p3; dptt_v = float(np.dot(had3, zhat)); dptt.append(dptt_v)
         lt = mu3[:2]; dpt_vec = lt + had3[:2]; dptmag = np.linalg.norm(dpt_vec); dpt.append(float(dptmag))
-        if is_h or abs(dptt_v) < 0.5:                       # NUISANCE hydrogen prescription -- SAME
-            dat.append(float(rng.uniform(0.0, np.pi)))      # convention as data_overlay.hydrogen_daT
-        #                                                     (scalar inline here; keep the two in sync)
+        if is_h or abs(dptt_v) < 0.5:
+            dat.append(float(rng.uniform(0.0, np.pi)))
         else:
             c = -np.dot(lt, dpt_vec) / (np.linalg.norm(lt) * dptmag + 1e-9)
             dat.append(float(np.arccos(np.clip(c, -1, 1))))
@@ -149,7 +144,6 @@ def cc1pi(path, seed=0, **_):
                 pi_cth=np.array(pi_cth), lp_p=np.array(lp_p), W=np.array(Wv), Q2=np.array(Q2v), Enu=np.array(Enu))
 
 
-# --------------------------------------------------------------------------- CC1pi RICH (no cut)
 def cc1pi_rich(path, K=4, M=10, **_):
     """Full final-state per event (NO signal cut -> re-bin offline): mu, pions (K, +pid),
     protons + neutrons (M each), struck (+pid), nu, n_other_meson, proc, weight."""
@@ -179,12 +173,6 @@ def cc1pi_rich(path, K=4, M=10, **_):
         if mu is None or nu is None or struck is None:
             continue
         nkept += 1
-        # n_other_meson counts pi0 and pi- as "other mesons" (`n_other += (pid != PIP)`), and
-        # selection.py then ADDS it to (pi_pid != 0).sum(), double-counting every non-pi+ pion.  Both
-        # terms are zero on a CC0pi signal so no CC number was ever wrong -- but reusing it as a veto
-        # for a pi0 signal would veto the signal itself.  n_nonpion_meson is the honest field: TRUE
-        # non-pion mesons only (eta, K, ...).  The old field is left byte-identical so no CC number
-        # moves; new selections must use the new one.
         p4p = np.zeros((K, 4)); pidp = np.zeros(K, np.int64)
         for i, (pp, q) in enumerate(sorted(pions, key=lambda t: -np.linalg.norm(t[1][1:]))[:K]):
             p4p[i] = q; pidp[i] = pp
@@ -206,7 +194,6 @@ def cc1pi_rich(path, K=4, M=10, **_):
                 proc=np.array(proc_l, np.int64))
 
 
-# --------------------------------------------------------------------------- RES vertex-W (no-FSI)
 def res_w(path, **_):
     """Unselected RES events (>=1 primary pion) from a no-FSI hepmc: vertex W, Q2, Enu, leading-pion
     kinematics, struck |p| (C/H split), full-signal in-window-proton flag."""
@@ -271,7 +258,7 @@ def cc_incl(path, **_):
         pmu_m.append(float(pm)); cmu.append(float(mu[3] / pm))
         pmu_t.append(float(np.hypot(mu[1], mu[2]))); pmu_l.append(float(mu[3]))
         enu.append(float(nu[0]) if nu is not None else np.nan); w.append(evt["w"] or 1.0)
-        proc.append(evt["proc"] if evt["proc"] is not None else -1)   # 200=QE, 401/402=RES
+        proc.append(evt["proc"] if evt["proc"] is not None else -1)
     return dict(pmu=np.array(pmu_m), cos_mu=np.array(cmu), pmu_T=np.array(pmu_t),
                 pmu_L=np.array(pmu_l), Enu=np.array(enu), w=np.array(w), proc=np.array(proc, np.int64))
 
@@ -294,38 +281,28 @@ def fs_rich(path, K=6, M=10, **_):
         lep = prb = struck = None; struck_pid = 0; pions = []; protons = []; neutrons = []
         n_other = 0; n_nonpion = 0
         for pid, status, p4 in evt["parts"]:
-            if status == 4 and (prb is None or p4[0] > prb[0]):        # incoming beam particle (neutrino/ee: status 4)
+            if status == 4 and (prb is None or p4[0] > prb[0]):
                 prb = p4
             elif status == 29 and abs(p4[1]) < 1.0 and abs(p4[2]) < 1.0 and (prb is None or p4[0] > prb[0]):
-                prb = p4                                               # HADRON BEAM: CrossSection-mode projectile is
-                #   status-29 initial state, on-axis (px=py=0, pz=beam |p|); the struck nucleon is also status-29
-                #   but carries Fermi transverse momentum, so the on-axis cut selects the beam only.
-            elif pid == NU_MU and prb is None:                         # neutrino probe if no status-4 beam
+                prb = p4
+            elif pid == NU_MU and prb is None:
                 prb = p4
             if status == 2 and pid in NUCLEONS and struck is None:
                 struck = p4; struck_pid = pid
             if status != 1:
                 continue
-            if pid == MU or pid == ELEC:                               # outgoing lepton (mu | e-)
+            if pid == MU or pid == ELEC:
                 lep = p4
             elif pid == NU_MU:
-                lep = p4                    # NC: the outgoing lepton IS a neutrino.  Without this,
-                #                             `lep` stays the zero vector on every NC event and every
-                #                             lepton-derived observable is silently zero.
+                lep = p4
             elif pid in PIONS:
-                pions.append((pid, p4)); n_other += (pid != PIP)   # pions are NOT non-pion mesons
+                pions.append((pid, p4)); n_other += (pid != PIP)
             elif pid in MESONS:
                 n_other += 1; n_nonpion += 1
             elif pid == PROT:
                 protons.append(p4)
             elif pid == NEUT:
                 neutrons.append(p4)
-        # n_other_meson counts pi0 and pi- as "other mesons" (`n_other += (pid != PIP)`), and
-        # selection.py then ADDS it to (pi_pid != 0).sum(), double-counting every non-pi+ pion.  Both
-        # terms are zero on a CC0pi signal so no CC number was ever wrong -- but reusing it as a veto
-        # for a pi0 signal would veto the signal itself.  n_nonpion_meson is the honest field: TRUE
-        # non-pion mesons only (eta, K, ...).  The old field is left byte-identical so no CC number
-        # moves; new selections must use the new one.
         p4p = np.zeros((K, 4)); pidp = np.zeros(K, np.int64)
         for i, (pp, q) in enumerate(sorted(pions, key=lambda t: -np.linalg.norm(t[1][1:]))[:K]):
             p4p[i] = q; pidp[i] = pp
@@ -359,13 +336,13 @@ def main(argv=None):
     ap.add_argument("hepmc")
     ap.add_argument("out", nargs="?", default=None)
     ap.add_argument("--experiment", default="t2k", choices=list(CC0PI_CUTS))
-    ap.add_argument("--seed", type=int, default=0)        # cc1pi hydrogen daT throw
-    ap.add_argument("-K", type=int, default=4)            # cc1pi_rich pion pad
-    ap.add_argument("-M", type=int, default=10)           # cc1pi_rich nucleon pad
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("-K", type=int, default=4)
+    ap.add_argument("-M", type=int, default=10)
     a = ap.parse_args(argv)
     out = a.out or f"output/achilles/{a.experiment}_{a.channel}.npz"
     d = CHANNELS[a.channel](a.hepmc, experiment=a.experiment, seed=a.seed, K=a.K, M=a.M)
-    nrm = hepmc_norm(a.hepmc)                              # absolute scale from the hepmc header
+    nrm = hepmc_norm(a.hepmc)
     d.update(gen_xs_pb=nrm["gen_xs_pb"], sum_w_all=nrm["sum_w_all"], weight_to_nb=nrm["weight_to_nb"])
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     np.savez(out, **d)

@@ -27,10 +27,9 @@ _MP = float(MASS_PDG_PROTON)
 def build_chunk(n, seed):
     k_nu, k_lep, p_N, p_pi, w = (np.asarray(x) for x in generate_H(n, seed))
     p_struck = np.tile([_MP, 0.0, 0.0, 0.0], (n, 1))
-    # ragged final state: 2 particles/event = [proton, pi+]; fs_off cumulative (2 per event)
     fs_p4 = np.empty((2 * n, 4), np.float32); fs_p4[0::2] = p_N; fs_p4[1::2] = p_pi
     fs_pid = np.tile(np.array([2212, 211], np.int32), n)
-    fs_chg = np.tile(np.array([1, 1], np.int8), n)                 # proton +1, pi+ +1
+    fs_chg = np.tile(np.array([1, 1], np.int8), n)
     fs_off = np.arange(0, 2 * n + 1, 2, dtype=np.int64)
     rec = build_res_reduced(k_nu, k_lep, p_struck, p_N, p_pi,
                             np.full(n, 2212, np.int32), np.full(n, 211, np.int32))
@@ -44,7 +43,7 @@ def build_chunk(n, seed):
         hv_res_mij=np.asarray(rec["M"], np.float64), hv_res_Q2=np.asarray(rec["Q2"], np.float32),
         hv_qe_mij=np.zeros((n, 4, 4), np.float32), hv_qe_Q2=np.zeros(n, np.float32),
     )
-    for fld in _FSI_F:                                             # empty FSI -> reweight 1 (free H, no cascade)
+    for fld in _FSI_F:
         save[f"f_{fld}"] = np.zeros(0, np.int64 if fld in ("p_eidx", "n_eidx") else np.float32)
     return save, float(w.sum())
 

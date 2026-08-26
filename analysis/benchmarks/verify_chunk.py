@@ -40,11 +40,11 @@ def main(argv=None):
     cfg = FitConfig.load(a.config)
     cfg = dataclasses.replace(cfg, banks=dataclasses.replace(cfg.banks, sig_cap=a.sig_cap))
     eng = MS.build_multisample_engine(log, cfg)
-    s = eng.samples[0]                                   # one BankSample is enough to prove exactness
+    s = eng.samples[0]
     log(f"sample {s.name}: {s.n_events:,} events, {len(s.ds)} datasets")
 
     nom = s.nom
-    th = np.asarray(theta_nominal(nom), float); th[0] *= 1.07; th[1] *= 0.93   # off nominal, so w != 1
+    th = np.asarray(theta_nominal(nom), float); th[0] *= 1.07; th[1] *= 0.93
     kn = knobs_of(jnp.asarray(th), nom)
     w_ref = np.asarray(s._wf(jnp.asarray(th), s.JB))
     m_ref = np.concatenate([IC.bin_w(d, w_ref) for d in s.ds])
@@ -53,7 +53,7 @@ def main(argv=None):
     rows = []
     for C in [int(x) for x in a.chunks.split(",") if x.strip()]:
         t_b = time.perf_counter()
-        nch, Cc, subs, owns = bank_windows(s.JB, s.n_events, C)      # ONCE, not per evaluation
+        nch, Cc, subs, owns = bank_windows(s.JB, s.n_events, C)
         t_build = time.perf_counter() - t_b
         f = jax.jit(lambda B: bank_weight_window(BR, B, kn, s.grids, Cc))
         w_chunk = np.zeros(s.n_events); seen = np.zeros(s.n_events, bool)

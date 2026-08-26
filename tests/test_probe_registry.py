@@ -12,10 +12,9 @@ import pytest
 from adonis.channels.probes import PROBES, IMPLEMENTED, probe_spec, dcc_mode, probe_for_mode
 
 
-# --------------------------------------------------------------------------- the registry itself
 def test_registry_has_no_implicit_default():
     assert set(PROBES) == {"CC", "EM", "NC"}
-    assert IMPLEMENTED == ("CC", "EM", "NC")     # NC RES landed in P4/P5; NC QE still raises in dirac.py
+    assert IMPLEMENTED == ("CC", "EM", "NC")
 
 
 def test_known_probes_resolve_to_their_achilles_values():
@@ -29,7 +28,7 @@ def test_unknown_probe_raises_and_names_what_is_known():
     with pytest.raises(ValueError, match="unknown probe"):
         probe_spec("garbage")
     with pytest.raises(ValueError, match="unknown probe"):
-        probe_spec("weak")            # the OLD name for CC -- must not silently work
+        probe_spec("weak")
 
 
 def test_nc_now_resolves_to_the_nc_current():
@@ -44,12 +43,11 @@ def test_nc_now_resolves_to_the_nc_current():
 def test_mode_lookup_mirrors_the_probe_lookup():
     assert probe_for_mode(1).name == "CC"
     assert probe_for_mode(10).name == "EM"
-    assert probe_for_mode(-1).name == "NC"    # the `mode < 10` fallthrough that used to route NC into CC
+    assert probe_for_mode(-1).name == "NC"
     with pytest.raises(ValueError, match="unknown DCC mode"):
         probe_for_mode(7)
 
 
-# --------------------------------------------------------------------------- the four call sites
 def test_assembly_build_zmtx_refuses_an_unknown_mode():
     from adonis.channels.dcc.assembly import build_zmtx
     npw = 3
@@ -83,7 +81,7 @@ def test_me_cross_section_refuses_unknown_probes_and_underspecified_nc():
     from adonis.channels.currents.matrix_element import me_cross_section
     z = np.zeros((1, 4))
     with pytest.raises(ValueError, match="is_proton"):
-        me_cross_section(z, z, z, z, probe="NC")     # NC QE couplings are per nucleon -- say which
+        me_cross_section(z, z, z, z, probe="NC")
     with pytest.raises(ValueError, match="unknown probe"):
         me_cross_section(z, z, z, z, probe="garbage")
 
@@ -106,8 +104,7 @@ def test_me_cross_section_spin_avg_comes_from_the_probe_when_unset():
 
 def test_dcc_channel_probe_string_is_validated():
     from adonis.channels.probes import probe_spec as ps
-    # dcc/channel.py resolves `current` through the same registry, so a typo cannot mean CC.
     assert ps("EM").em_propagator is True
     assert ps("CC").em_propagator is False
     with pytest.raises(ValueError):
-        ps("em")                       # case matters; silently meaning CC is the bug being removed
+        ps("em")

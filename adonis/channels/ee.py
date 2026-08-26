@@ -31,56 +31,46 @@ from adonis.nuclear.spectral import SpectralFunction, SpectralImportanceSampler
 from adonis.channels.currents.matrix_element import me_cross_section
 from adonis.constants import MASS_PDG_PROTON, MASS_PDG_NEUTRON
 
-_MN = C.mN                       # average nucleon mass (struck-nucleon kinematics; mirrors qe_xsec)
-from adonis.flux.electron import M_E as _M_E, E_BEAM_JLAB, electron_k    # e- beam (adonis/flux)
+_MN = C.mN
+from adonis.flux.electron import M_E as _M_E, E_BEAM_JLAB, electron_k
 _TWO_PI = 2 * np.pi
-THETA_ACC = (14.0, 17.0)        # outgoing-e- polar-angle HardCut [deg] (run_inclusive_ee_C_*.yml)
-
-# per-material target: (Z protons, N neutrons, proton SF, neutron SF)
+THETA_ACC = (14.0, 17.0)
 
 
-from adonis.channels.twobody import isotropic_two_body_cm   # shared isotropic 2-body CM->lab (qe/ee/qe_nc)
+
+from adonis.channels.twobody import isotropic_two_body_cm
 
 
-STRUCK_MASS_MODE = "species"    # "species" (DEFAULT: struck energy = m_species - E_rm) -- (e,e') strikes
-#                                 BOTH p and n, so the physical species mass (not the average mN) puts each
-#                                 QE peak at the right omega.  dsigma/domega chi2/ndf 2.03 (avg) -> 1.21
-#                                 (species), integral unchanged.  See [[mass-convention-audit]].
-#                                 "avg" = the qe_xsec convention (mN_avg - E_rm); CC QE is neutron-only so
-#                                 it is insensitive to the choice.
+STRUCK_MASS_MODE = "species"
 
 
 def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target):
     """One species: importance-sample the struck nucleon from its SF, isotropic two-body e'+N_out,
     return per-event contribution c (nb) with SUM_i c_i = sigma_species, plus omega and theta_e' [deg].
     Mirrors qe_xsec.sample_importance but for the EM probe + monochromatic e- beam (J_beam = 1)."""
-    kz = np.sqrt(E_beam ** 2 - _M_E ** 2)              # kept: used in the removal-energy ceiling below
+    kz = np.sqrt(E_beam ** 2 - _M_E ** 2)
     k_e = electron_k(E_beam, n)
-    # ---- struck nucleon: |p|,E ~ |p|^2 S importance sampling (the flat-MC weight peak cancels) ----
     samp = SpectralImportanceSampler(sf)
     pvec, E_rm = samp.sample(n, rng)
-    m_struck = m_species if STRUCK_MASS_MODE == "species" else _MN        # avg mN (default) | species mass
+    m_struck = m_species if STRUCK_MASS_MODE == "species" else _MN
     p_struck = np.concatenate([(m_struck - E_rm)[:, None], pvec], axis=1)
-    # ---- two-body final state e'(m_e) + N_out(m_species), isotropic CM (TwoBodyMapper) ----
     u = rng.random((n, 2))
     P = k_e + p_struck
     k_lep, p_out, pcm, sqrts, s, lam = isotropic_two_body_cm(P, _M_E, m_species, u[:, 0], u[:, 1])
     J_2body = 2.0 * _TWO_PI * pcm / (sqrts * 16 * np.pi ** 2)
-    # ---- removal-energy ceiling (HadronicMapper.cc:50-53), Smin = (m_e + m_species)^2, mono beam ----
     Smin = (_M_E + m_species) ** 2
     mom_s = np.linalg.norm(pvec, axis=1)
-    det = E_beam ** 2 + mom_s ** 2 + 2 * pvec[:, 2] * kz + Smin           # pvec.k_e = pz * kz
+    det = E_beam ** 2 + mom_s ** 2 + 2 * pvec[:, 2] * kz + Smin
     emax = _MN + E_beam - np.sqrt(np.clip(det, 0, None))
     emax = np.minimum(np.minimum(emax, _MN - mom_s), 400.0)
     valid = (s > Smin) & (lam > 0) & (E_rm > sf.energy[0]) & (E_rm < emax)
-    # ---- matrix element (amps2 * FluxFactor * SpinAvg), EM probe, spin_avg = 1/4 ----
     d = me_cross_section(jnp.asarray(k_e), jnp.asarray(k_lep), jnp.asarray(p_struck),
                          jnp.asarray(p_out), spin_avg=0.25, had_mass=had_mass,
                          probe="EM", is_proton=bool(is_proton))
     me = np.asarray(d["me_xsec"])
-    w = np.where(valid, me * n_target * J_2body, 0.0)                     # J_beam = 1 (monochromatic)
+    w = np.where(valid, me * n_target * J_2body, 0.0)
     w = np.where(np.isfinite(w), w, 0.0)
-    c = w / n                                                            # SUM_i c_i = sigma_species [nb]
+    c = w / n
     omega = E_beam - k_lep[:, 0]
     ke_mag = np.linalg.norm(k_lep[:, 1:], axis=1)
     cos_th = np.clip(k_lep[:, 3] / np.clip(ke_mag, 1e-9, None), -1, 1)
@@ -110,21 +100,15 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000, records
     out = {k: [] for k in keep}
     species = [(True, MASS_PDG_PROTON, MASS_PDG_PROTON, sf_p, Z),
                (False, MASS_PDG_NEUTRON, MASS_PDG_NEUTRON, sf_n, N)]
-    # n is the TOTAL draw count, SPLIT across the struck species (was n per species -> 2n) so generate(n)
-    # yields ~n events -- the SAME stratified convention as the neutrino res.generate_importance (m=n//nch
-    # per stratum).  Each species' weighted sum is an unbiased estimate of sigma_species regardless of its
-    # draw count, so SUM(c)=sigma is preserved (just at the nu statistics, not 2x).
     nsp = len(species)
     for si, (is_p, m_kin, m_flux, sf, n_tgt) in enumerate(species):
-        n_s = n // nsp + (1 if si < n % nsp else 0)                       # this species' share of n
+        n_s = n // nsp + (1 if si < n % nsp else 0)
         done = 0; sd = seed * 100 + (0 if is_p else 50)
         while done < n_s:
             m = min(chunk, n_s - done)
             rng = np.random.default_rng(sd); sd += 1
             r = _sample_species(m, rng, E_beam, m_kin, m_flux, is_p, sf, n_tgt)
-            r["c"] = r["c"] * m / n_s                                     # per-species MC norm (SUM = sigma_species)
-            # records: keep only VALID & theta-accepted events -- invalid events carry c=0 (no observable
-            # contribution) but a NaN matrix element that would poison the reweight ratio me_new/me_nom.
+            r["c"] = r["c"] * m / n_s
             sel = np.ones(m, bool) if not records else \
                 (r["theta"] >= lo) & (r["theta"] <= hi) & r["valid"]
             for k in keep:
@@ -142,7 +126,7 @@ def dsigma_domega(res, edges, theta_acc=THETA_ACC):
     return h / bw
 
 
-from adonis.core.sample import Sampler       # noqa: E402
+from adonis.core.sample import Sampler
 
 
 class EEChannel(Sampler):

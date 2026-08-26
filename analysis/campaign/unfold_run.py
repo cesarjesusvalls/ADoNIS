@@ -38,9 +38,6 @@ def _grid_arrays(G, tag):
 from adonis.unfold.build import build
 from adonis.unfold.fit import UnfoldEngine
 
-# Which block each budget entry TURNS ON.  The sequence is cumulative -- each fit keeps everything
-# enabled before it -- so the visible increment is what that block costs in the presence of the others,
-# which is the only decomposition whose parts add up to the whole.
 _BUDGET_ENABLE = {"stat": {}, "xsec": {"use_knobs": True},
                   "flux": {"free_flux": True}, "det": {"free_det": True}}
 
@@ -75,14 +72,6 @@ def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
     d0, s0 = eng.asimov()
     idx, imp = eng.select_dials(s0, threshold=cfg.priors.dial_threshold, log=log)
 
-    # PERSIST THE NORMALISATION.  n_true and A are scaled so the pre-selection sample is `norm_events`,
-    # which is a display choice, not physics.  Without `scale` stored, the figures cannot get back to
-    # the raw summed w0 and therefore cannot express anything in cross-section units.
-    #
-    # PERSIST THE CONFIG TOO.  `cfg_json` is the resolved configuration, so a figure -- or anyone
-    # reading the file a year later -- can state the detector, binning, priors and exposure that
-    # produced it without consulting a yaml that may since have changed.  The run label used to be the
-    # only record of what distinguished one npz from another.
     out = dict(A=inp["A"], n_true=inp["n_true"], eff=inp["eff"], purity=inp["purity"],
                norm_scale=inp["scale"], w_total_raw=inp["w_total_raw"], norm_events=inp["norm_events"],
                n_sig_reco=inp["n_sig_reco"], n_bkg_reco=inp["n_bkg_reco"],
@@ -95,10 +84,6 @@ def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
                flux_cov=FX.prior_cov(cfg.flux.sigma, cfg.flux.corr_length, _edges),
                det_prior=eng.det_prior, nflux=eng.nflux)
 
-    # PARAMETER LAYOUT of the fitted vector, so the covariance can be read without re-deriving it:
-    # [ c (templates) | f (flux) | theta (cross section) | d (detector) ].  Template priors are infinite
-    # by construction -- that is what "unconstrained" means, and it is why the flux, which IS penalised,
-    # cannot move: the templates absorb the variation for free.
     pri = np.concatenate([np.full(TG.n, np.inf), np.full(eng.nflux, eng.flux_sigma),
                           eng.prior[idx], np.full(eng.nreco, eng.det_prior)])
     out["param_prior"] = pri
@@ -109,17 +94,14 @@ def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
                                  + [K.PNAMES[k] for k in idx]
                                  + [f"d[{i}]" for i in range(eng.nreco)])
 
-    # FLUX INJECTIONS.  Flux and templates both scale the signal, so these decide whether the two
-    # blocks are separable at all: a fit that cannot tell them apart reports a signal excess that is
-    # not there, or absorbs a real one into the flux.
     for st in cfg.studies:
         ct = np.full(TG.n, st.scale_c)
         ft = None
         if st.scale_flux_peak != 1.0 or st.flux_tilt:
             ft = np.ones(eng.nflux)
             if st.scale_flux_peak != 1.0:
-                ft[1:5] = st.scale_flux_peak                  # peak bins only, 600-1000 MeV
-            if st.flux_tilt:                                  # a SHAPE change, mean ~1
+                ft[1:5] = st.scale_flux_peak
+            if st.flux_tilt:
                 ft = ft * np.linspace(1.0 - st.flux_tilt, 1.0 + st.flux_tilt, eng.nflux)
         data, sig = eng.asimov(c_true=ct, f_true=ft)
         r = eng.fit(data, sig, knob_idx=idx, log=log)

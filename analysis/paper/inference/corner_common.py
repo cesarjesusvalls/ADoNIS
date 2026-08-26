@@ -33,7 +33,7 @@ from analysis.paper import style
 from adonis.analysis import knobs as K
 from adonis.fit import merge as MG
 
-L68, L90 = 2.30, 4.61          # 2-D Delta-chi2 levels
+L68, L90 = 2.30, 4.61
 C68, C90, C_BFP = "#1f4b9c", "#7aa7dd", "#d24"
 
 
@@ -51,56 +51,32 @@ def load_views(label, allow_partial=False):
     if not fs:
         raise SystemExit(f"no prof shards for {label}")
     Z = [np.load(f, allow_pickle=True) for f in fs]
-    # ONE RUN DEFINITION for all shards, and none of them preempted mid-grid.  The axes agreeing is not
-    # evidence of this: two campaigns with different injected truth, sigma or estimator produce identical
-    # axes and merge without a murmur.
     rep = MG.check(fs, Z, what=f"{label} corner2d")
     rep.raise_if_bad(allow_partial)
-    # Views are keyed by DIAL NAMES, not by pair index, so several corner RUNS can contribute to one
-    # figure: the 6-dial N=21 sweep plus the dedicated N=41 scan of M_A_res x S_Delta, whose degeneracy is
-    # so tight (corr -0.995) that at N=21 the 68% region breaks into disconnected diamonds.  Where a pair
-    # appears in more than one run the FINER grid wins, and each panel carries its own axis.
     pnames_all = [str(x) for x in Z[0]["pnames"]]
     sub_all = [int(k) for k in Z[0]["subset"]]
     V0 = np.asarray(Z[0]["V"]); spost = np.asarray(Z[0]["sigma_post"]); bfp = np.asarray(Z[0]["bfp"])
     pn = pnames_all; sub = sub_all
 
-    views = {}            # (name_i, name_j) -> dict(axi, axj, d, ci, cj)
-    cands = {}            # (name_i, name_j) -> {grid signature -> candidate view}
+    views = {}
+    cands = {}
     for z in Z:
         dl = [str(x) for x in z["dials"]]
         pos = [int(q) for q in z["sel_pos"]]
         _bf = np.asarray(z["bfp"]); _sp = np.asarray(z["sigma_post"]); _sb = [int(k) for k in z["subset"]]
-        # PER-DIAL axis.  `axis_sigma` is the single global +-S4_CORNER_RANGE grid and is only correct when
-        # every dial shares it; with S4_CORNER_FROM_PROFILE=1 each dial gets the 1-D profile's own adaptive
-        # span (M_A_res [-6.53,+5.40], S_Delta [-3.00,+9.72], ...) and the two axes of a panel DIFFER.
-        # Plotting both against `axis_sigma` mislabelled every panel by a different factor -- which is why
-        # the contours changed size relative to the (correctly drawn, true-sigma) Gaussian ellipse.
-        # `axes_phys[t]` carries the PHYSICAL grid of BOTH dials of pair t; convert each to sigma_post.
         _ap = np.asarray(z["axes_phys"]) if "axes_phys" in z.files else None
         for t, (ii, jj) in enumerate(np.asarray(z["pair_idx"])):
             key = (dl[int(ii)], dl[int(jj)])
-            # RAW chi2 when the shard carries it: row shards each subtract their OWN nanmin, so merging
-            # `dchi2` across them stitches surfaces that sit at different offsets.  `chi2_abs` has no
-            # offset, and the global minimum is taken once, after the merge, below.
             _raw = "chi2_abs" in z.files
             v = np.asarray(z["chi2_abs" if _raw else "dchi2"])[t]
-            # LOG-DET of the nuisance covariance at each node -- the ingredient the MARGINAL needs.
-            # Absent from shards written before it was stored; those panels simply get no Laplace
-            # contour rather than a wrong one.
             _ld = np.asarray(z["logdet_Vnuis"])[t] if "logdet_Vnuis" in z.files else None
             if _ap is not None and np.isfinite(_ap[t]).all():
                 axi, axj = ((_ap[t, e] - _bf[_sb[pos[int(a)]]]) / _sp[pos[int(a)]]
                             for e, a in ((0, ii), (1, jj)))
             else:
                 axi = axj = np.asarray(z["axis_sigma"])
-            # Group by GRID SIGNATURE first: row shards of one run merge, distinct runs stay separate
-            # candidates.  Choosing between runs BEFORE knowing which are finished let an in-progress
-            # finer scan shadow a complete coarser one, and the panel then vanished as "incomplete".
             sig = (len(axi), round(float(axi[0]), 6), round(float(axi[-1]), 6),
                    round(float(axj[0]), 6), round(float(axj[-1]), 6))
-            # Which ROWS this shard was assigned, from its own stamp.  Completeness is then a statement
-            # about the work rather than about NaNs, and a gap can be NAMED.
             _p = MG.provenance.read(z)
             _blk = (int(_p["row_base"]), int(_p["n_row"])) if _p and "n_row" in _p else None
             c = cands.setdefault(key, {}).get(sig)
@@ -119,18 +95,11 @@ def load_views(label, allow_partial=False):
                 else:
                     c["ld"] = None
 
-    # Re-zero AFTER merging every shard of a candidate.  Only legal on raw-chi2 candidates; a mixed set
-    # (some shards pre-dating chi2_abs) is left alone rather than silently mis-stitched.
     for by_sig in cands.values():
         for w in by_sig.values():
             if w["raw"] and np.isfinite(w["d"]).any():
                 w["d"] = w["d"] - np.nanmin(w["d"])
 
-    # PREFERENCE, independent of completeness: the WIDER span (the adaptive scan), then the finer grid.
-    # ROUND the span before comparing.  Two runs over the SAME window reconstruct it from linspace grids
-    # of different length, so the spans differ in the last ulp (151.69462533697404 vs 151.694625336974) --
-    # enough for max() to settle it on the span and never reach the node-count tie-break, silently
-    # preferring N=21 over the complete N=81 scan.
     def _rank(w):
         return (round((w["axi"][-1] - w["axi"][0]) * (w["axj"][-1] - w["axj"][0]), 6), len(w["axi"]))
 
@@ -165,9 +134,6 @@ def load_views(label, allow_partial=False):
             rep.error(f"{key[0]} x {key[1]}: no complete grid; " + " | ".join(why))
             continue
         views[key] = ok[0]
-        # THE SILENT DOWNGRADE.  If a better candidate exists but was rejected as incomplete, the figure
-        # renders happily at the lower resolution and nothing about it looks wrong.  That is the failure
-        # this check exists for, so it is an error and not the `[note]` it used to be.
         if _rank(ok[0]) < _rank(ranked[0]):
             rep.error(f"{key[0]} x {key[1]}: falling back to N={len(ok[0]['axi'])} because the "
                       f"preferred N={len(ranked[0]['axi'])} scan is incomplete -- " + " | ".join(why))
@@ -187,8 +153,6 @@ def load_views(label, allow_partial=False):
         for nm in k:
             if nm not in dials:
                 dials.append(nm)
-    # RES trio adjacent, bounded dial last: the three that share the axial block read together,
-    # and E_b -- the only one with a wall -- does not sit between them.
     order = ["M_A_res", "delta_strength", "res_axial_strength", "sabs", "f_NN_cex", "kF_sf",
              "Eb_shift"]
     dials = [d for d in order if d in dials] + [d for d in dials if d not in order]
@@ -215,10 +179,6 @@ def view_for(views, ni, nj):
     w = views.get((nj, ni))
     if w is None:
         return None
-    # `ld` (log-det of the nuisance covariance, the Laplace ingredient) must transpose WITH `d`.
-    # It was dropped here, so a transposed lookup silently returned a view with no Laplace surface --
-    # invisible while the contours were only ever looked up in the stored order, and total once the
-    # merged corner moved them to the upper triangle, where every lookup is transposed.
     _ld = w.get("ld")
     return dict(axi=w["axj"], axj=w["axi"], d=np.asarray(w["d"]).T, ci=w["cj"], cj=w["ci"],
                 ld=(None if _ld is None else np.asarray(_ld).T))
@@ -247,8 +207,6 @@ def main(label="sec4_ref", allow_partial=False):
     nd = len(dials)
     with plt.rc_context({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans", "Arial"],
                          "mathtext.fontset": "dejavusans", "axes.linewidth": 0.6}):
-        # squeeze=False: a 2-dial corner is subplots(1,1), which otherwise returns a bare Axes and
-        # breaks the axes[a, b] indexing below.
         fig, axes = plt.subplots(nd - 1, nd - 1, figsize=(max(4.6, 2.1 * (nd - 1)),
                                                           max(4.4, 2.1 * (nd - 1))),
                                  sharex="col", sharey="row", squeeze=False)
@@ -279,10 +237,8 @@ def main(label="sec4_ref", allow_partial=False):
                             if abs(aa[e] - xb) < tol: aa[e] = xb
                     return aa
                 axi = _snap(axi, ki, ci); axj = _snap(axj, kj, cj)
-                X, Y = np.meshgrid(axi, axj, indexing="ij")     # driver fills chi[pair, i_x, j_y]
+                X, Y = np.meshgrid(axi, axj, indexing="ij")
                 d = np.array(w["d"], float)
-                # mask only nodes GENUINELY beyond a wall (the driver clips theta but stores the
-                # unclipped coordinate); the tolerance keeps the snapped edge node alive.
                 for which, (kk, cc, aa) in (("x", (ki, ci, axi)), ("y", (kj, cj, axj))):
                     _lo = K.phys_lo(pn[kk])
                     if _lo is None: continue
@@ -291,7 +247,7 @@ def main(label="sec4_ref", allow_partial=False):
                     else: d[Y < _xb] = np.nan
                 if not np.isfinite(d).any():
                     A.axis("off"); continue
-                d = d - np.nanmin(d)          # zero at the best PHYSICAL point, after masking
+                d = d - np.nanmin(d)
                 A.contourf(X, Y, d, levels=[0, L68, L90], colors=[C68, C90], alpha=0.75)
                 A.contour(X, Y, d, levels=[L68, L90], colors=["k", "0.35"], linewidths=[1.0, 0.7])
                 Vp = V0[np.ix_([ci, cj], [ci, cj])]
@@ -303,10 +259,6 @@ def main(label="sec4_ref", allow_partial=False):
                     r = np.stack([np.cos(tt) / np.sqrt(ev[0]), np.sin(tt) / np.sqrt(ev[1])]) * np.sqrt(lev)
                     xy = evec @ r
                     A.plot(xy[0], xy[1], ls, color="#e8b", lw=1.4, zorder=6)
-                # WALLS.  The adaptive scan stops EXACTLY AT a physical bound, so the wall coincides with
-                # the axis edge and a strict `aa[0] < xb < aa[-1]` test silently drops it -- every bounded
-                # dial (M_A_res at 0.01, Eb_shift at its floor) lost its marker.  Accept the closed
-                # interval and pad the view a little past the wall so the forbidden strip stays visible.
                 lim = {"x": [axi[0], axi[-1]], "y": [axj[0], axj[-1]]}
                 for which, (kk, cc, aa) in (("x", (ki, ci, axi)), ("y", (kj, cj, axj))):
                     _sp = aa[-1] - aa[0]

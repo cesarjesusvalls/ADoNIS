@@ -13,18 +13,18 @@ import jax
 
 
 class EventRecord(NamedTuple):
-    k: jax.Array          # (N,4) incoming neutrino   (lab)
-    kp: jax.Array         # (N,4) outgoing lepton     (lab)
-    p_struck: jax.Array   # (N,4) initial struck nucleon, off-shell (lab)
-    p_pi: jax.Array       # (N,4) outgoing pion       (lab, on-shell)
-    p_N: jax.Array        # (N,4) outgoing nucleon    (lab, on-shell)
-    w: jax.Array          # (N,)  weight (differentiable in knobs)
-    channel: jax.Array    # (N,)  index into CC_CHANNELS
-    pid_pi: jax.Array     # (N,)  final pion PDG  (111 pi0, 211 pi+)
-    pid_N: jax.Array      # (N,)  final nucleon PDG (2212 p, 2112 n)
-    pid_Ni: jax.Array     # (N,)  initial nucleon PDG
-    W: jax.Array          # (N,)  hadronic invariant mass used for the decay [MeV]
-    Q2_adj: jax.Array     # (N,)  on-shell-rebalanced Q^2 fed to the amplitude [MeV^2]
+    k: jax.Array
+    kp: jax.Array
+    p_struck: jax.Array
+    p_pi: jax.Array
+    p_N: jax.Array
+    w: jax.Array
+    channel: jax.Array
+    pid_pi: jax.Array
+    pid_N: jax.Array
+    pid_Ni: jax.Array
+    W: jax.Array
+    Q2_adj: jax.Array
 
     def filter(self, keep):
         """Return a new EventRecord with only the events where `keep` (bool (N,)) is True."""

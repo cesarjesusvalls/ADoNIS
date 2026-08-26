@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adonis"
+version = "0.1.0"
+description = "A differentiable generator of neutrino interaction samples"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "jax>=0.6",
+    "jaxlib>=0.6",
+    "numpy",
+    "PyYAML>=6.0",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+# Needed only by specific modules; the generator, reweight, cascade and fit paths do not import them.
+plots = ["matplotlib"]          # adonis.workflow.plotting
+measurements = ["uproot"]       # adonis.measurements.t2k_stv (ROOT data releases)
+dev = ["pytest>=7"]
+
+[project.scripts]
+adonis-generate = "adonis.workflow.cli:main"
+
+[tool.setuptools.packages.find]
+# `analysis` is the application layer that consumes this package: the paper's figures, its fit
+# campaign and its benchmarks.  It is deliberately NOT packaged -- it is not reusable, and shipping
+# it would put one paper's study points inside an installable library.
+include = ["adonis*"]

@@ -21,9 +21,8 @@ def test_pip_p_delta_peak():
     m = (W >= 1150) & (W <= 1350)
     ipk = int(np.argmax(sig[m]))
     Wpk, spk = W[m][ipk], sig[m][ipk]
-    assert 1200 <= Wpk <= 1245, Wpk                 # Delta(1232) position
-    assert 185 <= spk <= 220, spk                   # peak ~200 mb
-    # well above and below the resonance the cross section is much smaller
+    assert 1200 <= Wpk <= 1245, Wpk
+    assert 185 <= spk <= 220, spk
     assert np.interp(1500, W, sig) < 30, "should fall off above the Delta"
     assert np.interp(1130, W, sig) < spk, "rises into the Delta"
 
@@ -42,8 +41,8 @@ def test_pim_p_isospin_ratio():
     W, sp = pip_p_total()
     _, sm = pim_p_elastic()
     m = (W >= 1150) & (W <= 1350)
-    assert 15 < sm[m].max() < 35, sm[m].max()          # pi-p elastic Delta peak ~22 mb
-    assert 8.0 < sp[m].max() / sm[m].max() < 10.0       # the 9:1 ratio
+    assert 15 < sm[m].max() < 35, sm[m].max()
+    assert 8.0 < sp[m].max() / sm[m].max() < 10.0
 
 
 def test_cex_isospin_921_ratio():
@@ -56,9 +55,9 @@ def test_cex_isospin_921_ratio():
     _, se = pim_p_elastic()
     m = (W >= 1150) & (W <= 1350)
     pk = lambda s: s[m].max()
-    assert 1200 <= W[m][int(np.argmax(sc[m]))] <= 1245      # cex peaks at the Delta
-    assert 8.5 < pk(sp) / pk(se) < 10.0                     # pi+p : elastic = 9
-    assert 1.8 < pk(sc) / pk(se) < 2.6                      # cex   : elastic = 2 (+ I=1/2 fill-in)
+    assert 1200 <= W[m][int(np.argmax(sc[m]))] <= 1245
+    assert 8.5 < pk(sp) / pk(se) < 10.0
+    assert 1.8 < pk(sc) / pk(se) < 2.6
 
 
 def test_delta_angular_distribution():
@@ -69,8 +68,7 @@ def test_delta_angular_distribution():
     c = np.linspace(-1, 1, 41)
     d = dsigma_dOmega(1232.0, c)
     fwd, ninety = d[-1], d[len(c) // 2]
-    assert 3.0 < fwd / ninety < 5.5, fwd / ninety        # ~4 for 1+3cos^2
-    # symmetric-ish but forward-peaked; minimum near 90 deg
+    assert 3.0 < fwd / ninety < 5.5, fwd / ninety
     assert d[len(c) // 2] < d[0] and d[len(c) // 2] < d[-1]
 
 
@@ -86,8 +84,7 @@ def test_eta_klambda_production():
     from adonis.fsi.interactions.meson_baryon_amplitudes import eta_production, klambda_production
     We, se = eta_production(); Wk, sk = klambda_production()
     me = (We >= 1480) & (We <= 1800)
-    assert 1510 <= We[me][se[me].argmax()] <= 1580           # N(1535) peak
-    assert 1.5 < se[me].max() < 5.0                          # ~2-3 mb (eta production)
-    assert np.interp(1480, We, se) < 0.5 * se[me].max()      # rises from the eta-N threshold
-    # K Lambda turns on at a higher W than eta
-    assert np.interp(1500, Wk, sk) < 0.1                     # below K-Lambda threshold
+    assert 1510 <= We[me][se[me].argmax()] <= 1580
+    assert 1.5 < se[me].max() < 5.0
+    assert np.interp(1480, We, se) < 0.5 * se[me].max()
+    assert np.interp(1500, Wk, sk) < 0.1

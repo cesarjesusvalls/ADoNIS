@@ -76,7 +76,6 @@ def test_anti_is_still_unexercised_by_any_production_caller():
                       "free-nucleon oracle gate must land with it:\n" + "\n".join(hits))
 
 
-# ------------------------------------------------------------- the oracle card-routing landmine
 def test_the_nc_fsi_card_name_routes_correctly_and_the_obvious_name_does_not():
     """`run_achilles._RULES` routes by card-name PREFIX, and the obvious NC name breaks it.
 

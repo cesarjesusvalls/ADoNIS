@@ -15,25 +15,23 @@ import os
 import numpy as np
 import uproot
 
-# Override via ADONIS_MEASUREMENT_ROOT; default is the relative path to the NUISANCE data tree.
 DATA_ROOT = os.environ.get("ADONIS_MEASUREMENT_ROOT", "../nuisance/data")
 
 def load_cc0pi(obs):
     """T2K CC0pi-Np STV data (edges, per-bin conv, data[1e-38], cov[1e-38^2]) -- as in tune.py."""
     r = uproot.open(f"{DATA_ROOT}/T2K/CC0pi/STV/{'dpt' if obs == 'dpt' else 'dat'}Results.root")
     if obs == "dpt":
-        edges = np.asarray(r["Result"].axis().edges()) * 1000.0             # MeV
+        edges = np.asarray(r["Result"].axis().edges()) * 1000.0
         conv = 1e-33 / 12.0 * 1000.0 * 1e38
     else:
-        edges = np.asarray(r["Result"].axis().edges())                     # rad
+        edges = np.asarray(r["Result"].axis().edges())
         conv = 1e-33 / 12.0 * 1e38
     data = np.asarray(r["Result"].values()) * 1e38
     cov = np.asarray(r["Covariance_Matrix"].values())
     return edges, conv, data, cov
 
-NB_PER_CM2 = 1e33          # 1 cm^2 in nb
-NUCLEONS_CH = 13           # a CH unit: 12 C + 1 H.  The CC0pi release above is quoted on carbon and
-                           # uses 12 instead -- the two T2K releases do not share a convention.
+NB_PER_CM2 = 1e33
+NUCLEONS_CH = 13
 
 
 def load_cc1pi(name, nucleons=NUCLEONS_CH):

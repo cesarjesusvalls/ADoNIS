@@ -10,8 +10,6 @@ from typing import NamedTuple
 
 import jax
 
-# Enable double precision before any array is created. Every gradient check in
-# this project assumes it.
 jax.config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
@@ -30,17 +28,16 @@ def score_weight(prob: jax.Array) -> jax.Array:
     return prob / lax.stop_gradient(prob)
 
 
-# --- parameter bijections: optimise in R, evaluate in the valid range -------- #
-def to_positive(u):      return jax.nn.softplus(u)          # R   -> (0, inf)
+def to_positive(u):      return jax.nn.softplus(u)
 def from_positive(x):    return jnp.log(jnp.expm1(x))
-def to_unit(u):          return jax.nn.sigmoid(u)           # R   -> (0, 1)
+def to_unit(u):          return jax.nn.sigmoid(u)
 def from_unit(x):        return jnp.log(x) - jnp.log1p(-x)
-def to_signed_unit(u):   return jnp.tanh(u)                 # R   -> (-1, 1)
+def to_signed_unit(u):   return jnp.tanh(u)
 def from_signed_unit(x): return jnp.arctanh(x)
 
 
 class _AdamState(NamedTuple):
-    mean: object          # pytrees matching the parameters
+    mean: object
     variance: object
     count: int
 

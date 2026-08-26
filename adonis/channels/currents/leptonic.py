@@ -36,12 +36,8 @@ def _couplings(kind):
         return C.ee * _I / (C.sw * np.sqrt(2.0)), 0.0 + 0j, C.MW, C.GAMW, True
     if kind == "EM":
         c = -C.ee * _I
-        return c, c, 0.0, 0.0, True                  # photon: prop = i/q^2 (M=Gamma=0 boson-propagator limit)
+        return c, c, 0.0, 0.0, True
     if kind == "NC_nu":
-        # ACHILLES's exact floating-point form (LeptonicCurrent.cc:31-36), kept rather than the
-        # algebraically equivalent ee*i/(2*sw*cw): the two differ in the last bits, and the contract
-        # here is bit-faithfulness to ACHILLES.
-        # coupl_right = 0: a neutrino has no right-handed coupling.  M=MZ, Gamma=GAMZ.
         return (C.cw * C.ee * _I) / (2 * C.sw) + (C.ee * _I * C.sw) / (2 * C.cw), 0.0 + 0j, C.MZ, C.GAMZ, True
     raise ValueError(kind)
 
@@ -50,7 +46,7 @@ def lepton_current(p_in, p_out, kind="CC_nu", anti=False):
     """L (..., 4, 4) for incoming lepton p_in, outgoing p_out (..., 4) MeV.
     Spin-combo axis order (i,j)=(00,01,10,11); mu axis 0..3.  anti flips the spinor assignment."""
     cl, cr, M, G, has_prop = _couplings(kind)
-    Mmu = jnp.asarray(_vertex_matrices(cl, cr))                  # (4,4,4)
+    Mmu = jnp.asarray(_vertex_matrices(cl, cr))
     if anti:
         pUBar, pU = -p_in, p_out
     else:
@@ -60,11 +56,10 @@ def lepton_current(p_in, p_out, kind="CC_nu", anti=False):
     q = p_in - p_out
     q2 = q[..., 0] ** 2 - jnp.sum(q[..., 1:] ** 2, axis=-1)
     prop = _I / (q2 - M * M - _I * M * G) if has_prop else jnp.ones_like(q2, complex)
-    # subcur[mu]_(i,j) = ubar[i] . M[mu] . u[j] . prop, spin-combo order (i,j)=00,01,10,11
     out = []
     for i in range(2):
         for j in range(2):
-            Muj = jnp.einsum('mij,...j->...mi', Mmu, us[j])      # (...,4mu,4comp)
-            val = jnp.einsum('...i,...mi->...m', ub[i], Muj)     # (...,4mu)
+            Muj = jnp.einsum('mij,...j->...mi', Mmu, us[j])
+            val = jnp.einsum('...i,...mi->...m', ub[i], Muj)
             out.append(val * prop[..., None])
-    return jnp.stack(out, axis=-2)                               # (...,4combo,4mu)
+    return jnp.stack(out, axis=-2)

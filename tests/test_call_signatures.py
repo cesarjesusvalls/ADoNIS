@@ -80,7 +80,7 @@ def test_call_keywords_exist(path):
         funcs = _module_funcs(aliases[base.id])
         sig = funcs.get(n.func.attr)
         if sig is None:
-            continue                       # not a top-level def we can see: say nothing
+            continue
         params, has_kwargs = sig
         if has_kwargs:
             continue

@@ -26,13 +26,10 @@ import numpy as np
 
 from analysis.campaign.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
 from adonis.fit.fitters import lm_fit, trf_fit
-from adonis.analysis.knobs import PNAMES     # core copy; identical to the paper-side one
-from adonis.analysis import knobs as K   # PHYS_BOUND / phys_lo: one source of truth for hard boundaries
+from adonis.analysis.knobs import PNAMES
+from adonis.analysis import knobs as K
 
 
-# Physical reach for a dial whose nominal sits ON a bound and whose prior has been widened away.
-# E_b_shift: the prior is +-4 MeV, so a flat draw over [wall, wall+4] spans the physically interesting
-# range without inheriting the 1e6 widening.
 THROW_REACH = {"Eb_shift": (0.0, 4.0)}
 
 
@@ -48,16 +45,6 @@ def _throw_truth(eng, subset, real_prior, rng):
     star = eng.th0.copy()
     for k in subset:
         lo, hi = K.phys_lo(eng.pnames[k]), K.phys_hi(eng.pnames[k])
-        # UNCONSTRAINED dials (S4_PRIOR_FREE widens the prior by 1e6) have no prior to draw from -- held
-        # at nominal.  Without this the widened width feeds straight into the draw: E_b would be thrown
-        # uniformly out to ~1e6.
-        # UNCONSTRAINED dials would be thrown out to ~1e6 by the widened prior, so they cannot use it --
-        # but "hold at nominal" is WRONG for a dial whose nominal IS its boundary.  E_b_shift is stored
-        # as 1e-2 with a hard floor at 1e-2, and real_prior 4.0 > 100 x 1e-2 fires this guard, so every
-        # coverage toy was thrown with E_b pinned exactly on its wall -- and the flat-draw branch below,
-        # written for precisely this dial, was unreachable.  A boundary-coverage number built that way
-        # measures the pinning, not the statistics.  Freeze only dials that are NOT on a bound; a dial
-        # sitting on one is thrown flat over its physical reach instead.
         if real_prior[k] > 100.0 * max(abs(eng.th0[k]), 1e-12):
             near_bound = (lo is not None and abs(eng.th0[k] - lo) <= 1e-9 * max(abs(lo), 1.0)) or \
                          (hi is not None and abs(eng.th0[k] - hi) <= 1e-9 * max(abs(hi), 1.0))
@@ -67,14 +54,10 @@ def _throw_truth(eng, subset, real_prior, rng):
             star[k] = rng.uniform(lo if lo is not None else eng.th0[k] - reach,
                                   (lo if lo is not None else eng.th0[k]) + reach)
             continue
-        # FLAT draw only when the Gaussian actually STRADDLES a boundary (the old E_b case: sigma 4.0 about
-        # a nominal of 0.01 put half the draws below zero, and clamping them piled 255/500 toys on the
-        # identical truth).  With a 20% prior the bound is many sigma away for every dial, and applying the
-        # flat draw unconditionally would replace N(1.0, 0.2) by U(0.05, 0.4) -- a different ensemble.
         if lo is not None and eng.th0[k] - 2.0 * real_prior[k] < lo:
             star[k] = rng.uniform(lo, eng.th0[k] + 2.0 * real_prior[k])
             continue
-        for _ in range(100):                            # Gaussian, resampled back inside the box
+        for _ in range(100):
             v = eng.th0[k] + real_prior[k] * rng.standard_normal()
             if (lo is None or v > lo) and (hi is None or v < hi):
                 star[k] = v; break
@@ -88,7 +71,7 @@ def main():
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
 
-    BASE = int(os.environ.get("S4_TOY_BASE", "0"))     # shard offset -- per-job, set by the runner
+    BASE = int(os.environ.get("S4_TOY_BASE", "0"))
 
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
@@ -96,8 +79,6 @@ def main():
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     assert [str(x) for x in g["pnames"]] == list(PNAMES)
     subset = fit_subset(g, eng.pnames, cfg, log)
-    # throws always use the REAL prior (the population of true values); the FIT's prior can be scaled --
-    # S4_PRIOR_SCALE=0 -> unregularised (MLE) coverage of the data-only errors, consistent with S4A.
     real_prior = eng.prior.copy()
     st = cfg.stage("toys")
     NTOYS = int(st.get("shard_size", 50))
@@ -111,11 +92,6 @@ def main():
            else f" (prior width x{PRIOR_SCALE:g})"))
     log(f"coverage: {NTOYS} toys from base {BASE}, {len(subset)} dials, {eng.row0[-1]} bins")
 
-    # FIXED-TRUTH mode (S4_FIXED_TRUTH=<inject string>): every toy shares ONE truth and only the DATA
-    # fluctuates.  That is the ensemble the quoted uncertainty actually describes -- a sigma computed at a
-    # reference fit is a statement about scatter AT THAT TRUTH.  Throwing a new truth per toy instead mixes
-    # in the variation of sigma across parameter space (the model is nonlinear), which muddles "is my error
-    # bar right" with "how does my error bar move".  Empty -> legacy prior-thrown truths.
     FIXED = cfg.inject_string() if st.get("fixed_truth") else ""
     fixed_star = None
     if FIXED:
@@ -131,15 +107,10 @@ def main():
         seed = BASE + t
         rng = np.random.default_rng(1_000_000 + seed)
         star = fixed_star.copy() if fixed_star is not None else _throw_truth(eng, subset, real_prior, rng)
-        eng.set_closure_data(star)                              # nonlinear data at theta*
-        for d in eng.ds:                                        # + per-bin STAT throw at the fit's sigma
-            sd = np.where(np.isfinite(d["sigma"]), d["sigma"], 0.0)   # empty bins have sigma=inf -> no throw
+        eng.set_closure_data(star)
+        for d in eng.ds:
+            sd = np.where(np.isfinite(d["sigma"]), d["sigma"], 0.0)
             d["data"] = d["data"] + rng.normal(0.0, sd)
-        # FITTER.  LM clips its step onto the box and, when that stops improving, inflates lambda until
-        # the step underflows and exits via `norm(dth) < 1e-12` -- reported as convergence with the Newton
-        # decrement still at ~1e-3.  Measured on 48 toys it parks E_b exactly on its floor where TRF, whose
-        # bounds are inside the subproblem, pulls it off and reaches a LOWER chi2.  That inflates the
-        # boundary atom this ensemble exists to measure, so TRF is the default here.
         _fit = trf_fit if cfg.fit.minimizer.method == "trf" else lm_fit
         th, V, J, m, c, cd = _fit(eng, subset, f"toy{seed}", nit=NIT)
         s = np.sqrt(np.abs(np.diag(V)))
@@ -148,10 +119,7 @@ def main():
         log(f"toy {seed}: chi2_data={cd:.1f}  max|pull|="
             f"{max(abs(th[k]-star[k])/max(s[c],1e-12) for c,k in enumerate(subset)):.2f}"
             f"")
-        if (t + 1) % 5 == 0 or t == NTOYS - 1:                  # incremental save (preemption-safe)
-            # nbins_live = bins that actually CONSTRAIN.  Empty bins get sigma=inf (-> weight 0), so they
-            # contribute nothing to chi2 and must not be counted as degrees of freedom either: using the
-            # raw bin count puts the chi2(ndf) reference curve to the right of the toys.
+        if (t + 1) % 5 == 0 or t == NTOYS - 1:
             _sig = np.concatenate([d["sigma"] for d in eng.ds])
             np.savez(out, subset=subset, pnames=eng.pnames, nbins=int(eng.row0[-1]),
                      nbins_live=int(np.sum(np.isfinite(_sig) & (_sig > 0))),

@@ -19,12 +19,11 @@ from __future__ import annotations
 
 import numpy as np
 
-# masses [GeV]
 M_N = (0.93827208816 + 0.93956542054) / 2.0
 M_PI = 0.13957018
 M_DELTA = 1.232
-W_DELTA = 0.117             # Delta pole width [GeV]
-HBARC2 = 0.3893793721       # GeV^2 mb  (Constant::HBARC2 = hbarc^2 in GeV^2 mb)
+W_DELTA = 0.117
+HBARC2 = 0.3893793721
 
 
 def pcm2(s, m1sq, m2sq):
@@ -38,7 +37,7 @@ def blatt_weisskopf_l1(x):
 
 def effective_width(mdelta):
     """Delta -> N pi running width [GeV] (Blatt-Weisskopf L=1), GetEffectiveWidth."""
-    hbarc = 0.1973269804   # GeV fm
+    hbarc = 0.1973269804
     k = np.sqrt(np.clip(pcm2(mdelta ** 2, M_N ** 2, M_PI ** 2), 0.0, None))
     k0 = np.sqrt(pcm2(M_DELTA ** 2, M_N ** 2, M_PI ** 2))
     rho = k / mdelta * blatt_weisskopf_l1(k / hbarc) ** 2
@@ -125,8 +124,8 @@ def sigma_pp_channels(sqrts):
     """Fig 14: (sigma(pp->pn pi+), sigma(pp->pp pi0)) [mb] via pp -> N Delta -> N N pi.
     pp -> n Delta++ (iso 1) and pp -> p Delta+ (iso 1/3); Delta++ -> p pi+ (BR 1),
     Delta+ -> p pi0 (2/3) / n pi+ (1/3)  (isospin Clebsch)."""
-    s_dpp = sigma_nn2ndelta(sqrts, "deltapp")     # pp -> n Delta++
-    s_dp = sigma_nn2ndelta(sqrts, "deltap")       # pp -> p Delta+
-    pn_pip = s_dpp * 1.0 + s_dp * (1.0 / 3.0)      # Delta++->p pi+ ; Delta+->n pi+
-    pp_pi0 = s_dp * (2.0 / 3.0)                    # Delta+->p pi0
+    s_dpp = sigma_nn2ndelta(sqrts, "deltapp")
+    s_dp = sigma_nn2ndelta(sqrts, "deltap")
+    pn_pip = s_dpp * 1.0 + s_dp * (1.0 / 3.0)
+    pp_pi0 = s_dp * (2.0 / 3.0)
     return pn_pip, pp_pi0

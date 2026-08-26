@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Merge sharded chunk-banks (event_bank / beam_bank) into one bank dir.
 
 Each SLURM array shard writes <parts>/part_<id>/chunk_000.npz + manifest.json (independent seeds via
@@ -23,7 +22,7 @@ def link(src, dst):
     if os.path.exists(dst):
         os.remove(dst)
     try:
-        os.link(src, dst)          # hardlink: no extra space, survives part-dir removal (same fs)
+        os.link(src, dst)
     except OSError:
         os.symlink(src, dst)
 
@@ -41,10 +40,6 @@ def main():
         raise SystemExit(f"no shard dirs matching {a.parts}/{a.glob}")
     os.makedirs(a.out, exist_ok=True)
 
-    # A shard preempted mid-run leaves VALID chunks but no manifest.json (beam_bank writes the manifest
-    # only at the very end). Each chunk_*.npz is a complete independent sub-bank, so include EVERY
-    # loadable chunk from EVERY part; the manifest is only needed for the constant fields (chunk size,
-    # caps, pmin/pmax/pir2_mb/species) -- take those from any one part that finished.
     import numpy as np
     base_manifest = None
     per_chunk_events = None
@@ -61,9 +56,9 @@ def main():
     for pd in part_dirs:
         for c in sorted(glob.glob(str(Path(pd) / "chunk_*.npz"))):
             try:
-                with np.load(c) as d:                       # load-test: skip a chunk truncated by a kill
+                with np.load(c) as d:
                     kk = next((k for k in ("w0", "c", "weight") if k in d.files), d.files[0])
-                    nev = len(d[kk])                         # per-event key: neutrino w0 | (e,e') c | beam
+                    nev = len(d[kk])
             except Exception as e:
                 print(f"  SKIP corrupt/partial {c}: {e}")
                 continue

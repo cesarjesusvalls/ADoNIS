@@ -12,7 +12,7 @@ jax.config.update("jax_enable_x64", True)
 from adonis.fsi import pion_nuclear_xsec as ox
 
 M_PI = ox.M_PIP
-KF = float(np.cbrt(0.085 * 3 * np.pi ** 2) * ox.HBARC)   # symmetric matter, one species
+KF = float(np.cbrt(0.085 * 3 * np.pi ** 2) * ox.HBARC)
 RHO = 0.17
 
 
@@ -33,19 +33,19 @@ def test_absorption_delta_peaked():
     assert np.all(sa > 0)
     pk = Ts[int(sa.argmax())]
     assert 120 <= pk <= 220, pk
-    assert 25 < sa.max() < 70, sa.max()                 # in-medium abs ~ tens of mb at the Delta
-    assert _sa(450) < 0.3 * sa.max()                    # falls off above the Delta
+    assert 25 < sa.max() < 70, sa.max()
+    assert _sa(450) < 0.3 * sa.max()
 
 
 def test_qe_charge_exchange_structure():
     """The QE channel map includes charge exchange (pi- p -> pi0 n etc.) and forbids the
     double charge flip (pi+ -> pi-)."""
     q = _qe(180)
-    assert q[(211, -211)] == 0.0 and q[(-211, 211)] == 0.0   # no double charge exchange
-    assert float(q[(-211, 111)]) > 0.0                       # pi- -> pi0 charge exchange present
-    assert float(q[(111, 211)]) > 0.0                        # pi0 -> pi+ present
+    assert q[(211, -211)] == 0.0 and q[(-211, 211)] == 0.0
+    assert float(q[(-211, 111)]) > 0.0
+    assert float(q[(111, 211)]) > 0.0
     tot = sum(float(v) for v in q.values())
-    assert 40 < tot < 200, tot                               # total QE ~ 100 mb at the Delta
+    assert 40 < tot < 200, tot
 
 
 def test_differentiable_in_oset_coeff():
@@ -54,7 +54,6 @@ def test_differentiable_in_oset_coeff():
         import adonis.fsi.pion_nuclear_xsec as o
         ca2 = o.C_A2.at[0].set(c0)
         x = (200.0) / M_PI; beta = o._quad(x, o.C_BETA)
-        # rebuild via the public path: perturb the module constant through a closure
         E = 200.0 + M_PI; p = np.sqrt(E * E - M_PI * M_PI)
         save = o.C_A2; o.C_A2 = ca2
         try:

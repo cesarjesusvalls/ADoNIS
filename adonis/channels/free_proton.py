@@ -24,7 +24,7 @@ def generate_H(n, seed=0):
     res.free_nucleon_weights primitive: multiply the per-event weight by the flux-sampling J_beam, sum)."""
     rng = np.random.default_rng(seed)
     flux = SpectrumFlux()
-    m_pi = _pi_kin_mass(M_PIP); m_Nf = M_P            # outgoing N = proton; kinematic pion mass
+    m_pi = _pi_kin_mass(M_PIP); m_Nf = M_P
     Smin = (M_MU + m_Nf + m_pi) ** 2
     minE = max((Smin - m_Nf ** 2) / (2 * m_Nf) / 1000.0, flux.min_energy)
     maxE = flux.max_energy; dE = maxE - minE
@@ -32,10 +32,9 @@ def generate_H(n, seed=0):
     E_GeV = u[:, 0] * dE + minE; Enu = E_GeV * 1000.0
     J_beam = (dE * flux.f(E_GeV)) / flux.flux_integral
     k_nu = np.stack([Enu, np.zeros(n), np.zeros(n), Enu], axis=1)
-    # p -> p pi+ : itiz=+1, out N = proton, pion 211; struck proton at rest (had_mass = MASS_PDG_PROTON)
     w0, kin = free_nucleon_weights(k_nu, +1, M_P, 211, M_PIP, MASS_PDG_PROTON, u[:, 1:6])
     w = w0 * J_beam
-    w = np.where(np.isfinite(w) & (w > 0), w, 0.0) / n           # absolute nb per event (mean)
+    w = np.where(np.isfinite(w) & (w > 0), w, 0.0) / n
     return k_nu, kin["k_lep"], kin["p_N"], kin["p_pi"], w
 
 
@@ -56,14 +55,11 @@ if __name__ == "__main__":
     knu, kmu, pN, pPi, w = generate_H(n, seed=0)
     print(f"H (free p) nu_mu RES p->p pi+ :  sigma = {w.sum():.4e} nb  ({int((w>0).sum())} events w>0)")
     m = len(w)
-    # joint pool cascade (NOTE: the H proton is treated as embedded in 12C -- the same carbon-config
-    # cascade the legacy chain ran; a strictly free H would not absorb.  See report.)  The pool
-    # re-cascades both pion-absorption nucleons, so lead_prot already is the leading escaped proton.
     out = run_fsi(jnp.asarray(pPi), jnp.asarray(pN), jnp.full(m, 211, jnp.int32),
                   jnp.full(m, 2212, jnp.int32), jnp.full(m, 2212, jnp.int32),
                   _CFG(seed=1), jax.random.PRNGKey(7), channel="res")
-    absorbed = np.asarray(out["pterm"]["pid"] == 0)              # primary pi+ absorbed -> CC0pi
-    lead = np.asarray(out["lead_prot"]); mu = kmu                # FSI leaves the lepton untouched
+    absorbed = np.asarray(out["pterm"]["pid"] == 0)
+    lead = np.asarray(out["lead_prot"]); mu = kmu
     has_p = np.linalg.norm(lead[:, 1:], axis=1) > 1
     wcc = w * (absorbed & has_p)
     dpt, dat, Q2, ww = _cc0pi_obs(knu, mu, lead, wcc)

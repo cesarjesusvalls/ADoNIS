@@ -48,7 +48,6 @@ def _bound_by(node):
 @pytest.mark.parametrize("path", FILES, ids=lambda p: str(p.relative_to(ROOT)))
 def test_no_undefined_globals(path):
     tree = ast.parse(path.read_text())
-    # `import *` makes the available-name set unknowable statically; skip rather than guess.
     if any(isinstance(n, ast.ImportFrom) and any(a.name == "*" for a in n.names) for n in ast.walk(tree)):
         pytest.skip("star import: available names are not statically knowable")
 

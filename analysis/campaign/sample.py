@@ -47,15 +47,9 @@ def _cfg_h_bank(cfg):
     if hb is None:
         return T2K_H_BANK
     return hb[0] if isinstance(hb, (list, tuple)) else hb
-# Observables the free-H (nu_mu p -> mu- p pi+) contribution is added to for a CH target.  EVERY key a CH
-# sample fits must appear here: `_gradient` intersects its observables with this tuple, so a key that is
-# missing makes target: CH silently produce a CARBON-ONLY prediction -- no error, just a wrong sample.
-# tpi/q2 are well defined on a free proton (a pi+ and a proton in the final state; Q2 from the muon and the
-# true Enu), unlike dalphat, which is undefined there and gets the NUISANCE uniform prescription below.
 FREEH_KEYS = ("pn", "dptt", "dalphat", "tpi", "q2")
 
 
-# --------------------------------------------------------------------------- small self-contained helpers
 def _binidx(mask, vals, edges):
     """(sel_idx, binidx, nbin) for `vals` under boolean `mask`, overflow folded into the edge bins -- the
     binning convention every driver uses (clip to [edge0+eps, edgeN-eps] then digitize)."""
@@ -67,8 +61,6 @@ def _binidx(mask, vals, edges):
     return sel, bidx, nb
 
 
-# bin_sigma moved to adonis/stats/gaussian.py -- it had an identical twin in
-# analysis/paper/fisher_engine.py (verified: same AST apart from the docstring).
 from adonis.stats.gaussian import bin_sigma as _bin_sigma
 
 
@@ -82,14 +74,13 @@ def gate1_from(J, sigma, prior):
     return F, V, sig_post, sig_post / np.asarray(prior), np.sqrt(np.maximum(np.diag(F), 0.0))
 
 
-# --------------------------------------------------------------------------- the sample
 class AnaSample:
     def __init__(self, cfg, name, syst=0.05):
         self.cfg = cfg
         self.name = name
         self.syst = float(os.environ.get("ADONIS_SYST", syst))
         self._sel = None
-        self._path = None                       # config file path (set by from_config; needed by .plot())
+        self._path = None
 
     @classmethod
     def from_config(cls, path, **kw):
@@ -97,7 +88,6 @@ class AnaSample:
         s._path = str(path)
         return s
 
-    # ---- sample properties ----
     @property
     def bank(self):
         return self.cfg.inputs["adonis_bank"][0]
@@ -117,7 +107,6 @@ class AnaSample:
     def edges(self):
         return {o.key: o.bin_edges() for o in self.cfg.observables}
 
-    # ---- selection (compacted; the plot side) ----
     def selected(self):
         """Per-event {obs_key: values, 'w', 'chan'} for the passing events, streamed + bounded.  This is
         the SAME reducer sec1 plots (bank_signal / ele_signal)."""
@@ -125,7 +114,6 @@ class AnaSample:
             self._sel = (SG.ele_signal if self.is_electron else SG.bank_signal)(self.bank, self.cfg.signal)
         return self._sel
 
-    # ---- fit engine datasets (whole cached bank; the sec4 closure side) ----
     def _h_bank(self):
         return _cfg_h_bank(self.cfg)
 
@@ -151,7 +139,6 @@ class AnaSample:
             ds.append(d)
         return ds
 
-    # ---- gradient (streamed; J + central + sigma from ONE pass) ----
     @staticmethod
     def _jvp_ctx():
         """The reweight jvp closure + nominal theta + per-knob tangents (shared by carbon and free-H passes)."""
@@ -198,10 +185,6 @@ class AnaSample:
         ctx = self._jvp_ctx()
         J, row0, sumw, sumw2 = self._stream_grad(self.bank, self.cfg.signal, keys, edges_by, ctx,
                                                  max_chunks=max_chunks, log=log)
-        # CH target: ADD the reweightable free-H (nu_mu p -> mu- p pi+) contribution (central offset + its
-        # gradient) to the CC1pi+ observables, streamed from the hydrogen bank.  On the H bank every event is
-        # free-H, so NUISANCE's hydrogen daT prescription = dalphat uniform on [0,pi] (radians -- the sample's
-        # own units).  This is the "non-pure (CH) target" demonstration: the RES-knob shrinkage barely moves.
         if getattr(self.cfg.signal, "target", "carbon") == "CH":
             fk = [k for k in keys if k in FREEH_KEYS]
             if fk:
@@ -213,20 +196,15 @@ class AnaSample:
                                                       tag=":freeH")
                 for jf, k in enumerate(fk):
                     jc = keys.index(k)
-                    J[row0[jc]:row0[jc + 1]] += JH[rH[jf]:rH[jf + 1]]        # add free-H gradient to carbon rows
-                    sumw[jc] += swH[jf]; sumw2[jc] += sw2H[jf]              # + free-H central + MC error
+                    J[row0[jc]:row0[jc + 1]] += JH[rH[jf]:rH[jf + 1]]
+                    sumw[jc] += swH[jf]; sumw2[jc] += sw2H[jf]
                 if log:
                     log(f"  [{self.name}] free-H (CH) added to {fk}")
         central = {k: sumw[j] for j, k in enumerate(keys)}
         mcerr = {k: np.sqrt(sumw2[j]) for j, k in enumerate(keys)}
         sigma = np.concatenate([_bin_sigma(central[k], mcerr[k], self.syst) for k in keys])
-        # mcerr travels WITH the Jacobian: the sparse-bin mask (mcerr > mask_mcfrac * central) defines
-        # which bins the fit uses, so any figure claiming to show "the bins that are fitted" needs it.
-        # It used to be computed here and dropped, which meant the sec3 gradient figure drew bins the
-        # sec4 fit had thrown away.
         return dict(J=J, sigma=sigma, row0=row0, keys=keys, edges=edges_by, central=central, mcerr=mcerr)
 
-    # ---- verbs ----
     def jacobian(self, **kw):
         r = self._gradient(**kw)
         return r["J"], r["sigma"], r["row0"], r["keys"]
@@ -237,12 +215,7 @@ class AnaSample:
         r.update(F=F, V=V, sig_post=sig_post, shrink=shrink, reach=reach, prior=K.PRIOR, pnames=K.PNAMES)
         return r
 
-    # .plot() lived here and imported analysis.paper.validation.helper -- the CORE
-    # depending on one section's figure code.  The verb now lives with the figures:
-    #     from analysis.paper.validation.helper import render_sample
-    #     render_sample(cfg_path, show_ratio=True)
 
-    # ---- cache ----
     def dump_cache(self, label=None, res=None, max_chunks=None, log=print):
         """Persist the Gate-I npz (physfit schema: J, sigma, row0, dskeys, shrink, F, V + per-obs edges/
         central) to output/altgen/{label}.npz -- what SampleSet / the figures load."""
@@ -266,7 +239,6 @@ class AnaSample:
         return SampleSet([self, other])
 
 
-# --------------------------------------------------------------------------- composition
 class SampleSet:
     """Several samples fitted / gated jointly.  Rows are concatenated across samples; the combined Fisher
     is the sum of the per-sample outer products (additive), so this is exactly the old build_multisample."""

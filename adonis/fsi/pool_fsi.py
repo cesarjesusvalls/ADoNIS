@@ -13,7 +13,7 @@ Usage:
 """
 import numpy as np
 import jax.numpy as jnp
-from adonis.fsi.cascade import cascade_nucleus, pool_fsi_reweight, NUCLEON  # noqa: F401
+from adonis.fsi.cascade import cascade_nucleus, pool_fsi_reweight, NUCLEON
 
 
 def lead_proton(nt):

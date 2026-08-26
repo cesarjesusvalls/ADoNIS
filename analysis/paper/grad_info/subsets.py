@@ -22,8 +22,6 @@ CONFIG = Path(os.environ.get(
     "ADONIS_SEC2_CONFIG",
     Path(__file__).resolve().parents[3] / "configs" / "paper" / "sec2_subsets.yaml"))
 
-# The npz contract sec3 consumes.  Any producer that writes these is a valid input (physfit_gate1,
-# physfit_minerva, multisample_carbon, ...); sec3 owns none of them.
 SCHEMA = ("J", "sigma", "prior", "pnames", "dskeys", "row0")
 
 
@@ -79,7 +77,7 @@ def resolve_axis(axis, dskeys, log=print):
                 if ref not in declared:
                     raise KeyError(f"group '{name}': <{ref}> is not an earlier group in this axis "
                                    f"(declared so far: {declared[:-1]})")
-                hit = by_name.get(ref, [])       # an earlier group that itself dropped -> contributes nothing
+                hit = by_name.get(ref, [])
             elif any(c in item for c in "*?["):
                 hit = [k for k in dskeys if fnmatch.fnmatch(k, item)]
                 if not hit:

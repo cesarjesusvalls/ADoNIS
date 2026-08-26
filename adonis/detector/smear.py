@@ -36,15 +36,11 @@ DEG = np.pi / 180.0
 @dataclass(frozen=True)
 class SmearSpec:
     """The detector.  Nominal working point: 20% on momentum, 10 degrees on angle."""
-    sigma_p: float = 0.20            # fractional momentum resolution
-    sigma_theta_deg: float = 10.0    # 3-D angular resolution (cone half-angle, 1 sigma)
+    sigma_p: float = 0.20
+    sigma_theta_deg: float = 10.0
     seed: int = 20260813
-    # Pion detection efficiency: below `pi_eff_p_max` MeV/c a pion is seen with probability `pi_eff`,
-    # otherwise missed (the event reconstructs as if it weren't there) -- the one effect giving CC0pi a
-    # real background. With perfect PID (the defaults) purity is exactly 1.0, and the cross-section
-    # knobs, which reweight only the background, have nothing to act on.
-    pi_eff_p_max: float = 0.0        # MeV/c; 0 disables the effect (perfect PID)
-    pi_eff: float = 1.0              # probability of seeing a pion below pi_eff_p_max
+    pi_eff_p_max: float = 0.0
+    pi_eff: float = 1.0
 
     @classmethod
     def parse(cls, d):
@@ -64,10 +60,10 @@ def _rotate_into(dirs, cos_delta, sin_delta, phi):
     """
     n = dirs.shape[0]
     ref = np.zeros((n, 3))
-    ref[np.arange(n), np.argmin(np.abs(dirs), axis=1)] = 1.0     # least-aligned axis
+    ref[np.arange(n), np.argmin(np.abs(dirs), axis=1)] = 1.0
     u = np.cross(dirs, ref)
     u /= np.linalg.norm(u, axis=1, keepdims=True)
-    v = np.cross(dirs, u)                                        # already unit: |d|=|u|=1, d _|_ u
+    v = np.cross(dirs, u)
     perp = np.cos(phi)[:, None] * u + np.sin(phi)[:, None] * v
     return cos_delta[:, None] * dirs + sin_delta[:, None] * perp
 
@@ -81,11 +77,11 @@ def _smear_p4(p4, rng, spec):
     p = p4[:, 1:]
     pmag = np.linalg.norm(p, axis=1)
     ok = pmag > 0
-    m2 = np.maximum(p4[:, 0] ** 2 - pmag ** 2, 0.0)              # each particle's own mass, kept exactly
+    m2 = np.maximum(p4[:, 0] ** 2 - pmag ** 2, 0.0)
 
     n = p4.shape[0]
     scale = 1.0 + spec.sigma_p * rng.standard_normal(n)
-    pmag_r = np.maximum(pmag * scale, 1e-6)                      # a negative |p| is not a measurement
+    pmag_r = np.maximum(pmag * scale, 1e-6)
     delta = np.abs(rng.standard_normal(n)) * spec.sigma_theta_deg * DEG
     phi = rng.uniform(0.0, 2.0 * np.pi, n)
 
@@ -110,13 +106,6 @@ def smear_chunk(B, spec: SmearSpec, chunk: int):
     out["k_lep"] = _smear_p4(B["k_lep"], rng, spec)
     out["fs_p4"] = _smear_p4(B["fs_p4"], rng, spec)
 
-    # A missed pion must be invisible to PID accounting, so the event reconstructs as CC0pi. The final
-    # state is ragged, so entries can't be deleted without rebuilding offsets; setting PID to 0 is
-    # equivalent and local (the meson veto is np.isin(fs_pid, MESONS), and 0 matches no list). fs_pid is
-    # copied, not shared, so this never touches the truth selection.
-    #
-    # The threshold is on true momentum, a property of the particle, and the draw happens after both
-    # smearing calls, so the kinematics stay bit-identical to the perfect-PID case.
     if spec.pi_eff_p_max > 0.0 and spec.pi_eff < 1.0:
         pid = np.asarray(B["fs_pid"]).copy()
         ptrue = np.linalg.norm(np.asarray(B["fs_p4"], dtype=np.float64)[:, 1:], axis=1)

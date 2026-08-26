@@ -76,7 +76,6 @@ def test_res_reduced_mixed_second_derivative():
     assert np.isfinite(d2) and abs(d2) > 1e-8, d2
 
 
-# ---- wiring + first-order invariance vs the legacy per-knob product ----
 from adonis.reweight.amps2_records import (build_res_ma_records, build_res_pionpole_records,
                                         build_res_pw_records, strength_reweight, ma_reweight)
 

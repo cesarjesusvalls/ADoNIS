@@ -13,18 +13,13 @@ def fast():
     return bool(os.environ.get("ADONIS_CI_FAST"))
 
 
-# --- heavy import-time test files: SKIP COLLECTING them by default -------------------------------- #
-# Their module-level bank/replica/DCC-amplitude builds run at IMPORT (collection), so they dominate
-# the suite wall-time even when deselected by a marker -- skipping collection is the only real speedup.
-# The default run keeps the fast unit tests + the fast analogs (e.g. test_full_knobs_smoke); the full
-# high-statistics gates run in CI / after many changes with `pytest --runslow`.
 _HEAVY = {
-    "test_full_knobs_grad.py",       # 5k-event replica + 14 DCC pw records + SF (analog: test_full_knobs_smoke)
-    "test_fold_fs.py", "test_grad_fs.py",                 # DCC fold_final_state at import
+    "test_full_knobs_grad.py",
+    "test_fold_fs.py", "test_grad_fs.py",
     "test_ma_reweight.py", "test_res_strength_reweight.py",
-    "test_sf_reweight.py", "test_strength_reweight.py",   # module-level sample_importance + amps2 records
-    "test_amps2_bridge.py", "test_build_zmtx_equiv.py",   # DCC amplitude builds
-    "test_generate_bank_unify.py",                        # builds CC+EM+hadron banks (QE+RES cascade) at import
+    "test_sf_reweight.py", "test_strength_reweight.py",
+    "test_amps2_bridge.py", "test_build_zmtx_equiv.py",
+    "test_generate_bank_unify.py",
 }
 
 

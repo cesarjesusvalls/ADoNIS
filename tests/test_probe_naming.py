@@ -18,18 +18,16 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# Probe VALUES that must no longer appear anywhere.  Matched as whole quoted strings / YAML values so
-# ordinary English ("the weak vertex", "see also") never trips the gate -- only probe values do.
 RETIRED = ("weak", "ee")
 _SEARCH_DIRS = ("adonis", "configs", "analysis", "tests")
-_SKIP = {"test_probe_naming.py"}                    # this file names them on purpose
+_SKIP = {"test_probe_naming.py"}
 
 
 def _py_offences(path, text):
     """A retired name used as a probe VALUE in Python: probe="weak", probe='ee', ("weak", ...)."""
     out = []
     for i, line in enumerate(text.splitlines(), 1):
-        code = line.split("#", 1)[0]                # comments are prose, not values
+        code = line.split("#", 1)[0]
         for name in RETIRED:
             if re.search(rf'probe\s*=\s*["\']{name}["\']', code) or \
                re.search(rf'["\']{name}["\']\s*:\s*\(', code):
@@ -68,7 +66,7 @@ def test_every_bank_config_declares_a_known_probe():
 def test_gen_config_rejects_the_old_name():
     from adonis.workflow.config import GenConfig
     with pytest.raises(ValueError, match="probe"):
-        GenConfig(probe="weak", beam="spectrum")     # no alias: the old name is simply gone
+        GenConfig(probe="weak", beam="spectrum")
 
 
 def test_gen_config_default_probe_is_cc():
@@ -76,15 +74,14 @@ def test_gen_config_default_probe_is_cc():
     assert GenConfig().probe == "CC"
 
 
-# --------------------------------------------------------------- the manifest/config agreement gate
 def test_manifest_probe_equals_config_probe():
     """THE structural fix.  Reads the literal source of the manifest dicts rather than generating a
     bank (minutes of GPU): every `probe=` in a MANIFEST construction must be `cfg.probe`.  The one
     legitimate probe= LITERAL is build_hv_sf(..., probe="EM"): the (e,e') hard-vertex records are the EM
     records by construction, independent of any config, so that call line is excluded from the scan."""
     src = (ROOT / "adonis" / "workflow" / "generate_bank.py").read_text()
-    code = "\n".join(ln.split("#", 1)[0] for ln in src.splitlines()        # comments discuss the old names
-                     if "build_hv_sf(" not in ln)                          # EM record selector, not a manifest
+    code = "\n".join(ln.split("#", 1)[0] for ln in src.splitlines()
+                     if "build_hv_sf(" not in ln)
     literals = re.findall(r'probe\s*=\s*(["\'][^"\']*["\'])', code)
     assert not literals, f"manifest probe must come from cfg.probe, found literals: {literals}"
     assert src.count("probe=cfg.probe") >= 2, "both the hard-vertex and hadron manifests must use cfg.probe"

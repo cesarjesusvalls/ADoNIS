@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Generic S3DF SLURM submitter for the ADoNIS reproduce pipeline (CPU productions).
 
 Models LUCiD's s3df_jobs/submit_job.py, but for CPU jobs on the `milano` partition and wired to
@@ -57,7 +56,6 @@ def main():
     log = LOGS / f"{a.name}_{ts}_{arr}.log"
     array_line = f"#SBATCH --array={a.array}\n" if a.array else ""
     dep_line = f"#SBATCH --dependency={a.dependency}\n" if a.dependency else ""
-    # Resolve partition/gres: --gpu -> turing + gpu:1 (bank generation); else milano, no gres.
     part = a.partition or (os.environ.get("ADONIS_SLURM_GPU_PARTITION", "turing") if a.gpu
                            else os.environ.get("ADONIS_SLURM_PARTITION", "milano"))
     gres = a.gres or (os.environ.get("ADONIS_SLURM_GRES", "gpu:1") if a.gpu else None)
@@ -98,7 +96,7 @@ exit $rc
     print(f"log:    {log}")
     if a.submit:
         r = subprocess.run(["sbatch", str(script_file)], stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, universal_newlines=True)  # 3.6-safe
+                            stderr=subprocess.PIPE, universal_newlines=True)
         print((r.stdout or "").strip() or (r.stderr or "").strip())
         if r.returncode:
             raise SystemExit(f"sbatch failed: {r.stderr}")

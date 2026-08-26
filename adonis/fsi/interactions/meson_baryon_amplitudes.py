@@ -22,12 +22,11 @@ import numpy as np
 import jax.numpy as jnp
 
 from adonis.io import achilles_data_root
-from adonis.channels.dcc.form_factors import M_PI_GEV  # GeV; we work in MeV here
+from adonis.channels.dcc.form_factors import M_PI_GEV
 
-from adonis.constants import mpip as M_PI, mp as M_N  # charged pion / proton [MeV]
-HBARC = 197.32              # MeV fm (verbatim local rounding of the ANL transcription)
+from adonis.constants import mpip as M_PI, mp as M_N
+HBARC = 197.32
 
-# wave order in the ANL files; label L_{2I,2J} -> (L, twoI, twoJ)
 WAVES = ["S11", "S31", "P11", "P13", "P31", "P33", "D13", "D15", "D33", "D35",
          "F15", "F17", "F35", "F37", "G17", "G19", "G37", "G39", "H19", "H39"]
 _L = {"S": 0, "P": 1, "D": 2, "F": 3, "G": 4, "H": 5}
@@ -50,24 +49,20 @@ def load_anl(i=0, f=0, root=None):
         rows.append([float(x) for x in s.split()])
     arr = np.array(rows)
     W = arr[:, 0]
-    vals = arr[:, 1:]                                    # (nW, 40) = 20 x (Re, Im)
-    amps = vals[:, 0::2] + 1j * vals[:, 1::2]            # (nW, 20)
+    vals = arr[:, 1:]
+    amps = vals[:, 0::2] + 1j * vals[:, 1::2]
     return W, amps
 
 
 def _pcm2(W, mM=138.5, mB=938.5):
-    # ANL-code flux masses (ACHILLES MesonBaryonAmplitudes.hh:110-111: Mass_m[0]=138.5, Mass_b[0]=938.5),
-    # not the physical PDG masses -- matches the _MM_ANL/_MB_ANL convention used for the eta/conversion
-    # grids below.
     PF = (W ** 2 - mM ** 2 - mB ** 2) ** 2 - 4.0 * mM ** 2 * mB ** 2
-    return PF                                            # ACHILLES "PF" (= 4 W^2 p_cm^2)
+    return PF
 
 
 def _channel_sigma(amps, Wt, cg, norm=1.0):
     """Partial-wave cross section [mb] for a physical piN channel with isospin weights
     cg = {1: c_{1/2}, 3: c_{3/2}} (the products of initial+final meson-baryon Clebsches):
     sigma = pref * sum_{L,J} (2J+1) |sum_I cg_I A^I_{L,J}|^2.  Waves are paired by (L,J)."""
-    # group wave indices by (L, twoJ)
     by_lj = {}
     for k, name in enumerate(WAVES):
         L, twoI, twoJ = wave_qn(name)
@@ -109,8 +104,7 @@ def dsigma_dOmega(W, cos_theta, cg={3: 1.0}, i=0, f=0):
     """
     from numpy.polynomial.legendre import Legendre
     Wt, amps = load_anl(i, f)
-    a = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])])  # (20,) at this W
-    # a_{L,+/-}: index by (L, sign) where + is J=L+1/2 (twoJ=2L+1), - is J=L-1/2 (twoJ=2L-1)
+    a = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])])
     aLp, aLm = {}, {}
     for k, name in enumerate(WAVES):
         L, twoI, twoJ = wave_qn(name)
@@ -122,7 +116,6 @@ def dsigma_dOmega(W, cos_theta, cg={3: 1.0}, i=0, f=0):
     c = np.asarray(cos_theta, dtype=float)
     Lmax = 5
     PL = np.stack([np.polynomial.legendre.legval(c, [0] * L + [1]) for L in range(Lmax + 1)])
-    # associated Legendre P_L^1(cos) = -sqrt(1-c^2) dP_L/dc
     s = np.sqrt(np.clip(1 - c ** 2, 0, 1))
     PL1 = np.stack([-s * _dPL(L, c) for L in range(Lmax + 1)])
     f = np.zeros_like(c, dtype=complex)
@@ -151,10 +144,6 @@ def pim_p_elastic(W=None, norm=1.0):
     return Wt, _channel_sigma(amps, Wt, {3: 1.0 / 3.0, 1: 2.0 / 3.0}, norm)
 
 
-# charge-exchange isospin weights (products of initial pi-p and final pi0n Clebsches):
-#   |pi- p>  = sqrt(1/3)|3/2,-1/2> - sqrt(2/3)|1/2,-1/2>
-#   |pi0 n>  = sqrt(2/3)|3/2,-1/2> + sqrt(1/3)|1/2,-1/2>
-#   c_{3/2} = sqrt(2/3)*sqrt(1/3) = +sqrt(2)/3 ;  c_{1/2} = sqrt(1/3)*(-sqrt(2/3)) = -sqrt(2)/3
 _CEX_CG = {3: np.sqrt(2.0) / 3.0, 1: -np.sqrt(2.0) / 3.0}
 
 
@@ -177,9 +166,6 @@ def pim_p_total(W=None, norm=1.0):
     return Wt, se + sc
 
 
-# --- inelastic production channels: piN -> etaN, KLambda (ANL_0-{1,2}) --------- #
-# eta and Lambda are isoscalar, so only the I=1/2 piN amplitude contributes; the physical
-# pi- p -> eta n / K0 Lambda cross section carries the isospin Clebsch (|<f|1/2><1/2|pi-p>|^2).
 import numpy as _np
 _R23 = _np.sqrt(2.0 / 3.0)
 
@@ -204,22 +190,12 @@ def klambda_production(W=None, norm=1.0):
     return Wt, _channel_sigma(amps, Wt, {1: _R23}, norm)
 
 
-# --- TOTAL piN -> {etaN, KLambda, KSigma} CONVERSION cross section ---------------------- #
-# Faithful port of ACHILLES MesonBaryonAmplitudes (initIso CGcof + CalcCrossSectionW_grid):
-# sigma(c -> f)(W) = pref(W) * sum_{L,J} (2J+1) | sum_I CG_I(c) CG_I(f) A^{0->F}_{L,J,I}(W) |^2
-# with pref using the INITIAL channel "masses in ANL code" mM=138.5, mB=938.5 (ACHILLES
-# Mass_m/Mass_b[0]) and the conversion total = sum over the OPEN final charge states with the
-# same total I3.  These channels remove the pion (eta/K production) -- in the cascade they
-# CONVERT the pion out of the pi+/pi0/pi- system.
 
-_MM_ANL, _MB_ANL = 138.5, 938.5            # ACHILLES Mass_m[0], Mass_b[0] (ANL-code masses)
+_MM_ANL, _MB_ANL = 138.5, 938.5
 _C13, _C23 = np.sqrt(1.0 / 3.0), np.sqrt(2.0 / 3.0)
-# CG[(2*I3m, 2*I3b)] = (c_{1/2}, c_{3/2})  -- ACHILLES initIso chan 0 (piN), Condon-Shortley
 _CG_PIN = {(+2, +1): (0.0, 1.0), (+2, -1): (_C23, _C13),
            (0, +1): (-_C13, _C23), (0, -1): (_C13, _C23),
            (-2, +1): (-_C23, _C13), (-2, -1): (0.0, 1.0)}
-# KSigma final CGs: ACHILLES initIso chan 3 = piN CG with (meson<->baryon) swapped indices and
-# a -1 on the I=1/2 row (mirrored AS CODED).  Keys: (2*I3_K, 2*I3_Sigma), I3_K in {+-1/2}, I3_S in {-1,0,1}.
 _CG_KSIG = {(km, sb): (-_CG_PIN[(sb, km)][0], _CG_PIN[(sb, km)][1])
             for km in (+1, -1) for sb in (+2, 0, -2) if (sb, km) in _CG_PIN}
 
@@ -261,7 +237,7 @@ def conversion_sigma_grid():
         Wt, amps = load_anl(0, F)
         if Wg is None:
             Wg = Wt
-        elif not np.array_equal(Wt, Wg):                      # resample onto the first grid
+        elif not np.array_equal(Wt, Wg):
             amps = np.stack([np.interp(Wg, Wt, amps[:, k], left=0, right=0)
                              for k in range(amps.shape[1])], axis=1)
         if out is None:
@@ -269,16 +245,16 @@ def conversion_sigma_grid():
         for pi_idx, tm in ((0, +2), (1, 0), (2, -2)):
             for nuc_idx, tb in ((0, +1), (1, -1)):
                 ci = _CG_PIN[(tm, tb)]
-                I3tot = tm + tb                                # 2*I3 total
-                if finals == "eta":                            # eta(I=0) + N: one final, I=1/2 only
+                I3tot = tm + tb
+                if finals == "eta":
                     if abs(I3tot) > 1:
                         continue
                     out[pi_idx, nuc_idx] += _sigma_cf(amps, Wg, (ci[0] * 1.0, 0.0))
-                elif finals == "klam":                         # K(1/2) + Lambda(0): one final, I=1/2
+                elif finals == "klam":
                     if abs(I3tot) > 1:
                         continue
                     out[pi_idx, nuc_idx] += _sigma_cf(amps, Wg, (ci[0] * 1.0, 0.0))
-                else:                                          # K(1/2) + Sigma(1): sum open finals
+                else:
                     for km in (+1, -1):
                         sb = I3tot - km
                         if (km, sb) not in _CG_KSIG:
@@ -288,11 +264,7 @@ def conversion_sigma_grid():
     return Wg, out
 
 
-# --- eta N INITIAL cross sections (the BACK-conversion path: ACHILLES propagates the eta produced by
-# piN->etaN and lets it re-interact via GetAllCSW(eta_channel, W) -- etaN->etaN elastic and etaN->piN,
-# which REGENERATES a pion.  eta is isoscalar => etaN is pure I=1/2 (initial CG = 1); the PF uses the
-# INITIAL etaN ANL-code masses Mass_m[1]=548.0, Mass_b[1]=938.5). -------------------------------------- #
-_MM_ETA, _MB_ETA = 548.0, 938.5            # ACHILLES Mass_m[1], Mass_b[1] (etaN initial, ANL-code masses)
+_MM_ETA, _MB_ETA = 548.0, 938.5
 
 
 def eta_production_sigma_grid():
@@ -300,11 +272,11 @@ def eta_production_sigma_grid():
     (3 pion, 2 nucleon, nW).  This is the fraction of a pion conversion that produces an eta (which is
     then propagated & can back-convert), as opposed to the KLambda/KSigma finals (terminal).  Same
     piN-initial PF (Mass_m[0]/Mass_b[0]) as conversion_sigma_grid, restricted to the eta final."""
-    Wt, amps = load_anl(0, 1)                                  # piN -> etaN amplitudes
+    Wt, amps = load_anl(0, 1)
     out = np.zeros((3, 2, len(Wt)))
     for pi_idx, tm in ((0, +2), (1, 0), (2, -2)):
         for nuc_idx, tb in ((0, +1), (1, -1)):
-            if abs(tm + tb) > 1:                               # etaN is I=1/2 -> |2*I3| <= 1
+            if abs(tm + tb) > 1:
                 continue
             ci = _CG_PIN[(tm, tb)]
             out[pi_idx, nuc_idx] = _sigma_cf(amps, Wt, (ci[0] * 1.0, 0.0))
@@ -326,11 +298,11 @@ def eta_backconv_sigma_grid():
     amplitudes, etaN-initial PF masses."""
     Wt, amps = load_anl(1, 0)
     out = np.zeros((2, 3, len(Wt)))
-    for nuc_idx, tb in ((0, +1), (1, -1)):                     # incoming nucleon 2*I3 (p=+1, n=-1)
-        for pi_idx, tm in ((0, +2), (1, 0), (2, -2)):          # outgoing pion 2*I3 (pi+=+2, pi0=0, pi-=-2)
-            tb_out = tb - tm                                    # outgoing nucleon 2*I3 (I3(eta)=0)
-            if tb_out not in (+1, -1):                          # charge-forbidden final state
+    for nuc_idx, tb in ((0, +1), (1, -1)):
+        for pi_idx, tm in ((0, +2), (1, 0), (2, -2)):
+            tb_out = tb - tm
+            if tb_out not in (+1, -1):
                 continue
-            c_half_f = _CG_PIN[(tm, tb_out)][0]                # final piN I=1/2 Clebsch
+            c_half_f = _CG_PIN[(tm, tb_out)][0]
             out[nuc_idx, pi_idx] = _sigma_cf_masses(amps, Wt, (c_half_f, 0.0), _MM_ETA, _MB_ETA)
     return Wt, out

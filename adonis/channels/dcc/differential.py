@@ -37,15 +37,9 @@ from adonis.channels.dcc.assembly import (IGM1_LIST, LAM_LIST, ISF_LIST, _IXI1_O
 
 _SQHF = 1.0 / np.sqrt(2.0)
 
-# Relative sign of the NC isoscalar (zampv_is) block against the isovector one. +1 is the literal
-# Fortran transcription (amp_dcc_sl_module.f:1036, `zzz = vvfac(itiz)*zampv_is`); the only value any
-# production path may use. DIAGNOSTIC ONLY -- never flip in committed code.
 NC_ISV_SIGN = 1.0
 
 
-# --------------------------------------------------------------------------- #
-#  Angle-INDEPENDENT coefficients (mirror of angular_kernel's selection rules) #
-# --------------------------------------------------------------------------- #
 def precompute_diff_coeffs(two_J, two_L, two_I, *, tcrz, tiz, tpinz, tpiz,
                            tm_f=1.0, lmax=5, eps_tpin=1e-3, tmax=None):
     """Precompute the angle-independent pieces of the differential current for one
@@ -72,7 +66,7 @@ def precompute_diff_coeffs(two_J, two_L, two_I, *, tcrz, tiz, tpinz, tpiz,
         igm1x = igm1 if igm1 in (-1, 0, 1) else 0
         for il, lam in enumerate(LAM_LIST):
             ixi1_map[ig1, il] = _IXI1_OF[(igm1, lam)]
-            Lambda_i = 2 * igm1x - lam                       # = 2*M_J
+            Lambda_i = 2 * igm1x - lam
             for ipw in range(npw):
                 twoJ, twoL, twoI = int(two_J[ipw]), int(two_L[ipw]), int(two_I[ipw])
                 J, L, tpin = twoJ / 2, twoL / 2, twoI / 2
@@ -99,9 +93,6 @@ def precompute_diff_coeffs(two_J, two_L, two_I, *, tcrz, tiz, tpinz, tpiz,
             "ixi1_map": ixi1_map, "lmax": lmax}
 
 
-# --------------------------------------------------------------------------- #
-#  Vectorised real associated Legendre  Y_l^m(theta, 0)  (port of legendre_ylm) #
-# --------------------------------------------------------------------------- #
 from math import factorial as _fact, sqrt as _sqrt, pi as _pi
 
 
@@ -152,22 +143,17 @@ def angular_factor(theta, phi, pre):
     phi = np.asarray(phi, dtype=np.float64)
     lmax = pre["lmax"]
     coeff, Lpw, llz, mask = pre["coeff"], pre["Lpw"], pre["llz"], pre["mask"]
-    bleg = legendre_ylm_batch(lmax, np.cos(theta))           # (N, lmax+1, 2lmax+1)
+    bleg = legendre_ylm_batch(lmax, np.cos(theta))
 
-    # gather Y_{L[pw]}^{llz[isf,igm1,lam,pw]} per event via advanced indexing
-    S = llz.shape                                            # (isf,igm1,lam,pw)
+    S = llz.shape
     L_idx = np.broadcast_to(Lpw[None, None, None, :], S)
     m_idx = llz + lmax
-    Y = bleg[:, L_idx, m_idx]                                # (N,) + S
+    Y = bleg[:, L_idx, m_idx]
     az = np.exp(1j * llz[None] * phi[:, None, None, None, None])
-    return coeff[None] * Y * az * mask[None]                 # (N, isf,igm1,lam,pw)
+    return coeff[None] * Y * az * mask[None]
 
 
-# --------------------------------------------------------------------------- #
-#  Batched build_zmtx (the angle-independent, knob-dependent amplitude matrix)  #
-# --------------------------------------------------------------------------- #
-IDXP_START = True    # ACHILLES-faithful: skip the idxp=1 (0,5) current pair for J=1/2 waves.
-#                      Set False only to inspect the size of that term (non-faithful).
+IDXP_START = True
 
 
 def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
@@ -179,38 +165,34 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
     Differentiable in the amplitude / r_axial (the knobs); equals the scalar build_zmtx
     event-by-event.
     """
-    # Static Python int -> a plain guard, not a traced branch.  See assembly.build_zmtx for why.
     probe_for_mode(mode)
     npw = vec.shape[-1]
-    phv = jnp.asarray([pw_phase(int(two_J[i]), int(two_L[i])) for i in range(npw)])  # (npw,)
+    phv = jnp.asarray([pw_phase(int(two_J[i]), int(two_L[i])) for i in range(npw)])
     pha = -phv
-    is_I32 = jnp.asarray([1.0 if int(two_I[i]) == 3 else 0.0 for i in range(npw)])   # (npw,)
-    # ACHILLES idxp_start (amp_dcc_sl_module.f:809-813,873-877,920-924): for J=1/2 waves (two_J==1) the
-    # vector AND axial current loops start at idxp=2, i.e. the idxp=1 pair (idx 1,6 -> 0-based (0,5)) is
-    # NEVER populated.  keep_idxp1 (npw,) = 0 for J=1/2 waves, 1 otherwise -> zeroes that pair per wave.
+    is_I32 = jnp.asarray([1.0 if int(two_I[i]) == 3 else 0.0 for i in range(npw)])
     if IDXP_START:
         keep_idxp1 = jnp.asarray([0.0 if int(two_J[i]) == 1 else 1.0 for i in range(npw)])[None, :]
     else:
         keep_idxp1 = jnp.ones((1, npw))
 
-    qc0 = (W ** 2 - m_N ** 2 - Q2) / (2.0 * W)               # (N,)
+    qc0 = (W ** 2 - m_N ** 2 - Q2) / (2.0 * W)
     qc = jnp.sqrt(Q2 + qc0 ** 2)
-    xxx = (qc0 / qc)[:, None]                                # (N,1)
+    xxx = (qc0 / qc)[:, None]
     qc0c, qcc = qc0[:, None], qc[:, None]
 
     zmtx = jnp.zeros((W.shape[0], 8, npw), dtype=jnp.complex128)
 
-    if mode < 10:                                            # axial current (weak)
+    if mode < 10:
         a = -axial
         if r_axial is not None:
             r = jnp.asarray(r_axial)
             a = a * (r if r.ndim == 0 else r[:, None, None])
         for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3), (6, 7)), start=1):
-            av = a[:, src] * keep_idxp1 if idxp == 1 else a[:, src]   # skip (0,5) for J=1/2 waves
+            av = a[:, src] * keep_idxp1 if idxp == 1 else a[:, src]
             zmtx = zmtx.at[:, src].set(av)
             zmtx = zmtx.at[:, dst].set(av * pha)
-        if mode > 0:                                         # pion pole (CC only)
-            facpp = (jnp.asarray(pion_pole) / (-Q2 - m_pi ** 2))[:, None]   # pion_pole: F_P reweight knob
+        if mode > 0:
+            facpp = (jnp.asarray(pion_pole) / (-Q2 - m_pi ** 2))[:, None]
             zp = (qc0c * zmtx[:, 2] - qcc * zmtx[:, 6]) * facpp
             zm = (qc0c * zmtx[:, 3] - qcc * zmtx[:, 7]) * facpp
             zmtx = zmtx.at[:, 2].add(-qc0c * zp)
@@ -218,38 +200,25 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
             zmtx = zmtx.at[:, 3].add(-qc0c * zm)
             zmtx = zmtx.at[:, 7].add(-qcc * zm)
 
-    # vector current with EW isospin rotation.
     i32 = is_I32[None, None, :]
-    if 0 < mode < 10:                                        # CC: I=1/2 -> (V-IS)/2; I=3/2 raw
+    if 0 < mode < 10:
         src_block = i32 * vec + (1.0 - i32) * 0.5 * (vec - isv)
-    elif mode <= -1:                                         # NC
-        # EW isospin rotation (amp_dcc_sl_module.f:675-691), applied once at Fortran table read,
-        # weak only (`if(mode.lt.10)`), with I=3/2 waves skipped (`if(itpind(ipw)==3)goto 510`):
-        #     zp = (zampv+zampv_is)*0.5   zm = (zampv-zampv_is)*0.5
-        #     zampv = zm (isovector)      zampv_is = zp (isoscalar)
-        # ADoNIS's loader stores the raw blocks (loader.py:107-109) and applies this rotation here, at
-        # use time, instead of in place at load time -- same physics, different moment:
-        #     I=3/2 : VFAC * vec                              (raw; the rotation skips it)
-        #     I=1/2 : VFAC * 0.5*(vec-isv)  +  VVFAC(itiz) * 0.5*(vec+isv)
-        # This is also what the CC branch above uses for I=1/2 (`0.5*(vec-isv)` = zm, the isovector).
-        sw2 = 0.2312                                         # amp_dcc_sl_module.f:291 (hardcoded; not
-        #                                                       C.sin2w -- bit-faithfulness to ACHILLES)
-        VFAC = 1.0 - 2.0 * sw2                               # :292
-        VVFAC = -2.0 * sw2 if itiz == 1 else 2.0 * sw2       # :293-294  vvfac(+1)=-2sw2, vvfac(-1)=+2sw2
-        iso_v = 0.5 * (vec - isv)                            # :690  zampv    = zm  (isovector)
-        iso_s = 0.5 * (vec + isv)                            # :691  zampv_is = zp  (isoscalar)
+    elif mode <= -1:
+        sw2 = 0.2312
+        VFAC = 1.0 - 2.0 * sw2
+        VVFAC = -2.0 * sw2 if itiz == 1 else 2.0 * sw2
+        iso_v = 0.5 * (vec - isv)
+        iso_s = 0.5 * (vec + isv)
         src_block = i32 * (VFAC * vec) + (1.0 - i32) * (VFAC * iso_v
                                                         + (NC_ISV_SIGN * VVFAC) * iso_s)
-    elif itiz == -1:                                         # EM neutron: I=1/2 -> isoscalar
-        # isign=-1: the neutron-amplitude phase (amp_dcc_sl_module.f:644, applied to the
-        # zampv_is block for EM only; our loader stores isv without it).
+    elif itiz == -1:
         src_block = is_I32[None, None, :] * vec - (1.0 - is_I32[None, None, :]) * isv
-    else:                                                    # EM proton, or EM I=3/2
+    else:
         src_block = vec
     for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3)), start=1):
-        vz = vfac * src_block[:, src]                        # (N, npw)
+        vz = vfac * src_block[:, src]
         if idxp == 1:
-            vz = vz * keep_idxp1                             # skip (0,5) pair for J=1/2 waves (ACHILLES)
+            vz = vz * keep_idxp1
         zmtx = zmtx.at[:, src].add(vz)
         zmtx = zmtx.at[:, dst].add(vz * phv)
         if idxp == 3:
@@ -258,23 +227,19 @@ def build_zmtx_batched(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, iti
     return zmtx
 
 
-# --------------------------------------------------------------------------- #
-#  Differential current + per-event hadron tensor                              #
-# --------------------------------------------------------------------------- #
 def differential_current(zmtx, Kfac, ixi1_map):
     """zmtx (N,8,npw) + per-event angular kernel Kfac (N,isf,igm1,lam,npw) ->
     Cartesian hadronic current zj (N, isf, lam, mu)  (mu = 0,1,2,3)."""
-    ix = jnp.asarray(ixi1_map)                               # (igm1,lam)
-    amp = zmtx[:, ix, :]                                     # (N, igm1, lam, npw)
-    # zcrnt[e,isf,igm1,lam] = sum_pw Kfac * amp
+    ix = jnp.asarray(ixi1_map)
+    amp = zmtx[:, ix, :]
     zcrnt = jnp.einsum("esilp,eilp->esil", jnp.asarray(Kfac), amp)
     z_m1, z_0, z_p1, z_2 = (zcrnt[..., 0, :], zcrnt[..., 1, :],
-                            zcrnt[..., 2, :], zcrnt[..., 3, :])   # each (N,isf,lam)
+                            zcrnt[..., 2, :], zcrnt[..., 3, :])
     zj0 = z_0
     zj3 = z_2
     zj1 = (z_m1 - z_p1) * _SQHF
     zj2 = (z_m1 + z_p1) * (_SQHF * 1j)
-    return jnp.stack([zj0, zj1, zj2, zj3], axis=-1)          # (N, isf, lam, mu)
+    return jnp.stack([zj0, zj1, zj2, zj3], axis=-1)
 
 
 def differential_tensor(zj):

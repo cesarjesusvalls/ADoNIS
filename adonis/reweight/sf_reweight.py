@@ -30,9 +30,9 @@ from adonis.channels import constants as C
 
 def sf_grids(sf: SpectralFunction):
     """Cubic-B-spline prefiltered coefficients + uniform-grid metadata (one-time, NumPy)."""
-    spec2d = np.asarray(sf.spec, float).reshape(sf.np, sf.ne)          # spec[j*ne+i] -> (mom, energy)
+    spec2d = np.asarray(sf.spec, float).reshape(sf.np, sf.ne)
     mom = np.asarray(sf.mom, float); energy = np.asarray(sf.energy, float)
-    coef = spline_filter1d(spec2d, axis=0, order=3, mode="mirror")    # prefilter the p-axis ONLY (cubic-p; E stays linear)
+    coef = spline_filter1d(spec2d, axis=0, order=3, mode="mirror")
     return dict(coef=jnp.asarray(coef), nm=int(sf.np), ne=int(sf.ne),
                 m0=float(mom[0]), hm=float(mom[1] - mom[0]), e0=float(energy[0]), he=float(energy[1] - energy[0]),
                 m_lo=float(mom[0]), m_hi=float(mom[-1]), e_lo=float(energy[0]), e_hi=float(energy[-1]),
@@ -64,18 +64,16 @@ def _bspline2d(g, p, E):
     coef = g["coef"]; nm = g["nm"]; ne = g["ne"]
     j0 = jnp.clip(iv, 0, ne - 1); j1 = jnp.clip(iv + 1, 0, ne - 1)
     val = 0.0
-    for a in range(4):                                            # cubic B-spline in p
+    for a in range(4):
         ia = _mirror(iu - 1 + a, nm)
-        col = coef[ia, j0] * (1.0 - fv) + coef[ia, j1] * fv       # linear in E on the p-filtered coeffs
+        col = coef[ia, j0] * (1.0 - fv) + coef[ia, j1] * fv
         val = val + col * wu[a]
     in_grid = (p >= g["m_lo"]) & (p <= g["m_hi"]) & (E >= g["e_lo"]) & (E <= g["e_hi"])
-    # density: clamp >=0, 0 off-grid (upstream `where(in_grid & (r>0), r, 0)`).  Unclamped, the spline
-    # can overshoot <0 near the steep low-E rise.  Kink only at the S=0 hard edge (physically real).
     return jnp.where(in_grid, jnp.maximum(val, 0.0), 0.0)
 
 
 
-from adonis.constants import EB_MIRROR as _EB_MIRROR   # single owner; see the note there
+from adonis.constants import EB_MIRROR as _EB_MIRROR
 
 
 def sf_reweight(grids, p_mag, E_removal, *, kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0, src_tail=1.0,
@@ -84,21 +82,10 @@ def sf_reweight(grids, p_mag, E_removal, *, kF_sf=1.0, Eb_shift=0.0, sf_norm=1.0
     grids = sf_grids(SpectralFunction).  p_mag,E_removal (N,) the recorded sampled struck (|p|, removal).
     tail = 1 + (src_tail-1)*sigmoid((|p|-p_src)/w_src) enhances the high-|p| (SRC) region.  == 1 at nominal
     (kF=1,Eb=0,norm=1,src_tail=1).  Differentiable in every knob; C2 in (kF_sf,Eb_shift) -> valid D2/D3."""
-    # ONE-SIDED KNOB, two ways to enforce it:
-    #   clamp  (default): S(., E - max(Eb,0)).  Prediction is constant for Eb<0, so chi2 is flat there
-    #     and the gradient vanishes -- an absorbing region a minimiser cannot climb out of.  Eb_shift's
-    #     nominal IS its floor (_EB_EPS=0.01), so every fit starts on that edge.
-    #   mirror (ADONIS_EB_MIRROR=1): S(., E - |Eb|).  The response is even about zero, so below the
-    #     boundary the gradient points back toward it and the minimiser is pushed out instead of
-    #     stalling -- the T2K prescription for a parameter whose prior sits on a physical boundary
-    #     (arXiv:2606.14015: response functions mirrored across the boundary).  The fit then runs
-    #     unbounded in Eb (physical quantity |Eb|); the likelihood is even, with twin minima at +-Eb
-    #     and a stationary point at Eb=0.  Mirroring fixes the minimisation, not the statistics -- the
-    #     interval near the boundary still needs an FC-style construction.
     Eb_shift = jnp.abs(Eb_shift) if _EB_MIRROR else jnp.maximum(Eb_shift, 0.0)
     s0 = _bspline2d(grids, p_mag, E_removal)
     sθ = _bspline2d(grids, p_mag / kF_sf, E_removal - Eb_shift)
-    ratio = jnp.where(s0 > 0, sθ / jnp.where(s0 > 0, s0, 1.0), 1.0)    # 0/0 -> 1 (no-op for off-grid)
+    ratio = jnp.where(s0 > 0, sθ / jnp.where(s0 > 0, s0, 1.0), 1.0)
     tail = 1.0 + (src_tail - 1.0) / (1.0 + jnp.exp(-(p_mag - p_src) / w_src))
     return sf_norm * tail * ratio
 

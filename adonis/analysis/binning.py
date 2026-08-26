@@ -19,23 +19,6 @@ def _bin(sig_mask, values, edges):
     sel = np.where(inb)[0]
     return sel.astype(np.int64), idx[sel].astype(np.int64), nbin
 
-# ---------------------------------------------------------------------------------------------------
-# One binning primitive for every sample type.
-#
-# Both sample families reduce per-event weights to per-bin observables with the same linear map,
-#
-#     m_b = scale_b * sum_{e : binidx_e = b} coef_e * w_[sel_e]   (+ offset_b)
-#
-#     BankSample : scale_bin * bincount(binidx, w[sel_idx])          + free-H offset
-#     BeamSample : (piR^2/n_tried) * bincount(idx, coef*w)           coef = 1 (reaction) or `second`
-# The only differences are an event selection in one and a per-event coefficient in the other; neither
-# is physics.
-#
-# `apply_dev` keeps the reduction on device, so a model evaluation returns ~nbin floats instead of
-# pulling per-event weights back to the host, and is differentiable end to end (reverse-mode: one VJP
-# rather than one forward JVP per dial).  Events are sorted by bin once at construction so segment_sum
-# uses a segmented reduction rather than contended atomics.
-# ---------------------------------------------------------------------------------------------------
 class BinSpec:
     """The fixed sparse map w -> per-bin observable, shared by every sample type.
 
@@ -71,7 +54,7 @@ class BinSpec:
     def _device(self):
         if self._dev is None:
             import jax.numpy as jnp
-            o = np.argsort(self.binidx, kind="stable")      # bin-sorted ONLY for the device reduction
+            o = np.argsort(self.binidx, kind="stable")
             self._dev = dict(binidx=jnp.asarray(self.binidx[o]), sel=jnp.asarray(self.sel[o]),
                              coef=None if self.coef is None else jnp.asarray(self.coef[o]),
                              scale=jnp.asarray(self.scale),
@@ -99,18 +82,13 @@ class BinSpec:
             return got
         C = min(int(C), int(n_events))
         nch = int(np.ceil(n_events / C))
-        # Window starts, with the last one shifted back to n-C so every window has the same width and no
-        # padding of the bank is needed (a second copy of the per-event arrays would dominate resident
-        # memory).  The last window overlaps its predecessor; each entry is assigned to exactly one
-        # window (the one its index would naturally fall in, clamped), so nothing is double counted and
-        # the sum over windows is still exactly the sum over events.
         starts = np.minimum(np.arange(nch) * C, max(int(n_events) - C, 0))
-        wof = np.minimum(self.sel // C, nch - 1)         # which window owns each entry
+        wof = np.minimum(self.sel // C, nch - 1)
         order = np.argsort(wof, kind="stable")
         cnt = np.bincount(wof, minlength=nch)
         L = int(cnt.max()) if cnt.size else 0
         loc = np.zeros((nch, L), np.int64)
-        bix = np.full((nch, L), self.nbin, np.int64)     # nbin == the trash bin, dropped after the sum
+        bix = np.full((nch, L), self.nbin, np.int64)
         cof = np.zeros((nch, L), float)
         pos = 0
         for c in range(nch):

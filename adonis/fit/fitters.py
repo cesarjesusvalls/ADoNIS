@@ -5,7 +5,7 @@ Parameters come from a config, not the environment.
 import os, time
 import numpy as np
 
-from adonis.analysis import knobs as _K   # PHYS_BOUND / clip_phys: one source of truth for bounds
+from adonis.analysis import knobs as _K
 from scipy import stats as sstats
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -17,11 +17,10 @@ from adonis.analysis.knobs import SPEC, theta_nominal
 
 
 
-# ---- fitter constants ----------------------------------------------------------------------------- #
-NIT = 12                # default iteration budget; callers pass cfg.fit.minimizer.max_nfev
-STEP_SCALE = 1.0        # LM step scaling factor
-F_RESP = 0.3            # responsive-bin threshold: |J_bk| * prior_k > F_RESP * sigma_b
-HUBER_C = 1.345         # Huber tuning constant (95% efficiency at the Gaussian)
+NIT = 12
+STEP_SCALE = 1.0
+F_RESP = 0.3
+HUBER_C = 1.345
 
 t0 = time.time()
 def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
@@ -88,18 +87,14 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None, exa
     kern = fit_kernel(eng, subset, mask)
     idx = np.array(subset, int)
     th = (eng.th0 if th_init is None else th_init).copy()
-    kern.set_fixed(th)          # dials outside `subset` sit where the caller put them
-    kern.refresh_data()         # data/sigma may have moved (a toy throw, a new closure)
+    kern.set_fixed(th)
+    kern.refresh_data()
 
     lo, hi = kern.bounds()
     x0 = np.clip(th[idx], lo + 1e-12, hi - 1e-12)
 
     _mz = getattr(getattr(eng, "cfg", None), "fit", None)
     _mz = getattr(_mz, "minimizer", None)
-    # gtol is the only tolerance allowed to stop this fit early, and it is loose ON PURPOSE: stopping
-    # on the PROJECTED GRADIENT is the criterion that means "this is a minimum", while xtol/ftol stay
-    # tight so a small step or a small chi2 change is never mistaken for convergence on a near-
-    # degenerate direction (e.g. M_A_res/delta_strength, corr ~ -0.995).
     r = gn_fit(kern, x0, bounds=(lo, hi), max_nfev=max(nit, 8),
                gtol=float(getattr(_mz, "gtol", 1e-8)),
                xtol=float(getattr(_mz, "xtol", 1e-14)),
@@ -107,23 +102,16 @@ def trf_fit(eng, subset, tag, nit=NIT, mask=None, th_init=None, record=None, exa
                trace=record is not None)
     th[idx] = r.x
 
-    # Convergence is RECORDED, not assumed, so a caller can see when the optimizer failed to reach its
-    # own tolerance instead of silently treating the last iterate as a result.
     eng.last_status = 1 if r.converged else 0
     eng.last_nfev, eng.last_njev = int(r.nfev), int(r.njev)
     eng.last_passes = float(r.passes)
 
-    J = r.J                                       # (nbin + n, n), already whitened, incl. the prior block
+    J = r.J
     V = kern.covariance_exact(r.x) if exact_cov else kern.covariance_gn(J)
     m = kern.model(r.x)
     c_tot = float(r.chi2)
     dx = (r.x - kern.x0) * kern.pw
     c_data = c_tot - float(dx @ dx)
-    # The Newton decrement -- how much chi2 remains between here and the local minimum, in the same
-    # units as everything we compare.  A gradient NORM alone says nothing: |g|=0.1 against curvature
-    # ~100 leaves only 1e-4 of chi2 on the table.
-    # chi2 = ||r||^2, so g = 2 J^T r and H = 2 J^T J; the predicted decrease is (1/2) g^T H^-1 g, i.e.
-    # (1/4) g^T (J^T J)^-1 g.  Built from J and r, which the fit already has -- no extra program.
     rr = kern.residuals(r.x)
     g = 2.0 * (J.T @ rr)
     eng.last_opt = float(np.max(np.abs(g)))
@@ -162,10 +150,6 @@ def logdet_cov(eng, subset, th, mask=None):
     kern.set_fixed(th)
     kern.refresh_data()
     x = np.asarray(th, float)[np.array(subset, int)]
-    # HVP batch defaults to 4, not n.  The hessian program is compiled ON TOP of the residual and
-    # jacobian programs this kernel already holds, and a vmap of width n can make the compiled program
-    # too large for its CUBIN to load.  A narrower vmap is the same arithmetic in more dispatches: the
-    # hessian is still exact and still O(n) passes, only the peak program size changes.
     hb = int(getattr(kern, "plan", {}).get("hvp_batch", 4))
     w = np.linalg.eigvalsh(0.5 * kern.hessian(x, batch=hb))
     pos = w[w > 1e-12 * max(w.max(), 1e-300)]
@@ -185,9 +169,6 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
             smooth trajectory for a convergence demo.
     th_init: start point (default eng.th0).  The prior is ALWAYS centred at eng.th0 -- th_init only warm-
             starts the walk (e.g. profile scans re-minimising from the BFP), it does not move the prior."""
-    # Which minimiser runs is decided by the caller (cfg.fit.minimizer.method); lm_fit never
-    # dispatches to another minimiser internally.  TRF is generally preferred for bound-constrained
-    # fits -- see trf_fit's docstring.
     data, sigma = eng.data_sigma()
     if mask is None:
         mask = np.ones(len(data), bool)
@@ -200,10 +181,6 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
         c_pri = float(np.sum(prior_w * (thv[subset] - eng.th0[subset])**2))
         return c_data + c_pri, c_data, m, hw
     c_cur, c_data, m, hw = chi2_terms(th)
-    # Log-space dial fitting (u = log(theta)) is not supported here: e^u > 0 would keep a dial positive
-    # but destroys the parameterisation the priors and sigma_post are quoted in, and TRF's own box
-    # already handles the boundary correctly.  islog is kept as an explicit all-False array so the
-    # branches below read as general rather than dial-specific; the compiler folds them away.
     islog = np.zeros(len(subset), bool)
     if islog.any():
         if np.any(th[np.array(subset)[islog]] <= 0):
@@ -214,34 +191,18 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
     if record is not None:
         record.append((th.copy(), c_cur, c_data))
     for it in range(nit):
-        # chain rule dtheta/du = theta for log dials, 1 otherwise -- applied to J so that A, g, the step
-        # and the Newton decrement are all in the space actually being minimised.
         scale = np.where(islog, th[subset], 1.0)
         J = eng.jac(th, subset) * scale
         W = np.where(mask, hw / sigma**2, 0.0)
         A = J.T @ (J * W[:, None]) + np.diag(prior_w * scale**2)
         g = J.T @ (W * (m - data)) + prior_w * (th[subset] - eng.th0[subset]) * scale
-        # Newton decrement nd = g^T A^-1 g = 2 x (predicted objective gap to the quadratic minimum).
-        # A is regularised by the prior (>= 1/prior^2) so this is well-defined even on the flat/degenerate
-        # directions -- unlike a relative-chi2 test, which stalls there while theta is still off the argmin.
         nd = float(g @ np.linalg.solve(A, g))
         for _ in range(12):
             dth = STEP_SCALE * np.linalg.solve(A + lam * np.diag(np.maximum(np.diag(A), 1e-12)), -g)
             th_try = th.copy()
-            # log dials update multiplicatively (theta <- theta*e^du), the exact map back from u-space;
-            # this is what keeps them strictly positive without any clipping.
             th_try[subset] = np.where(islog, th[subset] * np.exp(np.clip(dth, -20, 20)), th[subset] + dth)
-            # BOX CONSTRAINTS from the PHYS_BOUND registry.  Outside these the MODEL is not merely
-            # disfavoured, it is meaningless:
-            #   * M_A_* enter the dipole only as M_A^2, so an unbounded fit has a MIRROR MINIMUM at
-            #     negative M_A with IDENTICAL chi2.
-            #   * f_NN_cex outside [0,1] gives NEGATIVE event weights.
-            #   * scale knobs <= 0 give a negative cross-section contribution; cascade rates appear as
-            #     exp(-a/s), singular at s=0.
-            #   * Eb_shift < 0 is clamped by sf_reweight, so the likelihood is EXACTLY flat there -- an
-            #     absorbing trap for LM.  Projecting onto the boundary keeps the one-sided gradient alive.
             for _k, _L in zip(subset, islog):
-                if not _L:                       # log dials are positive by construction -- never clip
+                if not _L:
                     th_try[_k] = _K.clip_phys(eng.pnames[_k], th_try[_k])
             c_try, cd_try, m_try, hw_try = chi2_terms(th_try)
             if c_try < c_cur:
@@ -252,11 +213,8 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
             " ".join(f"{eng.pnames[k]}={th[k]:.4f}" for k in subset))
         if record is not None:
             record.append((th.copy(), c_cur, c_data))
-        if nd < tol or np.linalg.norm(dth) < 1e-12:                # converged when the predicted gap -> 0
+        if nd < tol or np.linalg.norm(dth) < 1e-12:
             log(f"  [{tag}] converged at it {it} (Newton decrement {nd:.2e} < {tol:.0e})"); break
-    # V is returned in PHYSICAL (theta) space even when dials were fitted in log space: A is rebuilt from
-    # the UNSCALED Jacobian, and since A_u = D A_theta D with D = diag(dtheta/du), V_theta = D V_u D
-    # exactly.  So every caller keeps getting sigma_theta, and sigma_u = sigma_theta/theta is recoverable.
     J = eng.jac(th, subset)
     W = np.where(mask, hw / sigma**2, 0.0)
     A = J.T @ (J * W[:, None]) + np.diag(prior_w)

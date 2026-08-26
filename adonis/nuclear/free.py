@@ -28,13 +28,7 @@ class FreeNucleon(NuclearModel):
         self.name = name
 
     def sample_nucleon(self, key, n):
-        # Detached by construction (constants carry no gradient); shapes match the
-        # SpectralFunction sampler so the channel code is bit-compatible.
         p_vec = jnp.zeros((n, 3))
         E_rm = jnp.zeros((n,))
         return p_vec, E_rm
 
-    # closure_test inherited (skipped: no differentiable parameter).
-    # No oracle_test here: the free-nucleon physics is validated at the
-    # cross-section level (sigma(E_nu)) in the A3 module, not the initial-state
-    # marginal (there is no table to reproduce -- the nucleon is a delta at rest).
