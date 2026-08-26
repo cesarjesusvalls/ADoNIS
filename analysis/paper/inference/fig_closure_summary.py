@@ -23,9 +23,9 @@ from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
-from adonis.analysis.knobs import PRIOR, theta_nominal
+from adonis.reweight.knobs import PRIOR, theta_nominal
 from adonis.reweight.reweight_model import nominal_knobs
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 
 C_FIT, C_GAUSS, C_ENS = "#1f4b9c", "0.55", "#c8842a"
 C_BFP = "#1a9e57"

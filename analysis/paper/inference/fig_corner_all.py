@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
 from analysis.paper.inference.corner_common import load_views, snap_axis, view_for
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 
 L68, L90 = 2.30, 4.61
 C_ARROW = "#00b3c8"

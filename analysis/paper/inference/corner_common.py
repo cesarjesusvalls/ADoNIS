@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 from adonis.fit import merge as MG
 
 L68, L90 = 2.30, 4.61

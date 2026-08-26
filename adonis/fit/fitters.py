@@ -5,7 +5,7 @@ Parameters come from a config, not the environment.
 import os, time
 import numpy as np
 
-from adonis.analysis import knobs as _K
+from adonis.reweight import knobs as _K
 from scipy import stats as sstats
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -13,7 +13,7 @@ import jax.numpy as jnp
 
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
-from adonis.analysis.knobs import SPEC, theta_nominal
+from adonis.reweight.knobs import SPEC, theta_nominal
 
 
 

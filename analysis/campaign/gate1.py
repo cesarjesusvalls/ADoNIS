@@ -20,7 +20,7 @@ import numpy as np
 ALTGEN = Path(os.environ.get('ADONIS_OUT', 'output')) / 'altgen'
 
 from analysis.campaign.sample import SampleSet, gate1_from
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 from analysis.campaign import beams as BF
 
 _BEAMS_CFG = "configs/samples/beams.yaml"

@@ -99,7 +99,7 @@ def test_manifests_on_disk_carry_no_retired_probe(adonis_out):
         if probe in RETIRED:
             stale.append(str(m))
     assert not stale, (f"{len(stale)} manifest(s) still carry a retired probe value; run "
-                       f"`python -m adonis.workflow.migrate_probe_names <root>`:\n"
+                       f"`python -m analysis.campaign.migrate_probe_names <root>`:\n"
                        + "\n".join(stale[:10]))
 
 

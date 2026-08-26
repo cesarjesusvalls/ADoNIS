@@ -35,10 +35,10 @@ import jax.numpy as jnp
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.workflow import selection as SG
-from adonis.analysis import binning as IC
+from adonis.fit import binning as IC
 from adonis.stats import fisher as _FI
 from adonis.stats.gaussian import bin_sigma as _bin_sigma
-from adonis.analysis.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
+from adonis.reweight.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
 from analysis.campaign.sample import AnaSample
 from analysis.campaign.beams import beam_model
 

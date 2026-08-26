@@ -25,8 +25,8 @@ import numpy as np
 
 from analysis.campaign.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ, fit_subset
 from adonis.fit.fitters import lm_fit, trf_fit
-from adonis.analysis.knobs import PNAMES
-from adonis.analysis import knobs as K
+from adonis.reweight.knobs import PNAMES
+from adonis.reweight import knobs as K
 
 
 THROW_REACH = {"Eb_shift": (0.0, 4.0)}

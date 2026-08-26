@@ -17,7 +17,7 @@ import numpy as np
 from adonis.stats.gaussian import gn_covariance
 from scipy.optimize import least_squares
 
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 from adonis.reweight import bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.unfold import flux as FX

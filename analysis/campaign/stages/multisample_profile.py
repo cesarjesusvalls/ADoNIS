@@ -26,8 +26,8 @@ import numpy as np
 from analysis.campaign.stages.multisample import build_multisample_engine
 from adonis.fit.fitters import logdet_cov, lm_fit, trf_fit
 from adonis.fit import provenance
-from adonis.analysis.knobs import PNAMES
-from adonis.analysis import knobs as K
+from adonis.reweight.knobs import PNAMES
+from adonis.reweight import knobs as K
 
 
 _INNER = None

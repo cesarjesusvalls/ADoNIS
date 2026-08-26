@@ -277,7 +277,7 @@ class AnalysisConfig:
     signal: object = field(default_factory=NuSignalDef)
     observables: list = field(default_factory=list)
     data: DataOverlay = field(default_factory=DataOverlay)
-    out_path: str = "paper_figures/adonis_analysis.png"
+    out_path: str = "output/analysis.png"
     title: str = ""
     ratio_band: tuple = (0.9, 1.1)
     ratio_ylim: tuple = (0.5, 1.6)

@@ -10,9 +10,9 @@ rename is the fix; this script is how the existing data catches up with it.
 Idempotent by construction: a manifest already carrying a current name is left byte-untouched, so
 re-running is a no-op and a half-finished run can simply be re-run.
 
-    python -m adonis.workflow.migrate_probe_names $ADONIS_OUT            # dry run (default)
-    python -m adonis.workflow.migrate_probe_names $ADONIS_OUT --apply
-    python -m adonis.workflow.migrate_probe_names $ADONIS_OUT --verify
+    python -m analysis.campaign.migrate_probe_names $ADONIS_OUT            # dry run (default)
+    python -m analysis.campaign.migrate_probe_names $ADONIS_OUT --apply
+    python -m analysis.campaign.migrate_probe_names $ADONIS_OUT --verify
 
 NOTE for parallel worktrees: $ADONIS_OUT is SHARED between the ADoNIS checkouts.  Nothing reads
 manifest["probe"] (it is write-only metadata -- grep before doubting it), so migrating is safe for a

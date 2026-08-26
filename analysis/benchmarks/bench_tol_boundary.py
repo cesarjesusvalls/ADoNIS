@@ -22,7 +22,7 @@ import time
 
 import numpy as np
 
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 
 EB = "Eb_shift"
 

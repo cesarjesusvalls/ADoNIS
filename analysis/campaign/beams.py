@@ -28,7 +28,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     import jax.numpy as jnp
     from adonis.workflow.generate_bank import load_bank as _load_bank
     from adonis.reweight.reweight_model import nominal_knobs
-    from adonis.analysis import knobs as PF
+    from adonis.reweight import knobs as PF
     from adonis.stats import fisher as FE
     from adonis.stats.gaussian import bin_sigma as _bin_sigma
 
@@ -80,7 +80,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     w0 = np.asarray(w_of(th0))
     assert np.abs(w0 - 1).max() < 1e-9, f"nominal identity broken on the {beam} bank: {np.abs(w0-1).max():.2e}"
 
-    from adonis.analysis.binning import BinSpec
+    from adonis.fit.binning import BinSpec
     _scale = PIR2 / np.maximum(n_tried, 1)
     spec_r = BinSpec(idx, nbins, _scale, coef=react)
     spec_s = BinSpec(idx, nbins, _scale, coef=second)
@@ -122,7 +122,7 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
 
     def _compute():
         import jax.numpy as jnp
-        from adonis.analysis import knobs as PF
+        from adonis.reweight import knobs as PF
         m = beam_model(beam, nbins=nbins, syst=syst, log=log)
         NPAR = PF.NPAR
         J = np.zeros((2 * nbins, NPAR))

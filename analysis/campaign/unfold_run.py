@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 from analysis.campaign.sample import AnaSample
 from adonis.unfold import flux as FX
 from adonis.unfold.binning import StaircaseGrid

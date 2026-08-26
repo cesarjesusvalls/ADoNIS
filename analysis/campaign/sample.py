@@ -29,7 +29,7 @@ from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.workflow.config import load_analysis_config, EleBeamSignalDef
 from adonis.workflow import selection as SG
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 
 ALTGEN = Path("output/altgen")
 T2K_H_BANK = os.environ.get("ADONIS_T2K_H_BANK", "output/paper_banks_p4/nu_T2K_H/merged")

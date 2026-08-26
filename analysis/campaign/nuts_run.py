@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from adonis.fit.nuts import nuts_sample, warmup_stan, _metric
-from adonis.analysis import knobs as K
+from adonis.reweight import knobs as K
 
 
 def run_real():
@@ -51,7 +51,7 @@ def run_real():
     sp = np.sqrt(np.abs(np.diag(V))); idx = np.array(sub)
     NF = [0]
 
-    from adonis.analysis import knobs as _K
+    from adonis.reweight import knobs as _K
     _lo = np.array([-np.inf if _K.phys_lo(eng.pnames[k]) is None else _K.phys_lo(eng.pnames[k])
                     for k in sub])
     _hi = np.array([np.inf if _K.phys_hi(eng.pnames[k]) is None else _K.phys_hi(eng.pnames[k])

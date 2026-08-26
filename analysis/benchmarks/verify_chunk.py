@@ -29,8 +29,8 @@ def main(argv=None):
     from analysis.campaign.stages import multisample as MS
     from adonis.reweight import bank_reweight as BR
     from adonis.reweight.reweight_model import nominal_knobs
-    from adonis.analysis.knobs import knobs_of, theta_nominal
-    from adonis.analysis import binning as IC
+    from adonis.reweight.knobs import knobs_of, theta_nominal
+    from adonis.fit import binning as IC
 
     log(f"jax {jax.__version__} devices={jax.devices()}")
     cfg = FitConfig.load(a.config)
