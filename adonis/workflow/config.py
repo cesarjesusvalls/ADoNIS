@@ -220,7 +220,9 @@ class NuSignalDef:
     p_win: tuple = (450.0, 1200.0)
     pi_win: tuple | None = (150.0, 1200.0)
     cos_mu: float | None = None             # CC0pi muon backward cut (e.g. -0.6); None -> use cth
-    cth: float | None = COS70               # forward cos cut (cos70 CC1pi; 0.4 CC0pi proton)
+    cth: float | None = None                # forward cos cut; None -> no cut.  Each measurement
+                                            # states its own (cos70 for T2K CC1pi, 0.4 for the
+                                            # CC0pi-Np proton) -- the package defaults to none.
     proton_lead: str = "in_window"          # "in_window" (CC1pi) | "global" (CC0pi NUISANCE def)
     proton_count: str = "ge1"               # "ge1" | "eq1"
     require_proton: bool = True
