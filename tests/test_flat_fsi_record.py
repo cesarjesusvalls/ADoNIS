@@ -1,6 +1,6 @@
 """FLAT/streaming FSI record == DENSE per-event record, through the ACTUAL pool cascade.
 
-The flat layout (adonis/fsi/cascade.py, docs/logbook/fsi_record_cap_techdebt.md) streams the FSI
+The flat layout (adonis/fsi/cascade.py) streams the FSI
 reweight record into one flat (TOTAL,) buffer sized by n*E[interactions] (tail-free), instead of the
 legacy per-event (n, K_max) dense buffer.  The reweight is a scatter-add by event index, so the two must
 agree to float64 precision at any knob vector.  This runs a real QE cascade both ways and compares.

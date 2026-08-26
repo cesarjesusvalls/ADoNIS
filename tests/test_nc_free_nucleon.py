@@ -1,6 +1,6 @@
 """G5(2) + G6(2) -- the ABSOLUTE free-nucleon oracle gates, in nb, against ACHILLES.
 
-These are the gates §0 of docs/nc_implementation_plan.md calls non-negotiable, because a wrong
+These checks are non-negotiable, because a wrong
 absolute normalisation is invisible to every shape/ratio comparison.  That is not hypothetical here:
 it is the `e3319a5` failure mode (a missing photon 1/q^2 made the (e,e') scale ~1e15 too large and
 the ratio gate could not see it), and during this work the RES gate caught a genuinely wrong I=1/2

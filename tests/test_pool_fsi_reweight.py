@@ -117,7 +117,7 @@ def test_cex_knob_affects_any_candidate_step():
 
 
 def test_common_rescale_is_NOT_flat():
-    """REGRESSION (docs/logbook/info_content.md): a common rescale of the four pion sigmas must change the
+    """A common rescale of the four pion sigmas must change the
     MEAN FREE PATH, so the reweight must NOT be identically 1.  Before the survival factor existed it was
     (per = s*D0/(s*D0) = 1) -- a spurious exact flat direction."""
     r = _record(6)

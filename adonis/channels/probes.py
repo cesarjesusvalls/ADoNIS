@@ -51,7 +51,7 @@ def probe_spec(probe):
         raise NotImplementedError(
             f"probe {probe!r} is registered but not implemented -- it would otherwise fall through "
             f"to CC and return charged-current numbers silently. "
-            f"Implemented probes: {list(IMPLEMENTED)}. See docs/nc_implementation_plan.md.")
+            f"Implemented probes: {list(IMPLEMENTED)}.")
     return spec
 
 
@@ -68,8 +68,7 @@ def probe_for_mode(mode):
             if not s.implemented:
                 raise NotImplementedError(
                     f"DCC mode {mode} is probe {s.name!r}, which is registered but not implemented "
-                    f"-- `mode < 10` would otherwise route it through the CC branch silently. "
-                    f"See docs/nc_implementation_plan.md.")
+                    f"-- `mode < 10` would otherwise route it through the CC branch silently.")
             return s
     raise ValueError(f"unknown DCC mode {mode!r}; known modes are "
                      f"{ {s.dcc_mode: s.name for s in _SPECS} }")

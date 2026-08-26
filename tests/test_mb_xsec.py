@@ -3,7 +3,7 @@
 The pi+ p -> pi+ p total cross section (pure I=3/2) from the ANL partial-wave amplitudes
 must reproduce the known Delta(1232) resonance: peak ~200 mb near W=1232 MeV. This
 self-validates the parser + the partial-wave sum against the physical piN cross section
-(the forward model IS the ANL-Osaka model; no cascade binary needed). See docs/phases/PHASE_E.md.
+(the forward model IS the ANL-Osaka model; no cascade binary needed).
 """
 import numpy as np
 import pytest

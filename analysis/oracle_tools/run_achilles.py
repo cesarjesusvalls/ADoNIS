@@ -1,9 +1,9 @@
 """Run an ACHILLES run card in its container: configs/achilles/<card>.yml -> output/achilles/<...>.hepmc.
 
-Three images cover the cards, selected by card prefix: `cascade` for the standalone hadron cascade,
-`fullcascade` for in-event QE+RES+FSI, and `oracle` for everything without a cascade.  Under docker
-the oracle image is amd64 and needs --platform on an arm64 host; the two cascade images must run
-native, since amd64 emulation faults in the cascade.
+Three images cover the cards, selected from the card's own contents by `image_for`: `cascade` for the
+standalone hadron cascade, `fullcascade` for in-event QE+RES+FSI, and `oracle` for everything without
+a cascade.  Under docker the oracle image is amd64 and needs --platform on an arm64 host; the two
+cascade images must run native, since amd64 emulation faults in the cascade.
 
 The runtime is docker or apptainer, whichever ADONIS_CONTAINER names, else whichever is on PATH.
 Apptainer resolves each image to <ACHILLES_IMAGES>/achilles-<tag>.sif and binds the ACHILLES data and
@@ -33,22 +33,26 @@ from adonis.io import achilles_data_root
 OUT_DIR = "output/achilles"
 ORACLE = "ghcr.io/cesarjesusvalls/achilles:oracle"
 
-_RULES = [
-    ("run_cascade", ("achilles:cascade", True, "/achilles/bin/achilles-cascade")),
-    ("run_T2K_C_fsi",   ("achilles:fullcascade", True, "/achilles/bin/achilles")),
-    ("run_T2K_Ar_fsi",  ("achilles:fullcascade", True, "/achilles/bin/achilles")),
-    ("run_MINERvA_C_fsi",    ("achilles:fullcascade", True, "/achilles/bin/achilles")),
-    ("run_MicroBooNE_Ar_fsi", ("achilles:fullcascade", True, "/achilles/bin/achilles")),
-    ("run_MicroBooNE_C_fsi", ("achilles:fullcascade", True, "/achilles/bin/achilles")),
-]
-_DEFAULT = (ORACLE, False, "/achilles/bin/achilles")
+STANDALONE_CASCADE = ("achilles:cascade", True, "/achilles/bin/achilles-cascade")
+FULL_CASCADE = ("achilles:fullcascade", True, "/achilles/bin/achilles")
+NO_CASCADE = (ORACLE, False, "/achilles/bin/achilles")
 
 
-def _image_for(card_name):
-    for prefix, rule in _RULES:
-        if card_name.startswith(prefix):
-            return rule
-    return _DEFAULT
+def image_for(card_path):
+    """(image, native, binary) for a card, decided by what the card asks for.
+
+    A card with no `Processes` fires a hadron at the nucleus and runs the standalone cascade binary.
+    Otherwise it is an event generation card, and it needs the cascade build only if it turns the
+    cascade on -- the no-cascade image does not contain one and exits non-zero if asked.
+
+    This reads the card rather than its name.  A name-prefix table had routed every run_ee_*_fsi card
+    to the no-cascade image, because no prefix covered them, and they could not run at all.
+    """
+    raw = Path(card_path).read_text()
+    if not re.search(r"^Processes:", raw, re.M):
+        return STANDALONE_CASCADE
+    m = re.search(r"^Cascade:\s*\n(?:[ \t]+.*\n)*?[ \t]+Run:[ \t]*(\w+)", raw, re.M)
+    return FULL_CASCADE if (m and m.group(1).lower() == "true") else NO_CASCADE
 
 
 def container_runtime():
@@ -181,7 +185,7 @@ def seed_card(raw, seed):
 def run_one(card_path, out_dir=OUT_DIR, suffix="", overrides=None, dry=False):
     overrides = overrides or {}
     os.makedirs(out_dir, exist_ok=True)
-    image, native, entry = _image_for(Path(card_path).name)
+    image, native, entry = image_for(card_path)
     card_name, hepmc = _write_card(card_path, out_dir, suffix, overrides)
     cmd = _RUNTIME_CMD[container_runtime()](card_name, image, native, entry, str(Path(out_dir).resolve()))
     print("  $", " ".join(cmd), flush=True)
@@ -223,7 +227,11 @@ def main(argv=None):
                     out = str(hp).replace(".hepmc", ".npz")
                     subprocess.run([sys.executable, "-m", "analysis.oracle_tools.extract", a.extract, str(hp), out],
                                    check=False)
-    print(f"DONE: {len(produced)} hepmc -> {a.out_dir}", flush=True)
+    want = len(points) * a.seeds
+    print(f"DONE: {len(produced)}/{want} hepmc -> {a.out_dir}", flush=True)
+    if len(produced) < want:
+        # Exiting 0 here made a card that produced nothing look like a card that worked.
+        raise SystemExit(f"{want - len(produced)} of {want} run(s) produced no hepmc")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Guardrail: every physical constant in ADoNIS must match ACHILLES, and the "average nucleon mass
 used at a threshold / clip-floor / on-shell energy" bug class must never silently reappear.
 
-Motivated by the 2026-07-20 constants audit (docs/logbook/constants_audit.md), which found that
+Motivated by a constants audit which found that
 repeated symbol-scoped mass audits kept missing masses hidden inside `jnp.clip(...)` floors and
 thresholds.  This test is use-site aware, not just value aware.
 
