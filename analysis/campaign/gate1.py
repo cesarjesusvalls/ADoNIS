@@ -54,7 +54,7 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
     central = {f"{k}_central": r["central"][k] for k in r["keys"]}
 
     for beam in beams:
-        Jb, sb, _c, e_beam, _n = BF.beam_jacobian(beam, nbins=nbins, syst=syst)
+        Jb, sb, _c, e_beam, _n = BF.beam_jacobian(beam, nbins=nbins, syst=syst, max_chunks=max_chunks)
         J.append(np.asarray(Jb)); sigma.append(np.asarray(sb))
         for key in bspec[beam]["observables"]:
             dskeys.append(key); row0.append(row0[-1] + nbins); edges[f"{key}_edges"] = np.asarray(e_beam)

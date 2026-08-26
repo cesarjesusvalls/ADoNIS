@@ -110,20 +110,21 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
                 n_events=len(ridx))
 
 
-def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
+def beam_jacobian(beam, nbins=15, syst=0.05, log=print, max_chunks=None):
     """(J (2*nbins, NPAR), sigma (2*nbins,), central, edges, n_tried) for one beam bank.  Rows: reaction
     bins, then the second observable's bins (absorption for pi+, pion production for p/n).  One jax.jvp
-    per knob through the SAME reweight, over beam_model.
+    per knob through the SAME reweight, over beam_model.  max_chunks caps the loaded statistics.
 
-    CACHED on disk (plotcache, keyed on the beam bank files + nbins/syst), written per-beam as it
-    completes.  The fingerprint is over INPUT FILES + params, NOT this code -- force a rebuild with
+    CACHED on disk (plotcache, keyed on the beam bank files + nbins/syst/max_chunks), written per-beam
+    as it completes.  max_chunks is part of the key because a capped result must never be served to a
+    full run.  The fingerprint is over INPUT FILES + params, NOT this code -- force a rebuild with
     ADONIS_PLOT_REFRESH=1 if beam_model's physics changes."""
     from adonis import cache as plotcache
 
     def _compute():
         import jax.numpy as jnp
         from adonis.reweight import knobs as PF
-        m = beam_model(beam, nbins=nbins, syst=syst, log=log)
+        m = beam_model(beam, nbins=nbins, syst=syst, log=log, max_chunks=max_chunks)
         NPAR = PF.NPAR
         J = np.zeros((2 * nbins, NPAR))
         for k in range(NPAR):
@@ -131,8 +132,10 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
             J[:, k] = m["binned"](g)
         return dict(J=J, sigma=m["sigma"], central=m["central"], edges=m["edges"], n_tried=m["n_tried"])
 
-    d = plotcache.cached(f"beam_jac_{beam}_n{nbins}_s{syst:g}", _compute,
-                         deps=[BEAM_DIRS[beam]], params={"beam": beam, "nbins": nbins, "syst": syst})
+    cap = "" if max_chunks is None else f"_c{max_chunks}"
+    d = plotcache.cached(f"beam_jac_{beam}_n{nbins}_s{syst:g}{cap}", _compute,
+                         deps=[BEAM_DIRS[beam]],
+                         params={"beam": beam, "nbins": nbins, "syst": syst, "max_chunks": max_chunks})
     return d["J"], d["sigma"], d["central"], d["edges"], d["n_tried"]
 
 
