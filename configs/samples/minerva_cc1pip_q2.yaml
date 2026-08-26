@@ -1,14 +1,12 @@
 # MINERvA nu_mu CC 1pi+ on scintillator (CH), arXiv:2605.24224 -- dsigma/dQ2.
 #
-# IDENTICAL signal to minerva_cc1pip_tpi.yaml (same paper, same selection); only the binned observable
-# differs.  The paper reports 2-D T_pi x Q2; we take the two published 1-D projections as separate
-# samples, so they must NOT be stacked into one fit without accounting for their correlation -- they are
-# the same 91,843 events binned two ways.
+# The same signal as minerva_cc1pip_tpi.yaml -- same paper, same selection -- binned in a different
+# observable.  The publication reports 2-D T_pi x Q2 and these are its two 1-D projections, so they are
+# one event sample binned two ways and must not be stacked into a fit as though independent.
 #
-# Q2 is the paper's reconstructed four-momentum transfer (nucleon at rest, Eq. 2), evaluated with the
-# true Enu -- see selection._q2_wexp.  This is the sample that carries the Q2 lever arm needed to
-# separate M_A_res (Q2 SHAPE of the RES axial block) from res_axial_strength / C5A (its NORMALISATION);
-# they multiply the same block, which is why they sit at |corr| ~ 0.98 with the current sample set.
+# Q2 is the publication's reconstructed four-momentum transfer (nucleon at rest, Eq. 2), evaluated with
+# the true Enu.  This is the sample carrying the Q2 lever arm that separates M_A_res, the Q2 shape of
+# the RES axial block, from C5A, its normalisation.
 render: multiobs
 name: minerva_cc1pip_q2
 inputs:

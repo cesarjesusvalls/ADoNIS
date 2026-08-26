@@ -8,10 +8,9 @@
 # W_exp and Q2 use the paper's nucleon-at-rest reconstruction (Eqs. 1-3).  At truth level E_had = Enu-Emu
 # exactly, so selection._q2_wexp evaluates them with the TRUE Enu -- no visible-energy convention needed.
 #
-# WHY THIS SAMPLE: the RES axial block enters as r_ax = dipole(Q2; M_A_res) * res_axial_strength, i.e.
-# M_A_res sets its Q2 SHAPE and C5A its NORMALISATION -- they are only separable with Q2 lever arm.  All
-# our other nu samples are CC0pi (no RES vertex) bar one T2K CC1pi+, which is why the RES sector currently
-# collapses onto a single direction (corr(M_A_res, delta_strength) = -0.98 on the fitted subset).
+# The RES axial block enters as r_ax = dipole(Q2; M_A_res) * res_axial_strength, so M_A_res sets its Q2
+# shape and C5A its normalisation.  The two are separable only with Q2 lever arm, which is what a
+# resonant sample binned in Q2 provides and a CC0pi sample does not.
 # Bins: the 10 published T_pi bins; the paper also releases stat+syst covariances for them.
 render: multiobs
 name: minerva_cc1pip_tpi
