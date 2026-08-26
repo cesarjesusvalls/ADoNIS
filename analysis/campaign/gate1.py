@@ -1,12 +1,14 @@
-"""Assemble output/altgen/multisample_carbon.npz -- the shared Fisher/shrinkage + per-bin gradient input
--- from the AnaSample samples + the FSI beam Jacobians.  A thin caller: composes the samples through
-analysis.campaign.sample.SampleSet and stacks the cached beam jvps; no selection/binning lives here.
+"""Assemble the shared Fisher/shrinkage + per-bin gradient input from the AnaSample samples and the
+FSI beam Jacobians.  A thin caller: composes the samples through analysis.campaign.sample.SampleSet
+and stacks the cached beam jvps; no selection/binning lives here.
 
-    python -m analysis.campaign.gate1                       # full banks (a GPU/big-node job)
-    ADONIS_MS_MAXCHUNKS=4 python -m analysis.campaign.gate1 # smoke (subsampled banks)
+    python -m analysis.campaign.gate1 --label multisample_carbon
+    python -m analysis.campaign.gate1 --label smoke --max-chunks 4
 
-dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) + the beam keys (pip_react, ...).
+Writes output/altgen/<label>.npz.  dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) plus the beam
+keys (pip_react, ...).
 """
+import argparse
 import os
 import sys
 import pathlib
@@ -77,6 +79,17 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
     return out
 
 
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="analysis.campaign.gate1", description=__doc__.split("\n")[0])
+    ap.add_argument("--label", default="multisample_carbon",
+                    help="output name: output/altgen/<label>.npz")
+    ap.add_argument("--fit-config", default="configs/fits/sec4_P1.yaml",
+                    help="which config names the samples and beams")
+    ap.add_argument("--max-chunks", type=int, default=None,
+                    help="cap the bank chunks per sample (a smoke run; default: the whole bank)")
+    a = ap.parse_args(argv)
+    return build(fit_config=a.fit_config, max_chunks=a.max_chunks, out_label=a.label)
+
+
 if __name__ == "__main__":
-    mc = os.environ.get("ADONIS_MS_MAXCHUNKS")
-    build(max_chunks=int(mc) if mc else None)
+    main()

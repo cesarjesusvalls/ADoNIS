@@ -1,0 +1,88 @@
+# Every stage of the inference chain at the smallest size that still exercises it.
+# Physics-identical to sec4_P2, scaled down: use it to check an installation end to end,
+# not to produce a result.
+
+name: smoke
+
+samples: [t2k_cc0pi, t2k_cc1pi_ch, minerva_stv, minerva_ptpz, ee_omega,
+          minerva_cc1pip_tpi, minerva_cc1pip_q2]
+beams:   [pip, prot, neut]
+
+banks:
+  sig_cap:      20000
+  nu_chunks:    8
+  e_chunks:     4
+  beam_chunks:  2
+
+data:
+  mode: closure
+  inject:
+    M_A_qe: 1.12
+    M_A_res: 0.85
+    axial_strength: 1.1
+    res_axial_strength: 0.8
+    delta_strength: 0.9
+    sabs: 1.18
+    s_piN_elastic: 0.88
+    s_conv: 1.15
+    s_NN_elastic: [0.82, 1.25, 0.9]
+    s_NN_inelastic: {0: 1.2, 2: 0.86}
+    f_NN_cex: 0.4
+    kF_sf: 1.1
+    Eb_shift: 0.5
+    src_tail: 0.92
+  sigma:
+    syst: 0.05
+    mc_term: false
+    mask_mcfrac: 0.10
+    freeze_at: nominal
+
+fit:
+  dials: gate1
+  estimator: mle
+  minimizer:
+    method: trf
+    max_nfev: 200
+    gtol: 1.0e-8
+    xtol: 1.0e-14
+    ftol: 1.0e-14
+    x_scale: jac
+    start: nominal
+
+uncertainty:
+  - method: gaussian
+
+  - method: profile
+    n: 5
+    reach: adaptive
+    max_nfev: 60
+    stores: [prof_dobj, grids_sigma, logdet_Vnuis]
+
+  - method: profile2d
+    dials: [M_A_res, delta_strength]
+    n: 5
+    axes_from: profile
+    max_nfev: 8
+    stores: [chi2_abs, logdet_Vnuis]
+
+  - method: gradient2d
+    range: 3.0
+    dials: [M_A_res, delta_strength]
+    n: 5
+    axes: physical
+    jacobian: per_node
+
+  - method: nuts
+    chains: 2
+    samples: 100
+    warmup: 50
+    max_depth: 6
+    mass_matrix: fit_V
+    truncate: physical_box
+
+  - method: toys
+    n: 20
+    shard_size: 20
+    fixed_truth: true
+    seed: {base: 0, stride: 20, formula: "default_rng(1_000_000 + seed)"}
+    noise: per_bin_gaussian

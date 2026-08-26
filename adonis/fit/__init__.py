@@ -1,6 +1,6 @@
-"""Fit and uncertainty machinery: one config, one entry point.
+"""Fit and uncertainty machinery: the kernels a fit run is built from.
 
-    python -m adonis.fit configs/fits/<study>.yaml --stage profile2d --shard i/N
+The runner that drives them is the caller's: analysis.campaign.run.
 
   config   FitConfig -- the typed run definition (configs/fits/*.yaml)
   stages   the closure fit and the uncertainty estimators

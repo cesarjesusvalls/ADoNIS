@@ -173,8 +173,10 @@ def render_multiobs(spec, show_ratio=True):
     """Pure selection-histogram figure: straight through run_analysis under the paper style.
     show_ratio=False drops the ACH/ADO ratio strip and writes to a *_noratio file (paper fig untouched)."""
     cfg = load_analysis_config(_rel(spec["_path"]))
+    name = Path(cfg.out_path).name
     if not show_ratio:
-        cfg.out_path = cfg.out_path.replace(".png", "_noratio.png")
+        name = name.replace(".png", "_noratio.png")
+    cfg.out_path = str(style.OUTDIR / name)
     return run_analysis(cfg, title="", show_ratio=show_ratio, **style.paper_run_analysis_kw())
 
 
@@ -191,11 +193,8 @@ def render_panels(spec, show_ratio=True):
               rect_top=1.0)
     kw.update(layout)
     kw["show_ratio"] = show_ratio
-    out = ROOT / f"output/paper/{spec['name']}{'' if show_ratio else '_noratio'}.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
     fig, results, sig = make_figure(specs, ref_sel, ado_sel, **kw)
-    fig.savefig(out, dpi=300, bbox_inches="tight"); fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
-    print(f"wrote {out}")
+    style.save(fig, spec["name"] + ("" if show_ratio else "_noratio"))
     for k, r in results.items():
         print(f"  {k}: chi2/ndf = {r['chi2']/max(r['ndf'],1):.2f}  ACH/ADO = {r['ach_ado']:.4f}")
     return {"results": results, "sigma": sig}

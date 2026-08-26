@@ -126,7 +126,7 @@ def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
 
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="Run the section-5 unfolding studies from a config.")
+    ap = argparse.ArgumentParser(description="Run the unfolding studies from a config.")
     ap.add_argument("config", nargs="?", default="configs/fits/sec5_unfold.yaml")
     ap.add_argument("--label", default=None, help="output stem; defaults to the config's name")
     main(**vars(ap.parse_args()))
