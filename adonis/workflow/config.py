@@ -83,7 +83,7 @@ FLUX_FILES = {
 PROBES = ("CC", "NC", "EM", "hadron")
 HADRON_BEAMS = ("pip", "prot", "neut")
 GEN_BEAMS = ("spectrum", "electron") + HADRON_BEAMS
-E_BEAM_JLAB = 2222.0
+from adonis.flux.electron import E_BEAM_JLAB
 
 
 _PROBE_BEAMS = {"CC": ("spectrum",), "NC": ("spectrum",), "EM": ("electron",),

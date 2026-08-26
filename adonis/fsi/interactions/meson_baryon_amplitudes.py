@@ -10,6 +10,10 @@ physical piN -> piN total cross section by the partial-wave sum used in ACHILLES
 with PF = (W^2 - m_M^2 - m_B^2)^2 - 4 m_M^2 m_B^2 (Kallen; p_cm = sqrt(PF)/(2W)).
 The table columns are the 20 waves L_{2I,2J} x (Re, Im); the label gives (L, I, J)
 directly (e.g. P33 = L=1, I=3/2, J=3/2 = the Delta(1232)).
+
+HBARC_ANL is the ANL transcription's own rounding of hbar*c, deliberately not
+adonis.constants.HBARC: the amplitudes are reproduced verbatim, so the coarser value is part
+of matching them.
 """
 from __future__ import annotations
 
@@ -22,7 +26,7 @@ from adonis.io import achilles_data_root
 from adonis.channels.dcc.form_factors import M_PI_GEV
 
 from adonis.constants import mpip as M_PI, mp as M_N
-HBARC = 197.32
+HBARC_ANL = 197.32
 
 WAVES = ["S11", "S31", "P11", "P13", "P31", "P33", "D13", "D15", "D33", "D35",
          "F15", "F17", "F35", "F37", "G17", "G19", "G37", "G39", "H19", "H39"]
@@ -71,7 +75,7 @@ def _channel_sigma(amps, Wt, cg, norm=1.0):
             amp += cg.get(twoI, 0.0) * amps[:, k]
         s += (twoJ + 1.0) * np.abs(amp) ** 2
     PF = _pcm2(Wt)
-    pref = HBARC ** 2 * 10.0 * 2.0 * np.pi * 4.0 * Wt ** 2 / PF
+    pref = HBARC_ANL ** 2 * 10.0 * 2.0 * np.pi * 4.0 * Wt ** 2 / PF
     return norm * pref * s
 
 
@@ -211,7 +215,7 @@ def _sigma_cf_masses(amps, Wt, cg_pair, mM, mB):
             amp += cg.get(twoI, 0.0) * amps[:, k]
         s += (twoJ + 1.0) * np.abs(amp) ** 2
     PF = (Wt ** 2 - mM ** 2 - mB ** 2) ** 2 - 4.0 * mM ** 2 * mB ** 2
-    pref = np.where(PF > 0, HBARC ** 2 * 10.0 * 2.0 * np.pi * 4.0 * Wt ** 2 / np.clip(PF, 1e-9, None), 0.0)
+    pref = np.where(PF > 0, HBARC_ANL ** 2 * 10.0 * 2.0 * np.pi * 4.0 * Wt ** 2 / np.clip(PF, 1e-9, None), 0.0)
     return pref * s
 
 
