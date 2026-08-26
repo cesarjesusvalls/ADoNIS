@@ -9,54 +9,75 @@ around the **kind-1 sample/reweight contract**: a fixed *detached* proposal is s
 and only a pure-JAX, differentiable weight carries the physics knobs — so gradients are exact
 and one sample can be reweighted/differentiated over many parameter values.
 
-## Layout
-
-```
-adonis/                 the package
-  constants.py          ACHILLES physical constants
-  params.py             PhysicsParams (tunable pytree knobs) + GenConfig (static config)
-  core/                 autodiff, sample/Channel contract, EventRecord, Generator,
-                        histogram utils, validation harness
-  flux/                 FluxModel + Monochromatic
-  nuclear/              NuclearModel + SpectralFunction
-  primary/dcc/          the ANL-Osaka DCC single-pion channel (amplitudes, hadron/lepton
-                        tensors, differential current, two-body decay, DCCSinglePion)
-  fsi/                  FSIModel + NoFSI
-  observables/          W, Q2, cos(theta*), |p_pi|, lepton/nucleon kin, TKI + registry
-  signal/               SignalDef (particle-content / kinematic selections)
-  analysis/             fit (forward-mode), comparison utilities
-  data/oracle/          ACHILLES hepmc parsers
-scripts/                thin drivers (validate / make figures / generate oracle)
-tests/                  per-module closure (autodiff==FD) + oracle gates
-data/                   oracle/ (targets+inputs), model/ (events), cache/ (fit/plot caches)
-docs/                   STATUS.md, INPUTS.md, CONTAINER.md, STRATEGY.md, phases/, logbook/
-.github/workflows/      ci.yml (tests + figures) + oracle.yml (image-backed oracle)
-```
-
 ## Quick start
 
 ```bash
-pip install -r requirements.txt          # jax, numpy, matplotlib
-python scripts/fetch_achilles_data.py    # populate ./achilles_data/ from the oracle image
-```
-The model reads two ACHILLES tables (DCC amplitudes + spectral function) resolved via
-`ACHILLES_DATA` (default `./achilles_data/`); the fetch step pulls them from the public
-oracle image (see `docs/CONTAINER.md`), or point `ACHILLES_DATA` at a local ACHILLES `data/`.
-```python
-import jax
-from adonis import GenConfig, DCCSinglePion, Generator, PhysicsParams, observables as obs
-
-gen = Generator(DCCSinglePion(GenConfig(spline=False)))
-ev = gen.generate(jax.random.PRNGKey(0), 100_000)     # EventRecord (full lab final state)
-W = obs.W(ev)                                          # any observable, differentiable in knobs
+pip install -r requirements.txt
 ```
 
-Run from the repo root (scripts add the root to `sys.path`):
+ADoNIS reads two ACHILLES tables that are **not** committed here (the DCC electroweak amplitudes,
+~38 MB, and the spectral functions).  Resolve them with `ACHILLES_DATA`, which defaults to
+`data/achilles/` at the repo root:
+
 ```bash
-python scripts/validate_final_state.py    # final state vs ACHILLES oracle (-> figures/)
-python scripts/make_ma_fit.py             # M_A closure (cached; ADONIS_NDATA/NMODEL/ITERS to override)
-python scripts/make_diff_figures.py       # exact M_A gradients of exclusive predictions
-python -m pytest tests/ -q                # or run individual tests/*.py
+export ACHILLES_DATA=/path/to/Achilles/data      # a local ACHILLES checkout or build
+```
+
+or extract them from the public oracle image `ghcr.io/cesarjesusvalls/achilles:oracle`
+(see `docs/CONTAINER.md`).  ACHILLES itself is never invoked at run time -- ADoNIS reimplements
+the physics differentiably and uses ACHILLES only as a validation oracle -- but it does consume
+those tabulated inputs.
+
+## Layout
+
+```
+adonis/                 THE package -- everything reusable, and it stands alone
+  constants.py          ACHILLES physical constants
+  core/                 sample/reweight contract, typed PhysicsParams, EventRecord, autodiff
+  flux/                 neutrino / electron / tagged-hadron beams
+  nuclear/              spectral functions, densities, nuclear targets
+  channels/             hard vertex: QE (CC/NC/EM), RES via the ANL-Osaka DCC tables, currents
+  fsi/                  ONE jitted, differentiable intranuclear cascade + interaction models
+  reweight/             the kind-1 weight: exact reduced-quadratic hard-vertex + FSI reweight
+  workflow/             bank generation (one generator, every probe), selection, plotting
+  detector/             smearing / efficiency models
+  measurements/         published data releases (T2K, MINERvA, ...) as loaders
+  analysis/             sample layer: binning, beams, Gate-I information gating, caching
+  stats/                Fisher / Gaussian covariance machinery
+  fit/                  fitters, minimisers, NUTS, the staged fit runner, benchmarks
+  unfold/               response, templates, flux/detector priors, the unfolding run
+  oracle/               ACHILLES parsers + runner (used to VALIDATE, never called at run time)
+configs/                the run definitions -- banks/, samples/, fits/, achilles/
+analysis/paper/         thin consumers of the above; one sub-package per topic (see its __init__)
+tests/                  closure (autodiff==FD), oracle gates, layering
+docs/                   design notes, plans, container + input provenance
+```
+
+`adonis/` never imports `analysis/`; `tests/test_layering.py` enforces it.
+
+## Building the paper figures
+
+Every topic exposes the same entry point, so there is exactly one way to build a figure:
+
+```bash
+python -m analysis.paper.validation.make            # ADoNIS vs ACHILLES, one YAML spec per figure
+python -m analysis.paper.grad_info.make             # Fisher information + per-bin gradient shapes
+python -m analysis.paper.inference.make  --label sec4_P2    # closure, rates, corner
+python -m analysis.paper.unfolding.make  --label sec5f10    # unfolding example, budget, correlations
+python -m analysis.paper.performance.make           # minimiser scaling; GPU vs CPU generation
+```
+
+`--label` selects which run under `output/altgen/` to read. **Pass it.** Several runs of the same
+study sit side by side there and the module defaults are historical, so a stale label renders a
+perfectly healthy figure of the wrong thing.
+
+The inputs these consume -- event banks, fit artefacts -- are produced by the package:
+
+```bash
+python -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C
+python -m adonis.analysis.gate1                                     # the 28-knob Jacobian
+python -m adonis.fit configs/fits/sec4_P1.yaml --stage closure
+python -m adonis.unfold.run configs/fits/sec5_unfold.yaml --label sec5cfg
 ```
 
 ## Status

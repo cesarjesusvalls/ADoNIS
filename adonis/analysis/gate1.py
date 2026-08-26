@@ -1,7 +1,7 @@
 """Assemble output/altgen/multisample_carbon.npz -- the shared sec2 (Fisher) + sec3 (gradient) input --
 from the AnaSample samples + the FSI beam Jacobians.  A THIN caller: it composes the samples through the
 core object (adonis.analysis.sample.SampleSet) and stacks the cached beam jvps; no selection/binning lives
-here.  This replaces sec3_gradients/build_multisample.py (the per-sample physfit_*.npz drivers are gone).
+here.  This replaces grad_info/build_multisample.py (the per-sample physfit_*.npz drivers are gone).
 
     python -m adonis.analysis.gate1                       # full banks (a GPU/big-node job)
     ADONIS_MS_MAXCHUNKS=4 python -m adonis.analysis.gate1 # smoke (subsampled banks)
@@ -36,7 +36,7 @@ from adonis.analysis import beams as BF   # beam_model/BEAM_DIRS; the figure dri
 # (configs/fits/*.yaml) and configs/samples/beams.yaml respectively, because this Jacobian and the sec4
 # engine must describe the SAME stack -- multisample.py asserts its dskeys against this npz, and when the
 # two lists lived in two files, adding MINERvA CC1pi+ meant editing both in step or getting an assertion
-# hours into a run.  BEAM_OBS was additionally duplicated in sec3_gradients/build_multisample.py.
+# hours into a run.  BEAM_OBS was additionally duplicated in grad_info/build_multisample.py.
 _BEAMS_CFG = "configs/samples/beams.yaml"
 
 

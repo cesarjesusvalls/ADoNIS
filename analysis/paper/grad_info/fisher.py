@@ -24,8 +24,8 @@ sample composition or the binning is a config edit; a sample that is absent drop
 and a sample that no column claims is reported as `uncovered`.
 
 Usage:
-    python -m analysis.paper.sec2_fisher.make [npz_label]     # default: the config's `npz:`
-    ADONIS_SEC2_CONFIG=... ADONIS_SEC2_NPZ=... python -m analysis.paper.sec2_fisher.make
+    python -m analysis.paper.grad_info.make [npz_label]     # default: the config's `npz:`
+    ADONIS_SEC2_CONFIG=... ADONIS_SEC2_NPZ=... python -m analysis.paper.grad_info.make
 """
 import os
 import sys
@@ -36,7 +36,7 @@ from matplotlib.patches import Rectangle
 
 from analysis.paper import style
 from adonis.stats import fisher as FE
-from analysis.paper.sec2_fisher import subsets as SS
+from analysis.paper.grad_info import subsets as SS
 
 plab = style.plab      # knob name -> LaTeX symbol; single-sourced in style.py (identical to sec2's labels)
 
@@ -128,7 +128,7 @@ def main(label=None):
             if not src.exists():
                 raise SystemExit(f"[sec3] no Jacobian at {src}\n"
                                  f"       available: {sorted(p.stem for p in style.ALTGEN.glob('*.npz'))}\n"
-                                 f"       pass a label:  python -m analysis.paper.sec2_fisher.make <label>")
+                                 f"       pass a label:  python -m analysis.paper.grad_info.make <label>")
             _cache[lbl] = (str(src),) + SS.check_schema(np.load(src, allow_pickle=True), str(src))
         return _cache[lbl]
 

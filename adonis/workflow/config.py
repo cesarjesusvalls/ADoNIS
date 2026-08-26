@@ -341,7 +341,7 @@ class AnalysisConfig:
 
 def load_analysis_config(path) -> AnalysisConfig:
     d = yaml.safe_load(Path(path).read_text()) or {}
-    # figure-orchestration keys consumed by analysis/paper/sec1_validation (make.py + helper.py): the
+    # figure-orchestration keys consumed by analysis/paper/validation (make.py + helper.py): the
     # render hook, its compute/params, the make_figure layout, the --light flag.  They are NOT
     # AnalysisConfig fields, so pop them here -- a figure spec that ALSO carries a selection (fig10/fig11,
     # the electron figs) loads as an AnalysisConfig through the same door as the pure-selection multiobs specs.

@@ -19,7 +19,7 @@ the point: a conditional slice read as a confidence region overstates the precis
 
 Physical bounds are SHADED, not masked: the model clamps beyond them so the flat chi2 there is real.
 
-Usage:  python -m analysis.paper.sec4_closure.fig_corner_prof [label]
+Usage:  python -m analysis.paper.inference.fig_corner_prof [label]
 """
 import sys
 import glob

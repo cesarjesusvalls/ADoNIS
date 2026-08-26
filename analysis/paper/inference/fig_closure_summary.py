@@ -24,7 +24,7 @@ sigma offset on the degenerate RES directions look like a defect when the measur
 Goodness of fit is no longer plotted -- it is a different claim (does the MODEL fit) and is printed for
 the caption instead: median chi2/ndf ~ 0.99 at the P1 point.
 
-Usage:  python -m analysis.paper.sec4_closure.fig_closure_summary [label] [ens_label] [mass]
+Usage:  python -m analysis.paper.inference.fig_closure_summary [label] [ens_label] [mass]
         e.g.  ... sec4_P1 sec4_P1_ens          -> 68% (1 sigma), the default
               ... sec4_P1 sec4_P1_ens 0.9545   -> 95% (2 sigma), written to a separate file
 """

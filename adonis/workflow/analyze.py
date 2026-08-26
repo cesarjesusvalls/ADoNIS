@@ -80,5 +80,5 @@ def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, tit
 
 
 # NO module CLI: run_analysis is a LIBRARY function.  Paper figures render ONLY through the one entry
-# point, analysis/paper/sec1_validation/make.py (which applies the paper style) -- a bare unstyled
+# point, analysis/paper/validation/make.py (which applies the paper style) -- a bare unstyled
 # `python -m adonis.workflow.analyze <cfg>` was a second, WRONG way to draw a figure, so it is gone.

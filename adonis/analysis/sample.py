@@ -237,9 +237,9 @@ class AnaSample:
         r.update(F=F, V=V, sig_post=sig_post, shrink=shrink, reach=reach, prior=K.PRIOR, pnames=K.PNAMES)
         return r
 
-    # .plot() lived here and imported analysis.paper.sec1_validation.helper -- the CORE
+    # .plot() lived here and imported analysis.paper.validation.helper -- the CORE
     # depending on one section's figure code.  The verb now lives with the figures:
-    #     from analysis.paper.sec1_validation.helper import render_sample
+    #     from analysis.paper.validation.helper import render_sample
     #     render_sample(cfg_path, show_ratio=True)
 
     # ---- cache ----

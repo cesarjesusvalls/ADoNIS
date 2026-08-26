@@ -18,7 +18,7 @@ the nuisance-volume (Occam) factor -- so agreement is evidence the posterior is 
 integrated directions, and disagreement localises where it is not.  Where all three coincide the cheap
 Gaussian error is doing its job.
 
-Usage:  python -m analysis.paper.sec4_closure.fig_corner_all [prof_label] [nuts_label]
+Usage:  python -m analysis.paper.inference.fig_corner_all [prof_label] [nuts_label]
 """
 import os
 import sys
@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from analysis.paper import style
-from analysis.paper.sec4_closure.fig_corner_prof import load_views, snap_axis, view_for
+from analysis.paper.inference.corner_common import load_views, snap_axis, view_for
 from adonis.analysis import knobs as K
 
 L68, L90 = 2.30, 4.61                  # 2-D Delta-chi2 levels (68% / 90% of a 2-D Gaussian)

@@ -222,51 +222,6 @@ def render_panels(spec, show_ratio=True):
     return {"results": results, "sigma": sig}
 
 
-# =================================================================================== RENDER: bespoke
-# figs 2, 3, 13 are multi-series overlays / angular samplers -- NOT one-observable panels, so they draw
-# with matplotlib directly (still here, still one entry point).  save via style.save (paper .png+.pdf).
-def render_sigma_channels(spec, show_ratio=True):
-    """Fig 2 -- free-nucleon RES sigma(E_nu), 3 CC channels overlaid in one panel + a 3-channel ratio.
-    (Cut from the paper; show_ratio is accepted for a uniform renderer signature but not applied here.)"""
-    import matplotlib.pyplot as plt
-    from analysis.paper.freenucleon_bank import ENERGIES, CHANNEL_SPECS, load_scan
-    NB = 1.0e5                                                     # nb -> 10^-38 cm^2 (plotted axis unit)
-    SCAN = _rel((spec.get("inputs") or {}).get("oracle_scan", "output/oracle_freenucleon_scan"))
-
-    def ach_sigma(E, sp, pi_pid):
-        fs = sorted(glob.glob(f"{SCAN}/{sp}_E{int(E)}/*.npz"))
-        if not fs:
-            return np.nan, np.nan
-        d = np.load(fs[0], allow_pickle=True); w = np.asarray(d["w"], float) * float(d["weight_to_nb"])
-        m = np.asarray(d["pi_pid"]) == pi_pid
-        return float(w[m].sum()), float(np.sqrt((w[m] ** 2).sum()))
-
-    style.use(); scan = load_scan()
-    fig, ax = plt.subplots(2, 1, figsize=(4.6, 3.4), sharex=True,
-                           gridspec_kw={"height_ratios": [3, 1], "hspace": 0.0})
-    top, bot = ax; COLS = (style.C_TOTAL, style.C_QE, style.C_RES)
-    for c, (tag, _ci, tex, sp, ach_pi) in enumerate(CHANNEL_SPECS):
-        a_col, h_col = style.lighter(COLS[c]), style.darker(COLS[c])
-        aS, aE = (v * NB for v in scan[tag])
-        hS, hE = (np.array(v) * NB for v in zip(*(ach_sigma(E, sp, ach_pi) for E in ENERGIES)))
-        top.fill_between(ENERGIES, aS - aE, aS + aE, color=a_col, alpha=0.25, lw=0)
-        top.plot(ENERGIES, aS, "-", color=a_col, lw=1.6)
-        top.errorbar(ENERGIES, hS, yerr=hE, fmt="s", ms=3.0, color=h_col, capsize=1.5, lw=1.0, ls="--", zorder=3)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            r = aS / hS; re = np.abs(r) * np.sqrt((aE / aS) ** 2 + (hE / np.where(hS > 0, hS, np.nan)) ** 2)
-        bot.errorbar(ENERGIES, r, yerr=re, fmt="o", ms=2.5, color=COLS[c], capsize=1.5, lw=1.0)
-    top.set_xlim(0, 4600); top.set_ylim(bottom=0)
-    top.set_ylim(top.get_ylim()[0], top.get_ylim()[1] * 1.30); top.set_ylabel(r"$\sigma$ [$10^{-38}$ cm$^2$]")
-    h, l, hm = style.swatches([(tex, COLS[c]) for c, (_t, _ci, tex, _s, _p) in enumerate(CHANNEL_SPECS)])
-    top.legend(h, l, handler_map=hm, loc="upper left", fontsize=7, handlelength=3.0, labelspacing=0.3, borderpad=0.2)
-    bot.axhline(1.0, ls="-", color="0.6", lw=0.8)
-    for off in (0.1, 0.2):
-        bot.axhline(1.0 - off, ls="--", color="0.7", lw=0.6); bot.axhline(1.0 + off, ls="--", color="0.7", lw=0.6)
-    bot.set_ylim(0.6, 1.4); bot.set_yticks([0.8, 1.0, 1.2])
-    bot.set_xlabel(r"$E_\nu$ [MeV]"); bot.set_ylabel("ratio")
-    fig.tight_layout(rect=[0, 0, 1, 1.0]); style.save(fig, spec["name"])   # no title -> caption carries it
-
-
 def render_beam_sigma(spec, show_ratio=True):
     """Fig 3 -- pi+ nucleus absorption+reaction sigma(p), 2x2 curve blocks (nucleus rows, channel cols).
     show_ratio=False drops the per-block ACH/ADO ratio strip and writes to a *_noratio file."""
@@ -275,8 +230,8 @@ def render_beam_sigma(spec, show_ratio=True):
     pp = _p(spec)
     BANK = pp.get("bank_pattern", "output/paper_banks_p4/beam_{beam}_{target}/merged")
     os.environ.setdefault("ADONIS_BEAM_PATTERN", BANK)
-    from analysis.paper.beams.make_figs import adonis_sigma
-    from analysis.paper.beams import achilles_beam as AB
+    from adonis.analysis.beams import bank_sigma as adonis_sigma
+    from adonis.oracle import beam_sigma as AB
     nbins = int(pp.get("nbins", 30)); BEAM = pp.get("beam", "pip")
 
     def reduce_nuc(nuc):
@@ -321,75 +276,11 @@ def render_beam_sigma(spec, show_ratio=True):
     style.save(fig, spec["name"] + ("" if show_ratio else "_noratio"))   # no title -> caption carries it
 
 
-def render_dcc(spec, show_ratio=True):
-    """Fig 13 -- meson-baryon DCC: total sigma(W) for 4 species (analytic + INC MC) + pi+p angular sampler.
-    (Cut from the paper; has no ratio strip, so show_ratio is accepted but a no-op.)"""
-    import matplotlib.pyplot as plt
-    import jax
-    import jax.numpy as jnp
-    from adonis.fsi.interactions.meson_baryon_amplitudes import (
-        load_anl, _channel_sigma, pim_p_total, dsigma_dOmega,
-        conversion_sigma_grid, eta_elastic_sigma_grid, eta_backconv_sigma_grid)
-    from adonis.fsi.interactions.meson_baryon_xsec import jax_sample_cos_cm
-    from adonis.constants import mpip as M_PI, mN as M_N   # canonical masses (no local roundings)
-    _R2 = np.sqrt(2.0) / 3.0; MB_FM2 = 0.1                 # isospin C-G factor; mb<->fm^2 unit (not masses)
-
-    def _interp(Wg, Ws, ys):
-        return np.interp(Wg, Ws, ys, left=0.0, right=0.0)
-
-    def totals():
-        Wg, amps = load_anl(0, 0)
-        piN_pip = _channel_sigma(amps, Wg, {3: 1.0})
-        piN_pi0 = (_channel_sigma(amps, Wg, {3: 2.0 / 3, 1: 1.0 / 3}) + _channel_sigma(amps, Wg, {3: _R2, 1: -_R2}))
-        piN_pim = pim_p_total(Wg)[1]
-        Wc, conv = conversion_sigma_grid(); We, eel = eta_elastic_sigma_grid(); Wb, ebk = eta_backconv_sigma_grid()
-        eta = _interp(Wg, We, eel) + _interp(Wg, Wb, ebk[0].sum(axis=0))
-        return Wg, {r"$\pi^+ p$": ("tab:red", piN_pip + _interp(Wg, Wc, conv[0, 0])),
-                    r"$\pi^0 p$": ("tab:blue", piN_pi0 + _interp(Wg, Wc, conv[1, 0])),
-                    r"$\pi^- p$": ("tab:green", piN_pim + _interp(Wg, Wc, conv[2, 0])),
-                    r"$\eta p$": ("tab:purple", eta)}
-
-    def inc_mc(sig_mb, rng, ntrial=4000, k=12.0):
-        s = np.maximum(sig_mb * MB_FM2, 1e-9); R2 = k * s / np.pi
-        b2 = rng.random((len(s), ntrial)) * R2[:, None]; P = np.exp(-np.pi * b2 / s[:, None])
-        hit = rng.random(P.shape) < P; ph = hit.mean(1)
-        return (np.pi * R2 * ph) / MB_FM2, (np.pi * R2 * np.sqrt(np.clip(ph * (1 - ph), 0, None) / ntrial)) / MB_FM2
-
-    # two standalone panels (sigma(W), angular) at the shared width: 2 cols x PANEL_W, one PANEL_H row.
-    style.use(); rng = np.random.default_rng(0)
-    fig, ax = plt.subplots(1, 2, figsize=(2 * style.PANEL_W, style.PANEL_H))
-    W, curves = totals(); WG = W / 1000.0; Wc = W[::3]
-    for lab, (col, sig) in curves.items():
-        ax[0].plot(WG, sig, "-", color=col, lw=1.6, label=lab, zorder=2)
-        mc, err = inc_mc(np.interp(Wc, W, sig), rng)
-        ax[0].errorbar(Wc / 1000.0, mc, yerr=err, fmt="o", ms=2.6, color=col, mfc="white",
-                       elinewidth=0.7, capsize=0, lw=0, zorder=3)
-    ax[0].plot([], [], "-", color="0.4", label="ANL-Osaka (analytic)")
-    ax[0].plot([], [], "o", color="0.4", mfc="white", label="ADoNIS INC (MC)")
-    ax[0].set_xlim(1.08, 2.0); ax[0].set_ylim(0, None)
-    ax[0].set_xlabel(r"$W$ [GeV]"); ax[0].set_ylabel(r"$\sigma$ [mb]")
-    ax[0].legend(fontsize=8, ncol=2, title="off proton", title_fontsize=8)
-    ax[0].set_title(r"total meson-baryon $\sigma(W)$", fontsize=9)
-    W300 = float(np.sqrt(M_PI ** 2 + M_N ** 2 + 2 * M_N * np.sqrt(300.0 ** 2 + M_PI ** 2)))
-    cg = np.linspace(-1, 1, 200); dd = dsigma_dOmega(W300, cg, {3: 1.0}, i=0, f=0)
-    _trap = getattr(np, "trapezoid", None) or np.trapz
-    ax[1].plot(cg, dd / (_trap(dd, cg) * 2 * np.pi), "-", color="tab:red", lw=1.8,
-               label=rf"ANL-Osaka  ($W$={W300/1000:.2f} GeV)")
-    N = 200_000; u = jax.random.uniform(jax.random.PRNGKey(1), (N,))
-    cs = np.asarray(jax_sample_cos_cm(jnp.full((N,), W300), u, chan=0))
-    edges = np.linspace(-1, 1, 21); ctr = 0.5 * (edges[1:] + edges[:-1])
-    cnt, _ = np.histogram(cs, edges); bw = np.diff(edges)
-    dens = cnt / (N * bw * 2 * np.pi); derr = np.sqrt(cnt) / (N * bw * 2 * np.pi)
-    ax[1].errorbar(ctr, dens, yerr=derr, fmt="o", ms=3.5, color="tab:red", mfc="white",
-                   elinewidth=0.8, capsize=0, lw=0, label=r"ADoNIS sampler ($\pi^+ p$)")
-    ax[1].set_xlim(-1, 1); ax[1].set_ylim(0, None)
-    ax[1].set_xlabel(r"$\cos(\theta_{\rm CM})$"); ax[1].set_ylabel(r"$(1/\sigma)\, d\sigma/d\Omega$")
-    ax[1].legend(fontsize=8); ax[1].set_title(r"$\pi^+ p$ angular at $p=300$ MeV", fontsize=9)
-    fig.tight_layout(rect=[0, 0, 1, 1.0]); style.save(fig, spec["name"])   # no title -> caption carries it
-
-
+# Only the three renderers the paper's specs actually select.  render_sigma_channels (fig 2) and
+# render_dcc (fig 13) were removed with their figures: no spec named them, so they were reachable
+# only by editing this table.
 RENDERERS = {"multiobs": render_multiobs, "panels": render_panels,
-             "sigma_channels": render_sigma_channels, "beam_sigma": render_beam_sigma, "dcc": render_dcc}
+             "beam_sigma": render_beam_sigma}
 
 
 def render(spec, show_ratio=True):

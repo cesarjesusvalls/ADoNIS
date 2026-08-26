@@ -12,7 +12,7 @@ switched on, so the visible band is the increment and the tallest bar is the tot
 
 A single panel: the per-truth-cell nested budget.
 
-Usage:  python -m analysis.paper.sec5_unfold.fig_budget [label]
+Usage:  python -m analysis.paper.unfolding.fig_budget [label]
 """
 import sys
 from pathlib import Path

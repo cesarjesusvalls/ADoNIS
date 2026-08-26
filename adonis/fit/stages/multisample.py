@@ -1,7 +1,7 @@
 """Section 4 (closure) over the SAME dials + samples as sections 2/3.
 
 Section 2 (Fisher/Gate-I) and section 3 (per-bin gradients) both read ONE stacked-Jacobian object,
-`output/altgen/multisample_carbon.npz` (built by analysis.paper.sec3_gradients.build_multisample):
+`output/altgen/multisample_carbon.npz` (built by `python -m adonis.analysis.gate1`):
 
   * 16 DIALS  -- the knobs with combined marginalized shrinkage < 0.5 (Gate I).
   * 20 SAMPLE blocks -- T2K CC0pi/CC1pi STV+muon (7) + MINERvA CC0pi-Np STV (3) + MINERvA qelike pT/p||

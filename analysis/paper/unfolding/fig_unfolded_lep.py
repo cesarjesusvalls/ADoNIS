@@ -23,7 +23,7 @@ Slices chosen on measured content, not by eye: [0.20, 0.60] has the highest occu
 median sigma(c) 0.22) and [0.94, 0.98] has the most bins and the widest momentum reach (10 bins out to
 3.25 GeV/c).  Between them they bracket the angular range.
 
-Usage:  ADONIS_UNFOLD_OBS=lep python -m analysis.paper.sec5_unfold.fig_unfolded_lep [label]
+Usage:  ADONIS_UNFOLD_OBS=lep python -m analysis.paper.unfolding.fig_unfolded_lep [label]
 """
 import sys
 from pathlib import Path

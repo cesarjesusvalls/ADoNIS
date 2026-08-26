@@ -18,7 +18,7 @@ This is an Asimov closure, so "post-fit lands on the data" is exact by construct
 ~1e-27.  That is the statement being made: the model can reproduce its own truth from a blind start.  It
 is NOT a goodness-of-fit test, which needs the toy ensemble (figure A, panel b).
 
-Usage:  python -m analysis.paper.sec4_closure.fig_rates [label]
+Usage:  python -m analysis.paper.inference.fig_rates [label]
 """
 import sys
 from pathlib import Path

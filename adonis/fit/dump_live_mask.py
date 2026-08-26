@@ -7,7 +7,7 @@ sec4_P1) while the Jacobian streams the whole bank, so the same 5% cut drops 4 b
 
     python -m adonis.fit.dump_live_mask [config]   ->  output/altgen/sec4_live_mask.npz
 
-Read by analysis/paper/sec3_gradients/make.py.  Re-run whenever the sample list, the bank caps or
+Read by analysis/paper/grad_info/make.py.  Re-run whenever the sample list, the bank caps or
 data.sigma.mask_mcfrac change.
 """
 import numpy as np

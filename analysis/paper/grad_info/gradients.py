@@ -9,10 +9,10 @@ the combined fit): each knob's row of the dimensionless pull
     S_ik = (dtheta_k^prior) * J_ik / sigma_i        [ the knob's per-bin pull, in units of the error ]
 is normalized to its own peak, so WHERE each knob pulls across the bins is readable; the pull is SIGNED
 (a knob raises or lowers a bin), hence the diverging map.  Rows grouped by physics, styled to match the
-Fisher figure (analysis/paper/sec2_fisher) -- the two read as a pair: which knobs are constrainable, and
+Fisher figure (analysis/paper/grad_info) -- the two read as a pair: which knobs are constrainable, and
 where their information comes from.
 
-Usage:  python -m analysis.paper.sec3_gradients.make [label]
+Usage:  python -m analysis.paper.grad_info.make [label]
 """
 import sys
 from pathlib import Path

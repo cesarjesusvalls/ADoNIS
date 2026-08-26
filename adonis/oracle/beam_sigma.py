@@ -17,17 +17,17 @@ Observables:
              NN -> N Delta -> NN pi inelastic channel -- the handle on s_NN_inelastic)
 """
 import os
-import sys
 from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from adonis.flux.hadron import BEAMS, PIR2_MB                      # noqa: E402
+from adonis.flux.hadron import BEAMS, PIR2_MB
 
+# The sys.path.insert this module used to carry went with it when it moved out of analysis/paper/beams:
+# it was reaching the repo root by counting .parents from a path that no longer exists, and inside the
+# package it is both wrong and forbidden -- `adonis` is importable or the caller's environment is broken.
 # ACHILLES cascade hepmc dir; ACHILLES_BEAM_DIR overrides (e.g. a repro tree with per-shard subdirs).
-ACH_DIR = Path(os.environ.get("ACHILLES_BEAM_DIR",
-                              str(Path(__file__).resolve().parents[3] / "output" / "achilles")))
+ACH_DIR = Path(os.environ.get("ACHILLES_BEAM_DIR", "output/achilles"))
 PION_PIDS = (211, 111, -211)
 
 

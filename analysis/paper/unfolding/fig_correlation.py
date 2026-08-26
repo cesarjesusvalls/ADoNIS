@@ -12,7 +12,7 @@ Read it for three things:
   * the detector block, which is nearly diagonal -- 60 independent 5% dials stay independent, because
     nothing in the data prefers one arrangement of them over another.
 
-Usage:  python -m analysis.paper.sec5_unfold.fig_correlation [label] [study]
+Usage:  python -m analysis.paper.unfolding.fig_correlation [label] [study]
 """
 import sys
 from pathlib import Path

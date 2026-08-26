@@ -182,16 +182,27 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                     channels=list(cfg.channels), caps_qe=list(CAPS_qe), caps_res=list(CAPS_res),
                     probe=cfg.probe, achilles_coupl1_quirk=bool(cfg.achilles_coupl1_quirk), **m_extra)
 
+    stage_t = []                # per-chunk stage wall clock -> manifest['stage_seconds']
     for c in range(n_chunks):
         kq, kr = jax.random.split(jax.random.PRNGKey(1000 + c), 2)
         evs, cols, rec_blocks, out_blocks, ns, pterms = [], [], [], [], [], []
+        t_pre = t_cas = 0.0     # per-stage wall clock: the hard vertex and the cascade scale differently
         for chan, key, caps in ([("qe", kq, CAPS_qe)] if do_qe else []) + ([("res", kr, CAPS_res)] if do_res else []):
+            _t0 = time.time()
             ev = (gen_qe if chan == "qe" else gen_res)(CHUNK, SEED0 + c); nb = len(ev["p_N"])
+            _t1 = time.time()
             _pt, nt, _o, _cr, rec, pf = cascade(ev, key, caps, chan)
+            # BLOCK BEFORE STOPPING THE CLOCK.  jax dispatch is asynchronous, so without this the cascade
+            # returns unfinished device arrays and its cost is charged to whatever touches them next --
+            # on a GPU that put the whole cascade inside the record-building step.
+            jax.block_until_ready((nt[0], pf))
+            t_pre += _t1 - _t0; t_cas += time.time() - _t1
             evs.append((chan, ev)); cols.append(np.zeros(nb, np.int8) if chan == "qe" else np.ones(nb, np.int8))
             out_blocks.append((nt[0], pf)); rec_blocks.append(CF.compact_fsi_record(dict(rec)))
             ns.append(nb); pterms.append(_pt)
-        log(f"chunk {c+1}/{n_chunks}: cascades done ({', '.join('%s=%d' % (e[0], n) for e, n in zip(evs, ns))})")
+        log(f"chunk {c+1}/{n_chunks}: cascades done ({', '.join('%s=%d' % (e[0], n) for e, n in zip(evs, ns))})"
+            f" | pre-FSI {t_pre:.1f}s, cascade {t_cas:.1f}s")
+        t_rec0 = time.time()      # record building + npz write: host-side, no GPU in it
 
         save, meta = REC.cascade_outcome_record(out_blocks, rec_blocks, ns)
         if meta["ndrop"]: log(f"chunk {c+1}: dropped {meta['ndrop']} non-physical final-state particles")
@@ -248,7 +259,14 @@ def _generate_hardvertex(cfg, outdir, log, t0):
 
         np.savez(f"{outdir}/chunk_{c:03d}.npz", **save)
         del evs, out_blocks, save; _gc.collect()
+        # Per-chunk stage wall clock, into the manifest rather than only the log.  The three stages
+        # scale differently -- the hard vertex is host-bound and gains nothing from a GPU, the cascade
+        # is the part that does -- so a single end-to-end number hides which one a machine is good at.
+        # Chunk 0 carries JIT compilation; read the steady state from chunk 1 onward.
+        stage_t.append(dict(chunk=c, n_events=int(sum(ns)), pre_fsi=t_pre, cascade=t_cas,
+                            record_io=time.time() - t_rec0))
         log(f"chunk {c+1}/{n_chunks}: written")
+    manifest["stage_seconds"] = stage_t
     json.dump(manifest, open(f"{outdir}/manifest.json", "w"), indent=2)
     log(f"DONE: {cfg.probe} bank in {outdir}/ ({n_chunks} chunks)")
     return outdir

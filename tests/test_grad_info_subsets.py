@@ -1,4 +1,4 @@
-"""Fast tests for the section-3 subset resolver (analysis.paper.sec2_fisher.subsets).
+"""Fast tests for the section-3 subset resolver (analysis.paper.grad_info.subsets).
 
 The point of the resolver is that sec3 survives a CHANGE of sample composition or binning without a
 code edit, so that is what is pinned here: globs that match nothing, groups that vanish, references to
@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import yaml
 
-from analysis.paper.sec2_fisher import subsets as SS
+from analysis.paper.grad_info import subsets as SS
 
 DSKEYS = ["pmu", "cosmu", "dpt", "mnv_dpt", "mnv_pn", "e_qe", "pip_react"]
 NBINS = [3, 3, 4, 2, 2, 5, 6]
