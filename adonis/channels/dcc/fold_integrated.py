@@ -31,7 +31,7 @@ from adonis.channels.dcc.structure import HadronStructure
 from adonis.channels.dcc.lepton import cm_lepton_momenta, lepton_tensor_cc, contract
 from adonis.constants import MQE, M_PI, W_THR, W_MAX, Q2_MAX
 
-from adonis.channels.dcc.channel import E_NU_DEFAULT
+E_NU_DEFAULT = 1500.0
 
 
 def pion_cm_momentum(W):

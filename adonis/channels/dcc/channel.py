@@ -41,10 +41,8 @@ from adonis.constants import MQE, M_PI, W_THR, W_MAX, Q2_MAX
 from adonis.channels.dcc.differential import (precompute_diff_coeffs, angular_factor,
                            build_zmtx_batched, differential_current, differential_tensor)
 from adonis.channels.dcc.final_state import cm_basis, two_body_lab, rotate_about_z
-from adonis.channels.dcc.fold_integrated import pion_cm_momentum
+from adonis.channels.dcc.fold_integrated import pion_cm_momentum, E_NU_DEFAULT
 from adonis.core.event import EventRecord
-
-E_NU_DEFAULT = 1500.0
 
 _PID_NI = np.array([2112, 2112, 2212])
 _PID_N = np.array([2212, 2112, 2212])
