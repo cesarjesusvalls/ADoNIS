@@ -80,9 +80,9 @@ class SpectrumFlux:
         """beam min_energy seed = (Smin - mp^2)/(2 mp) [MeV] -> GeV, clamped to edges[0].
 
         m_lep is the outgoing lepton mass, i.e. the threshold this beam has to clear; defaults to
-        M_MU so existing CC callers are bit-identical.  It is a parameter because NC has no threshold
-        (the outgoing lepton is a massless neutrino), and the CC value would silently truncate the
-        flux below ~112 MeV -- harmless for CC, a real low-energy bias for NC."""
+        M_MU so existing CC callers are unaffected.  It is a parameter because NC has no threshold
+        (the outgoing lepton is a massless neutrino), and using the CC value there would silently
+        truncate the low-energy flux."""
         Smin = (m_lep + M_P) ** 2
         seed = (Smin - M_P ** 2) / (2 * M_P)
         return max(seed / 1000.0, self.min_energy)
@@ -92,14 +92,14 @@ class SpectrumFlux:
         the same flux-weighted integral (unbiased, equal in expectation):
 
           'flat' (legacy ACHILLES BeamMapper): E ~ Uniform[minE, maxE]; J_beam = dE * f(E) /
-                 flux_integral.  Most draws land in the high-E flux tail with ~0 weight -> tiny
-                 effective sample size.
+                 flux_integral.  Most draws land in the high-E flux tail with near-zero weight, so
+                 effective sample size is small.
 
           'is' (importance, default): E drawn from the nominal flux shape via the exact inverse-CDF
                  of the piecewise-constant flux (raw edges/heights) on [minE, maxE]; proposal density
                  q(E) = h_bin/Z, Z = int_minE^maxE flux.  J_beam = f(E) * Z / (flux_integral * h_bin)
-                 -- same numerator f as 'flat', so the estimator is identical in expectation; J_beam ~
-                 constant (f/h_bin ~ 1) -> ~30x larger effective sample size.
+                 -- same numerator f as 'flat', so the estimator is identical in expectation, with
+                 J_beam roughly constant and a much larger effective sample size.
 
         Sampling from the nominal (frozen) flux keeps the kind-1 contract: flux gradients would be
         recovered by an extra smooth per-event factor f_theta(E)/f_nom(E) (not applied here).

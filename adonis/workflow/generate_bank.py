@@ -1,9 +1,8 @@
 """generate_bank(GenConfig): the bank generator for every probe.
 
 The only probe-specific code is the primary interaction (weak/EM hard vertex vs a tagged hadron
-projectile); everything downstream is shared: one cascade engine, one centralized cascade-outcome
-record builder (adonis.workflow.records), one chunk/seed loop, one save. All diversity is in the
-config fields.
+projectile); everything downstream -- cascade engine, cascade-outcome record builder
+(adonis.workflow.records), chunk/seed loop, save -- is shared, driven by the config fields.
 
 Per chunk (seed = cfg.seed0 + c) -> chunk_NNN.npz + manifest.json. Uniform record set (all probes):
 fs_* final state, f_* FSI kind-1, n_* multiplicities, ks_* escaped list, reacted/absorbed. Plus the

@@ -1,14 +1,14 @@
-"""Tune the REAL ADoNIS CC0pi-Np prediction to T2K STV data (delta_pT default; argv[1]="dat"
-for delta_alphaT), starting from its nominal.
+"""Tune the REAL ADoNIS CC0pi-Np prediction to T2K STV data (delta_pT default; argv[1]="dat" for
+delta_alphaT), starting from its nominal.
 
-The differentiable ADoNIS predictor: QE-C + RES-C CC0pi events are sampled ONCE (frozen proposal);
-the pion cascade (sigma_abs, sigma_scatter) and nucleon cascade (sigma_scatter) carry kind-1 weights,
-so dsigma/dx(theta) is differentiable in (sigma_abs, sigma_scatter) and at theta=(1,1) reproduces
-the nominal forward prediction bit-for-bit -- NO toy, NO free normalization (A is profiled once at
-nominal).  Covariance-weighted two-replica chi^2; Hessian parameter covariance at the BFP.
+QE-C + RES-C CC0pi events are sampled ONCE (frozen proposal); the pion cascade (sigma_abs, sigma_scatter)
+and nucleon cascade (sigma_scatter) carry kind-1 weights, so dsigma/dx(theta) is differentiable in
+(sigma_abs, sigma_scatter) and reproduces the nominal forward prediction bit-for-bit at theta=(1,1) (A is
+profiled once at nominal, not fit).  Covariance-weighted two-replica chi^2; Hessian parameter covariance
+at the BFP.
 
-WALK/WEIGHT SPLIT: the cascade walk is theta-independent (kind-1), so a bank of NREP walk replicas
-is precomputed once (the sampling step) and each fit iteration is a pure reweight via pool_fsi_reweight.
+WALK/WEIGHT SPLIT: the cascade walk is theta-independent, so NREP walk replicas are precomputed once and
+each fit iteration is a pure reweight via pool_fsi_reweight.
 """
 import os, sys, time
 from pathlib import Path
@@ -140,8 +140,7 @@ def bin_walk(W, edges=None, obs=None):
 
 
 def build_replica(kcasc, qe, qw, res, rw):
-    """Walk one replica and bin it for this module's observable (build_walk -> bin_walk).  Behaviour is
-    identical to before the walk/bin split."""
+    """Walk one replica and bin it for this module's observable (build_walk -> bin_walk)."""
     return jax.block_until_ready(bin_walk(build_walk(kcasc, qe, qw, res, rw)))
 
 

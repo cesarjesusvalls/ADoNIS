@@ -3,10 +3,8 @@
 Each shard filled only its own dial's row and left the rest NaN, so the merge is a NaN-aware overlay.
 
 VALIDATED before merging (adonis.fit.merge): the shards must come from one run definition, and the dials
-they were ASSIGNED must tile the fitted subset.  An uncovered dial used to be reported as a line of
-stdout on the way to writing the file anyway; it is now a refusal, because the merged npz is what every
-downstream figure reads and a NaN row there is indistinguishable from a dial that legitimately has no
-profile.  --allow-partial accepts it knowingly, and marks the product partial.
+they were assigned must tile the fitted subset, or the merge refuses.  --allow-partial accepts an
+incomplete tiling knowingly and marks the product partial.
 """
 import os, sys, glob
 from pathlib import Path

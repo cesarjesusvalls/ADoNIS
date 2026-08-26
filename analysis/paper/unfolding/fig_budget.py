@@ -1,16 +1,9 @@
-"""FIGURE G -- where the uncertainty on an unfolded spectrum comes from.
+"""FIGURE G -- where the uncertainty on an unfolded spectrum comes from: systematic blocks switched on
+one at a time and the template error re-evaluated.
 
-The systematic blocks are switched on one at a time and the template error re-evaluated.  Decomposing
-this way rather than by fitting each block alone is what keeps the parts adding up to the whole -- these
-parameters are correlated with each other and with the templates, and a block fitted in isolation would
-understate what it costs in the presence of the others.
-
-The bars are NESTED, not stacked.  Errors add in quadrature, so a stack of contributions would rise to
-sqrt-of-a-sum drawn as a sum, and the true total would float somewhere inside it -- which is exactly what
-the first version of this figure showed.  Here each bar's TOP is the actual sigma once that block is
-switched on, so the visible band is the increment and the tallest bar is the total.
-
-A single panel: the per-truth-cell nested budget.
+Bars are NESTED, not stacked: each bar's top is the actual sigma once that block is enabled, so the
+increment is the visible band and the tallest bar is the total (stacking would draw sqrt-of-a-sum as a
+sum).
 
 Usage:  python -m analysis.paper.unfolding.fig_budget [label]
 """
@@ -32,11 +25,8 @@ BLOCKS = [("stat", "statistical", "#b9c6de"),
 
 
 def _fig_cfg(z):
-    """The `figures:` block of the config that produced `z`.
-
-    Read from the npz, NOT from the yaml: the figure scripts are pure consumers of a persisted fit --
-    that is what stops a plot disagreeing with the numbers it claims to show -- and a yaml can change
-    after the fit has run.  Older files carry no cfg_json, so the module defaults stand in.
+    """The `figures:` block of the config that produced `z`, read from the npz (not the yaml, which can
+    change after the fit ran).  Older files carry no cfg_json; the module defaults stand in.
     """
     import json
     if "cfg_json" in z.files:

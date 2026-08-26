@@ -1,23 +1,13 @@
 """Event-generation throughput, CPU against GPU, split by stage.
 
-Reads the `stage_seconds` block that adonis.workflow.generate_bank writes into every bank manifest, so
-the numbers come from real production runs rather than from a benchmark that approximates one.  Point
-it at one bank directory per device:
+Reads the `stage_seconds` block adonis.workflow.generate_bank writes into every bank manifest.  Point it
+at one bank directory per device:
 
     python -m analysis.paper.performance.fig_generation \
         "EPYC 7713 (1 core)=<dir>" "RTX 2080 Ti=<dir>" "A100-SXM4=<dir>"
 
-WHY THE STAGES ARE SEPARATED.  A single events/s number hides the only thing worth knowing here: the
-two stages behave completely differently.
-
-  pre-FSI    the hard vertex -- flux sampling, spectral-function draws, the amplitude.  Host-bound, and
-             it gains NOTHING from a GPU: measured 1817 ev/s on one EPYC 7713 core against 1749 on an
-             A100 and 902 on a 2080 Ti, i.e. one CPU core beats both cards.
-  cascade    the intranuclear cascade, jitted end to end.  This is the part a GPU is for: 55 ev/s on
-             the same core against 718 on the A100.
-  record/IO  building the flat FSI record and writing the npz.  Host-side, ~150 s/chunk on every
-             machine measured, which is what drags the end-to-end speedup from 13x down to ~5x.
-
+Stages: pre-FSI (hard vertex: flux sampling, spectral-function draws, the amplitude), cascade (the
+intranuclear cascade, jitted end to end), record/IO (building the flat FSI record and writing the npz).
 Chunk 0 carries JIT compilation and is dropped; the steady state is the median over the rest.
 """
 import json

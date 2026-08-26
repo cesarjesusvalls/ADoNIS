@@ -22,7 +22,7 @@ knob-dependent path (build_zmtx) is reused unchanged; the angle enters only thro
 detached, precomputed angular basis.
 
 Consistency: summing the differential tensor over the same quadrature grid and weights as
-`current_and_tensor` reproduces it to ~1e-12; sampling the angle uniformly over the solid
+`current_and_tensor` reproduces it exactly; sampling the angle uniformly over the solid
 angle and weighting by 4*pi reproduces it in expectation.
 """
 from __future__ import annotations

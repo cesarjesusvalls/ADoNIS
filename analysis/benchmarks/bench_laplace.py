@@ -1,34 +1,14 @@
-"""What the Laplace/Occam factor costs -- and whether the cheap route is accurate enough to use.
+"""Cost and accuracy of the Laplace/Occam log-det term: Gauss-Newton by-product vs autodiff exact Hessian
+vs MINUIT HESSE, at a real profile node (one dial pinned away from the best fit, the rest re-minimised).
 
-The correction needs `log det V_nuis` at EVERY node of a profile scan, where V_nuis is the covariance of
-the nuisance dials with the scanned dial held fixed.  There are three ways to get it and they are not
-interchangeable:
+  A  GAUSS-NEWTON   V = (J^T W J)^-1 from the inner fit's own J -- free, but drops the Hessian's
+                    residual term sum_b r_b d2m_b, exact only in the small-residual limit.
+  B  AUTODIFF EXACT  forward-over-reverse Hessian-vector products, O(n) passes, exact.
+  C  MINUIT HESSE    finite differences, ~2(n-1)^2 objective evaluations; the honest MINUIT route, since
+                    the covariance migrad() accumulates is a path-dependent quasi-Newton approximation.
 
-  A  GAUSS-NEWTON, FREE.        The inner fit already built J at the solution, so V = (J^T W J)^-1 is a
-                               decomposition away -- microseconds, and NOTHING extra is evaluated.  But
-                               J^T W J is not the Hessian: it drops sum_b r_b d2m_b, exact only in the
-                               small-residual limit.  On real data the residual is O(sqrt(ndf)) and that
-                               term is finite.  The Occam factor is a log-det of exactly the matrix being
-                               approximated, so "free" is worth nothing until the approximation is checked.
-
-  B  AUTODIFF EXACT HESSIAN.    Forward-over-reverse: ~n hessian-vector products for the full matrix.
-                               O(n) passes, and exact.
-
-  C  MINUIT HESSE.              Finite differences, ~2(n-1)^2 objective evaluations, each a full pass over
-                               the resident events.  MINUIT's other covariance -- the one migrad()
-                               accumulates -- is a quasi-Newton approximation built along the path taken,
-                               and feeding that into a log-det puts an uncontrolled, path-dependent error
-                               into the very factor the correction is about.  So HESSE is the honest
-                               MINUIT route, and it is the expensive one.
-
-This measures all three AT A REAL NODE -- one dial pinned away from the best fit, the rest re-minimised --
-rather than scaling a free-parameter number by hand, because fixing a dial changes the dimension (n-1,
-not n) and moves the point at which the Hessian is taken.
-
-THE ACCURACY QUESTION IS THE POINT.  A difference `d` in log det V shifts the Occam-corrected chi2 by `d`,
-so it is directly comparable to the 1-sigma scale of Delta chi2 = 1.  If A and B agree to << 1 the free
-route is vindicated and the O(n^2) one is simply waste; if they do not, that is a correctness finding
-about the corner scans, not a benchmark.
+A log-det difference `d` shifts the Occam-corrected chi2 by `d`, so A and B are compared directly
+against the Delta-chi2=1 scale rather than against each other's cost.
 
     srun ... python -m analysis.benchmarks.bench_laplace --sig-cap 60000 --nodes 4
 """

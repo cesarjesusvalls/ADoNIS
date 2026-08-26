@@ -1,21 +1,20 @@
-"""Section 4 coverage toys: does the fit's (quadratic, at-BFP) error actually cover?
+"""Coverage toys: does the fit's (quadratic, at-BFP) error actually cover?
 
-One ensemble, the SAME 16 dials + 20 samples as the closure.  Per toy:
-  1. theta*  = nominal + prior * N(0,1)   on the 16 fitted dials     (throw from the prior; Eb_shift
-     floored at its physical boundary so it stays recoverable).
-  2. data    = model(theta*)  [exact nonlinear reweight]  +  N(0, sigma_bin)   (STAT throw at the fit's
-     own per-bin error -- WITHOUT the noise the Asimov self-fit is degenerate, pull == 0).
+One ensemble, the SAME dials + samples as the closure.  Per toy:
+  1. theta*  = nominal + prior * N(0,1) on the fitted dials (throw from the prior; Eb_shift floored at
+     its physical boundary so it stays recoverable), or a FIXED truth if the config asks for one.
+  2. data    = model(theta*) [exact nonlinear reweight] + N(0, sigma_bin) (a STAT throw at the fit's own
+     per-bin error -- without it the Asimov self-fit is degenerate, pull == 0).
   3. blind LM fit from nominal -> theta_fit, V.
   4. record pull_k = (theta_fit_k - theta*_k)/sqrt(V_kk) and chi2_data.
 
-Over the ensemble: the pooled pull must be ~N(0,1) (the quadratic error is calibrated / the likelihood is
-locally Gaussian) and chi2_data ~ chi2(nbins - k_eff).  coverage_fig.py renders both.
+Over the ensemble: the pooled pull should be ~N(0,1) (the quadratic error is calibrated / the likelihood
+is locally Gaussian) and chi2_data ~ chi2(nbins - k_eff).
 
-The engine (6 banks) is loaded ONCE; the toys loop over it.  Shard with S4_TOY_BASE across a SLURM array;
-the per-shard npz are concatenated by coverage_fig.py.  Saves incrementally (preemption-safe).
+The engine is loaded ONCE; the toys loop over it.  Shard with S4_TOY_BASE across a SLURM array; the
+per-shard npz are meant to be concatenated downstream.  Saves incrementally (preemption-safe).
 
-Env: S4_NTOYS (default 40)  S4_TOY_BASE (default 0)  ALTGEN_NIT (default 30)  ADONIS_LABEL (sec4_coverage)
-     + the S4_*_CHUNKS bank caps from multisample.
+Env: S4_TOY_BASE, ADONIS_FIT_CONFIG; toy count/iterations/fixed-truth come from the config's "toys" stage.
 """
 import os
 import sys
@@ -34,13 +33,10 @@ THROW_REACH = {"Eb_shift": (0.0, 4.0)}
 
 
 def _throw_truth(eng, subset, real_prior, rng):
-    """One toy truth drawn from the REAL prior (legacy ensemble; see S4_FIXED_TRUTH for the other mode).
+    """One toy truth drawn from the prior (see the config's fixed_truth option for the alternative mode).
 
-    Throwing the truth from the prior -- not holding it fixed -- is what makes the toy spread comparable
-    to a MAP/posterior width.  At a FIXED truth sitting at the prior centre the estimator is shrunk toward
-    the right answer, so Var(theta_hat) = (F+P)^-1 F (F+P)^-1 < (F+P)^-1 and the pull comes out at
-    sqrt(F/(F+P)) < 1 by construction -- narrowest exactly on the prior-dominated dials.  Averaged over
-    truths drawn from the prior it is (F+P)^-1 and the pull is 1.
+    Throwing from the prior -- rather than holding truth fixed at its centre -- is what makes the
+    ensemble pull match N(0,1); a fixed truth at the prior centre under-covers on prior-dominated dials.
     """
     star = eng.th0.copy()
     for k in subset:

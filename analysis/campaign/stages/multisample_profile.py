@@ -1,4 +1,4 @@
-"""Section 4 profile study: is the fit's QUADRATIC (Gauss-Newton, at-BFP) error actually the likelihood?
+"""Profile study: is the fit's QUADRATIC (Gauss-Newton, at-BFP) error actually the likelihood?
 
 The closure quotes sigma = sqrt(diag(V)), V = (J^T W J + prior)^-1 at the BFP -- the parabolic (Laplace)
 approximation of the likelihood curvature.  This checks it directly, per dial, by PROFILING the EXACT
@@ -6,16 +6,15 @@ nonlinear chi2:
 
   for each fitted dial k:
     * scan theta_k over BFP +/- 3 sigma_post,k  (marginal sigma from V),
-    * at each grid node FIX theta_k and re-minimize chi2 over the OTHER 15 dials (LM) -> profile chi2(theta_k),
+    * at each grid node FIX theta_k and re-minimize chi2 over the other dials (LM) -> profile chi2(theta_k),
     * compare Delta chi2_profile(theta_k)  vs  the parabola (theta_k - BFP_k)^2 / sigma_post,k^2.
 
-If the two agree over +/-3 sigma the marginal error is trustworthy; a dial whose exact profile is skewed or
-walls off (Eb_shift's floor is the candidate) shows up as a departure.  Reuses the closure's engine + fit;
-reads the BFP + injected data from an existing closure run (so it profiles the SAME likelihood).
+If the two agree over +/-3 sigma the marginal error is trustworthy; a dial whose exact profile is skewed
+or walls off shows up as a departure.  Reads the BFP + injected data from an existing closure run, so it
+profiles the SAME likelihood.
 
-Env: ADONIS_LABEL (closure npz to read + profile, default sec4_closure_random16),
-     S4_PROFILE_N (grid nodes per side, default 6), ALTGEN_NIT (inner-fit iters, default 20)
-     + the S4_*_CHUNKS bank caps.  Writes output/altgen/<label>_profile.npz.
+Env: ADONIS_FIT_CONFIG, S4_PROF_BASE/S4_PROF_N (dial-level sharding).  Writes
+output/altgen/<label>_profile.npz.
 """
 import os
 import sys

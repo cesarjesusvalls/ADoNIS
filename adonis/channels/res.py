@@ -3,10 +3,8 @@
 sigma_RES = sum over the 3 CC channels {n->n pi+, n->p pi0, p->p pi+} of E_u[ amps2 * flux *
 initwgt * spinavg * event.Weight() ], using the ported mappers (Beam/QESpectral/ThreeBody) + the
 batched exclusive DCC matrix element (dcc_current.exclusive_amps2_batch).  The mu+N+pi final state
-is sampled with two isotropic 2-body splits (same integral as ACHILLES's t-channel sampler, higher
-variance -> needs high N, now affordable via the vectorised current).  10 random dims: [0:4] struck
-nucleon, [4] beam, [5] s23, [6:8] split-A angles, [8:10] split-B angles.  nu_mu + 12C, T2K flux.
-ACHILLES target sigma_RES ~ 1.698e-5 nb.
+is sampled with two isotropic 2-body splits.  10 random dims: [0:4] struck nucleon, [4] beam,
+[5] s23, [6:8] split-A angles, [8:10] split-B angles.  nu_mu + 12C, T2K flux.
 """
 from __future__ import annotations
 
@@ -237,9 +235,8 @@ def _sample_3body_dispatch(k_nu, p_struck, m_pi, m_Nf, u):
 
 def free_nucleon_weights(k_nu, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, u, chunk=50_000):
     """Per-event FREE-nucleon single-pion RES weight w = amps2 * flux_factor * SPIN_AVG * J_3body
-    (NO beam/flux J_beam factor), for a nucleon AT REST.  The one primitive behind BOTH the T2K-flux
-    free-proton generator (free_proton.generate_H) and the monochromatic sigma(E_nu) scan (analysis Fig 2,
-    anl_bnl) -- so the free-nucleon weight algebra lives in exactly one place.
+    (NO beam/flux J_beam factor), for a nucleon AT REST.  Shared by the T2K-flux free-proton generator
+    (free_proton.generate_H) and the monochromatic sigma(E_nu) scan.
 
     k_nu (n,4): neutrino 4-momentum per event.  (itiz, pi_pid) select the amps2 channel.  The struck nucleon
     is placed AT REST with mass `had_mass` (the INCOMING nucleon); the 3-body phase space is sampled toward the

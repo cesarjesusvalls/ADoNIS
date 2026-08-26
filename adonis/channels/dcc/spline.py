@@ -2,8 +2,8 @@
 the Forsythe-Malcolm-Moler cubic spline, called on 4-point stencils in interpolate_amp.
 
 ACHILLES interpolates the DCC amplitude table in (W, Q^2) with this spline (NOT bilinear);
-matching it removes the residual ~2-3% deficit at the lowest Q^2, where the tabulated
-amplitude is irregular and linear vs cubic genuinely diverge.
+matching it removes the deficit at the lowest Q^2, where the tabulated amplitude is
+irregular and linear vs cubic genuinely diverge.
 
 The spline value seval(xout) is LINEAR in the tabulated ordinates y (the knots x are
 fixed), so this is a linear operator -> fully differentiable, and we apply it to the

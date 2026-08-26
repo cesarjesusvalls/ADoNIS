@@ -1,20 +1,14 @@
 """Aggregate the MH-vs-NUTS grid: convergence gate FIRST, efficiency only if it passes.
 
-The order is not cosmetic.  An efficiency ratio between two samplers that are not sampling the same
-distribution is meaningless, and the failure is silent -- a badly-mixing chain reports a small ESS, which
-LOOKS like an honest efficiency number rather than a broken one.  So:
-
   GATE 1  every parameter, every method: rank-normalised split-Rhat < RHAT_MAX.
   GATE 2  MH and NUTS agree on each 1-D marginal: |mean_MH - mean_NUTS| within a few combined MCSE, and
-          the posterior sd's agree to a few percent.  This is the "same stationary distribution" check;
-          without it, a sampler that never left a mode would look wonderfully efficient.
+          the posterior sd's agree to a few percent (the "same stationary distribution" check).
 
-Only then the efficiency table, and it separates:
+Only then the efficiency table, which separates:
 
-  ESS/s                      hardware- and implementation-specific (A100, this kernel, this harness)
+  ESS/s                      hardware- and implementation-specific
   ESS per model evaluation   portable across implementations of the same model
-  ESS per EVENT-PASS         portable across hardware AND model implementations; the unit the optimiser
-                             report uses, so the two studies can be read together
+  ESS per EVENT-PASS         portable across hardware AND model implementations
 
     python -m analysis.benchmarks.bench_mcmc_report [--glob 'output/altgen/mcmc_*.npz']
 """

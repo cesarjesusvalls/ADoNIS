@@ -1,32 +1,15 @@
-"""Gauss-Newton and MIGRAD, both driven by the SAME `FitKernel`, both instrumented the same way.
+"""Gauss-Newton and MIGRAD, both driven by the same `FitKernel` and instrumented identically.
 
-The only thing that differs between the two arms here is which derivative object the algorithm asks
-the kernel for:
+The two arms differ only in which derivative object they ask the kernel for:
 
-    gn        residuals + full forward Jacobian   -> normal equations, second-order information for free
-    migrad+g  scalar chi2 + one reverse-mode VJP  -> quasi-Newton, curvature accumulated over steps
-    migrad    scalar chi2 only                    -> gradient built by finite differences, ~2n calls each
+    gn        residuals + full forward Jacobian   -> normal equations
+    migrad+g  scalar chi2 + one reverse-mode VJP  -> quasi-Newton
+    migrad    scalar chi2 only                    -> gradient by finite differences
 
-Everything else -- objective, prior block, whitening, dead bins, box, start point, precision, device --
-is the kernel's, identically for all three.
-
-TWO THINGS THAT ARE DELIBERATELY NOT DONE HERE:
-
-  NO POST-FIT WORK INSIDE THE CLOCK.  `trf_fit` computes its own covariance and Newton-decrement
-  diagnostic after fitting -- one model evaluation and TWO Jacobians (it calls eng.jac twice at the
-  same theta) -- which is not minimisation.  The covariance is still available: it is J^T J at the
-  solution, and `covariance()` builds it from the Jacobian the fit already computed, after the clock
-  has stopped.
-
-  NO COMPARISON OF NATIVE STOPPING RULES.  GN stops on the projected gradient, MIGRAD on EDM; they
-  therefore stop at different accuracies and a single wall-clock number each is not a comparison.  Every
-  objective evaluation is timestamped and tagged with the kernel's event-pass count, so the honest
-  question -- how long did each take to reach the SAME accuracy -- is answerable after the fact from
-  `Trace`.  `time_to()` does that.
-
-Both arms are instrumented at the objective, not at the iteration, because that is the one place both
-algorithms genuinely share.  The recording costs a copy of n floats against a model pass of milliseconds,
-and it is paid identically by both, so it cannot bias the comparison.
+Objective, prior block, whitening, dead bins, bounds, start point and device all come from the
+kernel, identically for both methods.  Every objective evaluation is timestamped and tagged with the
+kernel's event-pass count (`Trace`), so a comparison against a common accuracy target can be made
+after the fact via `time_to`.
 """
 from __future__ import annotations
 
@@ -39,9 +22,8 @@ import numpy as np
 class Trace:
     """Every objective evaluation: (wall time, chi2, event passes, x).
 
-    The BEST-SO-FAR curve derived from this is what time-to-accuracy is measured on -- a trial point a
-    line search rejects is work the method paid for, but it is not an answer the method would have
-    returned, so it counts in the cost and not in the accuracy.
+    `best_so_far()` derives the running-minimum curve used for time-to-accuracy: a rejected trial
+    point counts toward cost but not toward the reported accuracy.
     """
 
     def __init__(self, kern):
@@ -95,10 +77,8 @@ class FitResult:
     J: np.ndarray | None = field(default=None, repr=False)
 
     def covariance(self):
-        """(J^T J)^-1 at the solution, from the Jacobian the fit already built -- AFTER the clock.
-
-        For Gauss-Newton this is free: the fit's last Jacobian IS the one the covariance needs, which is
-        the point of the comparison against HESSE's ~2n^2 objective evaluations.
+        """(J^T J)^-1 at the solution, computed from the Jacobian the fit already built, after the
+        clock has stopped.
         """
         if self.J is None:
             return None
@@ -109,9 +89,9 @@ class FitResult:
 def gn_fit(kern, x0, bounds=None, max_nfev=200, gtol=1e-8, xtol=1e-14, ftol=1e-14, trace=True):
     """Bound-constrained Gauss-Newton via scipy's trust-region reflective, on the kernel.
 
-    x_scale='jac' is not optional: the M_A_res/delta_strength block is degenerate at corr ~ -0.995, and
-    with unit scaling TRF stops on the step tolerance while the projected gradient is still O(0.1) --
-    a reported "solution" that is not a stationary point.
+    x_scale='jac' is required: with unit scaling, TRF can stop on the step tolerance while the
+    projected gradient is still large on a near-degenerate parameter block -- a reported "solution"
+    that is not a stationary point.
     """
     from scipy.optimize import least_squares
 
@@ -145,10 +125,8 @@ def gn_fit(kern, x0, bounds=None, max_nfev=200, gtol=1e-8, xtol=1e-14, ftol=1e-1
 def migrad_fit(kern, x0, bounds=None, tol=0.1, max_calls=100000, use_grad=True, strategy=1, trace=True):
     """One MIGRAD fit on the kernel.  `use_grad=False` leaves MINUIT to build the gradient itself.
 
-    VALUE AND GRADIENT COME FROM SEPARATE CALLS ON PURPOSE.  MIGRAD's line search evaluates the
-    function at several trial points before requesting a gradient; sharing one cached `value_and_grad`
-    between them would pay for a VJP at every trial point, whether or not a gradient is ever requested
-    there.
+    `fcn` and `grd` are separate calls by design: MIGRAD's line search evaluates chi2 at several
+    trial points before it ever requests a gradient, so they must not share a cached value_and_grad.
     """
     from iminuit import Minuit
 
@@ -198,11 +176,9 @@ def migrad_fit(kern, x0, bounds=None, tol=0.1, max_calls=100000, use_grad=True, 
 
 
 def time_to(trace, chi2_ref, targets):
-    """First point at which the best-so-far chi2 came within `eps` of `chi2_ref`.
-
-    Returns {eps: (t, passes, index)} with None where the target was never reached.  `chi2_ref` must be
-    the SAME reference for every method being compared -- the lowest chi2 any of them attained -- or the
-    comparison silently grades each method against its own idea of the minimum.
+    """First point at which the best-so-far chi2 comes within `eps` of `chi2_ref`, for each eps in
+    `targets`.  Returns {eps: (t, passes, index)}, None where never reached.  `chi2_ref` must be the
+    same value for every method being compared -- typically the lowest chi2 any of them attained.
     """
     t, cbest, p, _ = trace.best_so_far()
     out = {}
@@ -213,11 +189,10 @@ def time_to(trace, chi2_ref, targets):
 
 
 def dist_to(trace, x_ref, scale):
-    """Best-so-far max|x - x_ref|/scale along the trace, in the SAME best-so-far ordering as chi2.
+    """Best-so-far max|x - x_ref|/scale along the trace, in the same best-so-far ordering as chi2.
 
-    Accuracy in PARAMETER space, which is what a physics result is quoted in; chi2 proximity does not
-    imply it on a degenerate direction, and on this problem M_A_res/delta_strength are correlated at
-    -0.995, so the two curves genuinely differ.
+    Measures accuracy in parameter space rather than chi2: on a degenerate parameter direction, chi2
+    proximity does not imply parameter proximity.
     """
     t, _, p, xbest = trace.best_so_far()
     if not len(xbest):

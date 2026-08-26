@@ -1,17 +1,11 @@
-"""THE single entry point for the gradient-information figures (paper sections 2 and 3).
+"""Entry point for the gradient-information figures.
 
     python -m analysis.paper.grad_info.make                          # both figures
     python -m analysis.paper.grad_info.make fisher                   # only one
     python -m analysis.paper.grad_info.make --label multisample_carbon
 
-Both figures are views of ONE object: the 28-knob Jacobian in output/altgen/<label>.npz, produced by
-
-    python -m analysis.campaign.gate1
-
-`fisher` (constraints_per_subset) asks which knobs the data can constrain, per sample subset;
-`gradients` (multisample_grad_per_bin) shows where in the binned spectra each constrainable knob pulls.
-They were two directories built from the same npz by two commands with two different default labels,
-which is exactly how the two halves of one figure pair drift apart.
+Reads the Jacobian npz in output/altgen/<label>.npz, produced by `python -m analysis.campaign.gate1`.
+`fisher` = Fisher info per subset; `gradients` = per-bin gradient shapes.
 """
 import subprocess
 import sys

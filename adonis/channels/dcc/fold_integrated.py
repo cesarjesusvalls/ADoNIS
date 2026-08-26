@@ -1,5 +1,5 @@
-"""Faithful nuclear fold of the full hadron-tensor port (Phase-2.5): the differentiable
-neutrino-CC dsigma/dW,dQ2 built to match ACHILLES (RES_Spectral_Func) bit-for-bit.
+"""Faithful nuclear fold of the full hadron-tensor port: the differentiable neutrino-CC dsigma/dW,dQ2
+built to match ACHILLES (RES_Spectral_Func) bit-for-bit.
 
 Per event (kind-1 reweighting; the proposal is FIXED/detached, only the L.W weight
 carries the knobs -> exact gradients):
@@ -10,14 +10,14 @@ carries the knobs -> exact gradients):
   4. ACHILLES current_init on-shell rebalance of the photon energy:
         q'_0 = omega - E_removal - T_N,   T_N = sqrt(p^2+mqe^2) - mqe
         Q2_adj = |q_vec|^2 - q'_0^2       (the amplitude/cut use THIS, not bare Q2);
-  5. hard cuts (currents_pi_dcc.f90): W in [1076.957, 2000], Q2_adj in [0, 5e6] -> else 0;
+  5. hard cuts (currents_pi_dcc.f90): W in [W_THR, W_MAX], Q2_adj in [0, Q2_MAX] -> else 0;
   6. weight = (E'/E) sin(theta)            [leptonic phase space/flux, dOmega=2pi sin th dth]
             * k_pi(W)/W                    [piN 2-body phase space = fnuc k_pi/(16 pi^3 W)]
             * L_{mu,nu} W^{mu,nu}          [real CC lepton tensor x full hadron tensor].
 
 The hadron tensor W^{mu,nu}(W, Q2_adj) is the faithful amp_dcc_sl.f port (hadron_xsec);
 the lepton tensor uses the TRUE leptonic q (the true-q / adjusted-q split is ACHILLES's
-off-shell prescription). Reproduces the oracle dsigma/dW to relL2 ~ 4e-4.
+off-shell prescription).
 """
 from __future__ import annotations
 

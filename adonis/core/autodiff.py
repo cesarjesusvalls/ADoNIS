@@ -1,8 +1,7 @@
 """Differentiable Monte-Carlo kernel: the score-function weight, parameter
 bijections, and a pytree Adam.
 
-Enables float64 globally: finite-difference gradient validation and physics
-parameter fits are far better conditioned in double precision than float32.
+Enables float64 globally on import.
 """
 from __future__ import annotations
 
@@ -19,11 +18,10 @@ from jax import lax, tree_util
 def score_weight(prob: jax.Array) -> jax.Array:
     """Unit-valued factor whose gradient equals d log(prob).
 
-    Forward value is exactly 1 (the simulation is untouched); the derivative is
-    d/dtheta log(prob). Multiply one of these into a trajectory's carried weight
-    for each *sampled* random choice whose probability depends on a parameter,
-    deposit the product into a hard histogram bin, and the bin contents become
-    differentiable with the exact gradient d/dtheta E[counts].
+    Forward value is exactly 1; the derivative is d/dtheta log(prob). Multiply
+    one of these into a trajectory's carried weight for each *sampled* random
+    choice whose probability depends on a parameter, to get gradient
+    d/dtheta E[counts] in a downstream histogram.
     """
     return prob / lax.stop_gradient(prob)
 

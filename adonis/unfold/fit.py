@@ -1,21 +1,14 @@
-"""The unfolding fit: 10 template parameters + 28 physics knobs against 60 reco bins.
+"""The unfolding fit: template parameters and physics knobs against reco bins.
 
     mu_i(theta, c) = sum_j A_ij c_j  +  B_i(theta)
 
-The two halves differentiate differently because they are different:
+The signal term is exactly linear in c, so its Jacobian is A itself; the background term's
+dependence on the physics knobs theta needs one jvp per knob over the compact background bank.
 
-  * the signal term is exactly linear in c, so its Jacobian is A itself: no autodiff, no finite
-    differences -- d mu_i / d c_j = A_ij exactly, at every point.
-  * the background term needs the per-event weight w(theta), so its Jacobian comes from one jvp per
-    knob over the compact background bank -- the same machinery the Gate-I Jacobian uses.
-
-Templates carry no prior: an unfolded spectrum pulled toward the generator's prediction is not a
-measurement. The knobs carry the Gate-I priors (20% multiplicative, 4 MeV on E_b), making them a
-systematic rather than a second signal model.
-
-Uncertainties are Poisson on the reco bins, frozen at the data rather than recomputed from the current
-prediction: a sigma that moves with the model biases the fit toward whichever direction inflates the
-error, non-negligible at these occupancies (min 11.5 signal events per bin).
+Templates carry no prior -- an unfolded spectrum pulled toward the generator's prediction would not
+be a measurement.  The physics knobs carry independent priors, making them a systematic rather than
+a second signal model.  Uncertainties are Poisson on the reco bins, frozen at the data rather than
+recomputed from the current prediction.
 """
 from __future__ import annotations
 
@@ -75,9 +68,9 @@ class UnfoldEngine:
     def model(self, c, f, th, det=None):
         """mu_i = d_i * [ sum_jb A_ijb c_j f_b + sum_b B_ib(theta) f_b ].
 
-        The detector dial d_i scales the whole content of reco bin i -- signal and background together --
-        because a detector normalisation uncertainty does not know what produced the event.  That makes
-        it the only block that acts in RECO space; templates act in truth space and flux in true energy.
+        The detector dial d_i scales all of reco bin i, signal and background together -- a detector
+        normalisation does not know what produced the event.  It is the only block acting in reco
+        space; templates act in truth space, flux in true energy.
         """
         base = np.einsum("ijb,j,b->i", self.A, c, f) + self.background(th) @ f
         return base if det is None else det * base
@@ -120,26 +113,22 @@ class UnfoldEngine:
         return d, np.sqrt(np.maximum(d, 1e-9))
 
     def dial_impact(self, sigma, th=None):
-        """Per-knob impact on the prediction in units of the data error:
+        """Per-knob impact on the prediction, in units of the data error:
 
             impact_k = || (dB/dtheta_k) * prior_k / sigma ||_2
 
-        how far a ONE-SIGMA-PRIOR move of knob k pushes the prediction, measured against the uncertainty
-        that would notice.  Prior-weighted because the knobs are not commensurable: a 20% move of a rate
-        normalisation and a 4 MeV move of E_b only compare once each is in units of its own range.
+        How far a one-sigma-prior move of knob k pushes the prediction, measured against the
+        uncertainty that would notice.  Prior-weighted because the knobs are not commensurable --
+        e.g. a fractional rate normalisation and an absolute energy shift only compare once each is
+        in units of its own prior width.
         """
         J = self._bkg_jac(self.th0 if th is None else th).sum(axis=1)
         return np.linalg.norm(J * self.prior[None, :] / np.asarray(sigma)[:, None], axis=0)
 
     def select_dials(self, sigma, threshold=1.0, th=None, log=print):
         """The knobs worth floating: those whose prior-sized move shifts the prediction by at least
-        `threshold` sigma.  Measured here, the 28 span four orders of magnitude -- kF_sf at 11.1 down to
-        s_conv at 0.000 -- because they reweight only the background, and most describe physics this
-        selection never sees.
-
-        Note which way the error moves: dropping a knob can only SHRINK the template errors, so a cut is
-        never conservative.  threshold=0.1 keeps 20 and costs nothing; threshold=1.0 keeps ~11 (a
-        prior-sized move must be worth at least one sigma) and costs about 1% of the quoted error.
+        `threshold` sigma.  Dropping a knob can only shrink the reported template errors, never
+        inflate them, so a threshold cut is never conservative.
         """
         imp = self.dial_impact(sigma, th)
         idx = np.flatnonzero(imp >= threshold)
@@ -153,16 +142,15 @@ class UnfoldEngine:
 
         Four blocks, four prior treatments:
 
-            c      templates, in TRUTH space, NO prior.  An unfolded spectrum pulled toward the
-                   generator is not a measurement.
-            f      flux, in TRUE ENERGY, CORRELATED 10% prior (whitened by its Cholesky factor).
-            theta  cross-section knobs, independent Gate-I priors (20%, 4 MeV on E_b).
-            d      detector, in RECO space, independent 5% priors -- one per reco bin.
+            c      templates, in truth space, NO prior -- an unfolded spectrum pulled toward the
+                   generator would not be a measurement.
+            f      flux, in true energy, correlated prior (whitened by its Cholesky factor).
+            theta  physics knobs (the `knob_idx` subset), independent priors.
+            d      detector, in reco space, independent per-reco-bin priors.
 
-        The detector block adds 60 parameters to a 60-bin fit, which looks under-determined and is not:
-        every one of them carries its own prior, so each contributes a constraint alongside its
-        parameter.  What it does do is inflate the template errors, because a per-bin normalisation
-        freedom is exactly what the templates are trying to measure through.
+        The detector block adds one parameter per reco bin; each carries its own prior, so the fit
+        is not under-determined, but the added normalisation freedom does inflate the template
+        errors.
         """
         knob_idx = np.arange(K.NPAR) if knob_idx is None else np.asarray(knob_idx, int)
         nk = len(knob_idx)

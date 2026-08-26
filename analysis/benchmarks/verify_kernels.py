@@ -1,28 +1,24 @@
 """Acceptance test for `adonis.fit.kernels.FitKernel`: does the fused device path compute the SAME
 objective, gradient and Jacobian as the host path the fits have been using?
 
-This is the gate on Phase 1 of docs/bench_fair_plan.md.  No timing is taken, and none should be believed,
-until every check here passes -- the whole point of the rewrite is that the two minimisers stop sitting
-on differently-optimised implementations, and that is worth nothing if the new implementation is wrong.
+No timing from the kernel should be believed until every check here passes.  The reference is
+deliberately the HOST path (`eng.model` -> np.bincount, `eng.jac` -> per-event derivatives binned on the
+host); the kernel has to reproduce it, not the other way round.
 
-The reference is deliberately the HOST path (`eng.model` -> np.bincount, `eng.jac` -> per-event
-derivatives shipped back and binned on the host), because that is what produced every physics result in
-the paper so far.  The kernel has to reproduce it, not the other way round.
-
-WHAT IS CHECKED, at several theta (start, truth, midpoint, a random displacement):
+Checked, at several theta (start, truth, midpoint, a random displacement):
 
   1. model        kern.model(x)      vs  eng.model(th)
   2. residuals    kern.residuals(x)  vs  trf_fit's own expression, (eng.model - data)*w  ++  prior block
   3. chi2         kern.chi2(x)       vs  the host sum of squares of the same
-  4. gradient     kern.grad(x)       vs  2 J^T W r + 2 (x-x0)/prior^2 built from the HOST Jacobian
+  4. gradient     kern.grad(x)       vs  2 J^T W r + 2 (x-x0)/prior^2 built from the HOST Jacobian,
                                      and vs a central finite difference of the host chi2
   5. jacobian     kern.jac(x)        vs  vstack([eng.jac(th, subset)*w, diag(1/prior)])
   6. batching     jac at batch n, 5, 1 -- identical results, different dispatch counts
   7. counters     the event-pass bookkeeping matches what was actually asked for
 
-The gradient is checked TWICE on purpose.  Agreement with J^T W r tests reverse mode against forward
-mode through the same binning; agreement with a finite difference tests both of them against the
-function itself, which is the only check that would catch a binning map that is consistently wrong.
+The gradient is checked against both references: J^T W r tests reverse mode against forward mode
+through the same binning, while the finite difference is the only check that would catch a binning map
+that is consistently wrong.
 
 Usage:
     srun --jobid=<ID> --overlap python -m analysis.benchmarks.verify_kernels [config] [--sig-cap N]

@@ -1,29 +1,16 @@
 """Minimiser benchmark on the section-4 closure: Gauss-Newton vs MIGRAD, with and without gradients.
 
-The section's claim is that autodiff changes what a fit COSTS, not just what it can express.  This is the
-measurement behind that claim, on the real 17-dial multisample closure rather than a toy: the same data,
-the same start point (nominal, 37 sigma from the truth), the same convergence target, three minimisers.
-
-    gn          our Gauss-Newton / trust-region-reflective fit.  Uses the full FORWARD Jacobian
-                (one JVP per dial) and solves the normal equations -- second-order information for free
-                because the model is a sum of squares.
+    gn          Gauss-Newton / trust-region-reflective.  Full FORWARD Jacobian (one JVP per dial),
+                normal equations -- second-order information for free since the model is a sum of squares.
     migrad+g    MIGRAD driven by the REVERSE-mode gradient.  One VJP per call regardless of dial count.
     migrad      MIGRAD with no gradient supplied, so it builds one by FINITE DIFFERENCES: ~2 x ndial
-                extra cost-function calls per gradient, each a full pass over the resident events.
+                extra cost-function calls per gradient.
 
-WHAT IS TIMED.  Only the minimisation.  Bank loading, closure-data construction and JIT compilation all
-happen before the clock starts, and every callable is warmed up on the exact argument shapes it will see.
-Timing a JIT compile as if it were arithmetic is the classic way to make a JAX benchmark meaningless --
-the first call to the gradient objective here costs seconds and every later one milliseconds.
-
-GPU.  There is NO GPU option in MIGRAD and there could not be: it is a CPU C++ minimiser doing 17-dim
-linear algebra, microseconds per step.  What runs on the GPU is the COST FUNCTION -- the model evaluation
-over ~2.4M resident events -- for all three methods alike.  The script prints the JAX device it actually
-got, because a silent fall back to CPU would change every number here by more than the effect measured.
-
-REPEATS.  The fits are deterministic (Asimov data, fixed start), so repeats measure the TIMING spread,
-not a spread in results; the script asserts the results are in fact identical across repeats and reports
-median and min-max of the wall time.  Anything else would be a bug in the timing, not physics.
+Only the minimisation is timed: bank loading, closure-data construction and JIT compilation happen
+before the clock starts, and every callable is warmed up on its exact argument shapes first.  MIGRAD is
+CPU-only; the COST FUNCTION (the model evaluation over the resident events) runs on the GPU for all
+three methods alike.  Fits are deterministic (Asimov data, fixed start), so repeats measure TIMING
+spread only; the script asserts results are identical across repeats.
 
 Usage:
     srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_minimizers [config] [--reps N] [--methods ...]
@@ -52,11 +39,9 @@ def _bounds(eng, subset):
 def _migrad(eng, subset, x0, lo, hi, use_grad, tol, max_calls, f, vg):
     """One MIGRAD fit.  Returns (x, (nvalue, nderiv), chi2, seconds) with ONLY migrad() in the clock.
 
-    `f` and `vg` are the ALREADY-COMPILED objectives, passed in rather than built here.  Building them
-    inside this function is the mistake that produced the first two rounds of numbers: eng.chi2_fn()
-    returns a FRESH jax.jit wrapper each call, with an empty compilation cache, so every repeat silently
-    recompiled inside the timed region -- 65 of MIGRAD's 72 seconds were XLA compiling, and the effect
-    was invisible because it hit all repeats equally and so produced a tight, convincing spread.
+    `f` and `vg` must be the ALREADY-COMPILED objectives, passed in rather than built here: eng.chi2_fn()
+    returns a FRESH jax.jit wrapper on each call, with an empty compilation cache, so building them
+    inside this function would recompile on every repeat.
     """
     from iminuit import Minuit
 
@@ -98,10 +83,9 @@ def _migrad(eng, subset, x0, lo, hi, use_grad, tol, max_calls, f, vg):
 def _gn(eng, subset, tol, nit):
     """One Gauss-Newton (TRF) fit, clock around the fit only.
 
-    NOTE the clock includes trf_fit's POST-CONVERGENCE work -- one model evaluation and two Jacobians
-    for the covariance and the Newton-decrement diagnostic -- which is not minimisation.  main() knows
-    the measured per-call costs and reports the corrected figure alongside the raw one rather than
-    quietly crediting Gauss-Newton with work it does after it has already found the minimum.
+    The clock includes trf_fit's POST-CONVERGENCE work (one model evaluation and two Jacobians for the
+    covariance and Newton-decrement diagnostic), which is not minimisation; main() reports a corrected
+    figure alongside the raw one.
     """
     from adonis.fit.fitters import trf_fit
 

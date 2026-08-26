@@ -1,20 +1,14 @@
 """Validating a set of shards before merging them.
 
-A merged product is only meaningful if its shards came from ONE run definition and cover ALL of the
-work.  A NaN-fraction threshold on the merged grid is not a substitute for either check: it can accept
-an incomplete scan silently backfilled at the wrong resolution, or merge shards whose axes agree but
-whose injected truth, sigma or estimator do not.
-
-This module checks the claims shards make about themselves (`adonis.fit.provenance`) and checks
-coverage exactly, not statistically:
+Checks that shards came from ONE run definition and cover ALL of the intended work, via each
+shard's stamped provenance (`adonis.fit.provenance`) and an exact coverage check over row indices:
 
     rep = merge.check(files, arrays)
-    rep.rows(covered=[(0, 7), (7, 7)], grid=21, what="M_A_res x Eb_shift")
+    rep.rows(covered=[(0, 7), (7, 7)], grid=21, what="<axis description>")
     rep.raise_if_bad()          # or rep.emit() to warn only
 
-A shard written before provenance stamping cannot be verified and is a WARNING rather than an error,
-since it may not be re-runnable.  A stamped shard that disagrees with its siblings is always an ERROR:
-once the information exists, ignoring it is how it rots.
+A shard with no provenance stamp is a WARNING (it predates stamping and may not be re-runnable); a
+stamped shard that disagrees with its siblings is always an ERROR.
 """
 from __future__ import annotations
 
@@ -47,11 +41,9 @@ class Report:
         self.warnings.append(msg)
 
     def rows(self, covered, grid, what=""):
-        """Assert a set of (base, n) row blocks tiles range(grid) exactly.
-
-        A statement about the WORK, not a proxy for it: which rows were assigned and which came back.
-        A gap is named, and an overlap is reported too -- two shards writing the same rows means one of
-        them computed something else than its filename claims.
+        """Assert a set of (base, n) row blocks tiles range(grid) exactly: every row covered once,
+        none outside the grid.  A gap is reported as missing rows; an overlap (two shards writing the
+        same row) is reported as a warning.
         """
         seen = {}
         for base, n in covered:
@@ -76,8 +68,8 @@ class Report:
                        + (" ..." if len(names) > 6 else ""))
 
     def emit(self, printer=print):
-        """Print what has not been printed yet.  A merge checks in stages -- provenance first, coverage
-        once the candidates are grouped -- so this is called more than once and must not repeat itself."""
+        """Print what has not been printed yet.  Safe to call more than once (e.g. once per check
+        stage) without repeating earlier output."""
         for w in self.warnings[self._nw:]:
             printer(f"[warn] {self.what}: {w}")
         for e in self.errors[self._ne:]:
@@ -135,7 +127,7 @@ def check(files, arrays, what="") -> Report:
 
 
 def _runs(xs) -> str:
-    """[0,1,2,7] -> '0-2,7'.  A gap of 300 rows should read as one range, not 300 numbers."""
+    """[0,1,2,7] -> '0-2,7': collapses consecutive integers into ranges for compact messages."""
     xs = sorted(xs)
     out, i = [], 0
     while i < len(xs):

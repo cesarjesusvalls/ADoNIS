@@ -1,21 +1,13 @@
-"""Separable VEGAS importance grid (frozen-after-warm-up), the learned cousin of
-`spectral.SpectralImportanceSampler`.
+"""Separable VEGAS importance grid (frozen-after-warm-up).
 
-The grid remaps a uniform hypercube point y in [0,1]^d to x in [0,1]^d through a per-axis
-piecewise-linear inverse-CDF (one table of bin edges per axis), concentrating samples where the
-integrand is large.  It is built ONLY from the integrand during a short warm-up (accumulate -> refine,
-a few iterations), then FROZEN -- so it is a fixed proposal: per-event weights stay exact (the grid
-Jacobian is folded into the weight) and ADoNIS differentiability is untouched (the sampler is detached;
-gradients flow through the JAX reweights, not the proposal).
+Remaps a uniform hypercube point y in [0,1]^d to x in [0,1]^d via a per-axis piecewise-linear
+inverse-CDF, concentrating samples where the integrand is large. Built from the integrand during
+a short warm-up (accumulate -> refine, a few iterations), then FROZEN into a fixed proposal:
+per-event weights stay exact (the grid Jacobian is folded in) and the sampler is detached, so
+ADoNIS differentiability is untouched -- gradients flow through the JAX reweights, not the
+proposal.
 
-Pure numpy (generation is detached).  Default-OFF in the generators: no grid -> bit-identical sampling.
-
-Algorithm (Lepage VEGAS, simplified-but-faithful):
-  map(y):      per axis, y in bin i=floor(y*N), x = edge[i] + frac*(edge[i+1]-edge[i]);
-               dx/dy = N*(edge[i+1]-edge[i]); jac = prod over axes.
-  accumulate:  add f^2 into the x-bin it fell in, per axis (f = the full event weight = integrand*jac).
-  refine:      smooth + damp (^alpha) the per-bin f^2, then redistribute edges so every new bin carries
-               equal cumulative importance (exact piecewise-linear inverse of the cumulative).
+Pure numpy. Default-OFF in the generators: no grid means bit-identical sampling.
 """
 from __future__ import annotations
 import numpy as np
@@ -72,7 +64,7 @@ class VegasGrid:
         """Rebin each axis exactly as ACHILLES AdaptiveMap::Adapt: 3-point smooth the accumulated f^2,
         normalize to r_i = sm_i/sum(sm), apply the Lepage damping importance fac_i = ((r_i-1)/ln r_i)^alpha
         (-> 1 as r->1, -> 0 as r->0), then place new edges so every bin carries equal cumulative `fac`.
-        alpha=1.5 matches ACHILLES VegasParams::alpha_default.  Resets the accumulator."""
+        The default `alpha` matches ACHILLES VegasParams::alpha_default.  Resets the accumulator."""
         if self.frozen:
             return
         for ax in range(self.ndim):

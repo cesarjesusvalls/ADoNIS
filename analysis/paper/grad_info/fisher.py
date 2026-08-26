@@ -1,27 +1,11 @@
-"""Paper section 3 -- Fisher information per subset: what is worth fitting, and why not.
+"""Fisher information per subset (Gate I): does the DATA determine each knob, given a prior?
 
-Gate I asks, for a given subset of bins: with a prior on every knob, does the DATA (not the prior)
-determine it?  Asimov posterior V = (J^T C^-1 J + Pi^-1)^-1; a knob is FIT when
-    shrinkage = sigma_post / prior < 0.5     (the data at least halves the prior width).
+Asimov posterior V = (J^T C^-1 J + Pi^-1)^-1; a knob is FIT when shrinkage = sigma_post/prior < 0.5.
+Reports both raw = 1/sqrt(F_kk)/prior (other knobs fixed) and marg = sqrt(V_kk)/prior (other knobs
+free): raw > 0.5 is INVISIBLE, raw < 0.5 with marg > 0.5 is DEGENERATE, both < 0.5 is MEASURABLE.
 
-sigma_post is MARGINALIZED (a diagonal element of V), so a knob fails either because the data cannot
-SEE it or because another knob can MIMIC it.  Those are physically opposite and want opposite fixes, so
-we report both axes:
-    raw  = 1/sqrt(F_kk) / prior   -- other knobs held FIXED: pure sensitivity, degeneracy-blind
-    marg = sqrt(V_kk)  / prior    -- other knobs free: what the fit actually delivers
-  raw < 0.5, marg < 0.5  -> MEASURABLE
-  raw < 0.5, marg > 0.5  -> DEGENERATE (seen clearly, cannot be disentangled -- a better observable can fix it)
-  raw > 0.5              -> INVISIBLE  (the sample carries no information at this precision -- nothing can)
-
-Everything is a row slice of ONE persisted Jacobian, so every subset is exact and costs no bank pass.
-Fisher is additive (F = sum_s F_s), so stacking samples is stacking rows -- which is why the same
-machinery answers both "which observable class measures this knob" and "which SAMPLE does".
-
-WHICH slices get plotted is not hardcoded here: `configs/paper/sec2_subsets.yaml` declares the column
-axes as named groups of dataset keys (literals, globs, or references to an earlier group), and
-`subsets.py` resolves them against whatever `dskeys` the input npz actually carries.  Changing the
-sample composition or the binning is a config edit; a sample that is absent drops out with a warning
-and a sample that no column claims is reported as `uncovered`.
+Column axes are declared in configs/paper/sec2_subsets.yaml and resolved against the npz's `dskeys`
+(see subsets.py).
 
 Usage:
     python -m analysis.paper.grad_info.make [npz_label]     # default: the config's `npz:`
@@ -107,7 +91,7 @@ def main(label=None):
     _cache = {}
     def load(lbl):
         """Load + schema-check one npz, cached.  An axis may point at its own npz via `npz:` (must share
-        the default's knob basis); currently every axis uses the default multi-sample npz."""
+        the default's knob basis)."""
         if lbl not in _cache:
             src = style.ALTGEN / f"{lbl}.npz"
             if not src.exists():

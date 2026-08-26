@@ -1,22 +1,14 @@
 """How often does a minimiser park E_b on its wall, and does MIGRAD's tolerance control it?
 
-Companion to bench_minimizers.py, which found MIGRAD returning Eb_shift = 0.010 -- its lower bound --
-on a closure whose truth was 0.500.  That is the failure mode fitters.py says TRF was adopted to cure
-("21.6% of the ensemble was sitting on the floor, ~83% of that being optimiser failure rather than
-censoring"), so the question is whether MIGRAD reproduces it and whether `tol` is the knob that fixes it.
+Companion to bench_minimizers.py, which found MIGRAD returning Eb_shift at its lower bound on a closure
+whose truth was away from it -- the failure mode fitters.py adopted TRF to cure.  Toy truths are drawn
+from the coverage stage's thrower for every dial except E_b, which _throw() below draws flat over
+(wall, wall + 2*prior) so that none land AT the wall.
 
-THE EXPECTATION, and why this ensemble makes it exactly zero.  Toy truths come from the coverage stage's
-thrower for every dial EXCEPT E_b, which is drawn flat over (wall, wall + 2*prior) by _throw() below --
-see there for why the upstream thrower cannot supply it (it freezes E_b at nominal, i.e. at the wall).
-Thrown E_b truths are therefore uniform in ~(0.01, 8.01) and none are AT the wall.
-
-With ASIMOV data (the default here, --noise off) the maximum-likelihood point IS the truth, exactly.  So
-the expected fraction of fits ending on the wall is 0, and every one that does is an optimiser failure --
-no censoring to subtract, no modelling assumption in the comparison.  Turn --noise on and the expectation
-stops being zero: a toy thrown close to the wall can have its unconstrained MLE pushed below it by the
-stat fluctuation and get clamped, which is CENSORING and entirely legitimate.  The script reports the
-analytic censoring rate P(e + N(0,sigma_post) < lo) averaged over the thrown truths, so the two effects
-are separated rather than conflated.
+With ASIMOV data (the default, --noise off) the MLE IS the truth exactly, so the expected fraction of
+fits ending on the wall is 0 and every one that does is an optimiser failure.  With --noise the
+expectation is instead the analytic censoring rate P(e + N(0,sigma_post) < lo) averaged over the thrown
+truths, reported separately so censoring and optimiser failure are not conflated.
 
 Usage:
     srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_tol_boundary [config] \
@@ -38,17 +30,8 @@ EB = "Eb_shift"
 def _throw(eng, subset, real_prior, rng, wall_dial=EB):
     """Toy truth, with `wall_dial` deliberately thrown AWAY from its wall.
 
-    multisample_coverage._throw_truth cannot be used unmodified here, and the reason is a bug in it:
-    its first guard skips any dial whose prior exceeds 100x its nominal, meant to catch the S4_PRIOR_FREE
-    1e6 widening.  Eb_shift trips it on its REAL prior (4.0 vs a nominal of 0.01, ratio 400), so the
-    function `continue`s and leaves E_b at nominal -- which IS the wall.  The flat-draw branch right
-    below, whose comment says it exists for exactly the E_b case, is unreachable for E_b.  Measured:
-    3/3 smoke toys came back with Eb* = 0.010 and every fit "correctly" sat on the wall, so the ensemble
-    tested nothing.
-
-    Here E_b is drawn FLAT over (wall, wall + 2*prior).  A flat draw, not a Gaussian, because a Gaussian
-    of width 4.0 about a nominal of 0.01 puts half its mass below the wall and piles those toys onto one
-    identical clamped truth -- the pathology that motivated the branch in the first place.
+    Delegates to multisample_coverage._throw_truth for every other dial, then overrides `wall_dial`:
+    drawn FLAT over (wall, wall + 2*prior) rather than Gaussian, so no mass lands below the wall.
     """
     from analysis.campaign.stages.multisample_coverage import _throw_truth
     star = _throw_truth(eng, subset, real_prior, rng)
@@ -61,9 +44,8 @@ def _throw(eng, subset, real_prior, rng, wall_dial=EB):
 def _at_bound(name, v, rtol=1e-3):
     """Is this dial sitting ON its lower wall?
 
-    phys_lo is the bound OFFSET INWARD by FLOOR_EPS (knobs.py:78), so a fit that has converged onto the
-    wall returns phys_lo itself, not the mathematical bound.  Compare against phys_lo, with a tolerance,
-    rather than against zero -- testing `v < 1e-6` would score every wall-parked fit as free.
+    phys_lo is the bound OFFSET INWARD by FLOOR_EPS, so a wall-parked fit returns phys_lo itself, not
+    the mathematical bound.  Compare against phys_lo with a tolerance, not against zero.
     """
     lo = K.phys_lo(name)
     return lo is not None and abs(v - lo) <= rtol * max(abs(lo), 1.0)

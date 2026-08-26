@@ -1,14 +1,9 @@
 """Plot-time consumer of the differentiable event bank (adonis.workflow.generate_bank.generate_bank).
-No JAX cascade here -- everything is a cheap re-sum over the stored per-event records (kinematics,
-ragged final state, w0, hard-vertex amps2 + FSI kind-1 + SF records for the exact reweight via
-bank_reweight).
+No JAX cascade here -- everything is a re-sum over the stored per-event records (kinematics, ragged
+final state, w0, hard-vertex amps2 + FSI kind-1 + SF records) via bank_reweight.
 
-Pick ANY of these at plot time, no re-running:
-  * signal definition  -> a boolean mask over events (topology from the full final state + phase space)
-  * observable         -> a per-event value (dpt, dat, p_N, muon kinematics, ...)
-  * binning            -> any edges
-  * forward histogram  (sum w0)                     : the T2K-style distribution
-  * reweight/gradient  (bank_reweight.bank_weight)  : exact w(theta), jax-differentiable in every knob
+Pick at plot time, no re-running: signal mask, observable, binning, forward histogram (sum w0), or
+reweight/gradient (bank_reweight.bank_weight, exact w(theta), differentiable in every knob).
 
 PIDs: proton 2212, neutron 2112, pions {211,111,-211}.
 """
@@ -29,9 +24,7 @@ def load_bank(outdir, max_chunks=None):
     bank_reweight.
 
     max_chunks: load only the first N chunk files (a subsampled bank).  w0 is then divided by the
-    number loaded (not the manifest total), so the central stays a proper cross-section estimate and
-    the MC-error fraction reflects the loaded statistics -- what a closure/fit needs when the full
-    bank is far larger than the MC precision required."""
+    number loaded (not the manifest total), so the central stays a proper cross-section estimate."""
     man = json.load(open(f"{outdir}/manifest.json"))
     nchunks = man["n_chunks"]; files = sorted(glob.glob(f"{outdir}/chunk_*.npz"))
     if max_chunks is not None:
@@ -88,13 +81,12 @@ _FSI_NUC = ("hh", "a", "iso", "finel", "inel", "swap")
 def filter_events(B, keep):
     """Compact full-record bank of only the events where keep[i] is True.
 
-    Per-event fields (w0, k_lep, the hard-vertex hv_qe_/hv_res_ records, ...) are gathered by event;
-    the ragged families -- final state (fs_off/fs_pid/fs_chg/fs_p4), the ks_ summary (ks_eidx), and the
-    two FSI slot families (pion via f_p_eidx, nucleon via f_n_eidx) -- keep only the selected events'
-    slots with their event index remapped to the new 0..M-1 order, and fs_off/_eidx are rebuilt.  So
-    the compact bank is self-consistent for every downstream reducer, and
-    bank_weight(filter_events(B, sig), theta) == bank_weight(B, theta)[sig] -- a fit can cache
-    N_selected instead of N_total (see workflow.selection.select_bank for the streaming version)."""
+    Per-event fields are gathered by event; the ragged families (final state, ks_ summary, and the
+    two FSI slot families keyed by f_p_eidx/f_n_eidx) keep only the selected events' slots with
+    indices remapped to the new 0..M-1 order, and fs_off/_eidx are rebuilt.
+
+    Invariant: bank_weight(filter_events(B, sig), theta) == bank_weight(B, theta)[sig]
+    (see workflow.selection.select_bank for the streaming version)."""
     keep = np.asarray(keep, bool); idx = np.where(keep)[0]; n = len(B["w0"])
     remap = np.full(n, -1, np.int64); remap[idx] = np.arange(len(idx))
     out = {}
@@ -131,9 +123,8 @@ def load_bank_chunk(f, nchunks):
     """One chunk file as a full-record bank dict -- same schema as load_bank for a single chunk
     (ev_off=0, so its ragged indices are already 0-based / self-contained).  w0 is divided by
     `nchunks` (the manifest total, passed in) so summing a per-chunk reduction over all chunks
-    reproduces load_bank's cross-section exactly.  Used by the streaming, bounded-memory selection in
-    workflow.selection: load one chunk, keep only the events that pass the cut, free the chunk --
-    never hold the whole concatenated bank in memory (which OOMs on the 20M-event Ar/uBooNE banks)."""
+    reproduces load_bank's cross-section exactly.  Used by workflow.selection's streaming,
+    bounded-memory selection: load one chunk, keep the events that pass the cut, free the chunk."""
     d = np.load(f)
     _lep_alias = None if "k_lep" in d.files else next((o for o in ("k_mu", "k_e") if o in d.files), None)
     B = {}
@@ -211,9 +202,8 @@ def single_pip(B):
 def single_pi0(B):
     """p4 of the (single) surviving pi0 per event (n,4) -- the NC1pi0 signal pion.
 
-    Same contract as single_pip, and for the same reason: the selection requires exactly one, so the
-    ">1 -> last wins" case is unreachable on signal.  Kept as a thin twin rather than a pid argument
-    on a shared helper so both call sites read as the physics they mean."""
+    Same contract as single_pip: the selection requires exactly one, so the ">1 -> last wins" case
+    is unreachable on signal."""
     return _single_pion(B, 111)
 
 
@@ -273,13 +263,12 @@ def dat_1pi(kmu, lead, pip):
 
 
 def dphit_1pi(kmu, lead, pip):
-    """Transverse DEFLECTING angle delta_phiT [rad] = angle between the transverse muon and the
-    transverse HADRON system: arccos(-p_T^mu . p_T^had / (|p_T^mu||p_T^had|)).
+    """Transverse DEFLECTING angle delta_phiT [rad]: angle between the transverse muon and the
+    transverse HADRON system, arccos(-p_T^mu . p_T^had / (|p_T^mu||p_T^had|)).
 
-    NB this is NOT delta_alphaT: dat measures the muon against the transverse IMBALANCE
-    (p_T^mu + p_T^had), dphit measures it against the hadron system itself (pip is zero for CC0pi,
-    so the hadron system is just the leading proton).  Same convention as kinematics.delta_phiT,
-    which is the EventRecord-level twin of this bank-level primitive."""
+    NOT delta_alphaT: dat measures the muon against the transverse IMBALANCE (p_T^mu + p_T^had);
+    dphit measures it against the hadron system itself (pip=0 for CC0pi, so just the leading
+    proton).  Same convention as kinematics.delta_phiT."""
     lt = kmu[:, 1:3]; ht = lead[:, 1:3] + pip[:, 1:3]
     num = -np.sum(lt * ht, axis=1)
     den = np.linalg.norm(lt, axis=1) * np.clip(np.linalg.norm(ht, axis=1), 1e-9, None)

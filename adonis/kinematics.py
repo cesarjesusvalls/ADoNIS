@@ -1,4 +1,4 @@
-"""The kinematics module (JAX): 4-vector algebra and physics observables, one backend.
+"""4-vector algebra and physics observables (JAX).
 
 Two layers:
   * PRIMITIVES  : mink_dot, mass2, kallen, boost (CM->lab), boost_to_rest, boost_from_rest.

@@ -1,20 +1,17 @@
 """ACHILLES CrossSection-mode hepmc -> sigma(p) for a TAGGED beam (pi+ / proton / neutron on 12C).
 
-ACHILLES writes ONLY the events in which the beam particle REACTED; `NEvents` is therefore the number of
-written (reacted) events, and the attempt count comes from the running GenCrossSection counter (its 4th
-field).  With the beam's impact parameter uniform in a disk of radius R (card Cascade/Params/radius) and
-|p| uniform in [P_LO, P_HI], the per-bin attempts are n_tried * (bin_width / range), so
+ACHILLES writes only the events in which the beam particle reacted; the attempt count comes from the
+running GenCrossSection counter (its 4th field).  With the beam's impact parameter uniform in a disk of
+radius R (card Cascade/Params/radius) and |p| uniform in [P_LO, P_HI], the per-bin attempts are
+n_tried * (bin_width / range), so sigma_X(bin) = pi R^2 * n_X(bin) / n_tried(bin)  [mb].
 
-    sigma_X(bin) = pi R^2 * n_X(bin) / n_tried(bin)          [mb]
-
-The beam particle is the one with status 29 and px = py = 0 exactly (fired along +z).  That matters for a
-NUCLEON beam: the struck nucleon is also status 29 with the same PID, so selecting on the PID alone would
-pick the wrong particle.
+The beam particle is the one with status 29 and px = py = 0 exactly (fired along +z); for a NUCLEON
+beam the struck nucleon is also status 29 with the same PID, so PID alone does not disambiguate.
 
 Observables:
-  pi+ beam : reaction   (every written event)  and  absorption   (reacted, NO surviving pion)
-  p/n beam : reaction   (every written event)  and  pion production (any final-state pion = the
-             NN -> N Delta -> NN pi inelastic channel -- the handle on s_NN_inelastic)
+  pi+ beam : reaction (every written event) and absorption (reacted, no surviving pion)
+  p/n beam : reaction (every written event) and pion production (any final-state pion, i.e.
+             NN -> N Delta -> NN pi)
 """
 import os
 from pathlib import Path
@@ -65,8 +62,7 @@ _STEM = {
 
 
 def source_paths(beam, target="C"):
-    """The hepmc files sigma_of_p will scan.  Public so a caller can fingerprint them for a cache
-    without re-deriving the stem mapping (which would then be able to drift out of sync)."""
+    """The hepmc files sigma_of_p will scan for the given beam/target."""
     return sorted(ACH_DIR.glob(f"**/{_STEM[target][beam]}*.hepmc"))
 
 

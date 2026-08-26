@@ -1,8 +1,8 @@
 """Tagged hadron beam (pi+/p/n) -- the incoming-particle description + ACHILLES CrossSection-mode
 beam sampling.  A mono-species projectile fired along +z with |p| uniform in [pmin,pmax] at impact
-parameter b uniform in a disk of radius R_DISK, starting at z0 = -1.05*R_nuc (5% outside the surface).
+parameter b uniform in a disk of radius R_DISK, starting outside the nuclear surface.
 
-This is the reusable BEAM DESCRIPTION; the tagged-beam cascade STUDY (running the cascade + binning
+This is the reusable beam description; the tagged-beam cascade study (running the cascade + binning
 sigma(p) etc.) lives in the analysis layer.
 """
 import numpy as np

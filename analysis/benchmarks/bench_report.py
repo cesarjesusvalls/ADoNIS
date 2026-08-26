@@ -1,13 +1,10 @@
 """Aggregate the (N, n) workload surface from the per-event-count bench_fair runs.
 
-Medians are over the NOISE REALISATIONS, not over timing repeats.  The dominant spread in this study is
-seed-to-seed, not run-to-run: Gauss-Newton's iteration count on the same problem varied 14 -> 44 across
-realisations at n=17, because the Hessian term it drops is proportional to the residual and the residual
-is what the throw changes.  Quoting a timing spread here would advertise a precision the measurement
-does not have, so the min-max across seeds is carried alongside every median.
+Medians are over the NOISE REALISATIONS, not over timing repeats -- seed-to-seed spread dominates
+run-to-run spread here, so the min-max across seeds is carried alongside every median.
 
-Asimov is reported separately and never pooled with the noise cells: on a perfect closure the dropped
-term vanishes and Gauss-Newton *becomes* Newton, so mixing the two would flatter it.
+Asimov is reported separately and never pooled with the noise cells: on a perfect closure the Hessian
+term Gauss-Newton drops vanishes and it becomes Newton, so mixing the two would flatter it.
 
     python -m analysis.benchmarks.bench_report [--glob output/altgen/bench_fair_amp_N*.npz]
 """

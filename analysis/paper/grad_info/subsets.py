@@ -1,15 +1,10 @@
-"""Resolve the section-3 column axes (configs/paper/sec2_subsets.yaml) against a Jacobian npz.
-
-The point of this module is that sec3 never hardcodes WHICH samples exist.  It is handed the `dskeys`
-of whatever npz it was pointed at and turns the declarative groups into concrete bin-row slices,
-degrading gracefully when the sample composition changes:
+"""Resolve column axes (configs/paper/sec2_subsets.yaml) against a Jacobian npz's `dskeys`, turning
+declarative groups into concrete bin-row slices.  Degrades gracefully when the sample composition
+changes:
 
   * a glob that matches nothing            -> reported, dropped
   * a group left with no keys              -> reported, dropped as a column
-  * a dskey no group in the axis picks up  -> reported as `uncovered` (never silently ignored)
-
-So the SAME config renders a T2K-only npz (the ladder collapses to one rung) and a 20-dataset
-multisample npz, with no code change.
+  * a dskey no group in the axis picks up  -> reported as `uncovered`
 """
 from pathlib import Path
 import fnmatch

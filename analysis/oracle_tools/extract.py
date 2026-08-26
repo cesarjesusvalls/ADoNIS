@@ -1,8 +1,7 @@
-"""Generic ACHILLES hepmc -> observable bank extractor (reused across experiments).
+"""ACHILLES hepmc -> observable bank extractor; dispatches by channel.
 
-Consolidates the per-channel extractors into ONE dispatch.  The hepmc parse + absolute-norm
-boilerplate (adonis.oracle.hepmc) is shared; each channel keeps its own
-selection + observable logic verbatim.  cc0pi cuts are parametrized by --experiment (T2K | MINERvA).
+The hepmc parse + absolute-norm boilerplate (adonis.oracle.hepmc) is shared; each channel keeps its
+own selection + observable logic.  cc0pi cuts are parametrized by --experiment (T2K | MINERvA).
 
 Usage:
   python -m analysis.oracle_tools.extract <channel> <hepmc> [out.npz] [--experiment t2k|minerva] [--seed 0]
@@ -267,12 +266,9 @@ ELEC = 11
 
 
 def fs_rich(path, K=6, M=10, **_):
-    """PROBE-AGNOSTIC full final state (no cut, no lepton requirement) -- the UNIFORM oracle blueprint for
-    every bank (neutrino / (e,e') / hadron beam).  Per event: final-state pions(K,+pid), protons(M),
-    neutrons(M) [all |p|-sorted, padded]; the outgoing lepton (mu or e-, zeros if none); the incoming probe
-    (status-4 beam, else the highest-E neutrino); struck nucleon(+pid); n_other_meson; weight; proc.  So one
-    rich oracle expresses final-state kinematics for ANY probe -- extract.py cc1pi_rich but WITHOUT the
-    nu/mu/struck skip that made it neutrino-only."""
+    """Probe-agnostic full final state, no cut, no lepton requirement.  Per event: final-state pions(K,+pid),
+    protons(M), neutrons(M) [all |p|-sorted, padded]; outgoing lepton (mu or e-, zeros if none); incoming
+    probe (status-4 beam, else highest-E neutrino); struck nucleon(+pid); n_other_meson; weight; proc."""
     lep_l, prb_l, st_l, sp_l, w_l, nom_l, nnp_l, proc_l = [], [], [], [], [], [], [], []
     pip4_l, pipid_l, pr4_l, nr4_l = [], [], [], []
     n_evt = 0

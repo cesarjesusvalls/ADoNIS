@@ -1,4 +1,4 @@
-"""ANL-Osaka meson-baryon partial-wave cross sections (Phase E1).
+"""ANL-Osaka meson-baryon partial-wave cross sections.
 
 Parses the ANL tables (`data/MesonBaryonAmplitudes/ANL/ANL_i-f.dat`) and forms the
 physical piN -> piN total cross section by the partial-wave sum used in ACHILLES
@@ -10,9 +10,6 @@ physical piN -> piN total cross section by the partial-wave sum used in ACHILLES
 with PF = (W^2 - m_M^2 - m_B^2)^2 - 4 m_M^2 m_B^2 (Kallen; p_cm = sqrt(PF)/(2W)).
 The table columns are the 20 waves L_{2I,2J} x (Re, Im); the label gives (L, I, J)
 directly (e.g. P33 = L=1, I=3/2, J=3/2 = the Delta(1232)).
-
-This forward sigma(W) IS the ANL-Osaka model, so it self-validates against the known
-piN cross section (the Delta peak at W~1232) -- no cascade binary needed.
 """
 from __future__ import annotations
 
@@ -99,8 +96,7 @@ def dsigma_dOmega(W, cos_theta, cg={3: 1.0}, i=0, f=0):
     P33 (L=1, J=3/2=L+1/2) dominates -> the classic 1 + 3 cos^2(theta) shape.
 
     (i, f) select the ANL channel table load_anl(i, f); the default (0, 0) is elastic piN, the
-    ONLY case this f/g construction is validated for -- the kwargs exist so callers can share this
-    one implementation, not to claim off-diagonal (i != f) support.
+    ONLY case this f/g construction is validated for -- off-diagonal (i != f) is not supported.
     """
     from numpy.polynomial.legendre import Legendre
     Wt, amps = load_anl(i, f)
@@ -135,8 +131,7 @@ def _dPL(L, c):
 
 def pim_p_elastic(W=None, norm=1.0):
     """pi- p -> pi- p elastic cross section [mb].  |pi- p> = sqrt(1/3)|3/2> - sqrt(2/3)|1/2>,
-    so the elastic isospin weights (initial x final) are c_{3/2}=1/3, c_{1/2}=2/3.  Smaller
-    Delta peak than pi+ p (only 1/3 of the I=3/2 strength)."""
+    so the elastic isospin weights (initial x final) are c_{3/2}=1/3, c_{1/2}=2/3."""
     Wt, amps = load_anl(0, 0)
     if W is not None:
         amps = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)
@@ -149,9 +144,8 @@ _CEX_CG = {3: np.sqrt(2.0) / 3.0, 1: -np.sqrt(2.0) / 3.0}
 
 def pim_p_cex(W=None, norm=1.0):
     """pi- p -> pi0 n charge-exchange cross section [mb].  At the Delta (pure I=3/2) the
-    I=1/2 piece vanishes and sigma ∝ |sqrt(2)/3|^2 = 2/9 of the I=3/2 strength -> the
-    textbook 9:2:1 ratio of pi+p : (pi-p->pi0n) : pi-p elastic at the Delta(1232).  Off the
-    resonance the opposite-sign I=1/2 amplitude interferes, filling in the wings."""
+    I=1/2 piece vanishes; off resonance the opposite-sign I=1/2 amplitude interferes,
+    filling in the wings."""
     Wt, amps = load_anl(0, 0)
     if W is not None:
         amps = np.stack([np.interp(W, Wt, amps[:, k]) for k in range(amps.shape[1])], axis=1)

@@ -1,10 +1,8 @@
 """Typed fit configuration, loaded from YAML.
 
-ONE object describes a run: which samples, what data, how to fit it, and which uncertainties to compute.
-Everything a stage needs comes from here -- no stage reads the environment.
-
-The schema is deliberately small and closed.  Unknown keys are an error, not a warning: a config that
-silently falls back to a default on a typo is how a run ends up using different settings than intended.
+One object describes a run: which samples, what data, how to fit it, and which uncertainties to
+compute.  Everything a stage needs comes from here; no stage reads the environment.  Unknown keys
+are an error, not a warning.
 
     cfg = FitConfig.load("<study>.yaml")
     cfg.inject_string()        # the flat inject-string form parse_inject expects
@@ -30,8 +28,8 @@ def _only(d: dict, allowed: set, where: str) -> dict:
 
 @dataclass(frozen=True)
 class Banks:
-    """Chunk caps.  These set how many events are resident and hence the MC error per bin, which drives
-    the sparse-bin mask -- so they are part of the physics definition, not a performance knob."""
+    """Chunk caps: how many events are resident, which sets the MC error per bin and hence the
+    sparse-bin mask.  Part of the physics definition, not a performance knob."""
     sig_cap: int = 250_000
     nu_chunks: int = 4
     e_chunks: int = 64
@@ -116,7 +114,8 @@ class Fit:
 
     @property
     def prior_scale(self) -> float:
-        """What multiplies the prior width.  MLE is 'no prior', implemented as 1e6 x the Gate-I width."""
+        """What multiplies the prior width.  MLE is effectively 'no prior': the width is scaled by
+        1e6 so the prior term never competes with the data."""
         return 1e6 if self.estimator == "mle" else 1.0
 
 
@@ -197,7 +196,6 @@ class FitConfig:
 
 
 def _num(x) -> str:
-    """Render a number for the flat inject-string form: no trailing zeros, no exponent for the
-    magnitudes these dials take."""
+    """Render a number for the flat inject-string form: no trailing zeros, no exponent."""
     s = f"{float(x):g}"
     return s

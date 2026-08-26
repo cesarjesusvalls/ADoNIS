@@ -1,42 +1,14 @@
-"""How the fused kernel is sized on whatever GPU it lands on.
+"""Sizes the fused kernel's memory footprint (event chunk, dial batch, XLA pool fraction) for
+whatever GPU it lands on.
 
-Memory knobs (event chunking, dial batching, pool fraction) are auto-sized per device from a measured
-budget, logged, and overridable via config: a number that changes the dispatch count or arithmetic
-should never be invisible in the output.
+Explicit config values are honoured verbatim; anything else is auto-sized from a measured per-GB
+budget and logged, since a change to dispatch count must be visible.
 
-WHAT LIMITS THE KERNEL.  Two different resources, easy to confuse:
+Three knobs: `event_chunk` splits the event axis (exact, no extra passes); `jac_batch` splits the
+dial axis (exact, but each batch costs a full extra primal pass); `mem_fraction` moves the
+pool/outside-pool split and changes no arithmetic.
 
-  * BFC POOL (`XLA_PYTHON_CLIENT_MEM_FRACTION`, default 0.75 of the card).  Holds the resident banks and
-    the program's tensors.  Wants to be LARGE.
-  * EVERYTHING OUTSIDE THE POOL -- the compiled CUBIN, CUDA graphs, cuBLAS/cuDNN workspaces, and the
-    compiler's own scratch.  Wants the pool to be SMALL, because preallocation takes that memory away.
-
-Shrinking the pool fraction in steps, the largest program that still loads (chi2 vs residuals vs
-jacobian) grows a stage at a time -- the signature of a resource living outside the pool, not inside
-it.  So the default here sizes the pool just large enough for the resident data, not the stock 75%.
-
-WHAT SETS THE CEILING.  A vmapped JVP carries an (n_dials x n_events) tangent through every intermediate,
-so the working set scales as the PRODUCT.  Calibration points, all measured:
-
-    device      events/sample   dials   result
-    turing 11GB     20,000        17    ok
-    turing 11GB     60,000        17    OOM
-    ampere 40GB    125,000        17    ok
-    ampere 40GB    250,000        17    OOM  (even at dial batch 1)
-
-which puts the ok/fail boundary near 50,000 dial-events per GB of device memory.  `BUDGET_PER_GB` is set
-below that, and everything else follows from it.
-
-THE THREE DIALS, in the order they should be reached for:
-
-  event_chunk  split the EVENT axis (see BinSpec.chunks).  The model is a sum over events, so this is
-               exact and costs NO extra passes -- only per-chunk dispatch overhead.  The right answer.
-  jac_batch    split the DIAL axis.  Also exact, but each extra dispatch costs a full extra PRIMAL pass,
-               so it makes Gauss-Newton look more expensive for a reason that is memory, not algorithm.
-               Use only when chunking is unavailable.
-  mem_fraction move the pool/outside-pool split.  Changes no arithmetic at all.
-
-Config (all optional; anything omitted is auto-sized and logged):
+Config (all optional):
 
     compute:
       mem_fraction: 0.25      # XLA_PYTHON_CLIENT_MEM_FRACTION; must be set before jax is imported
@@ -60,11 +32,10 @@ def _cfg(cfg):
 
 
 def apply_env(cfg, log=print):
-    """Set the XLA pool fraction.  MUST be called before jax is imported anywhere in the process.
+    """Set the XLA pool fraction.  Must be called before jax is imported anywhere in the process.
 
-    Returns the fraction applied, or None if left to XLA's default.  An explicit value in the config
-    always wins; otherwise the environment is left alone here and sized later by `resolve`, which can
-    only advise because by then jax is already up.
+    Returns the fraction applied, or None if left to XLA's default.  An explicit config value always
+    wins; otherwise the environment is left untouched here for `resolve` to advise on later.
     """
     f = _cfg(cfg).get("mem_fraction")
     if f is None:
@@ -91,9 +62,8 @@ def device_gb():
 def resolve(cfg, n_dials, n_events_max, log=print):
     """Return the memory plan {event_chunk, jac_batch, hvp_batch} for this device and problem.
 
-    Explicit config values are honoured verbatim -- this never silently overrides a stated choice.
-    What is auto-sized comes from the measured budget, and the whole plan is LOGGED: a number that
-    changes the dispatch count must never be invisible in the output.
+    Explicit config values are honoured verbatim; anything auto-sized is logged, since a change to
+    dispatch count must never be invisible in the output.
     """
     c = _cfg(cfg)
     gb = device_gb()

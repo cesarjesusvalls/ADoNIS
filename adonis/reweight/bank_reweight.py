@@ -63,8 +63,8 @@ def bank_weight(B, knobs, grids):
 
 
 def to_jax(B):
-    """One-time conversion of the fields bank_weight reads to on-device jnp arrays (avoids re-converting the
-    ~250 MB FSI records on every reweight call)."""
+    """One-time conversion of the fields bank_weight reads to on-device jnp arrays (avoids re-converting
+    the FSI records on every reweight call)."""
     keys = [k for k in B if k.startswith("hv_") or k.startswith("f_")] + ["p_struck", "channel", "w0"]
     return {k: jnp.asarray(B[k]) for k in keys}
 

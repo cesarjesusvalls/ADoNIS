@@ -8,13 +8,11 @@ A568 isospin partition (DeltaInteractions.cc:152-185):
   same-isospin-partner     modes share (1/6)*oset / same_count
 where opp/same_count = number of LOCALLY-PRESENT modes of each type (a mode whose required partner
 species is absent nearby is dropped, FindClosest -> SIZE_MAX).  The emitted proton count is the literal
-charge sum of the sampled mode -- there is NO isospin averaging on the charge.  ADoNIS previously chose
-the partner GEOMETRICALLY (nearest allowed nucleon), which only coincides with this isospin branching
-for N=Z (carbon); for neutron-rich targets (Ar) it systematically under-counts 2p / over-counts 1p.
+charge sum of the sampled mode -- there is NO isospin averaging on the charge.
 
 This module derives, for any (pion, struck, partner-availability), the proton-count distribution
-P(0p),P(1p),P(2p) and the partner species realizing each outcome -- the single source of truth the
-discrete cascade samples from.  No fitted constants: the 5/6:1/6 split is the A568 reaction physics.
+P(0p),P(1p),P(2p) and the partner species realizing each outcome.  The 5/6:1/6 split is the A568
+reaction physics, not a fitted constant.
 """
 from __future__ import annotations
 

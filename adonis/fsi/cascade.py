@@ -1,8 +1,8 @@
 """Jitted, differentiable intranuclear cascade (ADoNIS FSI).
 
-ONE engine for the whole final-state cascade: pion + nucleon + secondary transport
-over a shared nucleus, pooled (M=1 active slot + FIFO wait queue + persistent event
-refill), differentiable via kind-1 reweighting, and jit-able end to end.
+Pion + nucleon + secondary transport over a shared nucleus, pooled (M=1 active slot +
+FIFO wait queue + persistent event refill), differentiable via kind-1 reweighting, and
+jit-able end to end.
 
 Cross-section source-of-truth stays in the imported libs (pion_nuclear_xsec,
 interactions.meson_baryon_xsec, nn_inelastic, absorption_modes). Public entry:
@@ -238,10 +238,9 @@ def pion_branch_reweight(brec, sabs, sscat):
 def _match_dtype(a, g):
     """Promote the survival pair (a, g) to a common dtype before exponentiating.
 
-    The bank stores `a` as float32 while `g` inherits float64 from the knob vector, so `exp(-a)` would
-    be a float32 exp and `exp(-a/g)` a float64 one.  At nominal g == 1 exactly, so the two are
-    mathematically identical -- yet the float32 rounding of exp alone breaks the reweight's nominal
-    identity (~9e-4 per event).  Exponentiate both in the same dtype to keep nominal exact."""
+    The bank stores `a` as float32 while `g` inherits float64 from the knob vector; exponentiating
+    in mismatched dtypes breaks bit-exactness of the nominal (g == 1) reweight.  Same-dtype exp
+    keeps nominal exact."""
     dt = jnp.result_type(a, g)
     return jnp.asarray(a, dt), jnp.asarray(g, dt)
 
@@ -259,9 +258,9 @@ def _ragged_prod(per, eidx, n_events):
     every factor is EXACTLY 1 -> log 0 -> segment-sum 0 -> exp(0) = 1, so the nominal identity stays
     bit-exact under this reduction (a plain scatter-multiply does not exist in XLA).
 
-    The log-sum ACCUMULATES in the default float dtype (float64 under jax_enable_x64) even though the bank
-    stores the slot sigmas as float32: summing ~2M logs in float32 would throw away precision the dense
-    float32 product does not have to spend.  Cost is transient only -- nothing is stored at this width."""
+    The log-sum accumulates in the default float dtype (float64 under jax_enable_x64) even though
+    the bank stores the slot sigmas as float32, to avoid losing precision relative to the dense
+    float32 product."""
     acc = jnp.result_type(float)
     lp = jnp.log(jnp.clip(per, 1e-300, None)).astype(acc)
     return jnp.exp(jnp.zeros(n_events, acc).at[eidx].add(lp))
@@ -284,8 +283,7 @@ def pion_slot_factor(code, sa, ss_el, ss, si, hh, a, sa_c, ss_el_c, ss_c, si_c,
 
     def _sigma_ratio(sa_, ss_el_, ss_, si_):
         """D/D0 = sum_i s_i f_i, written as 1 + sum_i (s_i - 1) f_i: algebraically identical, but exactly
-        1 at nominal in any precision (every (s_i - 1) is 0), whereas D/D0 is only 1 up to the rounding
-        of D and D0 -- and exp(-a/g) amplifies a g off by even 1 ulp."""
+        1 at nominal in any precision (every (s_i - 1) is 0) -- keeps the reweight bit-exact at nominal."""
         D0 = jnp.clip(sa_ + ss_ + si_, 1e-12, None)
         fcex = jnp.clip(ss_ - ss_el_, 0.0, None) / D0
         return (1.0 + (s_abs - 1.0) * (sa_ / D0) + (s_el - 1.0) * (ss_el_ / D0)
@@ -1692,7 +1690,7 @@ DiscreteCascadeConfig = CascadeConfig
 
 
 def pool_cascade_config(**k):
-    """The production cascade settings: serial pool, 0.04 fm steps, path budget 20 nuclear radii.
+    """The production cascade settings: serial pool engine.
 
     max_steps is a runaway guard, not a physics bound: with the M=1 serial pool an event's step count
     is the SUM over all its particles, so a small cap trips on ordinary events.  The physics bound is

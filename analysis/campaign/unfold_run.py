@@ -1,15 +1,13 @@
-"""Run the section-5 unfolding studies and persist everything the figures need.
+"""Run the unfolding studies and persist everything the figures need.
 
-One pass: build the inputs from the bank, run every study, write output/altgen/<label>_unfold.npz.
-The figures never refit -- same rule as section 4, so restyling costs seconds and a figure can never
-disagree with the fit it claims to show.
+One pass: build the inputs from the bank, run every study, write output/altgen/<label>_unfold.npz.  The
+figures never refit, so restyling costs seconds and a figure can never disagree with the fit it shows.
 
 Studies:
   asimov       data at the generator's own truth.  Everything must come back at 1.
   sig120       signal scaled by 1.20.  The templates must find it and nothing else may move.
-  flux120      the FLUX peak scaled by 1.20 instead.  This is the separability test: flux and templates
-               both scale the signal, so if the fit cannot tell them apart it will report a 20% signal
-               excess that is not there.
+  flux120      the FLUX peak scaled by 1.20 instead: the separability test, since flux and templates both
+               scale the signal.
   budget       the same Asimov fit with systematic blocks switched on one at a time.
 """
 from __future__ import annotations
@@ -24,10 +22,8 @@ from adonis.unfold.config import UnfoldConfig
 
 
 def _grid_arrays(G, tag):
-    """Persist a grid's geometry whatever its type, so the figures never re-derive it.
-
-    A rectangular grid is two edge arrays; a staircase is a per-slice edge list plus the cos
-    boundaries, stored as an object array because the rows have different lengths.
+    """Persist a grid's geometry whatever its type: two edge arrays for a rectangular grid, or a
+    per-slice edge list plus cos boundaries (object array, rows of different lengths) for a staircase.
     """
     if isinstance(G, StaircaseGrid):
         pl, ph, cl, ch = G.cell_bounds()
@@ -43,12 +39,7 @@ _BUDGET_ENABLE = {"stat": {}, "xsec": {"use_knobs": True},
 
 
 def _budget_sequence(names):
-    """(name, kwargs) per entry, cumulative, with a FRESH dict each time.
-
-    The previous version stored the kwargs in a module-level list and did `kw.pop("use_knobs")`, which
-    mutated that list: a second main() in the same process raised KeyError on the first entry.  Nothing
-    caught it because every run was its own process.
-    """
+    """(name, kwargs) per entry, cumulative, with a FRESH dict each time."""
     state = dict(free_flux=False, free_det=False, use_knobs=False)
     for n in names:
         if n not in _BUDGET_ENABLE:

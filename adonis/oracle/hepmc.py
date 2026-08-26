@@ -1,13 +1,11 @@
-"""ACHILLES/NuHepMC reading + absolute normalization (generic, reused across analyses).
+"""ACHILLES/NuHepMC reading and absolute normalization.
 
 `parse_events` streams a NuHepMC Asciiv3 text file into per-event dicts (weight, signal_process_id,
-particle list).  `hepmc_norm`/`weight_to_nb_of` give the absolute cross-section scale derived ENTIRELY
+particle list). `hepmc_norm`/`weight_to_nb_of` give the absolute cross-section scale, derived entirely
 from the file header (GenCrossSection) and the per-event weights -- no hardcoded constants:
     sigma_sel[nb] = (sum_w_selected / sum_w_all) * GenCrossSection[nb]
     weight_to_nb  = GenCrossSection[nb] / sum_w_all
-The extractors store hepmc_norm's result in the npz so figures never re-parse or hardcode a scale.
-
-Consolidates the former adonis/data/oracle/{parse_hepmc,normalization}.py.
+Extractors store hepmc_norm's result in the npz so figures never re-parse or hardcode a scale.
 """
 from __future__ import annotations
 

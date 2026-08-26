@@ -1,6 +1,6 @@
 """Validation harness.
 
-Every component is held to the same three gates before it is trusted:
+Every component is held to the same three gates:
 
   (F) forward agreement   -- the hard sampler and the differentiable (weighted)
                              estimator must agree in the forward pass, to within
@@ -10,8 +10,7 @@ Every component is held to the same three gates before it is trusted:
   (C) closure             -- synthesise data at known theta*, re-init, fit, and
                              recover theta* within statistical error.
 
-Plus measure_snr: gradient signal-to-noise vs cascade depth / sample budget, the
-make-or-break property for the deep cascade.
+Plus measure_snr: gradient signal-to-noise vs sample budget.
 """
 from __future__ import annotations
 
@@ -41,9 +40,8 @@ def skipped_result(name, kind, reason) -> TestResult:
 
 
 class SelfTestMixin:
-    """Default (skipped) self-tests, so every module in the chain exposes the same
-    `closure_test` / `oracle_test` contract.  Concrete modules override the ones
-    that are meaningful for them."""
+    """Default (skipped) self-tests: exposes the `closure_test` / `oracle_test`
+    contract. Concrete modules override the ones meaningful for them."""
 
     def closure_test(self, key=None, **kw) -> "TestResult":
         return skipped_result(f"{type(self).__name__}.closure", "closure",
@@ -59,8 +57,8 @@ def grad_closure(f: Callable[[float], float], name, *, x0=1.0, eps=2e-3,
     """Closure for a scalar differentiable output: autodiff d f/dx vs central FD.
 
     `f` maps a single physics knob (e.g. M_A) to a scalar (e.g. total xsec, or a
-    bin yield).  In the kind-1 reweighting estimator the proposal is detached, so
-    the two must agree to ~machine-times-conditioning -- a tight `tol` is expected.
+    bin yield). `tol` should be tight: for the kind-1 estimator's detached
+    proposal, autodiff and FD must agree to ~machine-times-conditioning.
     """
     g_ad = float(jax.grad(lambda x: f(x))(x0))
     g_fd = float((f(x0 + eps) - f(x0 - eps)) / (2 * eps))
@@ -129,14 +127,10 @@ class JacobianCheck(NamedTuple):
 
 def check_expected_jacobian(hist_fn, theta, key, eps=3e-3, tol=5e-2,
                             n_keys=64, count_floor_frac=1e-2):
-    """Validate d E[hist_b]/d theta_i : autodiff vs finite difference.
-
-    This is the *reliable* gradient gate for a stochastic (score-function)
-    estimator. Rather than finite-differencing a noisy scalar loss -- where FD
-    amplifies the gradient noise by 1/eps -- we check the gradient of the
-    **expected histogram** itself. E[hist] is smooth and can be estimated to high
-    precision (large n inside `hist_fn`, averaged over `n_keys` keys with common
-    random numbers), so its finite difference is a trustworthy reference.
+    """Validate d E[hist_b]/d theta_i : autodiff vs finite difference of the
+    **expected** histogram, averaged over `n_keys` common-random-number keys
+    (rather than FD on a single noisy sample, which a score-function estimator
+    does not support).
 
     `hist_fn(theta, key) -> (n_bins,)` should return the *expected-count* (or
     probability) histogram. Bins with negligible occupancy (< count_floor_frac of
@@ -171,14 +165,11 @@ def check_expected_jacobian(hist_fn, theta, key, eps=3e-3, tol=5e-2,
 def check_gradient(loss_fn, theta, key, eps=1e-4, tol=1e-2, n_keys=1):
     """Autodiff vs central finite differences for a scalar `loss_fn(theta, key)`.
 
-    A score-function (REINFORCE) estimator gives the gradient of the *expectation*
-    E_key[loss], not of `loss` at one fixed key: for a single key the discrete
-    sampled choices jump as theta moves, so a single-key finite difference can
-    never match the smooth score gradient. The correct test therefore averages
-    BOTH the autodiff gradient and the finite difference over a batch of `n_keys`
-    keys (common random numbers: the same batch is reused at theta +/- eps, so the
-    jumps average out to the true expected gradient). With `n_keys=1` this reduces
-    to the exact check used for deterministic (kind-1-only) estimators like R0.
+    A score-function (REINFORCE) estimator's gradient is only exact for the
+    *expectation* E_key[loss], so both the autodiff gradient and the FD are
+    averaged over a batch of `n_keys` common-random-number keys (the same batch
+    reused at theta +/- eps). `n_keys=1` is the exact check for a deterministic
+    (kind-1-only) estimator.
     """
     theta = jnp.asarray(theta, dtype=jnp.float64)
     keys = ([key] if n_keys == 1
@@ -217,14 +208,10 @@ def run_closure(loss_fn, to_params, init_unconstrained, key,
     """Fit unconstrained parameters by Adam on `loss_fn(unconstrained, key)`.
 
     `to_params(unconstrained)` maps to the physical parameters for reporting.
-    `clip_norm`, if set, clips the global gradient norm each step -- this keeps a
-    high-variance stochastic gradient from kicking the parameters into pathological
-    regions (e.g. mean free paths so short the fixed bounce budget can't deplete).
-    `final_lr_frac < 1` exponentially anneals the learning rate from `learning_rate`
-    to `learning_rate * final_lr_frac` over the run -- needed when a parameter sits
-    in a shallow basin whose restoring force is comparable to the gradient noise, so
-    a constant step lets it wander (and drift under Adam momentum) instead of settle.
-    Returns the fit history; closure is asserted by the caller against theta_true.
+    `clip_norm`, if set, clips the global gradient norm each step. `final_lr_frac
+    < 1` exponentially anneals the learning rate from `learning_rate` down to
+    `learning_rate * final_lr_frac` over the run. Returns the fit history;
+    closure is asserted by the caller against theta_true.
     """
     theta = jnp.asarray(init_unconstrained, dtype=jnp.float64)
     value_and_grad = jax.jit(jax.value_and_grad(loss_fn))
@@ -260,8 +247,7 @@ def run_closure(loss_fn, to_params, init_unconstrained, key,
 def measure_snr(grad_fn, theta, keys):
     """Gradient SNR = |E[g]| / std[g] per parameter, over a batch of PRNG keys.
 
-    `grad_fn(theta, key)` returns the gradient vector for one key. High SNR means
-    the deep-cascade variance is under control.
+    `grad_fn(theta, key)` returns the gradient vector for one key.
     """
     theta = jnp.asarray(theta, dtype=jnp.float64)
     grads = np.stack([np.asarray(grad_fn(theta, k)) for k in keys])

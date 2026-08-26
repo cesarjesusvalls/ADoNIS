@@ -5,11 +5,10 @@ BlattWeisskopf.  This is the channel that degrades fast nucleons and creates pio
 ACHILLES cascade (ResonanceMode: Decay -> Delta -> N pi immediately).
 
 Conventions mirrored exactly:
-* ParticleInfo masses = Particles.yml (MASS_PDG_*); mn_avg = (938.27+939.57)/2 MeV.
-* MatNN2NDelta constants: fps=2.202, fp=1.008, lambda2=0.63^2, kappa2=0.2^2, mpi=0.14 GeV
-  (hardcoded in ACHILLES).
-* DSigmaDM: mpi_avg = (2 m_pi+ + m_pi0)/3 (yml); Breit-Wigner with the L=1 Blatt-Weisskopf
-  effective width; sigma in mb via HBARC2.
+* ParticleInfo masses from Particles.yml (MASS_PDG_*); nucleon/pion masses are isospin-averaged
+  (mn_avg, mpi_avg) except where SigmaNN2NDelta uses the heavier-particle mass explicitly.
+* MatNN2NDelta constants (fps, fp, lambda2, kappa2, mpi) match the values hardcoded in ACHILLES.
+* DSigmaDM uses a Breit-Wigner with the L=1 Blatt-Weisskopf effective width; sigma in mb via HBARC2.
 * SigmaNN2NDelta integrates dm over [m_neutron + m_pi+, sqrts - m_neutron] ("always the
   heavier particles") and the table is built for delta++ at pcm = 1 GeV, then scaled by
   isofactor (1 for delta++/-, 1/3 for delta+/0) / pcm[GeV] (SigmaNN2NDeltaInterp).
@@ -139,9 +138,9 @@ def _build_tables(n_s=240, n_m=160, s_lo=None, s_hi=4.0):
 
 
 def sigma_nn_ndelta(sqrts_gev, pcm_gev, same_iso):
-    """TOTAL NN -> N Delta cross section [mb] summed over the two allowed charge states
-    (isofactors 1 + 1/3 = 4/3 for pp/nn; 1/3 + 1/3 = 2/3 for pn), at sqrts [GeV] with the
-    1/pcm flux scaling (SigmaNN2NDeltaInterp).  jnp-friendly (interp on the numpy table)."""
+    """TOTAL NN -> N Delta cross section [mb], summed over the two allowed charge states per
+    isofactor (pp/nn vs pn), at sqrts [GeV] with the 1/pcm flux scaling (SigmaNN2NDeltaInterp).
+    jnp-friendly (interp on the numpy table)."""
     _build_tables()
     base = jnp.interp(jnp.asarray(sqrts_gev), jnp.asarray(_CACHE["S"]), jnp.asarray(_CACHE["sig"]),
                       left=0.0, right=0.0)

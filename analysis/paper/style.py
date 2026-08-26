@@ -52,9 +52,8 @@ def plab(p):
 
 
 class DashSlashSolid(HandlerBase):
-    """Legend handle drawn as  -- / --  : dashed segment, a literal '/', solid segment.
-    ONE entry replaces the 'ACHILLES x / ADoNIS x' product: linestyle carries the generator,
-    colour carries the physics.  HandlerTuple cannot do this (it tiles artists, no text)."""
+    """Legend handle drawn as dashed segment / '/' / solid segment: linestyle carries the generator,
+    colour carries the physics."""
     def __init__(self, color=None, lighten=ADO_LIGHTEN, darken=REF_DARKEN, **kw):
         super().__init__(**kw)
         self._c = color or GEN_GREY
@@ -76,8 +75,7 @@ class DashSlashSolid(HandlerBase):
 
 
 def darker(c, f=REF_DARKEN):
-    """Blend a colour toward black by fraction f.  Mirrors adonis.workflow.plotting.darker so the
-    legend swatch and the curves cannot drift apart."""
+    """Blend a colour toward black by fraction f.  Mirrors adonis.workflow.plotting.darker."""
     r, g, b = mcolors.to_rgb(c)
     return (r * (1.0 - f), g * (1.0 - f), b * (1.0 - f))
 
@@ -111,9 +109,8 @@ def panel_legend(ax, has_parts, loc="upper right", bbox_to_anchor=None):
 
 
 def paper_run_analysis_kw():
-    """The EXACT run_analysis(**kw) styling the paper's config-driven figures use -- SINGLE SOURCE (was
-    inlined at the make.py call site).  Pure-config figures pass this to run_analysis; the standalone
-    drivers already self-style via style.use() + the style.* palette, so they need nothing from here."""
+    """The run_analysis(**kw) styling the paper's config-driven figures use.  Pure-config figures pass
+    this to run_analysis; the standalone drivers self-style via style.use() + the style.* palette instead."""
     return dict(panel_w=PANEL_W, fig_h=PANEL_H, min_w=PANEL_W, max_cols=STD_COLS,
                 panel_kw=panel_kw(ratio_yticks=[0.8, 1.0, 1.2]),
                 legend_fn=panel_legend, label_as_xlabel=True,
@@ -121,8 +118,7 @@ def paper_run_analysis_kw():
 
 
 def swatches(entries, lighten=ADO_LIGHTEN, darken=REF_DARKEN):
-    """(handles, labels, handler_map) where EVERY entry is a '-- / -' pair in its own colour, so each
-    series advertises both of its shades instead of a single stroke the plot never actually draws.
+    """(handles, labels, handler_map) where every entry is a '-- / -' pair in its own colour.
     entries: [(label, colour_or_None), ...]; None -> the neutral grey generator key."""
     handles, labels, hmap = [], [], {}
     for lab, col in entries:
@@ -162,10 +158,8 @@ def _degraded():
 def save(fig, name):
     """Write <name>.png + <name>.pdf into OUTDIR and return the png path.
 
-    A figure built from a knowingly incomplete shard set is MARKED, in two ways that survive leaving the
-    terminal: a banner on the image, and the reason in the file's metadata.  The failure this guards is
-    that a downgraded panel -- a coarser grid substituted for a missing fine one -- looks exactly as
-    healthy as a correct one, so a warning on stdout is gone the moment the scrollback is.
+    A figure built from a knowingly incomplete shard set is marked: a banner on the image, and the
+    reason in the file's metadata.
     """
     OUTDIR.mkdir(parents=True, exist_ok=True)
     png = OUTDIR / f"{name}.png"

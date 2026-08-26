@@ -25,25 +25,20 @@ def shrink_from_fisher(F, prior):
     return np.sqrt(np.diag(posterior(F, prior))) / np.asarray(prior)
 
 def vif_from_fisher(F, prior):
-    """Gate-I degeneracy measure: variance inflation factor and multiple correlation, per knob.
+    """Degeneracy measure: variance inflation factor and multiple correlation, per knob.
 
         sigma_marg = sqrt(diag(inv(F + P)))     knob free, all others free   (correlation-aware)
         sigma_cond = 1/sqrt(diag(F) + diag(P))  knob free, all others fixed  (correlation-blind)
         VIF        = (sigma_marg / sigma_cond)^2
         R_multi    = sqrt(1 - 1/VIF)            multiple correlation of this knob with the rest
 
-    Shrinkage alone cannot express this: a knob can pass the shrink<0.5 cut while still being almost
-    fully degenerate with the others (high VIF), because shrinkage only measures how well the data
-    constrains the knob when everything else is also let float, not how much of that constraint comes
-    from correlation with other knobs.
+    Shrinkage alone cannot express this: a knob can look well-constrained by shrinkage while still
+    being almost fully degenerate with the others (high VIF).  Use the multiple correlation rather
+    than a pairwise one -- degeneracy can be spread over many knobs at once, each pairwise
+    correlation small even when R_multi is close to 1.
 
-    Use the multiple correlation, not a pairwise one: a knob's degeneracy can be spread over many other
-    knobs at once, in which case every single pairwise correlation stays small even though R_multi is
-    close to 1.  A pairwise cut would pass such a knob.
-
-    Note this is a linear diagnostic.  It flags a flat direction; it cannot flag a second minimum caused
-    by a nonlinear (e.g. quadratic) dependence of the model on the parameter, which makes the
-    parameter -> prediction map many-to-one.  Necessary, not sufficient.
+    This is a linear diagnostic: it flags a flat direction, not a second minimum from a nonlinear
+    parameter dependence.  Necessary, not sufficient.
     """
     P = 1.0 / np.asarray(prior) ** 2
     V = np.linalg.inv(np.asarray(F) + np.diag(P))
@@ -55,11 +50,9 @@ def vif_from_fisher(F, prior):
 def subset_degeneracy(F, prior, idx):
     """Degeneracy diagnostics for the knobs in `idx` with only those free (the rest frozen at nominal).
 
-    This conditioning matters: a full-set marginal shrinkage does not predict the correlations a fit
-    will see once some knobs are frozen, because freezing a knob removes a flat direction the frozen
-    knob used to absorb, and that direction gets dumped onto whoever is left free.  A pair that looks
-    only mildly correlated in the full marginal can become near-degenerate once other knobs are frozen
-    around it, pulling the fit into a spurious second minimum along the resulting valley.
+    Freezing a knob removes a flat direction it used to absorb, which can push knobs that looked
+    only mildly correlated in the full marginal into near-degeneracy once frozen around.  So this
+    must be recomputed per subset rather than read off the full-set result.
 
     Returns dict(sigma, vif, rmulti, corr):
       sigma  = sqrt(diag(inv(F_sub + P_sub)))          all of `idx` free
@@ -67,8 +60,8 @@ def subset_degeneracy(F, prior, idx):
       rmulti = sqrt(1 - 1/vif)                         multiple correlation against the other survivors
       corr   = the correlation matrix over `idx`
 
-    Use rmulti/vif, not a pairwise maximum: a knob can be degenerate against a combination of others
-    while its largest single-pair correlation stays small.
+    Use rmulti/vif rather than a pairwise maximum: degeneracy against a combination of knobs can
+    leave every single pairwise correlation small.
     """
     idx = list(idx)
     Fs = np.asarray(F)[np.ix_(idx, idx)]
@@ -84,9 +77,9 @@ def subset_degeneracy(F, prior, idx):
 def prune_by_vif(F, prior, idx, vif_cut=20.0, names=None, log=None):
     """Drop the most degenerate knob, recompute, repeat until every survivor has VIF < vif_cut.
 
-    Iteration is required, not cosmetic: each drop re-freezes a direction and changes every remaining
-    knob's VIF, so a single pass over a fixed ranking is not the same answer.  Returns the surviving
-    index list.
+    Iterative because each drop re-freezes a direction and changes every remaining knob's VIF; a
+    single pass over a fixed ranking would not give the same answer.  Returns the surviving index
+    list.
     """
     cur = list(idx)
     while len(cur) > 1:
@@ -102,12 +95,13 @@ def prune_by_vif(F, prior, idx, vif_cut=20.0, names=None, log=None):
     return cur
 
 def fisher_shrinkage(J, sigma, prior, rows=None):
-    """Fisher + Gate-I from a per-bin Jacobian.  Returns (F, V, sig_post, shrink, reach):
-      F      = (J/sigma)^T (J/sigma)           Fisher information (ADDITIVE across samples)
-      V      = inv(F + diag(1/prior^2))         marginalized posterior covariance
-      sig_post = sqrt(diag(V))                  marginalized posterior sigma
-      shrink = sig_post / prior                 < 1 means the data, not the prior, sets the width
-      reach  = sqrt(diag(F))                    raw per-knob reach (other knobs held fixed)
+    """Fisher information and posterior shrinkage from a per-bin Jacobian.  Returns
+    (F, V, sig_post, shrink, reach):
+      F      = (J/sigma)^T (J/sigma)           Fisher information (additive across samples)
+      V      = inv(F + diag(1/prior^2))        marginalized posterior covariance
+      sig_post = sqrt(diag(V))                 marginalized posterior sigma
+      shrink = sig_post / prior                < 1 means the data, not the prior, sets the width
+      reach  = sqrt(diag(F))                   raw per-knob reach (other knobs held fixed)
     """
     F = fisher(J, sigma, rows)
     V = posterior(F, prior)

@@ -1,20 +1,11 @@
-"""The single entry point for a fit run.
+"""Entry point for a fit run.
 
     python -m adonis.fit configs/fits/sec4_P1.yaml --stage profile2d --shard 3/36
 
-One config, one command, one stage at a time.  This replaces "source the right eleven environment
-variables, then run whichever of eleven modules corresponds to the stage you want" -- the arrangement in
-which the 2-D corner ran MAP while every other stage ran MLE, because one variable was set in three job
-scripts and missing from the fourth.
-
-What it guarantees:
-
-  * the stage sees the config and nothing else.  Per-job values (which shard, which chain) are passed
-    explicitly and are the ONLY things the runner puts in the environment.
-  * a stale S4_* left in the environment is a hard error, not a silent override.  That is the specific
-    failure this whole layer exists to prevent, so it is checked before any work starts.
-  * every stage writes a manifest beside its output recording the config digest, so a merged product can
-    prove its shards came from one definition rather than from two half-edited runs.
+One config, one command, one stage at a time.  Guarantees: the stage sees only the config (per-job values
+like shard/chain are passed explicitly, not via ad hoc environment variables); a stale S4_*/PHYSFIT_*/
+NUTS_* left in the environment is a hard error; every stage writes a manifest beside its output recording
+the config digest.
 """
 import argparse
 import json

@@ -1,10 +1,8 @@
 """Published binnings of the T2K CC0pi double-differential measurement (arXiv:2002.09323).
 
-Reference data about a measurement, in the same sense as the data releases next door: the edges are
-whatever T2K published, and nothing here may adjust them to suit a fit. Kept separate from
-adonis/unfold/binning.py so the general unfolding framework does not carry one experiment's bin edges.
-
-The top edge of every cos(theta_mu) slice is an overflow bin running to 30 GeV/c.
+Reference data about a measurement: the edges are exactly as T2K published them and must not be
+adjusted to suit a fit. The top edge of every cos(theta_mu) slice is an overflow bin running to
+30 GeV/c.
 """
 import numpy as np
 

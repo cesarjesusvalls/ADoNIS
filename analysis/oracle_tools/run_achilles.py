@@ -1,20 +1,13 @@
 """Generalized ACHILLES runner: configs/achilles/<card>.yml -> docker -> output/achilles/<...>.hepmc.
 
-Mirrors the T2K generation for every validation observable.  Encodes the image/platform/entrypoint
-rules from docs/CONTAINER.md (do NOT mix these up -- they are correctness, not preference):
+Image/platform/entrypoint by card prefix (see _RULES): no-cascade cards use the amd64 `oracle` image
+under emulation; FSI and cascade-only cards must run the native arm64 image with NO --platform, since
+amd64+Rosetta SIGSEGVs the cascade.
 
-  no-cascade runs  (inclusive (e,e'), free-nucleon, res1pi, T2K *_nofsi / T2K_H)
-      -> ghcr.io/cesarjesusvalls/achilles:oracle , --platform linux/amd64 (emulation OK), bin/achilles
-  FSI neutrino runs (T2K C/Ar fsi_gauss: Cascade Run:True)
-      -> achilles:fullcascade (NATIVE arm64, NO --platform -- amd64+Rosetta SIGSEGVs the cascade), bin/achilles
-  cascade-only pion runs (cascade_pip_*)
-      -> achilles:cascade (native arm64, NO --platform), bin/cascade
+--scan-energy overrides Beams[0]['Beam']['Beam Params']['Energy']; --scan-kick overrides top-level
+'KickMomentum'.  ACHILLES can SIGSEGV mid-run -> each seed's batch output is kept even if partial.
 
-Scans: free-nucleon sigma(E) overrides Beams[0]['Beam']['Beam Params']['Energy']; cascade sigma(p_pi)
-overrides top-level 'KickMomentum'.  ACHILLES can SIGSEGV mid-run deterministically -> vary the seed per
-batch and keep whatever each batch produced (partial hepmc is valid).
-
-Usage (run on the host with docker; this module shells out to `docker run`):
+Usage (shells out to `docker run`):
   python -m analysis.oracle_tools.run_achilles configs/achilles/run_inclusive_ee_C_qe.yml
   python -m analysis.oracle_tools.run_achilles configs/achilles/run_freenucleon_res_H.yml --scan-energy 500,700,1000,1500,2000
   python -m analysis.oracle_tools.run_achilles configs/achilles/run_cascade_pip_C.yml --scan-kick 100,150,200,300,500

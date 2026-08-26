@@ -1,17 +1,15 @@
 """Spectral function S(p, E): the initial-state nucleon momentum/removal-energy distribution.
 
-Bit-exact port of ACHILLES SpectralFunction.cc.
+Bit-exact port of ACHILLES SpectralFunction.cc. S(p,E) is the probability density of a struck
+nucleon with momentum |p| [MeV] and removal energy E [MeV]. The struck-nucleon proposal is
+DETACHED (a fixed kind-1 proposal: knobs never enter the sampling, only the elementary-xsec
+weight, so gradients stay exact). One sampler, `SpectralImportanceSampler` (numpy, draws
+|p|,E ~ |p|^2 S), backs both the eager (`SpectralSampler`) and jax
+(`SpectralFunction.sample_nucleon`) callers, which wrap its draw in `jnp.asarray` + `stop_gradient`.
 
-S(p,E) is the probability density of a struck nucleon with momentum |p| [MeV] and removal energy
-E [MeV].  The struck-nucleon proposal is DETACHED (a fixed kind-1 proposal; the knobs never enter
-the sampling, only the elementary-xsec weight, so gradients stay exact).  There is ONE sampler --
-`SpectralImportanceSampler` (numpy, |p|,E ~ |p|^2 S) -- used by every stack; the eager/jax callers
-(`SpectralSampler.sample(key, n)`, `SpectralFunction.sample_nucleon(key, n)`) wrap its numpy draw in
-`jnp.asarray` + `stop_gradient` (the proposal is detached, so the backend is free).
-
-Table parse resolves two path conventions: a path with a directory ("data/Spectral_Functions/pke..")
-is taken relative to the sibling Achilles/ checkout (the production convention); a bare filename
-("pke12p_tot.data") is taken under $ACHILLES_DATA/Spectral_Functions (the eager convention).
+Table-path convention: a filename with a directory (e.g. "data/Spectral_Functions/pke12p_tot.data")
+resolves relative to the sibling Achilles/ checkout; a bare filename (e.g. "pke12p_tot.data")
+resolves under $ACHILLES_DATA/Spectral_Functions.
 """
 from __future__ import annotations
 
@@ -146,9 +144,8 @@ def initial_state_weight(p_mag, E_in, sf: SpectralFunction, n_nucleon):
 
 class SpectralImportanceSampler:
     """The spectral sampler (numpy).  Draws (|p|, removal E) ~ |p|^2 S(p,E) from a SpectralFunction's
-    own table, so the |p|^2 S flat-MC weight peak cancels in the importance weight (the ADoNIS analog
-    of the ACHILLES Vegas struck-nucleon proposal).  Fine inverse-CDF grids (~0.25 MeV E, ~1 MeV |p|)
-    built with the SF's own Polint (sf.batch), matching ACHILLES interpolation."""
+    own table, so the |p|^2 S flat-MC weight peak cancels in the importance weight.  Builds fine
+    inverse-CDF grids using the SF's own Polint (sf.batch), matching ACHILLES interpolation."""
 
     def __init__(self, sf: SpectralFunction):
         mom = np.asarray(sf.mom); ne = sf.ne; np_ = sf.np
@@ -182,13 +179,13 @@ class SpectralImportanceSampler:
 
 
 def load_spectral(name: str = "pke12p_tot.data") -> SpectralFunction:
-    """A SpectralFunction IS the parsed table now (kept for the DCC eager callers)."""
+    """Return a parsed SpectralFunction table (kept for the DCC eager callers)."""
     return SpectralFunction(name)
 
 
 class SpectralSampler:
-    """Jax-facing wrapper over the ONE numpy SpectralImportanceSampler: `sample(key, n)` seeds a numpy
-    rng from `key`, draws the detached proposal, wraps in jnp + stop_gradient (proposal is detached)."""
+    """Jax-facing wrapper over SpectralImportanceSampler: `sample(key, n)` seeds a numpy rng from
+    `key`, draws the detached proposal, and wraps it in jnp + stop_gradient."""
 
     def __init__(self, sf: SpectralFunction):
         self._imp = SpectralImportanceSampler(sf)

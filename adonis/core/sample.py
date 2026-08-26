@@ -2,12 +2,11 @@
 
 A `Sample` is the fixed, DETACHED proposal of the kind-1 estimator: everything that does
 NOT depend on the physics knobs (kinematics, precomputed angular kernels, lepton tensor,
-cuts, phase-space prefactors, lab final-state momenta).  It stays a plain dict at runtime
-(a JAX pytree; some entries are static objects like the HadronStructure), but every
-Channel declares its exact key set via `Channel.sample_fields` and the Generator checks
-it once per proposal — the schema is enforced at the module seam, not by the container.
+cuts, phase-space prefactors, lab final-state momenta). It is a plain dict at runtime (a
+JAX pytree; some entries are static objects); each Channel declares its exact key set via
+`Channel.sample_fields`, checked against the schema once per proposal.
 
-A `Sampler` produces a Sample from a PRNG key.  Composable samplers (flux, nuclear,
+A `Sampler` produces a Sample from a PRNG key. Composable samplers (flux, nuclear,
 leptonic, decay-angle) contribute their detached draws into one bundle.
 """
 from __future__ import annotations

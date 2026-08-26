@@ -1,16 +1,9 @@
-"""The exact per-bin gradients for the knobs the data can constrain.
+"""Per-bin gradient shapes for the knobs the data can constrain.
 
-The object is the SAME Jacobian the Fisher figure gates on (multisample_carbon.npz): J_ik =
-d(dsigma/dx)_i/dtheta_k for every knob k and every bin i, obtained by ONE jax.jvp per knob through
-bank_reweight.weight_jit -- autodiff through the frozen walk, not finite differences, not a surrogate.
-
-Plotted as the per-knob gradient SHAPE for the Gate-I FITTABLE subset (marginalized shrinkage < 0.5 on
-the combined fit): each knob's row of the dimensionless pull
-    S_ik = (dtheta_k^prior) * J_ik / sigma_i        [ the knob's per-bin pull, in units of the error ]
-is normalized to its own peak, so WHERE each knob pulls across the bins is readable; the pull is SIGNED
-(a knob raises or lowers a bin), hence the diverging map.  Rows grouped by physics, styled to match the
-Fisher figure (analysis/paper/grad_info) -- the two read as a pair: which knobs are constrainable, and
-where their information comes from.
+Reads the persisted Jacobian J_ik = d(dsigma/dx)_i/dtheta_k (one jax.jvp per knob through
+bank_reweight.weight_jit).  Plots the signed, per-row-normalized pull S_ik = (dtheta_k^prior)*J_ik/sigma_i
+for the Gate-I fittable knobs (marginalized shrinkage < 0.5), grouped by physics block, styled to match
+the Fisher figure (grad_info/fisher.py).
 
 Usage:  python -m analysis.paper.grad_info.make [label]
 """
@@ -58,12 +51,11 @@ SYST = 0.05
 
 
 def main(label="multisample_carbon"):
-    """Per-bin gradient SHAPE for the Gate-I fittable knobs -- the paper's gradient figure.
+    """Per-bin gradient SHAPE for the Gate-I fittable knobs.
 
-    Rows = the knobs the combined data can actually constrain (marginalized shrinkage < FIT_CUT),
-    ordered by physics block; columns = bins grouped by observable.  Each row is normalized to its own
-    peak |pull|, so WHERE each knob pulls is visible; the pull is SIGNED (a knob raises or lowers a bin),
-    hence the diverging blue<->orange map (anchored on the §1 blue).  Styled to match the §3 Fisher figure.
+    Rows = knobs the combined data can constrain (marginalized shrinkage < FIT_CUT), grouped by physics
+    block; columns = bins grouped by observable.  Each row is normalized to its own peak; sign shows
+    whether a knob raises or lowers a bin.
     """
     style.use()
     d = np.load(style.ALTGEN / f"{label}.npz", allow_pickle=True)

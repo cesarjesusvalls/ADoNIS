@@ -1,22 +1,13 @@
-"""FIGURE B -- the 2-D companion to figure A: Gaussian vs Laplace marginal vs NUTS marginal.
+"""FIGURE B -- 2-D corner: Gaussian, profile-likelihood, and NUTS-marginal contours on one panel per
+dial pair.
 
-The section's claim is that gradients make it cheap to CHECK the quoted error rather than assume it.  In
-1-D that check is fig A; this is the 2-D version, and it puts the three objects on the same panel so the
-places they disagree are visible instead of inferred from three separate figures.
+  * GAUSSIAN   Gauss-Newton curvature at the best fit, (J^T W J + prior)^-1, at the same Dchi2 levels.
+  * PROFILE    exact chi2 minimised over the other dials at every grid node -- a 2-D confidence region,
+               Dchi2 = 2.30 (68%) / 4.61 (90%).
+  * NUTS       the 2-D marginal of the full posterior, integrated over the other dials, at the 68%/90%
+               HPD levels -- a 2-D credible region.
 
-They are NOT the same object, and the legend says so:
-
-  * GAUSSIAN   -- the Gauss-Newton curvature at the best fit, (J^T W J + prior)^-1, drawn at the same
-                  Delta chi2 levels.  This is what a Minuit/HESSE analysis quotes.
-  * PROFILE    -- exact chi2 minimised over the other 14 dials at every grid node: a 2-D CONFIDENCE
-                  region, Delta chi2 = 2.30 (68%) / 4.61 (90%).  Frequentist.
-  * NUTS       -- the 2-D marginal of the 16-D posterior, integrated (not minimised) over the other 14,
-                  drawn at the 68%/90% HPD levels: a 2-D CREDIBLE region.  Bayesian.
-
-Profile and marginal answer different questions and need not coincide -- they differ to Laplace order by
-the nuisance-volume (Occam) factor -- so agreement is evidence the posterior is close to Gaussian in the
-integrated directions, and disagreement localises where it is not.  Where all three coincide the cheap
-Gaussian error is doing its job.
+Profile and marginal differ to Laplace order by the nuisance-volume (Occam) factor.
 
 Usage:  python -m analysis.paper.inference.fig_corner_all [prof_label] [nuts_label]
 """
@@ -49,13 +40,9 @@ NUTS_SMOOTH_MAXBIAS = float(os.environ.get("NUTS_SMOOTH_MAXBIAS", "0.10"))
 
 
 def _smooth_hist(H):
-    """Gaussian-smooth a 2-D count histogram, but only as far as it stays honest.
-
-    A fixed kernel cannot be right for every panel: 1 cell costs +5-9% of enclosed area on the fat
-    uncorrelated pairs (where the contour is genuinely noisy and the smoothing is nearly free) but +30
-    to +82% on the near-degenerate ones, whose blade is barely wider than the kernel itself.  So walk
-    the kernel down until the 68% area moves by less than NUTS_SMOOTH_MAXBIAS, and report what was used.
-    Returns (H_smoothed, sigma_used, area_change).
+    """Gaussian-smooth a 2-D count histogram, shrinking the kernel until the 68% HPD area moves by less
+    than NUTS_SMOOTH_MAXBIAS (a fixed kernel over- or under-smooths depending on how narrow the panel's
+    contour is).  Returns (H_smoothed, sigma_used, area_change).
     """
     a0 = float((H >= hpd_levels(H)[0]).sum())
     if NUTS_SMOOTH <= 0 or a0 <= 0:
@@ -72,14 +59,9 @@ def _smooth_hist(H):
 
 
 def _nbins(sx, sy, rng):
-    """Bins per axis, chosen so the PEAK bin reaches NB_TARGET counts.
-
-    A fixed 36x36 is fine for the near-degenerate pairs, whose samples pile into a thin blade (peak ~385
-    counts, density falling ~160 counts per bin across the narrow direction, so the contour barely moves).
-    The uncorrelated pairs spread the same samples over a shallow disc -- peak 77, gradient 9 counts/bin --
-    and the HPD contour then wanders by ~0.5 bins.  Contour jitter goes as sqrt(N_bin)/|dN/dx| ~ 1/w, so
-    coarsening is the direct fix: measured on E_b x S_Delta it takes the jitter from 0.101 to 0.052 sigma
-    while leaving the degenerate panels at 36.
+    """Bins per axis, chosen so the peak bin reaches NB_TARGET counts: contour jitter scales as
+    sqrt(N_bin)/|dN/dx|, so coarsening the bins on sparser (uncorrelated) pairs controls jitter while
+    leaving near-degenerate pairs at NB_MAX.
     """
     nb = NB_MAX
     while nb > NB_MIN:
@@ -91,13 +73,8 @@ def _nbins(sx, sy, rng):
 
 
 def hpd_levels(H, fracs=(0.6827, 0.90)):
-    """Density levels enclosing `fracs` of the mass -- the 2-D HPD contours of a grid.
-
-    Normalise by the ACTUAL total, not max(total, 1).  That floor was written for integer count
-    histograms, where the sum is always >= 1, and it silently broke on the Laplace density, whose
-    normalisation is arbitrary: M_A_res x S_Delta sums to 0.25, so the cumulative never reached 0.68,
-    searchsorted ran off the end and the level came back 0 -- contour(0) then traced the edge of the
-    zero region instead of a credible region.
+    """Density levels enclosing `fracs` of the mass -- the 2-D HPD contours of a grid.  Normalises by
+    the actual total (not max(total, 1)), since the Laplace density's normalisation is arbitrary.
     """
     tot = float(np.sum(H))
     if not np.isfinite(tot) or tot <= 0:
@@ -108,17 +85,13 @@ def hpd_levels(H, fracs=(0.6827, 0.90)):
 
 
 def _diag(A, nm, dax, dcol, sub, pn, bfp, spost, prof1, U, ncol):
-    """One diagonal cell: the SAME three statements as the 2-D panels, in 1-D.
+    """One diagonal cell: the same three objects as the 2-D panels, in 1-D.
 
-    profile  exp(-Dchi2/2) from the 1-D scan   (minimised over the other 16)
-    NUTS     the 1-D marginal histogram        (integrated over the other 16)
+    profile  exp(-Dchi2/2) from the 1-D scan   (minimised over the other dials)
+    NUTS     the 1-D marginal histogram        (integrated over the other dials)
     Gaussian N(0,1) in sigma_post units        (the quoted Gauss-Newton curvature)
 
-    All three are normalised to unit AREA over the panel window -- ordinary densities.  Unit PEAK, which
-    this used to do, pins every curve to the same height and throws away the very thing the panel is for:
-    a narrower distribution should look TALLER, and with peak normalisation the Gaussian's excess width
-    was only readable from the tails.  The windows here comfortably contain all three curves, so area
-    normalisation is not distorted by truncation.
+    All three are normalised to unit area over the panel window.
     """
     from scipy.interpolate import CubicSpline
     cc = dcol[nm]; kk = sub[cc]; aa = dax[nm]
@@ -183,14 +156,11 @@ def _load_grad(label):
 
 
 def _grad_panel(A, G, i, j, sub, pos, pn, bfp, crop=None, xbot=True, yleft=True):
-    """Gauss-Newton field for pair (i, j): x = dial i, y = dial j, PHYSICAL units, full allowed range.
+    """Gauss-Newton field for pair (i, j): x = dial i, y = dial j, in physical units, over the dial's
+    full allowed range.
 
-    A copy of fig_corner_grad's methodology -- same key, same smoothing, same normalisation, same
-    subsampling -- because this half of the figure is that figure.
-
-    `crop` = (x0, x1, y0, y1) in physical units: the window the contour panel opposite it shows.  Drawn
-    as a rectangle, it is the point of putting the two halves together -- it says how small the region
-    the data constrains is inside the range the dial is allowed to take.
+    `crop` = (x0, x1, y0, y1) in physical units: the window the contour panel opposite it shows, drawn
+    as a rectangle.
     """
     (axa, axb), d, F = G[(i, j)]
     _c = np.log10(np.maximum(d, 1e-3))
@@ -322,12 +292,7 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
                     A.tick_params(labelbottom=False)
                     continue
                 def _phys_ticks(axis, k_, c_, lo_s, hi_s, n=3):
-                    """Ticks at ROUND PHYSICAL values, placed at their sigma positions.
-
-                    Locating on the sigma axis and relabelling gave round sigma values and therefore
-                    arbitrary physical ones (0.53, 1.27, 1.92).  Choosing the numbers in physical space
-                    first and mapping them back puts them where a reader expects.
-                    """
+                    """Ticks at round physical values, placed at their corresponding sigma positions."""
                     from matplotlib.ticker import MaxNLocator, FixedLocator, FixedFormatter
                     p0, p1 = bfp[k_] + lo_s * spost[c_], bfp[k_] + hi_s * spost[c_]
                     vals = [v for v in MaxNLocator(n).tick_values(p0, p1) if p0 <= v <= p1]

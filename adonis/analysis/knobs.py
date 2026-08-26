@@ -2,17 +2,16 @@
 
 Two different things live here, and only one of them belongs to the generator:
 
-  THE PARAMETERISATION -- the knob order (PNAMES, NPAR), the theta <-> PhysicsParams maps, and the
-  physical bounds (PHYS_BOUND, phys_lo/phys_hi/clip_phys).  These are properties of the model: a
-  negative axial mass is unphysical no matter who is fitting it.  The knob set itself comes from
+  PARAMETERISATION -- the knob order (PNAMES, NPAR), the theta <-> PhysicsParams maps, and the
+  physical bounds (PHYS_BOUND, phys_lo/phys_hi/clip_phys). These are properties of the model: a
+  negative axial mass is unphysical no matter who is fitting it. The knob set itself comes from
   adonis.reweight.reweight_model.knob_specs; this module fixes the ORDER, which the Jacobian, the
-  covariance and every saved npz index by.
+  covariance, and every saved npz index by.
 
-  PRIOR -- how well an analyst claims to know each knob, defaulting to 20% multiplicative with
-  natural units where that is meaningless (Eb_shift 4 MeV, f_NN_cex 0.1).  That is an analysis
-  choice, not a property of the generator, and callers should pass their own: UnfoldEngine takes
-  knob_prior for exactly this reason.  It stays here only because it must line up with the knob
-  order above, and splitting the two invites them to disagree.
+  PRIOR -- how well an analyst claims to know each knob (a default multiplicative fraction, with
+  natural-unit overrides for a few knobs). This is an analysis choice, not a property of the
+  generator: callers may pass their own (see UnfoldEngine's knob_prior argument). It stays in this
+  module only because it must remain index-aligned with the parameterisation above.
 """
 import os
 

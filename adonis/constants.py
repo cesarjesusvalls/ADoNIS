@@ -1,8 +1,7 @@
 """Physical constants, verbatim from ACHILLES.
 
-Two families, both verbatim from the ACHILLES source; never "fix" one into the other,
-since the generator uses both and bit-exact reproduction requires matching each code
-path's own choice.
+Two families, never merged: each of the generator's code paths needs its own upstream values
+reproduced bit-exact.
 
 * `Constants.hh` precision values (lowercase: ``mp``, ``mn``, ``HBARC``, ``GF``, ...) —
   used by the transliterated cross-section code (``adonis/channels``) and the Oset port.

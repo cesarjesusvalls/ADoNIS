@@ -1,19 +1,13 @@
-"""ONE render module for every ADoNIS-vs-ACHILLES paper figure (arXiv:2508.19213).
+"""One render module for every ADoNIS-vs-ACHILLES paper figure (arXiv:2508.19213); make.py is the only
+entry point and the YAML specs next to this file hold the per-figure variation.  A spec's `render:` key
+picks the render function:
 
-All figure code lives here; the diversity lives in the YAML specs next to this file, and make.py is the
-only entry point.  A spec's `render:` key picks the render function:
+  multiobs   pure selection histograms -> adonis.workflow.analyze.run_analysis under the paper style.
+  panels     compute a panel set, then adonis.workflow.plotting.make_figure (the shared grid-of-
+             chi2_ratio_panel builder); `compute:` selects the panel-filling logic, `layout:` its kwargs.
+  beam_sigma / others   bespoke multi-series or angular-sampler figures with a dedicated function.
 
-  multiobs  pure selection histograms  -> adonis.workflow.analyze.run_analysis under the paper style
-            (figs 7/8/9/12 + appendix A1/A2 -- nothing but a config).
-  panels    compute a panel set, then adonis.workflow.plotting.make_figure (the shared grid-of-
-            chi2_ratio_panel builder).  figs 1, 10, 11, 4-6: they differ ONLY in the COMPUTE that fills
-            the panels (`compute:` selects it) and the layout kwargs (`layout:` in the spec).
-  sigma_channels / beam_sigma / dcc   the three genuinely bespoke figures (2, 3, 13): multi-series
-            overlays / angular samplers that are NOT one-observable panels, so they keep a dedicated
-            function -- but still here, still config-driven, still one entry point.
-
-Shared drawing (chi2_ratio_panel, make_figure) already lives in adonis.workflow.plotting; this module is
-the paper-side COMPUTE + the thin dispatch onto it.
+Shared drawing lives in adonis.workflow.plotting; this module is the paper-side compute + dispatch.
 """
 import glob
 import sys
@@ -41,10 +35,9 @@ def _rel(path):
 
 
 def _assemble(panels):
-    """panels: list of {key, edges, label, ado:(values,w,chan), ref:(values,w,chan)}.
-    Pack into the (specs, ado_sel, ref_sel) make_figure wants: one shared 'w'/'chan' per side, each key
-    NaN-padded outside its own panel (make_figure keys every observable off one weight vector).  This is
-    the single home of the concatenate+NaN-pad idiom the sliced and electron computes both need."""
+    """panels: list of {key, edges, label, ado:(values,w,chan), ref:(values,w,chan)}.  Packs into the
+    (specs, ado_sel, ref_sel) shape make_figure wants: one shared 'w'/'chan' per side, each key
+    NaN-padded outside its own panel."""
     specs = [(p["key"], np.asarray(p["edges"], float), p["label"]) for p in panels]
 
     def side(which):
@@ -58,9 +51,8 @@ def _assemble(panels):
 
 
 def _panel_kw(p):
-    """Paper palette for a `panels` figure.  A single-line figure (params `breakdown: false`) draws the
-    one series in the IBM blue (C_QE), NOT the QE/RES-total pink (C_TOTAL) -- pink reads as 'total of the
-    components shown', which is wrong when no components are drawn.  This is the one home of that rule."""
+    """Paper palette for a `panels` figure.  When `breakdown: false`, draws the single series in C_QE
+    rather than the QE/RES-total C_TOTAL (which would read as 'total of components shown')."""
     over = {"ratio_yticks": p.get("ratio_yticks", [0.8, 1.0, 1.2])}
     if not p.get("breakdown", True):
         over["total_color"] = style.C_QE
@@ -210,7 +202,7 @@ def render_panels(spec, show_ratio=True):
 
 
 def render_beam_sigma(spec, show_ratio=True):
-    """Fig 3 -- pi+ nucleus absorption+reaction sigma(p), 2x2 curve blocks (nucleus rows, channel cols).
+    """pi+ nucleus absorption+reaction sigma(p), 2x2 curve blocks (nucleus rows, channel cols).
     show_ratio=False drops the per-block ACH/ADO ratio strip and writes to a *_noratio file."""
     import os
     import matplotlib.pyplot as plt
@@ -272,12 +264,8 @@ def render(spec, show_ratio=True):
 
 
 def render_sample(cfg_path, show_ratio=True):
-    """Render the sec1 ADoNIS-vs-ACHILLES figure for a sample config.
-
-    Was AnaSample.plot().  It lived in adonis/analysis/sample.py and imported this module, which made
-    the core depend on one section's figure code; the sample config IS a sec1 spec, so the verb belongs
-    on this side of the boundary.  render_multiobs/render_panels re-load the AnalysisConfig from _path,
-    so one config file still drives both this and AnaSample.gate1().
+    """Render the ADoNIS-vs-ACHILLES figure for a sample config.  render_multiobs/render_panels re-load
+    the AnalysisConfig from _path, so one config file drives both this and AnaSample.gate1().
     """
     import yaml
     from pathlib import Path

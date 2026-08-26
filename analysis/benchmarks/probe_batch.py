@@ -1,14 +1,11 @@
 """Largest Jacobian dial-batch that fits on this device, at a given event count.
 
-The workload grid must use ONE batch at every N.  With batch B a jacobian costs ceil(n/B) primal passes
+The workload grid must use ONE batch B at every N: with batch B a jacobian costs ceil(n/B) primal passes
 instead of 1, so letting B fall as N rises would make Gauss-Newton look more expensive at large N for a
-reason that is device memory, not algorithm -- the same class of artefact as the host round-trip this
-whole rewrite exists to remove.  So the binding constraint (the largest N) sets B for the entire grid,
-and this measures it.
+device-memory reason, not an algorithmic one.  So the largest N sets B for the entire grid.
 
-Batches are tried UPWARD.  A device OOM poisons the CUDA context ("Recorded commands are not empty"),
-so anything attempted after a failure is unreliable; going up means the failure is the last thing that
-happens and everything reported before it was genuinely built.
+Batches are tried UPWARD, since a device OOM poisons the CUDA context and anything attempted after a
+failure is unreliable.
 
     srun ... python -m analysis.benchmarks.probe_batch --sig-cap 250000 [--ndials 17]
 """

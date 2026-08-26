@@ -1,8 +1,7 @@
 """EventRecord: the full lab-frame final state of one batch of CC single-pion events.
 
-A JAX-friendly NamedTuple of arrays (leading axis = event).  Carries the lab 4-momenta
-of every external particle, the per-event weight, and the channel / PDG identities, so
-any observable (observables.py) or signal definition can be computed downstream.  The
+A NamedTuple of arrays (leading axis = event) carrying the lab 4-momenta of every
+external particle, the per-event weight, and the channel / PDG identities. The
 weight is differentiable in the physics knobs; the kinematics are detached samples.
 """
 from __future__ import annotations

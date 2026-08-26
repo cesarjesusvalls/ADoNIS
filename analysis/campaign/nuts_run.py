@@ -1,9 +1,8 @@
-"""Run the NUTS sampler against the paper's multisample posterior.
+"""Run the NUTS sampler against the multisample posterior.
 
-The sampler itself is adonis.fit.nuts -- leapfrog, tree building, Stan-style warm-up -- and knows
-nothing about this campaign.  This module is the part that did: it builds the engine from a fit
-config, reads NUTS_CHAIN to pick a chain, and writes output/altgen/<label>_nutsown_<chain>.npz.
-Keeping it here is what lets adonis.fit.nuts be imported without the bank machinery.
+The sampler itself is adonis.fit.nuts (leapfrog, tree building, Stan-style warm-up); this module builds
+the engine from a fit config, reads NUTS_CHAIN to pick a chain, and writes
+output/altgen/<label>_nutsown_<chain>.npz.
 """
 import os
 import sys

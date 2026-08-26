@@ -1,19 +1,16 @@
 """Repack a bank into uniform, memory-balanced chunks.
 
-Some banks are chunked unevenly -- e.g. a narrow (e,e') angular acceptance can leave a bank with
-hundreds of tiny ~3.6k-event chunks, while a wide-acceptance bank has ~94k-event chunks. Streaming cost
-is dominated by per-chunk overhead (to_jax + jvp dispatch), so many tiny chunks are slow. This tool
-rewrites a bank so every chunk loads to ~the same memory footprint (default 0.5 GB), preserving the full
-record schema and the cross-section normalization.
+Banks can end up chunked unevenly, and streaming cost is dominated by per-chunk overhead, so this tool
+rewrites a bank so every chunk loads to ~the same memory footprint (default 0.5 GB), preserving the
+full record schema and the cross-section normalization.
 
-Normalization: the bank convention is  cross_section = sum(stored w0) / n_chunks  (each chunk a 1/n_chunks
-estimate).  Repacking into M chunks therefore stores  w0_final * M  (w0_final = load_bank's per-event
-weight, sum = cross section) and sets manifest n_chunks = M, so load_bank(dst) reproduces load_bank(src)
-exactly and every streaming reader (select_bank, bank_jacobian_chunked) stays consistent.
+Normalization: the bank convention is  cross_section = sum(stored w0) / n_chunks  (each chunk a
+1/n_chunks estimate).  Repacking into M chunks stores  w0_final * M  and sets manifest n_chunks = M, so
+load_bank(dst) reproduces load_bank(src) exactly.
 
     python -m adonis.workflow.rechunk output/beam_e_C_hv/merged output/beam_e_C_hv_rechunk/merged --target-gb 0.5
 
-Memory: loads the whole source bank once (run on a big-mem node for the 20M banks); writes stream out.
+Loads the whole source bank into memory once; writes stream out.
 """
 import argparse
 import json

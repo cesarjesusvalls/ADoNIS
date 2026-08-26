@@ -1,12 +1,7 @@
 """Neutral-current single-pion RES: nu N -> nu N pi.
 
-Fourth sibling of res.py (CC) / res_ee.py (EM), and deliberately built on res_ee rather than res:
-
-  * res.py hardcodes M_MU in SEVENTEEN places inside its 3-body sampler, so "reuse it with m_lep=0"
-    is not a small edit -- it is a rewrite with seventeen chances to miss one.
-  * res_ee.py ALREADY parametrises the outgoing-lepton mass (`_sample_3body_ee(..., m_lep, u)`),
-    already carries a 4-channel table, and already passes tcrz=0.  Reusing that sampler with
-    m_lep = 0 is a one-argument change to code that is validated for a NON-muon lepton.
+Built on res_ee's 3-body sampler (`_sample_3body_ee`, which already parametrises the outgoing-lepton
+mass) rather than res.py's, with m_lep = 0.
 
 What differs from EM (verified against amp_dcc_sl_module.f, read directly):
 
@@ -19,15 +14,12 @@ What differs from EM (verified against amp_dcc_sl_module.f, read directly):
   vector     : VFAC*vec + (I==1/2)*VVFAC(itiz)*isv, sw2 = 0.2312      (vs raw vec / -isv)
 
 The four channels are the same four as EM -- NC cannot change the nucleon charge, so the pion charge
-is fixed by the final nucleon.  ACHILLES confirms them by running:
-`configs/achilles/run_freenucleon_nc_res_{H,N}.yml` produce exactly
-    on a proton: p -> p pi0 (62.7%),  p -> n pi+ (37.3%)
-    on a neutron: n -> n pi0 (62.4%),  n -> p pi- (37.6%)
-under proc IDs 451/452.  The 0.3% p/n mirror symmetry is the VVFAC sign flip.
+is fixed by the final nucleon.  Cross-checked against ACHILLES via
+`configs/achilles/run_freenucleon_nc_res_{H,N}.yml`, proc IDs 451/452.
 
-`sigma_free_nucleon_nc` is the ADoNIS side of gate G5(2): absolute sigma(E_nu) in nb, to be compared
-against those cards WITHOUT any bridge constant.  A constant offset means a coupling or _NORM error;
-an energy slope means a propagator error -- report mean and spread SEPARATELY, never a single number.
+`sigma_free_nucleon_nc` returns the absolute sigma(E_nu) in nb, comparable to those cards WITHOUT any
+bridge constant.  When comparing, report mean and spread of the ratio SEPARATELY, never a single
+averaged number: a constant offset indicates a coupling/_NORM error, an energy slope a propagator error.
 """
 from __future__ import annotations
 
@@ -56,13 +48,8 @@ def free_nucleon_weights_nc(k_nu, itiz, m_Nf, pi_pid, m_pi_phys, had_mass, u, ch
     """Per-event FREE-nucleon NC single-pion weight w = amps2 * flux * SPIN_AVG_NC * J_3body, for a
     nucleon AT REST and NO beam Jacobian -- the NC twin of res.free_nucleon_weights.
 
-    Kept as its own function rather than a `probe=` argument on the CC one: that primitive routes
-    through res._sample_3body_dispatch, which is the M_MU-hardcoded sampler.  Two short functions
-    that each say what they mean beat one that silently depends on a module-level lepton mass.
-
-    tcrz = 0 for the NC current (amp_dcc_sl_module.f:284-285), exactly as for the photon.  With the
-    CC default of 1 the isospin Clebsch-Gordan <1,tcrz;1/2,tiz|tpi,tpiz> kills the pi0 channels --
-    which are 62% of NC RES, so the failure would be loud but the cause obscure.
+    tcrz = 0 for the NC current (amp_dcc_sl_module.f:284-285), exactly as for the photon; the CC
+    default of 1 would kill the pi0 channels via the isospin Clebsch-Gordan <1,tcrz;1/2,tiz|tpi,tpiz>.
     """
     n = len(k_nu)
     m_pi = _pi_kin_mass(m_pi_phys)
@@ -86,10 +73,9 @@ def sigma_free_nucleon_nc(Enu_MeV, channel, n=80_000, seed=0):
     """Monochromatic free-nucleon NC single-pion sigma(E_nu) [nb] + standard error (J_beam = 1, so
     sigma = <w>).  `channel` is a row of NC_RES_CHANNELS.
 
-    This is the ADoNIS half of G5(2).  Compare against configs/achilles/run_freenucleon_nc_res_*.yml
-    in ABSOLUTE nb: no bridge constant, and report mean(ACH/ADO) and spread(ACH/ADO) apart -- a flat
-    offset is a coupling/_NORM error, a slope in E is a propagator error, and a single averaged
-    number cannot tell them apart.
+    Compare against configs/achilles/run_freenucleon_nc_res_*.yml in ABSOLUTE nb, no bridge constant;
+    report mean and spread of the ratio separately -- a flat offset is a coupling/_NORM error, a slope
+    in E is a propagator error.
     """
     _pdg_in, itiz, pi_pid, m_Nf, _is_p = channel
     had_mass = MASS_PDG_PROTON if _is_p else MASS_PDG_NEUTRON

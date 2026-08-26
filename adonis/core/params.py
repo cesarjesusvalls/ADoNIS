@@ -1,14 +1,13 @@
 """Centralised parameters for ADoNIS: the physics knobs and the static run configuration.
 
-`PhysicsParams` holds all tunable physics knobs that are differentiated and fit via gradient
-information.  It is a `typing.NamedTuple`, so JAX registers it as a pytree (its fields are the
-leaves) -- `jax.grad`/`jax.jvp` flow through it cleanly.  Every consumer (reweight, DCC
-amplitudes, cascade FSI, the fit) reads these fields by name; there is no parallel knob dict.
-`nominal_knobs()` returns the nominal instance; `knob_specs()` is the ordered metadata every
-bank label / scan / fit enumerates through.
+`PhysicsParams` holds all tunable physics knobs, as a `typing.NamedTuple` so JAX
+registers it as a pytree (its fields are the leaves) and `jax.grad`/`jax.jvp` flow
+through it. Every consumer reads these fields by name; there is no parallel knob dict.
+`nominal_knobs()` returns the nominal instance; `knob_specs()` is the ordered metadata
+that bank labels / scans / fits enumerate knobs through.
 
 `ChainConfig` holds the static (non-differentiated) configuration of a generation run.
-`DCCKnobs` is an alias of `PhysicsParams` (the DCC modules refer to it by that name).
+`DCCKnobs` is an alias of `PhysicsParams` used by the DCC modules.
 """
 from __future__ import annotations
 
@@ -23,9 +22,9 @@ _ISO = {0: "pp", 1: "pn", 2: "nn"}
 
 
 class PhysicsParams(NamedTuple):
-    """All tunable, differentiable physics knobs (pytree leaves).  Defaults are the nominal values
-    (so `PhysicsParams()` is nominal, except pw_norm -- see below).  Grouped by the reweight stage
-    each knob enters."""
+    """All tunable, differentiable physics knobs (pytree leaves), grouped by the reweight
+    stage each knob enters. Defaults are the nominal values, except pw_norm (see
+    `nominal_knobs`)."""
     M_A_qe: float = 1.0
     M_A_res: float = 1.0
     axial_strength: float = 1.0
@@ -58,16 +57,15 @@ DCCKnobs = PhysicsParams
 
 
 def nominal_knobs() -> PhysicsParams:
-    """The nominal knob instance.  Identical to the bare default except pw_norm is materialised to 14
-    zeros (the fit/reweight path indexes all 14 partial waves; the DCC generation default keeps pw_norm=())."""
+    """The nominal knob instance, with pw_norm materialised to per-partial-wave zeros
+    (the bare `PhysicsParams()` default leaves pw_norm empty)."""
     return PhysicsParams(pw_norm=tuple([0.0] * _NPW))
 
 
 def knob_specs(NOM: PhysicsParams):
     """Ordered (knob_name, component_idx|None, display_label, nominal_value) for the plotted/fitted knobs.
-    pw_norm is excluded (cost); sscat is excluded (superseded by the granular s_piN_*/s_NN_* knobs).
-    Tuple knobs are expanded per component (s_NN_elastic -> [pp]/[pn]/[nn]).  The single source of
-    knob metadata -- bank labels, scan grids, and fits all enumerate knobs through this."""
+    pw_norm and sscat are excluded. Tuple knobs are expanded per component
+    (s_NN_elastic -> [pp]/[pn]/[nn], via the isospin index convention in `_ISO`)."""
     out = []
     for name, val in NOM._asdict().items():
         if name in ("pw_norm", "sscat"):

@@ -2,26 +2,25 @@
 
 A generation config names a target by chemical formula (e.g. "C", "CH", "H2O").  This module parses
 the formula into element stoichiometry and resolves each element against a registry of nuclei ADoNIS
-has the nuclear inputs to run.  Every per-nucleus input is carried here (the single source of truth)
-and threaded into the generators + cascade; nothing is hardcoded downstream.
+has the nuclear inputs to run, and threads the result into the generators + cascade.
 
-Each NuclearTarget carries, mirroring ACHILLES's per-nucleus inputs (Nucleus.cc / Configuration.cc /
+Each NuclearTarget mirrors ACHILLES's per-nucleus inputs (Nucleus.cc / Configuration.cc /
 SpectralFunction.cc):
-  density_p / density_n : proton / neutron number-density files (data/nuclear/).  ACHILLES ALWAYS
-      reads SEPARATE p and n densities (Nucleus.cc:36-80); for N=Z nuclei (C) both point to the same
-      file.  Radius = first r where rho_proton < 1e-6 fm^-3 (Nucleus.cc:49-51); local Fermi momentum
-      is PER-SPECIES k_F^s = cbrt(3 pi^2 rho_s) hbarc (Nucleus.cc:212-238).
+  density_p / density_n : proton / neutron number-density files (data/nuclear/).  ACHILLES reads
+      SEPARATE p and n densities; for N=Z nuclei (C) both point to the same file.  Nuclear radius
+      is the first r where rho_proton drops below 1e-6 fm^-3; local Fermi momentum is PER-SPECIES
+      k_F^s = cbrt(3 pi^2 rho_s) hbarc.
   configs : nucleon-configuration file (Achilles/data/configurations/).  QMC (C) and RMF (Ar) share
-      one on-disk format: header [A Nconfigs maxWgt minWgt] then per config A lines of "isospin x y z",
-      a weight line, a blank line (Configuration.cc:19-65).  A is read FROM THE HEADER, not hardcoded.
-  spectral_n / spectral_p : neutron / proton spectral-function files (resolved relative to Achilles/).
-      pke40 (Ar) has the same on-disk format as pke12 (C), only a larger (p,E) grid.
+      one on-disk format: header [A Nconfigs maxWgt minWgt], then per config A lines of
+      "isospin x y z", a weight line, a blank line.  A is read from the header, not hardcoded.
+  spectral_n / spectral_p : neutron / proton spectral-function files (resolved relative to
+      Achilles/).  pke40 (Ar) has the same on-disk format as pke12 (C), only a larger (p,E) grid.
   free_nucleon : True -> primary-level only (struck nucleon at rest), no cascade, separate bank.
 
-Runnable today: C-12, Ar-40 (full cascade), free-proton H.  O-16 has densities+configs but NO
-spectral function (no pke16) -> QE/RES cannot run, so it is intentionally NOT registered.  An
-unsupported element raises UnsupportedMaterial -- we NEVER silently fall back to carbon.  Adding a
-nucleus = add its NuclearTarget once density_p/n + configs + spectral_n/p all exist.
+O-16 has densities and configs but no spectral function, so QE/RES cannot run for it and it is
+intentionally not registered.  An unsupported element raises UnsupportedMaterial rather than
+silently falling back to another nucleus.  Add a nucleus by adding its NuclearTarget once
+density_p/n, configs, and spectral_n/p all exist.
 """
 from __future__ import annotations
 import re
@@ -105,12 +104,7 @@ def stoichiometric_weights(formula: str) -> dict[str, float]:
 
 
 def spectral_inputs(material: str) -> tuple[int, int, str, str]:
-    """(Z, N, proton-SF path, neutron-SF path) for a single-nucleus target.
-
-    The hard-vertex channels each carried their own copy of this table.  Four copies of two nuclei is
-    survivable; the failure mode is that adding a nucleus means finding all four, and a channel that
-    was missed accepts the material name and then reads the wrong spectral function.
-    """
+    """(Z, N, proton-SF path, neutron-SF path) for a single-nucleus target."""
     t = REGISTRY.get(material)
     if t is None or t.free_nucleon:
         raise UnsupportedMaterial(

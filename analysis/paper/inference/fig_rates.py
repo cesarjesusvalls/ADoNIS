@@ -1,22 +1,15 @@
-"""FIGURE D -- the binned event rate in every sample, before and after the closure fit.
+"""FIGURE D -- binned event rate in every sample, before and after the closure fit.
 
-Three things per panel, all from the reference closure npz:
+Three curves per panel, from the reference closure npz:
 
-  data        the Asimov data, m(theta_true), with the fit's own per-bin sigma (5% syst; bins whose MC
-              error exceeded 5% of the central value carry sigma=inf and are dropped from the fit -- they
-              are drawn HOLLOW here so the masking is visible rather than implied.  They are all
-              low-occupancy tails -- that is why their MC error exceeds the cut -- so they sit low in a
-              panel normalised to its own peak; the per-panel live/total count states how many there are)
-  pre-fit     m(theta_nominal), the prediction before any fitting
-  post-fit    m(theta_hat), the prediction the fit arrives at
+  data        Asimov data m(theta_true), with the fit's per-bin sigma; bins whose MC error exceeds the
+              cut carry sigma=inf, are dropped from the fit, and are drawn HOLLOW here.
+  pre-fit     m(theta_nominal), the prediction before fitting.
+  post-fit    m(theta_hat), the prediction the fit arrives at.
 
-The point of the figure: the injected truth is a long way from nominal (37 sigma across 17 dials at the
-P1 point), so the pre-fit curve misses the data visibly in the samples that constrain those dials, and
-the post-fit curve lands on it.  chi2 per sample is quoted before and after, over LIVE bins only.
-
-This is an Asimov closure, so "post-fit lands on the data" is exact by construction -- the residual is
-~1e-27.  That is the statement being made: the model can reproduce its own truth from a blind start.  It
-is NOT a goodness-of-fit test, which needs the toy ensemble (figure A, panel b).
+chi2 per sample is quoted before/after, over live bins only.  This is an Asimov closure (post-fit lands
+on the data by construction) -- not a goodness-of-fit test, which needs the toy ensemble
+(fig_closure_summary panel b).
 
 Usage:  python -m analysis.paper.inference.fig_rates [label]
 """

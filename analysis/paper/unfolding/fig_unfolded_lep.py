@@ -1,27 +1,9 @@
-"""FIGURE F (lepton kinematics) -- the unfolded T2K CC0pi result, in two angular slices.
+"""FIGURE F (lepton kinematics) -- unfolded T2K CC0pi result, in two cos(theta_mu) slices of the
+published binning (arXiv:2002.09323), in 1e-38 cm^2/nucleon units.
 
-Each panel is d^2(sigma) / dp_mu dcos(theta_mu) for one cos theta_mu slice of the published binning
-(arXiv:2002.09323), in the 1e-38 cm^2/nucleon units of the measurement.
-
-WHY SLICES RATHER THAN PROJECTIONS.  Every 1-D projection of this measurement needs an assumption or an
-omission, and slices need neither:
-
-  * a p_mu projection has to collapse cells whose p_mu edges differ between cos slices, which means
-    distributing each cell's rate across a common axis in proportion to width -- flat-within-cell --
-    and it has to drop the cos < 0.2 catch-all, a single bin spanning 0-30 GeV/c holding 27.6% of the
-    signal, because spreading THAT flat would invent a momentum spectrum for a quarter of the rate;
-  * a cos theta_mu projection has no good axis.  The slices are near-uniform in angle but wildly
-    unequal in cosine -- the backward slice alone is 1.2 of the 2.0 range, leaving six of the nine
-    slices inside the forward 0.2 -- so a linear cos axis hides the region the measurement is about,
-    and plotting against theta instead spends more than half the axis on one backward bin.
-
-Inside a slice none of that arises: the p_mu bins ARE the published ones, each point is a single
-template, and its error is the square root of its own diagonal entry -- no projection operator, no
-covariance collapse, no assumption.  The cell-to-cell correlations are figure I's subject.
-
-Slices chosen on measured content, not by eye: [0.20, 0.60] has the highest occupancy (4013 events,
-median sigma(c) 0.22) and [0.94, 0.98] has the most bins and the widest momentum reach (10 bins out to
-3.25 GeV/c).  Between them they bracket the angular range.
+Each panel plots d^2(sigma)/dp_mu dcos(theta_mu) for one slice: the p_mu bins are the published ones and
+each point's error is its own diagonal covariance entry -- no projection, no covariance collapse.
+Cell-to-cell correlations are fig_correlation's subject.
 
 Usage:  ADONIS_UNFOLD_OBS=lep python -m analysis.paper.unfolding.fig_unfolded_lep [label]
 """
@@ -44,11 +26,8 @@ SLICES = [(0.20, 0.60), (0.94, 0.98)]
 
 
 def _fig_cfg(z):
-    """The `figures:` block of the config that produced `z`.
-
-    Read from the npz, NOT from the yaml: the figure scripts are pure consumers of a persisted fit --
-    that is what stops a plot disagreeing with the numbers it claims to show -- and a yaml can change
-    after the fit has run.  Older files carry no cfg_json, so the module defaults stand in.
+    """The `figures:` block of the config that produced `z`, read from the npz (not the yaml, which can
+    change after the fit ran).  Older files carry no cfg_json; the module defaults stand in.
     """
     import json
     if "cfg_json" in z.files:
@@ -57,12 +36,8 @@ def _fig_cfg(z):
 
 
 def _legend():
-    """Say what a LINE is and what a MARKER is.
-
-    The reader has to know the step is the generator truth -- what the fit should return -- and the
-    marker is what it did return.  A legend keyed only on the two studies leaves that to be inferred
-    from the drawing, and the panel's whole claim is that the two coincide, so the distinction is the
-    subject rather than a styling detail.
+    """Legend distinguishing line (truth, input) from marker (unfolded result), in addition to the
+    per-study colour.
     """
     h = [Line2D([], [], color=c, lw=1.2) for _s, _l, c, _m in STUDIES]
     h += [Line2D([], [], color="0.25", lw=1.2),

@@ -1,4 +1,4 @@
-"""Structure functions from the full hadron tensor (Phase-2.5, milestone 6c->fold).
+"""Structure functions from the full hadron tensor.
 
 Wraps hadron_assembly into a dcc_xsec-style provider: computes the angle-integrated
 transverse (W_T) and longitudinal (W_L) response on the amplitude's native (Q^2, W)

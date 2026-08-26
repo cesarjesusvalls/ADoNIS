@@ -1,12 +1,11 @@
 """Generator: wire a flux + nuclear model + primary Channel (+ FSI) into one differentiable
 event source.
 
-The chain is the sample/reweight contract end to end: `channel.sample` draws the fixed
-detached proposal (flux + nuclear + leptonic + decay angles), `channel.event_record`
-applies the knob-dependent weight and builds the lab final state, and the FSI model
-transforms it.  `generate(..., return_steps=True)` exposes the intermediate states for
-step-by-step inspection.  Generation is chunked to bound memory (the per-event angular
-kernels are large).
+`channel.sample` draws the fixed detached proposal (flux + nuclear + leptonic +
+decay angles), `channel.event_record` applies the knob-dependent weight and
+builds the lab final state, and the FSI model transforms it.
+`generate(..., return_steps=True)` exposes the intermediate states for
+step-by-step inspection.
 """
 from __future__ import annotations
 
@@ -24,7 +23,7 @@ def _concat_events(evs):
 
 class Generator:
     """Compose a primary Channel with an FSI model. The flux/nuclear models live inside the
-    channel (swappable there)."""
+    channel."""
 
     def __init__(self, channel, fsi=None, params: PhysicsParams = PhysicsParams()):
         self.channel = channel
@@ -35,7 +34,7 @@ class Generator:
                  return_steps=False):
         """Return an EventRecord of `n` events (weight differentiable in `params`).
 
-        chunk: if set, generate in chunks of this size and concatenate (bounded memory).
+        chunk: if set, generate in chunks of this size and concatenate.
         return_steps: also return {'sample', 'primary', 'post_fsi'} for chain inspection
         (only for a single, unchunked call)."""
         p = self.params if params is None else params

@@ -1,25 +1,20 @@
-"""THE single entry point for the computational-performance figures.
+"""Entry point for the computational-performance figures.
 
     python -m analysis.paper.performance.make                  # every figure
     python -m analysis.paper.performance.make minimizers       # only figures whose key contains this
 
-Two claims, two figures, both from artefacts the core package writes:
+  minimizers   gradients vs no gradients in the optimiser.  Reads output/altgen/bench_fair_*.npz,
+               produced by `python -m analysis.benchmarks.bench_fair`.
+  generation   CPU vs GPU event-generation throughput.  Reads the `stage_seconds` block
+               adonis.workflow.generate_bank writes into every bank manifest.
 
-  minimizers   what gradients buy the OPTIMISER.  Reads output/altgen/bench_fair_*.npz, produced by
-               `python -m analysis.benchmarks.bench_fair` -- Gauss-Newton against MIGRAD with and without a
-               supplied gradient, over a grid of dial counts and statistical realisations.
-  generation   what a GPU buys EVENT GENERATION.  Reads the `stage_seconds` block that
-               adonis.workflow.generate_bank writes into every bank manifest, so the inputs are real
-               production banks rather than a separate benchmark path.
-
-BANK DIRECTORIES ARE NOT DISCOVERABLE, so the generation figure needs them named: set ADONIS_PERF_BANKS
-to a semicolon-separated list of `Label=path` (one bank per device), or pass them after `generation`:
+The generation figure needs its bank directories named explicitly: set ADONIS_PERF_BANKS to a
+semicolon-separated list of `Label=path`, or pass them after `generation`:
 
     python -m analysis.paper.performance.make generation \
         "EPYC 7713 (1 core)=output/bench/gen_cpu1" "A100-SXM4=output/bench/gen_ampere"
 
-Any bank generated before per-stage timing existed has no `stage_seconds` and is rejected loudly rather
-than plotted as zero.
+A bank with no `stage_seconds` (pre-dates per-stage timing) is rejected rather than plotted as zero.
 """
 import os
 import subprocess

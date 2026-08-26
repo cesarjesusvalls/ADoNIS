@@ -1,18 +1,17 @@
 """Where the ACHILLES input tables live.
 
-ADoNIS reimplements the physics but reads ACHILLES' tabulated inputs: the DCC electroweak amplitudes
-(`dcc_EW.dat`), the spectral functions (`Spectral_Functions/*.data`), the QMC nucleon configurations
-and the flux files.  Two roots, because upstream splits them:
+ADoNIS reads ACHILLES' tabulated inputs (DCC electroweak amplitudes, spectral functions, QMC
+nucleon configurations, flux files) from two roots, since upstream splits them the same way:
 
     ACHILLES_DATA   the `data/` directory itself -- tables addressed by bare name
-    ACHILLES_HOME   an ACHILLES checkout, for inputs addressed by a relative 'data/...' path
+    ACHILLES_HOME   an ACHILLES checkout -- for inputs addressed by a relative 'data/...' path
 
-Set ACHILLES_DATA to a checkout's `data/` directory, or extract it from the published container image
-`ghcr.io/cesarjesusvalls/achilles:oracle`.  ACHILLES_HOME defaults to a sibling `../Achilles` checkout
-and only matters for the QMC configurations and the flux files.
+ACHILLES_DATA defaults to `<repo>/data/achilles` (or extract one from the published container
+image `ghcr.io/cesarjesusvalls/achilles:oracle`). ACHILLES_HOME defaults to a sibling
+`../Achilles` checkout.
 
-`require()` is the accessor to use when opening a file: it reports what was missing and which variable
-to set, instead of a FileNotFoundError naming a path the user never chose.
+`require()` is the accessor to use when opening a file: on failure it names the missing file and
+which env var to set.
 """
 from __future__ import annotations
 

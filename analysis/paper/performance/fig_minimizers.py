@@ -1,26 +1,19 @@
-"""Minimiser cost with and without gradients: Gauss--Newton against MIGRAD.
+"""Minimiser cost with and without gradients: Gauss-Newton against MIGRAD.
 
-Reads the workload surface written by `python -m analysis.benchmarks.bench_fair` (output/altgen/bench_fair_*.npz),
-whose `rows` is one record per (n dials, statistical realisation, method) with the wall time and the
-number of full passes over the resident events.
+Reads the workload surface written by `python -m analysis.benchmarks.bench_fair`
+(output/altgen/bench_fair_*.npz): one record per (n dials, statistical realisation, method), with wall
+time and number of full passes over the resident events.
 
     python -m analysis.paper.performance.fig_minimizers [npz-stem]
 
-THE THREE ARMS differ only in which derivative object the algorithm may ask for -- the cost function,
-the events and the convergence target are identical:
+Three arms, differing only in which derivative object the algorithm may ask for:
 
-  gn          Gauss--Newton on the autodiff Jacobian: one forward-mode JVP per dial per iteration.
+  gn          Gauss-Newton on the autodiff Jacobian: one forward-mode JVP per dial per iteration.
   migrad+g    MIGRAD driven by the reverse-mode gradient: one VJP per call, dial count irrelevant.
-  migrad      MIGRAD with no gradient, so it builds one by finite differences: ~2n extra cost-function
-              calls per gradient, each a full pass over ~2.4M events.
+  migrad      MIGRAD with no gradient: finite differences, ~2n extra cost-function calls per gradient.
 
-MEDIAN OVER STATISTICAL REALISATIONS, min--max as the band.  The fits are run on closure truth plus
-per-bin Gaussian noise, not on Asimov data, because Gauss--Newton drops a Hessian term proportional to
-the residual: on a perfect closure that term vanishes and GN silently becomes Newton, which flatters it
-everywhere.  The spread across realisations is carried because GN's advantage is seed-dependent.
-
-Compilation is excluded -- every callable is warmed up on its exact argument shapes before the clock
-starts, which is the difference between measuring arithmetic and measuring XLA.
+Median over noise realisations of the closure truth (not Asimov data), min-max as the band.  Compilation
+is excluded -- every callable is warmed up on its exact argument shapes before the clock starts.
 """
 import sys
 from pathlib import Path

@@ -1,7 +1,6 @@
-"""Shared pool-FSI helper: the SINGLE entry point consumers use to run the (Gaussian, differentiable)
-pool cascade and pull the common quantities, replacing the retired two-stage DiscreteCascadeFSI +
-DiscreteNucleonFSI `.apply` chain.  The pool runs the pion + nucleon cascade JOINTLY (cascade_nucleus),
-so there is one call, one joint kind-1 FSI record, and one `pool_fsi_reweight`.
+"""Shared pool-FSI helper: entry point to run the pool cascade (pion + nucleon jointly,
+cascade_nucleus) and pull the common per-event quantities into one dict, plus the joint
+kind-1 FSI reweight.
 
 Usage:
     from adonis.fsi.pool_fsi import run_fsi, lead_proton
@@ -29,10 +28,10 @@ def run_fsi(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, channel="res", rec_caps=N
       pterm   : primary-pion terminal (RES: pid 0=absorbed, -1=converted, else surviving-pi pid; QE: 0)
       nterms  : list of per-generation nucleon-terminal batches (escaped protons live here)
       created : leading cascade-created surviving pion (p4,pid,alive)
-      ofl     : pool stack/out overflow count (should be ~0)
+      ofl     : pool stack/out overflow count
       lead_prot: leading escaped proton (n,4)
       rec     : joint kind-1 FSI record (None unless rec_caps set) -> feed pool_fsi_reweight
-    Engine is always the pool (cfg.engine defaults to 'pool')."""
+    Always drives the pool cascade engine."""
     res = cascade_nucleus(p_pi, p_N, jnp.asarray(pid_pi, jnp.int32), jnp.asarray(pid_Ni, jnp.int32),
                          jnp.asarray(Npid, jnp.int32), cfg, key,
                          channel=channel, rec_caps=rec_caps)

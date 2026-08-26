@@ -1,18 +1,15 @@
-"""Free-nucleon initial state: a single nucleon at rest (Phase A3).
+"""Free-nucleon initial state: a single nucleon at rest.
 
-The elementary-target limit of a NuclearModel -- no Fermi motion, no removal
-energy.  `sample_nucleon` returns p_vec = 0 and E_removal = 0, so the struck
-nucleon is on-shell at rest, p_struck = (M_N, 0, 0, 0), and the DCC vertex sees
-free-nucleon kinematics.  This is the target for the ANL/BNL bubble-chamber
-comparison (paper Fig. anl_bnl): total pion-production cross sections for
-nu_mu p -> mu- p pi+, nu_mu n -> mu- n pi+, nu_mu n -> mu- p pi0 as sigma(E_nu).
+The elementary-target limit of a NuclearModel: no Fermi motion, no removal energy.
+`sample_nucleon` returns p_vec = 0 and E_removal = 0, so the struck nucleon is
+on-shell at rest, p_struck = (M_N, 0, 0, 0), and the DCC vertex sees free-nucleon
+kinematics.
 
-It plugs into exactly the same sample/reweight contract as SpectralFunction, so
-the differentiable weight (and its M_A gradient) is unchanged -- only the initial
-state is swapped.  Being a detached, parameter-free sampler, its closure_test is
-skipped (no differentiable knob) and there is no spectral-table oracle; the
-physics oracle for the free nucleon lives at the cross-section level (sigma(E_nu)
-vs ACHILLES on a stationary nucleon), gated in the A3 cross-section module.
+Same sample/reweight contract as SpectralFunction, so the differentiable weight
+(and its M_A gradient) is unchanged -- only the initial state is swapped. As a
+detached, parameter-free sampler it has no closure_test (no differentiable knob)
+and no spectral-table oracle; the physics oracle for the free nucleon lives at
+the cross-section level instead.
 """
 from __future__ import annotations
 

@@ -1,29 +1,24 @@
-"""Section 4 (closure) over the SAME dials + samples as sections 2/3.
+"""Closure fit over the SAME dials + samples as the Fisher/gradient studies.
 
-Section 2 (Fisher/Gate-I) and section 3 (per-bin gradients) both read ONE stacked-Jacobian object,
-`output/altgen/multisample_carbon.npz` (built by `python -m analysis.campaign.gate1`):
+Both read ONE stacked-Jacobian object, `output/altgen/multisample_carbon.npz` (built by
+`python -m analysis.campaign.gate1`): the dials passing Gate I (combined marginalized shrinkage < 0.5),
+and the joint sample set (T2K CC0pi/CC1pi STV+muon, MINERvA CC0pi-Np STV, MINERvA qelike pT/p||, (e,e')
+QE/RES omega, pi+/p/n -> C beams).
 
-  * 16 DIALS  -- the knobs with combined marginalized shrinkage < 0.5 (Gate I).
-  * 20 SAMPLE blocks -- T2K CC0pi/CC1pi STV+muon (7) + MINERvA CC0pi-Np STV (3) + MINERvA qelike pT/p||
-    (2) + (e,e') QE/RES omega (2) + pi+/p/n -> C beams (react + abs/pi-prod, 2 each).
+This module runs a genuine NONLINEAR closure (not a Fisher toy) over that same set: each sample's REAL
+event bank is loaded and reweighted exactly; the fake data is the exact-reweighted binned prediction at
+an injected truth; the blind fit walks the dials back from nominal through the true nonlinear model,
+across every sample jointly.
 
-This module makes section 4 use the SAME 16 dials and the SAME 20 samples, but as a genuine NONLINEAR
-closure (not a Fisher toy): each sample's REAL event bank is loaded and reweighted exactly; the fake data
-is the exact-reweighted binned prediction at an injected truth; the blind fit then has to walk the 16
-dials back from nominal through the true nonlinear model, across every sample jointly.
-
-`MultiEngine` deliberately duck-types the single-bank `fitters.Engine` (same `model`, `jac`,
-`data_sigma`, `th0`, `prior`, `pnames`, `npar`, `row0`, `ds`), so the already-tested LM fit
-(`fitters.lm_fit`) and the Gate-II / flag machinery run over it UNCHANGED.
-
-Every sample shares the one 28-knob `physical_fit` basis (`theta_nominal`/`knobs_of`); the reweight is
+`MultiEngine` duck-types the single-bank `fitters.Engine` (`model`, `jac`, `data_sigma`, `th0`, `prior`,
+`pnames`, `npar`, `row0`, `ds`), so `fitters.lm_fit` and the Gate-II / flag machinery run over it
+unchanged.  Every sample shares the one 28-knob `physical_fit` basis; the reweight is
 `bank_reweight.bank_weight` for the nu/electron banks and `cascade.pool_fsi_reweight` for the beams (via
-`beams.beam_fisher.beam_model`) -- both pure-JAX and differentiable, so the per-knob Jacobian is exact.
+`beams.beam_model`) -- both pure-JAX and differentiable, so the per-knob Jacobian is exact.
 
     python -m analysis.campaign.stages.multisample            # closure at the default injection
-Env: ADONIS_LABEL (default sec4_closure_multisample), PHYSFIT_INJECT, ALTGEN_NIT (default 12),
-     S4_NU_CHUNKS / S4_BEAM_CHUNKS / S4_E_CHUNKS (bank subsample sizes; the full banks are ~40M events,
-     far more MC precision than a closure needs).
+Label, injection, iteration count and bank chunk caps all come from the FitConfig, not the environment;
+S4_GATE_NPZ overrides which multisample_carbon.npz is read.
 """
 import os
 import sys
@@ -310,22 +305,12 @@ class MultiEngine:
         return jnp.concatenate([b for s in self.samples for b in s.model_blocks_jax(theta)])
 
     def _chi2_parts(self, subset):
-        """chi2 as a list of PER-SAMPLE terms, each a JAX function of the SUBSET dials.
+        """chi2 as a list of PER-SAMPLE terms, each a JAX function of the SUBSET dials, jitted separately
+        (not one function over the stacked model) so the arithmetic matches `.model()` exactly.  Shared
+        by chi2_fn / chi2_grad_fn so the value-only and value-and-grad objectives can never drift apart.
 
-        Deliberately NOT one function over the stacked model.  Jitting the concatenation of all ten
-        samples fuses them into a single XLA program whose live set is every sample's intermediates at
-        once, and that OOMs an 11 GB turing card (`RESOURCE_EXHAUSTED ... jit_chi2_of_x`) even though the
-        same fit runs fine through `.model()`, which walks the samples one at a time.  Per-sample jits
-        bound the peak at the largest single sample and sum on the host, exactly as `.model()` does.
-        The arithmetic is identical -- chi2 is a sum over bins, so splitting the sum changes nothing.
-
-        Shared by chi2_fn / chi2_grad_fn so the value-only and value-and-grad objectives can never drift
-        apart: a benchmark comparing them is only meaningful if they are literally the same function.
-
-        DATA AND WEIGHTS ARE ARGUMENTS, not captured constants.  A toy ensemble calls set_closure_data()
-        for every toy; if D and W were closed over, each toy would need a fresh jax.jit and pay a full
-        XLA compile (~1-2 min) before its fits could start.  As arguments of fixed shape they change
-        without retracing, so an ensemble compiles once.  Use chi2_data_dev() to get (D, W) per sample.
+        DATA AND WEIGHTS ARE ARGUMENTS, not captured constants -- use chi2_data_dev() to get (D, W) per
+        sample.
         """
         idx = jnp.asarray(np.asarray(subset, int))
         th0 = jnp.asarray(self.th0)
@@ -350,7 +335,7 @@ class MultiEngine:
         """Per-sample (data, 1/sigma^2) as device arrays, read from the CURRENT eng.ds.
 
         Call again after set_closure_data() to pick up a new toy; the jitted objectives take these as
-        arguments, so swapping them costs a host-to-device copy of a few hundred floats, not a recompile.
+        arguments, so swapping them is a host-to-device copy, not a recompile.
         """
         D, W = [], []
         for s in self.samples:
@@ -361,8 +346,7 @@ class MultiEngine:
         return D, W
 
     def chi2_fn(self, subset):
-        """chi2 ALONE, jitted per sample.  For a derivative-free minimiser: asking value_and_grad for the
-        value and throwing the gradient away would make it pay for a VJP it never uses.
+        """chi2 ALONE, jitted per sample (no gradient) -- for a derivative-free minimiser.
 
         The returned callable has `.set_data(D, W)` so an ensemble can retarget it at the next toy
         without recompiling; it starts bound to whatever data the engine holds now.
@@ -377,13 +361,8 @@ class MultiEngine:
         return chi2
 
     def chi2_grad_fn(self, subset):
-        """(chi2, grad) over `subset` by REVERSE mode, summed over samples.
-
-        MIGRAD and HMC need only the SCALAR gradient, which one VJP delivers for ~2-3 model evaluations
-        regardless of how many dials there are -- against a full forward Jacobian at 16 JVPs (measured
-        1.05 s vs 0.16 s for a model evaluation).  Only possible because the binning is now a single
-        differentiable BinSpec primitive shared by every sample type; while half the model binned on the
-        host this could not be written.
+        """(chi2, grad) over `subset` by REVERSE mode, summed over samples -- cheaper than a forward
+        Jacobian when only the scalar gradient is needed (MIGRAD, HMC).
 
         Returns (float, ndarray) rather than JAX scalars: every consumer is a host-side minimiser.
         Same `.set_data(D, W)` retargeting as chi2_fn.
@@ -405,18 +384,13 @@ class MultiEngine:
     def set_closure_data(self, truth):
         """Fake data = exact nonlinear reweight at `truth`, per sample; refresh sigma on it.
 
-        S4_SIGMA_SYST_ONLY=1 drops the MC term: sigma = SYST*data.  In a CLOSURE the data IS the MC,
-        reweighted, so the MC statistical fluctuation is common-mode between data and prediction and
-        cancels in the residual -- it is not an uncertainty on the comparison, and folding it in inflates
-        sigma with no matching fluctuation in the numerator.  The historical justification for keeping it
-        (physical_fit.py:11, "0.5-0.9% at 3M scale, negligible vs SYST=5%") does not survive S4_SIG_CAP:
-        at 250k/sample the implied mcerr/central is 1.58% median, 5.25% at the 90th percentile, and
-        EXCEEDS the 5% syst in 11% of bins.
+        cfg.data.sigma.mc_term=False drops the MC term (sigma = SYST*data): in a closure the data IS the
+        MC reweighted, so the MC statistical fluctuation is common-mode between data and prediction and
+        cancels in the residual.
 
-        S4_MIN_MCFRAC (default = SYST) then masks bins whose MC error alone would have exceeded that
-        fraction.  Without it, dropping mcerr hands the sparsest bins a tiny absolute sigma and hence a
-        huge weight -- measured up to x401 for a bin holding ~1 effective MC event, which would dominate
-        the fit.  A bin the MC cannot predict is not made trustworthy by removing its error bar.
+        cfg.data.sigma.mask_mcfrac then masks bins whose MC error alone would exceed that fraction of the
+        central value, so dropping mcerr cannot hand a sparse bin a tiny sigma and hence a dominating
+        weight.
         """
         sig = self.cfg.data.sigma
         syst_only = not sig.mc_term
@@ -437,11 +411,8 @@ class MultiEngine:
 
 
 def build_multisample_engine(log, cfg):
-    """Assemble the engine described by `cfg` (adonis.fit.config.FitConfig).
-
-    The sample LIST and the chunk caps come from the config -- they used to be a hardcoded list of
-    _bank() calls plus four environment variables, which meant adding a sample required editing this
-    file and adonis/analysis/gate1.py in step, and a chunk cap could differ between two stages of one run.
+    """Assemble the engine described by `cfg` (adonis.fit.config.FitConfig).  The sample list and the
+    chunk caps come from the config.
     """
     nu_chunks, beam_chunks, e_chunks = cfg.banks.nu_chunks, cfg.banks.beam_chunks, cfg.banks.e_chunks
     log(f"loading banks: nu={nu_chunks}ch minerva={nu_chunks}ch e={e_chunks}ch beams={beam_chunks}ch")
@@ -449,10 +420,10 @@ def build_multisample_engine(log, cfg):
     sig_cap = cfg.banks.sig_cap
 
     def _bank(cfg_name, max_chunks):
-        """A BankSample whose datasets come from the CENTRALIZED sample config (AnaSample.bin_datasets):
-        same signal + observables + REAL edges as sec1/sec2/sec3, so sec4 fits the SAME sample.  Loaded via
-        select_bank -> only the N_selected signal events are cached (not N_total), further capped to
-        S4_SIG_CAP events (unbiased) so the resident fit set fits in memory."""
+        """A BankSample whose datasets come from the CENTRALIZED sample config (AnaSample.bin_datasets),
+        so this fits the SAME sample the other studies use.  Loaded via select_bank -> only the
+        N_selected signal events are cached (not N_total), further capped to cfg.banks.sig_cap events
+        (unbiased) so the resident fit set fits in memory."""
         s = AnaSample.from_config(f"configs/samples/{cfg_name}.yaml")
         return BankSample(s.name, s.bank, [(lambda B, w, l: s.bin_datasets(B, w), None)], max_chunks, log,
                           signal=s.cfg.signal, cap=(sig_cap or None))
@@ -477,10 +448,8 @@ def build_multisample_engine(log, cfg):
 def fit_subset(g, pnames, cfg, log=None):
     """The fitted dials: Gate-I shrink<0.5, plus anything `fit.dials` names explicitly.
 
-    Fixing a dial removes it from the FIT and from the toy TRUTH THROW alike (multisample_coverage
-    iterates the same subset), so it is held at nominal everywhere -- i.e. "assumed known".  Used to test
-    whether the M_A_res/S_Delta multi-modality is driven by delta_strength: the RES weight is quadratic
-    in it, so the parameter -> prediction map is two-to-one and mirror basins exist.
+    Fixing a dial removes it from the fit and from the toy truth throw alike (multisample_coverage
+    iterates the same subset), so it is held at nominal everywhere -- i.e. "assumed known".
     """
     sub = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]
     cut = float(getattr(cfg.fit, "vif_cut", 0) or 0)

@@ -1,20 +1,14 @@
-"""THE single entry point for the inference (closure + uncertainty) figures.
+"""Entry point for the inference (closure + uncertainty) figures.
 
     python -m analysis.paper.inference.make                    # every figure
     python -m analysis.paper.inference.make corner             # only figures whose key contains this
-    python -m analysis.paper.inference.make --one rates        # render one figure IN-PROCESS (no subprocess)
+    python -m analysis.paper.inference.make --one rates        # render one figure in-process (no subprocess)
     python -m analysis.paper.inference.make --label sec4_P2    # which fit the figures are built from
 
-Same shape as analysis/paper/validation/make.py: one command, one figure per subprocess (each figure
-imports jax and mutates global matplotlib state, so sharing a process makes the later ones depend on the
-earlier ones).  What differs is that these figures are driven by a fit LABEL rather than by a YAML spec --
-the fit definition lives in configs/fits/, and the label selects which run under output/altgen/ to read.
-
-THE LABEL IS NOT OPTIONAL IN PRACTICE.  Each figure module carries its own default, and those defaults
-were the labels of whatever run was current when the module was written -- fig_rates defaulted to
-sec4_P1 while the published figure came from sec4_P2, which is a difference of MC-error cut and live-bin
-count that a reader cannot see.  Passing --label here sets ONE label for every figure in the set, so a
-rebuilt figure set is internally consistent by construction.
+One figure per subprocess (each figure imports jax and mutates global matplotlib state).  Figures are
+driven by a fit LABEL rather than a YAML spec: the fit definition lives in configs/fits/, and the label
+selects which run under output/altgen/ to read.  Pass --label to keep every figure in a rebuilt set
+reading the same run.
 """
 import subprocess
 import sys

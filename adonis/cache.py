@@ -1,19 +1,10 @@
 """On-disk memo for an expensive reduction, fingerprinted on its inputs.  No physics.
 
-A reduction that is a pure function of (input files, parameters) can be memoised here so that
-restyling a downstream plot, or any other re-use, costs only the import plus the read.
-
-    from adonis import cache as plotcache
-    d = plotcache.cached("fig03_pip_Ar",
-                         lambda: {"edges": e, "y": y, "yerr": ye},     # -> dict of ndarrays
-                         deps=[bank_dir, *hepmc_paths],
-                         params={"nbins": 30})
-
-Correctness: the entry stores a fingerprint of every dependency's (relative path, size, mtime) plus
-the params, and is ignored unless it matches -- so regenerating a bank or changing nbins rebuilds
-automatically.  `ADONIS_PLOT_REFRESH=1` forces a rebuild anyway; use it if a file is ever rewritten
-with its mtime preserved, which fingerprinting cannot see.
-Cache root: `ADONIS_PLOT_CACHE`, default `<repo>/data/cache/plot`.
+Memoises a pure function of (input files, parameters) to <CACHE>/<name>.npz. The fingerprint
+covers each dependency's (relative path, size, mtime) plus `params`; a mismatch rebuilds the
+entry. `ADONIS_PLOT_REFRESH=1` forces a rebuild (needed if a file is rewritten with its mtime
+preserved, which fingerprinting cannot see). Cache root: `ADONIS_PLOT_CACHE`, default
+`<repo>/data/cache/plot`.
 """
 import os
 import json

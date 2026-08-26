@@ -1,13 +1,11 @@
-"""Assemble output/altgen/multisample_carbon.npz -- the shared sec2 (Fisher) + sec3 (gradient) input --
-from the AnaSample samples + the FSI beam Jacobians.  A THIN caller: it composes the samples through the
-core object (analysis.campaign.sample.SampleSet) and stacks the cached beam jvps; no selection/binning lives
-here.  This replaces grad_info/build_multisample.py (the per-sample physfit_*.npz drivers are gone).
+"""Assemble output/altgen/multisample_carbon.npz -- the shared Fisher/shrinkage + per-bin gradient input
+-- from the AnaSample samples + the FSI beam Jacobians.  A thin caller: composes the samples through
+analysis.campaign.sample.SampleSet and stacks the cached beam jvps; no selection/binning lives here.
 
     python -m analysis.campaign.gate1                       # full banks (a GPU/big-node job)
     ADONIS_MS_MAXCHUNKS=4 python -m analysis.campaign.gate1 # smoke (subsampled banks)
 
-dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) + the beam keys (pip_react, ...); sec2/sec3 read them.
-The CH T2K CC1pi+ sample (t2k_cc1pi_ch) is used -- the non-pure-target demonstration.
+dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) + the beam keys (pip_react, ...).
 """
 import os
 import sys

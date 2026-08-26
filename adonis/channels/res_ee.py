@@ -1,4 +1,4 @@
-"""Inclusive (e,e') RES (single-pion) cross section + dsigma/domega, mirroring adonis/channels/res_xsec but
+"""Inclusive (e,e') RES (single-pion) cross section + dsigma/domega, mirroring adonis/channels/res.py but
 for the ELECTROMAGNETIC probe.  Three changes vs the CC RES driver:
 
   1. BEAM   : monochromatic e- at fixed E (J_beam = 1).
@@ -9,7 +9,7 @@ for the ELECTROMAGNETIC probe.  Three changes vs the CC RES driver:
               drawn from its OWN spectral function (imp_p / imp_n) so the target count Z/N is explicit.
 
 Observable: inclusive dsigma/domega (omega = E_beam - E'_e) inside the outgoing-electron theta HardCut,
-summed over channels.  Validation gate: dsigma/domega vs the ACHILLES oracle output/oracle_ee_C_res.
+summed over channels.
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ _M_PI = {111: M_PI0, 211: M_PIP, -211: M_PIP}
 
 
 def _sample_3body_ee(k_e, p_struck, m_pi, m_Nf, m_lep, u):
-    """3-body final state e' + N + pi via two isotropic 2-body splits.  Verbatim res_xsec._sample_3body
+    """3-body final state e' + N + pi via two isotropic 2-body splits.  Verbatim res._sample_3body
     with the outgoing-lepton mass generalized to m_lep (electron, not muon)."""
     P = k_e + p_struck
     s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
@@ -89,7 +89,7 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=250_000, records
     (SUM = sigma), omega [MeV], theta_e' [deg].
     records=True returns the hadronic final state for the kept events -- p_N, p_pi [4-mom], ppid (pion),
     Npid (final nucleon), ipid (struck nucleon) -- everything cascade_nucleus needs to run the recorded FSI
-    cascade (mirrors res_xsec.generate(return_events=True) for the neutrino bank).
+    cascade (mirrors res.generate(return_events=True) for the neutrino bank).
     theta_acc=(lo,hi) [deg] applies the SAME outgoing-e- angular acceptance the QE channel (ee.generate)
     applies -- both EM channels then honor the config's acceptance identically (default None = all angles,
     kept for the raw dsigma/domega estimator; the bank generator always passes cfg.theta_acc)."""

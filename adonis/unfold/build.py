@@ -1,28 +1,26 @@
 """Build the unfolding inputs from a bank: response, background, truth spectrum, efficiency, purity.
 
-One streamed pass over the bank produces everything the fit needs. For each chunk the same selection
-code runs twice, once on the true 4-vectors and once on the smeared ones, so reco selection, reco
-observables, efficiency and purity are all consequences of the detector rather than separate models:
+One streamed pass over the bank produces everything the fit needs.  Each chunk runs the same
+selection code twice, once on the true 4-vectors and once on the smeared ones, so reco selection,
+efficiency and purity are all consequences of the one detector model:
 
     true_sel, true_obs = select_full(B,       sd)      # true signal phase space
     reco_sel, reco_obs = select_full(B_reco,  sd)      # what the "experiment" sees
 
-Every reco-selected event is one of two things, reweighted by different parameters:
+Every reco-selected event is one of two things:
 
-  signal      true_sel with its true (dpt, dat) inside the truth grid. Scaled by the template c_j of
-              its true bin; physics knobs never touch it, so the unfolded result measures the signal
-              rather than the model.
+  signal      true_sel with true (dpt, dat) inside the truth grid.  Scaled by the template c_j of
+              its true bin; physics knobs never touch it.
   background  everything else that survives the reco cuts, including true signal outside the truth
-              grid. Reweighted by the 28 physics knobs, never by c.
+              grid.  Reweighted by the physics knobs, never by c.
 
 so the prediction in reco bin i is
 
     mu_i(theta, c) = sum_j A_ij c_j  +  B_i(theta) ,    A_ij = sum over signal events (reco i, true j) w0
 
 with A the (n_reco x n_truth) response, fixed: the signal term is linear in c, so its Jacobian is A
-itself and needs no autodiff.
+itself.
 
-Efficiency and purity fall out of the same pass and are reported, not assumed:
     eff_j    = (signal events from truth bin j that pass reco) / (all true signal in truth bin j)
     purity_i = (signal in reco bin i) / (total in reco bin i)
 """
@@ -60,8 +58,7 @@ def _soft_membership(vals, edges, sigma):
     """Fraction of a Gaussian of width `sigma` centred on each value that falls in each bin.
 
     Separable in the two observables, so the 2-D cell membership is an outer product of two 1-D ones.
-    An infinite top edge integrates to the tail, which is why the open delta-p_T bin still receives its
-    share instead of silently losing it.
+    An infinite top edge integrates to the tail, so an open bin still receives its correct share.
     """
     v = np.asarray(vals, float)[:, None]
     e = np.asarray(edges, float)[None, :]
@@ -78,21 +75,18 @@ def build(bank_dir, signal, spec: SmearSpec = None, norm_events=None, max_chunks
           TG=None, RG=None, soft_sigma=None, soft_reco=0):
     """Stream `bank_dir` and return the unfolding inputs.
 
-    `soft_sigma`: (sigma_dpt, sigma_dat). When given, a signal event's weight spreads over truth cells
-    via a Gaussian of the detector's own resolution, so templates become overlapping basis functions
-    rather than disjoint indicators -- a basis finer than the resolution is not measurable, so matching
-    the two should condition better. Cost: c_j is then a basis coefficient, not the rate in cell j.
+    `soft_sigma`: (sigma_dpt, sigma_dat).  When given, a signal event's weight spreads over truth
+    cells via a Gaussian of the detector's own resolution, so templates become overlapping basis
+    functions rather than disjoint indicators; c_j is then a basis coefficient, not the rate in
+    cell j.
 
-    `soft_reco`: number of detector replicas per event. Instead of smearing once, smear `soft_reco`
+    `soft_reco`: number of detector replicas per event.  Instead of smearing once, smear `soft_reco`
     times and split the weight 1/N per replica, so one event contributes to several reco bins in the
-    proportion the detector actually produces -- resampling the real kernel rather than assuming one.
-    This matters because smearing is multiplicative (|p| -> |p|(1 + 0.2 g)): a +20% and a -20% move
-    are not mirror images, so the induced delta-p_T kernel is skewed, which any symmetric fixed-width
-    approximation (including `soft_sigma`'s Gaussian) gets wrong.
+    proportion the detector actually produces.
 
-    `norm_events`: scale every weight so the total pre-selection rate equals this (nominally 50 000),
-    normalising by summed weight, never row count -- the bank retains rejected events as dead rows with
-    w0 = 0 (0.9% of the T2K bank), which a count-based normalisation would wrongly include.
+    `norm_events`: scale every weight so the total pre-selection rate equals this value, normalising
+    by summed weight rather than row count -- the bank retains rejected events as dead rows with
+    w0 = 0.
     """
     spec = spec or SmearSpec()
     from adonis.unfold.binning import StaircaseGrid

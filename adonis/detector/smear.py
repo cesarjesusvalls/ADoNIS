@@ -1,28 +1,22 @@
 """A stochastic detector: smear every particle's momentum and direction, on-shell.
 
-Builds a reconstructed sample the way an experiment does -- particle by particle, before any selection --
-so reco selection, observables, efficiency and purity all fall out of the same selection code applied to
-smeared inputs:
+Builds a reconstructed sample particle by particle, before any selection, so reco selection,
+observables, efficiency and purity all fall out of the same selection code applied to smeared inputs:
 
     B_reco = smear_chunk(B, spec, chunk=i)
     true_sel, true_obs, w0, _ = select_full(B,      sd)      # truth phase space
     reco_sel, reco_obs, _,  _ = select_full(B_reco, sd)      # reco  phase space
 
-Smearing is a fixed draw, not a parameter: it decides which reco bin an event lands in, and the fit
-differentiates only the weights attached to those fixed indices, so the smeared arrays are plain numpy
-and never enter the jax path. Deterministic per chunk: the seed is (spec.seed, chunk index), never a
-running generator, so the reco sample needs no storage -- it is a pure function of the bank plus an
-integer, independent of processing order.
+Smearing is a fixed draw, not a parameter: the smeared arrays are plain numpy and never enter the jax
+path.  Deterministic per chunk -- seed = (spec.seed, chunk index) -- so the reco sample is a pure
+function of the bank plus that integer, independent of processing order.
 
 What is smeared:
   * |p| -> |p| * (1 + sigma_p * g), g ~ N(0,1), floored just above zero.
-  * direction -> rotated by a polar angle |N(0, sigma_th)| about a uniformly random azimuth (a cone
-    about the true direction); phi matters as much as theta since delta-alpha_T and delta-p_T are
-    transverse-plane quantities.
+  * direction -> rotated by a polar angle |N(0, sigma_th)| about a uniformly random azimuth.
   * E is rebuilt from the smeared |p| and the particle's own invariant mass, so every particle stays
     exactly on shell.
-  * PID and charge are not smeared: the meson veto in the CC0pi definition is a topology statement, so
-    this detector has perfect particle ID and imperfect kinematics only.
+  * PID and charge are not smeared: this detector has perfect particle ID and imperfect kinematics only.
 """
 from __future__ import annotations
 
@@ -35,7 +29,8 @@ DEG = np.pi / 180.0
 
 @dataclass(frozen=True)
 class SmearSpec:
-    """The detector.  Nominal working point: 20% on momentum, 10 degrees on angle."""
+    """The detector: momentum-smearing width, angle-smearing width, RNG seed, and optional
+    low-momentum pion mis-ID efficiency."""
     sigma_p: float = 0.20
     sigma_theta_deg: float = 10.0
     seed: int = 20260813

@@ -1,11 +1,10 @@
 """ADoNIS -- A Differentiable generatOr of Neutrino Interaction Samples.
 
-A modular, differentiable Monte-Carlo surrogate for ACHILLES neutrino interactions. The
-chain is built from swappable components (flux, nuclear model, primary channel, FSI) around
-the kind-1 sample/reweight contract, with tunable physics parameters centralised in
-`PhysicsParams`.
+A modular, differentiable Monte-Carlo surrogate for ACHILLES neutrino interactions, built from
+swappable components (flux, nuclear model, primary channel, FSI) around the kind-1
+sample/reweight contract, with tunable physics parameters centralised in `PhysicsParams`.
 
-Top-level convenience API:
+Top-level API (lazily imported):
     from adonis import PhysicsParams, ChainConfig, Generator, DCCSinglePion, NoFSI
     from adonis import SpectralFunction, Monochromatic
     from adonis import kinematics, fit

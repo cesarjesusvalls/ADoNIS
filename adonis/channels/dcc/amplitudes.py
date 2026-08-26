@@ -66,7 +66,7 @@ class DCCAmplitudes:
 
     def amplitudes_spline_np(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
         """NumPy (no-autodiff) twin of amplitudes_spline -- bit-identical FMM-cubic interp,
-        ~30x faster for the forward generator (avoids per-op JAX dispatch). Returns numpy arrays."""
+        for the forward generator (avoids per-op JAX dispatch). Returns numpy arrays."""
         from adonis.channels.dcc.spline import interp2d_spline_np
         if not hasattr(self, "_Wnp"):
             self._Wnp = np.asarray(self.W); self._Q2np = np.asarray(self.Q2)
@@ -86,7 +86,7 @@ class DCCAmplitudes:
     def amplitudes_bilinear(self, W, Q2, knobs: DCCKnobs = DCCKnobs()):
         """Batched (N,) bilinear amplitude interpolation -- faster / lighter than the spline.
         NOT W-faithful: the dsigma/dW shape (especially the high-W tail) deviates from the ACHILLES
-        spline by well over 1%. Never use unless explicitly requested for a specific purpose.
+        spline. Never use unless explicitly requested for a specific purpose.
         Returns vec, isv, axial each (N, n_idx, n_pw), knobs applied."""
         gw, gq = self.W, self.Q2
         nw, nq = gw.shape[0], gq.shape[0]

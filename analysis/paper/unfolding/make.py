@@ -1,21 +1,16 @@
-"""THE single entry point for the unfolding figures.
+"""Entry point for the unfolding figures.
 
     python -m analysis.paper.unfolding.make                     # every figure
     python -m analysis.paper.unfolding.make corr                # only figures whose key contains this
     python -m analysis.paper.unfolding.make --label sec5f10     # which unfolding run to read
 
-The run itself is produced by the core package, not here:
+The run itself is produced by the core package:
 
     python -m analysis.campaign.unfold_run configs/fits/sec5_unfold.yaml --label sec5cfg
 
-which writes output/altgen/<label>_unfold.npz.  These figures are pure consumers of that npz -- every
-physics choice (signal definition, binning, detector model, priors, studies) is in the config, and the
-resolved config is stamped into the npz so a figure can state the run it came from.
-
-WHY --label MATTERS HERE.  output/altgen holds several unfolding runs that differ in signal definition
-and binning: a stale sec5_unfold.npz from a 9-template STV scan sits next to the 58-template lepton runs.
-The figure modules default to label="sec5", which matches the stale one, and a 90-parameter correlation
-matrix renders perfectly happily.  Pass the label.
+which writes output/altgen/<label>_unfold.npz.  These figures are pure consumers of that npz; every
+physics choice is in the config, stamped into the npz.  Pass --label explicitly -- output/altgen holds
+multiple unfolding runs and the module defaults may not match the one you want.
 """
 import subprocess
 import sys

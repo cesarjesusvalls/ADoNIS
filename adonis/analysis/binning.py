@@ -1,9 +1,8 @@
 """The binning primitive: per-event weights -> per-bin observables, for every sample type.
 
-Device cache: `_device()` memoises the on-device index arrays on the instance.  Keep that
-structure as it is -- adonis/fit/kernels.py warms the bin caches eagerly, before tracing, and
-relies on the cached arrays being the same objects afterwards.  Rebuilding them inside a trace
-raises UnexpectedTracerError (only under the jitted path).
+`_device()` memoises the on-device index arrays on the instance. adonis/fit/kernels.py warms
+these caches eagerly, before tracing, and relies on getting back the same cached objects
+afterward; rebuilding them inside a jit trace raises UnexpectedTracerError.
 """
 from __future__ import annotations
 
@@ -22,12 +21,10 @@ def _bin(sig_mask, values, edges):
 class BinSpec:
     """The fixed sparse map w -> per-bin observable, shared by every sample type.
 
-    Two index orderings are kept deliberately:
-      HOST   events in BANK order.  np.bincount does not care about order, but the gather w[sel] does --
-             bin-sorting it scatters the reads and is measurably slower.  So the host path keeps the
-             natural order.
+    Two index orderings are kept:
+      HOST   events in BANK order -- the gather w[sel] favors sequential reads over bin-sorted ones.
       DEVICE events sorted by bin, so segment_sum uses a segmented reduction instead of contended
-             atomics.  Built lazily; nothing pays for it unless S4_JAX_BIN=1.
+             atomics. Built lazily; nothing pays for it unless S4_JAX_BIN=1.
     """
 
     __slots__ = ("sel", "coef", "binidx", "nbin", "scale", "offset", "_dev", "_chunks")
@@ -64,15 +61,12 @@ class BinSpec:
     def chunks(self, n_events, C):
         """Per-chunk gather tables for a scan over event blocks of size C.
 
-        The model is a sum over events, m_b = sum_{e in b} coef_e w_e, so it decomposes exactly over
-        chunks: m = sum_c m^(c).  That is what makes event-chunking free, unlike splitting the dial
-        axis (which adds one full primal pass per extra dispatch).  Chunking happens on the bank axis,
-        because that is where w is computed, while `sel` picks an arbitrary subset of it; so the entries
-        belonging to a chunk are ragged and are padded to a common length with a trash bin at index
-        nbin, dropped after the segment_sum.
+        Chunks the event (bank) axis; `sel` picks an arbitrary subset of it, so entries in a chunk
+        are ragged and are padded to a common length with a trash bin at index nbin, dropped after
+        the segment_sum. Built once and cached.
 
-        Returns (starts, loc, binidx, coef, n_chunk, L, C): `loc` is the event index within its window,
-        `binidx` is nbin on padding.  Built once; costs nothing at run time.
+        Returns (starts, loc, binidx, coef, n_chunk, L, C): `loc` is the event index within its
+        window, `binidx` is nbin on padding.
         """
         key = (int(n_events), int(C))
         if getattr(self, "_chunks", None) is None:
@@ -123,8 +117,8 @@ def spec_of(d):
     return sp
 
 def bin_w0(d, w):
-    """Per-bin sum of a per-event quantity w for dataset d, scaled -- NO free-H offset (for the
-    Jacobian: the frozen free-H offset is theta-independent so its derivative is zero)."""
+    """Per-bin sum of a per-event quantity w for dataset d, scaled -- no free-H offset. For the
+    Jacobian: the frozen free-H offset is theta-independent, so its derivative is zero."""
     return spec_of(d).apply(w)
 
 def bin_w(d, w):

@@ -1,27 +1,25 @@
 """Full differentiable final state for CC single-pion production.
 
-The angle-integrated fold (`dcc_fold_full`) returns only (W, Q2, weight): the pion solid
-angle is integrated inside the hadron tensor.  This fold UN-INTEGRATES that angle -- it
-samples the pion CM direction (cos theta*, phi*), evaluates the DIFFERENTIAL hadron
-current at that angle (`angular_diff`), and builds the full lab-frame final state
-(`final_state`): outgoing lepton, pion, recoil nucleon.
+The angle-integrated fold (`fold_full_events`, fold_integrated.py) returns only (W, Q2, weight): the
+pion solid angle is integrated inside the hadron tensor.  This fold UN-INTEGRATES that angle -- it
+samples the pion CM direction (cos theta*, phi*), evaluates the DIFFERENTIAL hadron current at that
+angle (`angular_diff`), and builds the full lab-frame final state (`final_state`): outgoing lepton,
+pion, recoil nucleon.
 
-Estimator (kind-1 reweighting, exactly as the rest of the project): every continuous
-quantity is sampled from a FIXED detached proposal; only the elementary weight carries
-the knobs, so gradients are exact.  The pion angle is sampled uniformly over the solid
-angle, so by construction
+Estimator (kind-1 reweighting): every continuous quantity is sampled from a FIXED detached proposal;
+only the elementary weight carries the knobs, so gradients are exact.  The pion angle is sampled
+uniformly over the solid angle, so by construction
 
     E_Omega[ 4*pi * sum_c mult_c * L.w_diff_c(Omega) ] = sum_c mult_c * L.W_int_c
-                                                       = the dcc_fold_full hadronic factor,
+                                                       = the fold_full_events hadronic factor,
 
-i.e. the differential fold reproduces dcc_fold_full's dsigma/dW, dsigma/dQ2 in expectation
-(validated in validate_final_state.py).
+i.e. the differential fold reproduces fold_full_events's dsigma/dW, dsigma/dQ2 in expectation.
 
 Per event:
   1. sample lepton (E', theta), nucleon (p, E_rm ~ S(p,E)), pion (cos theta*, phi*), lep azimuth;
   2. off-shell struck nucleon E = mqe - E_rm; true q; W = (q+p_struck)^2;
   3. on-shell rebalanced Q2_adj (current_init) for the amplitude/cut;
-  4. cuts W in [1076.957,2000], Q2_adj in [0,5 GeV^2];
+  4. cuts W in [W_THR,W_MAX], Q2_adj in [0,Q2_MAX];
   5. amplitude(W, Q2_adj) -> per-channel zmtx -> differential current at (theta*,phi*)
      -> L_{mu nu} W^{mu nu}_diff;
   6. weight = (E'/E) sin(theta) (k_pi/W) (4 pi) sum_c mult_c L.w_diff_c, zeroed outside cuts;
@@ -138,8 +136,8 @@ def sample_final_state(key, n=200000, hs: HadronStructure | None = None,
 def weight_from_sample(knobs: DCCKnobs, S, use_spline=True):
     """Knob-dependent per-event weight (N,) and per-channel L.W (N,n_ch) from a fixed
     sample S (sample_final_state).  Differentiable in `knobs`; cheap to re-evaluate.
-    use_spline=False uses bilinear: NOT W-FAITHFUL (>1% in the dsigma/dW high-W tail) -- NEVER use
-    unless the user has EXPLICITLY requested it for a specific purpose."""
+    use_spline=False uses bilinear interpolation: NOT W-faithful in the dsigma/dW high-W tail --
+    NEVER use unless the user has EXPLICITLY requested it for a specific purpose."""
     hs = S["hs"]
     amp_fn = hs.amp.amplitudes_spline if use_spline else hs.amp.amplitudes_bilinear
     vec, isv, axial = amp_fn(S["Wc"], S["Q2c"], knobs)

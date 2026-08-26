@@ -1,19 +1,19 @@
 """Single source of truth for RES (single-pion) mass conventions + the ACHILLES-match toggle.
 
 Every value here is a physical input (a PDG/ACHILLES mass) or a derived combination of them --
-never a fitted calibration. Imported by both the fast event generator (adonis.channels.res_xsec /
-dcc_current) and the differentiable JAX path (adonis.channels.dcc channel/structure), so the two
-implementations cannot drift on conventions.
+never a fitted calibration. Imported by both the event generator (adonis.channels.res,
+adonis.channels.dcc.current) and the differentiable path (adonis.channels.dcc.channel,
+adonis.channels.dcc.structure), so the two implementations cannot drift on conventions.
 
 The pion mass plays three distinct roles, matching ACHILLES's own conventions:
-  * amplitude-internal (build_zmtx qc / pion-pole facpp):  m_pi = 138.04  (isospin-avg fpio).
-  * final-state on-shell + 3-body phase space:             m_pi = 134.98  (mpi0, ALL channels;
-        ACHILLES puts every outgoing pion, including pi+, on-shell at mpi0).
+  * amplitude-internal (build_zmtx qc / pion-pole facpp): isospin-avg (fpio).
+  * final-state on-shell + 3-body phase space: mpi0, ALL channels (ACHILLES puts
+        every outgoing pion, including pi+, on-shell at mpi0).
   * the strictly-physical per-channel mass (M_PIP / M_PI0)  -- used only when MATCH_ACHILLES=False.
 
 Nucleon mass has two roles:
-  * amplitude-internal (qc, qc0):                 m_N = 938.919  (mp+mn)/2 average (== ACHILLES MQE).
-  * absolute-norm _NORM = 2pi/(|FResV|^2 (2 m_N)^2):  m_N = 939.566 neutron (ACHILLES Fortran xmn).
+  * amplitude-internal (qc, qc0):                 (mp+mn)/2 average (== ACHILLES MQE).
+  * absolute-norm _NORM = 2pi/(|FResV|^2 (2 m_N)^2):  neutron mass (ACHILLES Fortran xmn).
 """
 from adonis.channels import constants as C
 
@@ -31,7 +31,7 @@ def amp_m_N():
     return M_NUC
 
 def amp_m_pi():
-    """Amplitude-internal pion mass (build_zmtx pion-pole facpp): isospin-avg fpio, 138.04 MeV."""
+    """Amplitude-internal pion mass (build_zmtx pion-pole facpp): isospin-avg fpio."""
     return M_PI_AMP
 
 def norm_m_N():

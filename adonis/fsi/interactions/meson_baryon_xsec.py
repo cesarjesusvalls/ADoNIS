@@ -1,10 +1,9 @@
 """DCC meson-baryon cross sections for the intranuclear cascade (the ACHILLES Virtual-
-Resonances `MesonBaryonInteraction`).  Builds, from the Phase-E ANL-Osaka partial-wave
-amplitudes (`meson_baryon_amplitudes`), the pi N -> pi' N' scattering cross sections sigma(W) [mb] for every
+Resonances `MesonBaryonInteraction`).  Builds, from the ANL-Osaka partial-wave amplitudes
+(`meson_baryon_amplitudes`), the pi N -> pi' N' scattering cross sections sigma(W) [mb] for every
 charge channel (elastic + charge exchange), precomputed on the amplitude W grid and exposed
-as fast interpolators for the cascade.  These are the sharply Delta-peaked piN cross sections
-(validated to the 9.3:2.2:1 isospin ratio in Phase E) -- the correct scatter rates for the
-cascade (vs the broad Oset QE).
+as fast interpolators for the cascade -- these are the sharply Delta-peaked piN cross sections
+used for scatter rates (vs the broad Oset QE, see pion_nuclear_xsec.py).
 
 Channels (pion_in, nucleon) -> list of (pion_out, nucleon_out, isospin-cg) with
 cg = {3: c_{3/2}, 1: c_{1/2}} (the product of the initial+final meson-baryon Clebsches):
@@ -85,7 +84,7 @@ def _jax_grids_pn_avg():
 def _jax_grids_resolved():
     """CHARGE-RESOLVED sig_out[pion_in, nucleon, pion_out](W) -- NOT averaged over p/n.
     ACHILLES MesonBaryonInteraction uses GetCchannel(pion, baryon), i.e. the cross section for the
-    SPECIFIC struck nucleon (sigma(pi+ p) ~ 3x sigma(pi+ n) at the Delta).  Shape jsig (3 in, 2 nuc,
+    SPECIFIC struck nucleon (sigma(pi+ p) != sigma(pi+ n) at the Delta).  Shape jsig (3 in, 2 nuc,
     3 out, nW), nuc 0=proton 1=neutron."""
     if "sigr_np" in _JGRID:
         return _jnp.asarray(_JGRID["W_np"]), _jnp.asarray(_JGRID["sigr_np"])

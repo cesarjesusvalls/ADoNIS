@@ -1,22 +1,20 @@
 """AnaSample -- the fundamental analysis object.
 
 A `sample` is bank(s) + signal + observables(+edges): one definition, built from an
-`adonis.workflow.config.AnalysisConfig` (the very YAML sec1 already loads).  Its verbs are methods:
+`adonis.workflow.config.AnalysisConfig`.  Its verbs are methods:
 
     s = AnaSample.from_config("configs/samples/t2k_cc0pi.yaml")
-    s.plot()            # the sec1 ADoNIS-vs-ACHILLES figure
-    s.gate1()           # Gate-I Fisher / shrinkage (the old physfit_*.npz)
+    s.plot()            # ADoNIS-vs-ACHILLES figure
+    s.gate1()           # Gate-I Fisher / shrinkage
     s.dump_cache()      # persist the Jacobian npz
     combined = s1 + s2  # SampleSet -> joint Gate-I (Fisher is additive)
 
-The Jacobian bins on the sample's REAL edges (ObservableSpec.edges -- the NUISANCE bins sec1 plots), not
-auto design_edges: one sample definition drives plot and gradient identically.  Gate-I shrinkage is
-invariant to a per-bin scale (the unit conversion cancels in J/sigma for a carbon sample with no offset),
-so the gradient uses scale = 1/binwidth; real display units are a .plot() concern.
+The Jacobian bins on the sample's REAL edges (ObservableSpec.edges), not auto design_edges: one sample
+definition drives plot and gradient identically.  Gate-I shrinkage is invariant to a per-bin scale, so the
+gradient uses scale = 1/binwidth; real display units are a .plot() concern.
 
-Memory: the Jacobian STREAMS the bank one chunk at a time (peak = one chunk), and the SAME streamed pass
-accumulates the nominal central + MC error, so J and sigma are consistent and `max_chunks` gives a fast,
-self-consistent smoke run.
+Memory: the Jacobian STREAMS the bank one chunk at a time (peak = one chunk); the same pass accumulates
+the nominal central + MC error, so J and sigma stay consistent and `max_chunks` gives a fast smoke run.
 """
 import glob
 import os
@@ -41,8 +39,7 @@ def _cfg_h_bank(cfg):
     """The free-H bank for a CH sample: `inputs.h_bank` if the config names one, else the T2K default.
 
     The hydrogen bank is FLUX-SPECIFIC (nu_mu p -> mu- p pi+ folded with that beam), so a MINERvA CH
-    sample cannot borrow the T2K one -- it needs nu_MINERvA_H (NuMI).  This used to be a module-level
-    constant, which silently gave every CH sample the T2K flux."""
+    sample cannot borrow the T2K one -- it needs nu_MINERvA_H (NuMI)."""
     hb = getattr(getattr(cfg, "inputs", None), "h_bank", None)
     if hb is None:
         return T2K_H_BANK
@@ -108,8 +105,8 @@ class AnaSample:
         return {o.key: o.bin_edges() for o in self.cfg.observables}
 
     def selected(self):
-        """Per-event {obs_key: values, 'w', 'chan'} for the passing events, streamed + bounded.  This is
-        the SAME reducer sec1 plots (bank_signal / ele_signal)."""
+        """Per-event {obs_key: values, 'w', 'chan'} for the passing events, streamed + bounded.  Uses the
+        SAME reducer the plot path does (bank_signal / ele_signal)."""
         if self._sel is None:
             self._sel = (SG.ele_signal if self.is_electron else SG.bank_signal)(self.bank, self.cfg.signal)
         return self._sel
@@ -118,13 +115,11 @@ class AnaSample:
         return _cfg_h_bank(self.cfg)
 
     def bin_datasets(self, B, w0, free_h=None):
-        """IC.bin_w-compatible per-observable dataset dicts for the FIT engine (physfit MultiEngine /
-        BankSample).  The sample's FIT observables selected + binned on the config's REAL edges; keys
-        namespaced `{name}:{obs}`; scale = 1/binwidth (cancels in the fit); sel_idx/binidx/scale_bin/offset
-        are exactly what IC.bin_w0/bin_w consume, so `model(theta)=IC.bin_w(d, weights(theta))` works.
-        `w0` = the nominal per-event weight (numpy).  `free_h`: optional {obs_key: frozen offset} added to
-        the central of matching observables (theta-independent -> zero gradient, the old build_physfit_datasets
-        free-H behaviour).  Numpy-only -- nothing here imports analysis/paper."""
+        """IC.bin_w-compatible per-observable dataset dicts for the fit engine (MultiEngine / BankSample):
+        FIT observables selected + binned on the config's REAL edges, keys namespaced `{name}:{obs}`,
+        scale = 1/binwidth so `model(theta) = IC.bin_w(d, weights(theta))` works.  `w0`: nominal per-event
+        weight (numpy).  `free_h`: optional {obs_key: frozen offset} added to matching observables'
+        central value (theta-independent -> zero gradient).  Numpy-only."""
         selm, obs, _w0, _chan = SG.select_full(B, self.cfg.signal)
         w0 = np.asarray(w0); ds = []
         for o in self.fit_specs():
@@ -217,8 +212,8 @@ class AnaSample:
 
 
     def dump_cache(self, label=None, res=None, max_chunks=None, log=print):
-        """Persist the Gate-I npz (physfit schema: J, sigma, row0, dskeys, shrink, F, V + per-obs edges/
-        central) to output/altgen/{label}.npz -- what SampleSet / the figures load."""
+        """Persist the Gate-I npz (J, sigma, row0, dskeys, shrink, F, V + per-obs edges/central) to
+        output/altgen/{label}.npz -- what SampleSet / the figures load."""
         r = res or self.gate1(max_chunks=max_chunks, log=log)
         ALTGEN.mkdir(parents=True, exist_ok=True)
         out = ALTGEN / f"{label or self.name}.npz"
@@ -241,7 +236,7 @@ class AnaSample:
 
 class SampleSet:
     """Several samples fitted / gated jointly.  Rows are concatenated across samples; the combined Fisher
-    is the sum of the per-sample outer products (additive), so this is exactly the old build_multisample."""
+    is the sum of the per-sample outer products (additive)."""
     def __init__(self, samples):
         self.samples = list(samples)
 

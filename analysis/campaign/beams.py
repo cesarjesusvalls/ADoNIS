@@ -1,8 +1,6 @@
 """Tagged-beam samples (pi+/p/n on carbon): the model behind the beam half of the Gate-I stack.
 
-Moved from analysis/paper/beams/beam_fisher.py.  analysis.campaign.stages.multisample constructs BeamSample
-from beam_model, so this is sample-layer machinery that happened to live next to the figure that first
-used it.  The Fisher driver and CLI stay on the paper side -- they are a figure, not a sample.
+Consumed by analysis.campaign.stages.multisample (BeamSample) via beam_model.
 """
 from __future__ import annotations
 
@@ -23,9 +21,8 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
         binned(w)     -> sigma_X(bin) = pi R^2 * sum_bin X_i w_i / n_tried, concatenated [react, second]
         central, sigma, mcerr, edges, keys, th0, n_tried
 
-    So model(theta) = binned(w_of(theta)) for ANY theta, using the SAME 28-knob physical_fit basis every
-    other sample uses.  beam_jacobian (below) is a thin wrapper over this; the multisample closure engine
-    (analysis.campaign.stages.multisample) is the other consumer.  max_chunks caps the loaded statistics."""
+    model(theta) = binned(w_of(theta)) for ANY theta, using the SAME 28-knob physical_fit basis every
+    other sample uses.  max_chunks caps the loaded statistics."""
     import jax
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
@@ -118,11 +115,9 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print):
     bins, then the second observable's bins (absorption for pi+, pion production for p/n).  One jax.jvp
     per knob through the SAME reweight, over beam_model.
 
-    CACHED on disk (plotcache, keyed on the beam bank files + nbins/syst).  The 28-knob jvp over ~12M
-    events is the slow part of every multisample rebuild and only changes when the bank or params change;
-    the cache is also written per-beam as it completes, so a preempted rebuild resumes without redoing the
-    beams it already finished.  NB the fingerprint is over INPUT FILES + params, NOT this code -- if
-    beam_model's physics changes, force a rebuild with ADONIS_PLOT_REFRESH=1."""
+    CACHED on disk (plotcache, keyed on the beam bank files + nbins/syst), written per-beam as it
+    completes.  The fingerprint is over INPUT FILES + params, NOT this code -- force a rebuild with
+    ADONIS_PLOT_REFRESH=1 if beam_model's physics changes."""
     from adonis import cache as plotcache
 
     def _compute():

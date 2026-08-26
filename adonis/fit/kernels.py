@@ -1,39 +1,11 @@
 """One device-resident objective, shared by both minimisers (Gauss-Newton and MIGRAD).
 
-Every derivative object is built from one traced function per sample:
-
-    f_s(x)  =  concat(sample s's binned model blocks)      x = the FITTED dials only
-
-  residuals(x)   (nbin + n,)      whitened data residuals stacked with the prior block
-  chi2(x)        scalar           sum of squares of the above
-  grad(x)        (n,)             ONE reverse-mode VJP per sample
-  jac(x)         (nbin + n, n)    vmapped forward JVP, BINNED ON DEVICE -> nbin*n floats cross the
-                                  host/device boundary, never per-event arrays
-
-The two minimisers differ in exactly one thing: which of these they ask for (GN wants residuals+jac,
-MIGRAD wants chi2, optionally +grad).
-
-Design invariants:
-
-  PER-SAMPLE JITS, SUMMED ON THE HOST.  Fusing the concatenation of all samples into one XLA program
-  makes its live set every sample's intermediates at once, which can exceed device memory.  Summing the
-  per-sample results on the host instead bounds the peak at the largest single sample.
-
-  DATA AND WEIGHTS ARE ARGUMENTS, not captured constants, so a toy ensemble retargets with a
-  host-to-device copy of a few hundred floats instead of a fresh XLA compile per toy.
-
-  ONE COMPILED TANGENT SHAPE.  The Jacobian's dial batches are ALL of width B, zero-padded on the last
-  block, so every dispatch shares one compiled program regardless of how the dial count divides by B.
-  Padding costs a tangent column; an extra dispatch costs a whole primal.  Both are counted (see
-  `counts`), so nothing about the batching is hidden from the report.
-
-  BIN CACHES ARE WARMED EAGERLY.  BinSpec._device() memoises its gather indices on first call; if that
-  call happens inside a trace the cached arrays belong to THAT trace and the next transformation of the
-  same spec dies with `UnexpectedTracerError`.  One eager pass per sample, in the constructor, before
-  anything is jitted.
-
-  NOTHING IS JITTED LAZILY.  Every jitted object is built in the constructor and compiled by `warmup()`;
-  no method here returns a fresh `jax.jit` on a hot path.
+Built from one traced function per sample; per-sample results are summed on the host rather than
+fused into a single XLA program, and never captured as constants -- data and weights are arguments.
+Dial-axis batches are all width B (zero-padded on the last block) so every dispatch shares one
+compiled program.  `BinSpec._device()` caches its gather indices and must be warmed once per
+sample, in the constructor, before anything is jitted -- caching inside a trace raises
+`UnexpectedTracerError` on the next call.
 """
 from __future__ import annotations
 
@@ -57,14 +29,13 @@ class FitKernel:
 
     Parameters
     ----------
-    eng      a MultiEngine (anything exposing .samples[i].model_blocks_jax, .ds, .th0, .prior, .pnames)
-    subset   indices of the fitted dials, in the order the fit uses them
-    mask     optional per-bin boolean over the FULL stacked binning.  Bins are dropped by setting their
-             whitening weight to zero, exactly as trf_fit does.  A frozen mask can only ever REMOVE bins:
-             a bin with sigma = inf stays dead however the mask votes, and `n_live` reports what survived
-             so a caller freezing a mask across an event scan can assert it actually froze.
-    jac_batch  tangent columns per dispatch (default: all n in one).  Changes wall-clock and peak memory,
-             never the result; both the effective and the executed tangent counts are recorded.
+    eng        MultiEngine exposing .samples[i].model_blocks_jax, .ds, .th0, .prior, .pnames
+    subset     indices of the fitted dials, in the order the fit uses them
+    mask       optional per-bin boolean over the full stacked binning; bins are dropped by zeroing
+               their whitening weight.  Can only REMOVE bins: a bin with sigma = inf stays dead
+               regardless, and `n_live` reports how many bins survived.
+    jac_batch  tangent columns per dispatch (default: all n in one).  Changes wall-clock and peak
+               memory, never the result.
     """
 
     def __init__(self, eng, subset, mask=None, jac_batch=None, th_fixed=None):
@@ -130,9 +101,8 @@ class FitKernel:
         self.reset_counts()
 
     def set_fixed(self, th_fixed):
-        """Move the non-fitted dials (e.g. pin a scanned dial at a profile node).  No recompilation:
-        a host-to-device copy of NPAR floats.  The prior centre `x0` is untouched -- pinning a dial must
-        not drag the prior along with it."""
+        """Move the non-fitted dials (e.g. pin a scanned dial at a profile node); no recompilation,
+        just a host-to-device copy.  The prior centre `x0` is left untouched."""
         self.th0 = np.asarray(th_fixed, float).copy()
         self._thf = jnp.asarray(self.th0)
         return self
@@ -176,16 +146,14 @@ class FitKernel:
         return self
 
     def visits(self):
-        """Forward traversals of the event set: value-only calls plus value-and-gradient calls.
-
-        The denominator for a "per model evaluation" figure that is fair to both a sampler that only
-        ever asks for the likelihood and one that always asks for likelihood-and-gradient.
-        """
+        """Forward traversals of the event set: value-only calls plus value-and-gradient calls --
+        the denominator for a "per model evaluation" figure comparable across callers that only
+        need chi2 and callers that also need the gradient."""
         c = self.counts
         return int(c["chi2"] + c["vg"] + c["resid"] + c["model"] + c["jac"])
 
     def event_passes(self):
-        """Passes over the resident event set, per the convention at the top of this module."""
+        """Passes over the resident event set: primal + tangent + VJP_PASSES*vjp + HVP_PASSES*hvp."""
         c = self.counts
         return float(c["primal"] + c["tangent"] + VJP_PASSES * c["vjp"]
                      + HVP_PASSES * c["hvp"])
@@ -208,11 +176,9 @@ class FitKernel:
         return np.concatenate([r, (np.asarray(x, float) - self.x0) * self.pw])
 
     def chi2(self, x):
-        """Scalar objective: ||whitened data residual||^2 + ||prior residual||^2.
-
-        Computed as sum(r*r) INSIDE the jit, i.e. the identical expression `residuals` squares -- so the
-        value-only and residual paths can never drift apart.  One host sync per sample.
-        """
+        """Scalar objective: ||whitened data residual||^2 + ||prior residual||^2, computed inside the
+        jit as sum(r*r) -- the same expression `residuals` returns squared, so the two paths cannot
+        drift apart."""
         xj = jnp.asarray(np.asarray(x, float))
         c = float(sum(float(f(xj, self._thf, D, R))
                       for f, D, R in zip(self._j_c, self._D, self._R)))
@@ -231,13 +197,8 @@ class FitKernel:
         return np.asarray(g) + 2.0 * (np.asarray(x, float) - self.x0) * self.pw ** 2
 
     def chi2_and_grad(self, x):
-        """(chi2, grad) from ONE value_and_grad per sample -- the right primitive for HMC/NUTS.
-
-        A leapfrog step always needs both at the same point, so splitting them into two programs would
-        cost a second primal pass for a value already computed.  MIGRAD's line search, by contrast,
-        evaluates chi2 at several trial points before requesting a gradient, so the same fusion there
-        would pay for VJPs it never uses -- the right primitive depends on the caller's access pattern.
-        """
+        """(chi2, grad) from ONE value_and_grad per sample.  For callers that always need both at the
+        same point (e.g. HMC/NUTS); MIGRAD's line search calls `chi2` and `grad` separately instead."""
         xj = jnp.asarray(np.asarray(x, float))
         out = [f(xj, self._thf, D, R) for f, D, R in zip(self._j_vg, self._D, self._R)]
         self.counts["vg"] += 1
@@ -249,8 +210,8 @@ class FitKernel:
         return c, g
 
     def jac_data(self, x):
-        """(nbin, n) whitened data Jacobian.  Binning happens INSIDE the jit: what crosses the bus is
-        nbin*n floats, never a (n, n_events) per-event derivative array."""
+        """(nbin, n) whitened data Jacobian.  Binning happens inside the jit, so only nbin*n floats
+        cross the host/device boundary -- never a (n, n_events) per-event derivative array."""
         xj = jnp.asarray(np.asarray(x, float))
         out = np.empty((self.nbin, self.n))
         for i, (f, D, R) in enumerate(zip(self._j_J, self._D, self._R)):
@@ -269,16 +230,9 @@ class FitKernel:
         return np.vstack([self.jac_data(x), np.diag(self.pw)])
 
     def hessian(self, x, batch=None):
-        """(n, n) EXACT Hessian of chi2 -- not the Gauss-Newton approximation.
-
-        The fit's covariance (J^T W J)^-1 drops the term sum_b r_b d2m_b and is exact only in the
-        small-residual limit.  The Laplace/Occam log-determinant is dominated by the worst-constrained
-        eigen-directions, so it needs the real Hessian rather than the Gauss-Newton one.  Computed here
-        in ~n HVPs (forward-over-reverse), against ~2n^2 objective evaluations for a finite-difference
-        HESSE.
-
-        The prior block is exactly 2 diag(1/prior^2) -- quadratic, so it needs no derivative work.
-        """
+        """(n, n) exact Hessian of chi2, not the Gauss-Newton approximation.  Computed via ~n
+        forward-over-reverse HVPs.  The prior block is exactly 2*diag(1/prior^2) and needs no
+        derivative work."""
         B = self.n if not batch else min(int(batch), self.n)
         xj = jnp.asarray(np.asarray(x, float))
         E = np.eye(self.n)
@@ -303,17 +257,15 @@ class FitKernel:
         return gn_covariance(J)
 
     def covariance_exact(self, x, batch=None):
-        """(H/2)^-1 from the exact Hessian.  For chi2 = ||r||^2, H = 2(J^T J + sum r d2r), so the
-        covariance is (H/2)^-1 and reduces to (J^T J)^-1 exactly when the residual term vanishes."""
+        """(H/2)^-1 from the exact Hessian.  Since H = 2(J^T J + sum_b r_b d2r_b) for chi2 = ||r||^2,
+        this reduces to the Gauss-Newton covariance (J^T J)^-1 when the residual term vanishes."""
         return np.linalg.pinv(0.5 * self.hessian(x, batch=batch), rcond=1e-12)
 
     def warmup(self, x=None, which=("model", "residuals", "chi2", "grad", "jac")):
-        """Compile the jitted objects on the exact shapes the timed loop will use, then zero the
-        counters.  Nothing after this call may trigger an XLA compile.
-
-        Compiling all five programs per sample can take minutes at production statistics; `which` lets
-        a caller that only needs one of them (a batch-invariance check, a value-only scan) skip the
-        rest.  Elapsed compile time is kept on `.compile_s`, separate from any later timing.
+        """Compile the jitted objects on the exact shapes the timed loop will use, then reset the
+        counters.  Nothing after this call may trigger an XLA compile.  `which` lets a caller compile
+        only the objects it needs.  Elapsed compile time is kept on `.compile_s`, separate from later
+        timing.
         """
         import time as _t
         x = self.x0 if x is None else np.asarray(x, float)
@@ -345,12 +297,11 @@ _NUC_SLOT = ("hh", "a", "iso", "finel", "inel", "swap")
 
 
 def event_windows(n_events, chunk):
-    """[(start, C)] covering range(n_events) with a COMMON width, last window shifted back to n-C.
+    """[(start, C)] covering range(n_events) with a common width C, last window shifted back to n-C.
 
-    Common width because every window must hit the same compiled program: a short final window is a
-    second shape and a second XLA compile, which is exactly the cost chunking is meant to avoid.
-    Shifting the last window back overlaps its predecessor, so each event is assigned to exactly ONE
-    window by the tables built in `bank_chunk_plan` -- nothing is double counted.
+    Every window shares one width so all windows hit the same compiled program.  Shifting the last
+    window back makes it overlap its predecessor; `bank_chunk_plan` assigns each event to exactly
+    one window despite the overlap.
     """
     C = int(min(chunk, n_events))
     nch = int(np.ceil(n_events / C))
@@ -383,23 +334,13 @@ def bank_chunk_plan(JB, n_events, chunk):
 
 
 def bank_windows(JB, n_events, chunk, drop_source=False):
-    """Materialise the per-window sub-banks ONCE.  Returns (nch, C, [sub_bank...], owns).
+    """Materialise the per-window sub-banks once.  Returns (nch, C, [sub_bank...], owns).
 
-    The windows are fixed, so the dynamic_slice, the per-slot jnp.take and the pad-row concatenate
-    belong at construction, once -- doing them inside the jitted call would re-materialise every
-    sub-bank on every model evaluation.
-
-    Because the windows PARTITION the bank, the caller can drop the source arrays afterwards
-    (`drop_source`) and the decomposition costs only the padding rather than a second copy.  Peak
-    TRANSIENT memory during a jvp/vjp is then O(C), which is the point of chunking.
-
-    The pad row is baked in here too: every per-event array is one longer than C, the ragged FSI
-    reduction runs over C+1 events, and padded slots point at that trash event.  `bank_weight_window`
-    truncates back to C.
-
-    `owns[w] = (lo, hi)` is the half-open range of GLOBAL event indices this window is responsible for.
-    The last window is shifted back to n-C so all windows share one compiled shape, so it overlaps its
-    predecessor; `owns` is what keeps every event counted exactly once.
+    Each per-event array is padded with one trash row at index C; the ragged FSI reduction runs over
+    C+1 events and `bank_weight_window` truncates back to C.  `owns[w] = (lo, hi)` is the half-open
+    range of global event indices window w is responsible for -- windows overlap (see
+    `event_windows`), so `owns`, not the window bounds, is what attributes an event to one window.
+    `drop_source=True` clears the source bank in place once its arrays have been copied into windows.
     """
     wins, C, nch, plan, Lp, Ln = bank_chunk_plan(JB, n_events, chunk)
     pion = tuple("f_" + f for f in _PION_SLOT)
@@ -426,9 +367,7 @@ def bank_windows(JB, n_events, chunk, drop_source=False):
 
 
 def bank_weight_window(BR, Bw, knobs, grids, C):
-    """bank_weight on a PRE-BUILT window sub-bank: reduce over C+1 events, drop the trash event.
-
-    The sub-bank already carries its pad row (see bank_windows), so this does no slicing, no gathering
-    and no concatenation -- it is exactly the unchunked call on a smaller bank.
+    """bank_weight on a pre-built window sub-bank: reduces over C+1 events and drops the trash event
+    (see bank_windows).  Equivalent to the unchunked call on a smaller bank.
     """
     return BR.bank_weight(Bw, knobs, grids)[:C]

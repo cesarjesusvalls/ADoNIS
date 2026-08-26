@@ -1,4 +1,4 @@
-"""End-to-end DIFFERENTIABLE T2K CC0pi dsigma/dx in ALL the exposed knobs (differentiable_knobs.md).
+"""End-to-end DIFFERENTIABLE T2K CC0pi dsigma/dx in ALL the exposed knobs.
 
 Every knob enters as an exact per-event REWEIGHT of a frozen pool walk + frozen primary sample:
   * hard vertex (amps2 quadratic): M_A, axial_strength (QE+RES), vector_strength, mu_p, mu_n, gep, gen (QE),
@@ -8,9 +8,9 @@ Every knob enters as an exact per-event REWEIGHT of a frozen pool walk + frozen 
   * spectral function (density ratio): kF_sf, Eb_shift, sf_norm, src_tail -> sf_reweight on struck (|p|,E).
   * norms: qe_norm, res_norm (channel-level multipliers).
 
-Per-knob reweights COMPOSE multiplicatively: exact to first order at nominal, so dH/dknob (the
-Jacobian/sensitivity the fit uses) is exact; finite-pull joint accuracy across knobs needs the joint
-amps2 decomposition (reduced_amps2.py).  model_hist_full(knobs, R, HV, SF) is jit+grad-able in every knob.
+Per-knob reweights COMPOSE multiplicatively: exact to first order at nominal, so dH/dknob is exact;
+finite-pull joint accuracy across knobs needs the joint amps2 decomposition (reduced_amps2.py).
+model_hist_full(knobs, R, HV, SF) is jit+grad-able in every knob.
 """
 from __future__ import annotations
 import numpy as np
@@ -43,8 +43,7 @@ def _qe_hv(qa, **kw):
 def _qe_records(qa, probe, isp, qe_joint):
     """The QE slice of HV.  qe_joint=True (default): the exact reduced-quadratic record (one 4x4 M
     covering all cross terms; _hv_qe -> qe_reduced_reweight).  qe_joint=False: the legacy per-knob
-    (a,b,c) records (product; exact only to first order), kept until every bank carries M
-    (docs/joint_amps2_plan)."""
+    (a,b,c) records (product; exact only to first order), kept until every bank carries M."""
     if qe_joint:
         from adonis.reweight.reduced_amps2 import build_qe_reduced
         return {"qe_reduced": build_qe_reduced(*qa, probe=probe, is_proton=isp), "qe_probe": probe, "qe_isp": isp}
@@ -65,13 +64,13 @@ def _res_records(ra, ip, pp, with_pw, res_joint):
 
 def build_hv_sf(qe, res, sf, with_pw=True, probe="CC", qe_joint=True, res_joint=True):
     """Build the per-channel hard-vertex amps2 records + SF grids/points ONCE (theta-independent).
-    with_pw=False skips the 14 DCC partial-wave records (the dominant build cost) -> pw_norm has no effect.
+    with_pw=False skips the 14 DCC partial-wave records -> pw_norm has no effect.
 
     probe="EM" builds the (e,e') photon records instead: the QE vector + Sachs-FF records carry real
     gradients (with per-event is_proton), the QE axial record auto-collapses to identity (no photon
-    axial), and the RES hard-vertex records are identity for now (EM-Delta / delta_strength is a v2
-    item; the SF reweight still applies to both channels).  qe uses k_e/k_lep/p_out/is_p; res uses
-    p_struck."""
+    axial), and the RES hard-vertex records are identity (EM-Delta / delta_strength not yet
+    implemented); the SF reweight still applies to both channels.  qe uses k_e/k_lep/p_out/is_p; res
+    uses p_struck."""
     qe_pmag, qe_erem = removal_from_struck(qe["p_struck"])
     res_pmag, res_erem = removal_from_struck(res["p_struck"])
     SF = dict(grids=sf_grids(sf), qe_pmag=qe_pmag, qe_erem=qe_erem, res_pmag=res_pmag, res_erem=res_erem)

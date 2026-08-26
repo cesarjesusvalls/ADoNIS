@@ -32,7 +32,7 @@ def _contract(L, H):
 
 def flux_factor(p_in_lep, p_in_nuc, had_mass=MASS_PDG_NEUTRON):
     """HBARC2 / (2 E_lep * 2 sqrt(p_had^2 + m_had^2)) * 1e6  [nb]  (XSecBackend.cc:35-46).
-    m_had is ParticleInfo(had_in).Mass() (Particles.yml rounded: neutron 939.57, proton 938.27)."""
+    m_had is ParticleInfo(had_in).Mass() (Particles.yml rounded values)."""
     Ehad = jnp.sqrt(jnp.sum(p_in_nuc[..., 1:] ** 2, axis=-1) + had_mass ** 2)
     flux = 2.0 * p_in_lep[..., 0] * 2.0 * Ehad
     return C.HBARC2 / flux * C.TO_NB
@@ -49,8 +49,8 @@ def me_cross_section(p_in_lep, p_out_lep, p_in_nuc, p_out_nuc, spin_avg=None, ha
     probe: "CC" (default, nu N -> l N; leptonic kind="CC_nu", isovector hadron current).  "EM"
     (e N -> e' N inclusive (e,e')) routes the photon leptonic current and the struck-nucleon's own
     form factors -- needs is_proton (bool, broadcast over events).
-    spin_avg=None takes the probe's registry value (CC 1/2, EM 1/4 = 2 e helicities x 2 nucleon
-    spins); pass it explicitly to override."""
+    spin_avg=None takes the probe's registry value (the helicity/spin averaging factor,
+    e helicities x nucleon spins); pass it explicitly to override."""
     spec = probe_spec(probe)
     if spin_avg is None:
         spin_avg = spec.spin_avg

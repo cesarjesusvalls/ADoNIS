@@ -1,32 +1,17 @@
-"""Gradient-free vs gradient-based MCMC on ONE ADoNIS posterior: Metropolis-Hastings against NUTS.
+"""Gradient-free vs gradient-based MCMC on one ADoNIS posterior: Metropolis-Hastings vs NUTS.
 
-THE QUESTION.  Do built-in gradients improve the computational scaling of high-dimensional MCMC, and how
-does that advantage move with the parameter count n?
+Both samplers query the same `FitKernel` (MH: `chi2`, NUTS: `chi2_and_grad`), so likelihood, box,
+dataset, precision and device are shared by construction -- the only difference is whether the sampler
+uses a gradient.  The posterior is exp(-chi2/2) truncated to the box (MLE, prior widened x1e6).
 
-WHAT IS HELD IDENTICAL.  Both samplers call the same `FitKernel`: MH asks it for `chi2`, NUTS asks for
-`chi2_and_grad`.  Likelihood, physical box, dataset, float64, device and the underlying device-resident
-model are therefore shared BY CONSTRUCTION, not by agreement -- the only difference left is whether the
-sampler uses a gradient.  The posterior is exp(-chi2/2) truncated to the box (MLE, prior widened x1e6, so
-it is flat inside).
+MH is preconditioned by the LAPLACE COVARIANCE (J^T W J)^-1 -- the same geometry NUTS gets as its mass
+matrix -- with its step scale adapted during warm-up to 0.234 acceptance (Roberts-Gelman-Gilks), so the
+comparison is against the best standard MH, not a strawman.
 
-MH IS NOT A STRAWMAN, and that matters more than anything else here.  A random walk with an isotropic
-proposal on a posterior whose worst pair correlates at -0.995 would lose by orders of magnitude and the
-result would say nothing about gradients.  So MH gets:
-  * a proposal preconditioned by the LAPLACE COVARIANCE (J^T W J)^-1 -- exactly the information NUTS
-    gets as its mass matrix, so neither method is handed geometry the other lacks;
-  * a scale adapted during warm-up to 0.234 acceptance, the Roberts-Gelman-Gilks optimum for
-    random-walk Metropolis.
-That is the best standard MH, and it is what the comparison is against.
-
-EQUAL COMPUTE, NOT EQUAL SAMPLES.  Each chain warms up for a fixed number of iterations and then samples
-for a fixed WALL-CLOCK budget.  Neither method is then advantaged by a draw count chosen to suit the
-other, ESS/s is measured rather than inferred, and the total runtime of the study is bounded by
-construction.
-
-REPORTED.  ESS/s is hardware-specific, so it is reported beside ESS per MODEL EVALUATION and per
-EVENT-PASS, which are portable.  Bulk AND tail ESS: a random walk can mix acceptably in the body of a
-distribution while barely crossing its quantiles, and interval endpoints are what a physics result
-quotes.
+Each chain warms up for a fixed iteration count then samples for a fixed WALL-CLOCK budget.  ESS/s is
+hardware-specific, so it is reported beside ESS per MODEL EVALUATION and per EVENT-PASS (portable), and
+both bulk and tail ESS are given since a random walk can mix in the body while barely crossing the
+quantiles a physics result quotes.
 
     srun ... python -m analysis.benchmarks.bench_mcmc --ndials 8 --method mh --chain 0
 """

@@ -1,32 +1,17 @@
-"""FIGURE A -- the whole closure argument in one figure.
+"""FIGURE A -- the closure argument: four panels, all from one reference fit.
 
-Four panels, all from the SAME reference fit (one truth, MLE, no prior).  (a), (c) and (d) state what
-uncertainty ONE dataset implies; (b) is the only panel that uses the toy ensemble, and it uses it for the
-one question toys actually answer.
+  (a) RECOVERY.  Asimov fit: each dial returns on its injected truth, with three nested interval
+      estimates -- quadratic sigma, Laplace marginal (profile x sqrt(det V_nuis)), and the exact NUTS
+      marginal.
+  (b) COVERAGE.  Dchi2 = chi2(theta_true) - chi2(theta_hat) over the toy ensemble, against chi2(k).
+  (c) AT A BOUNDARY: E_b.  The Gaussian leaks below the wall; the likelihood-based intervals do not
+      (Chernoff 1954).
+  (d) AWAY FROM A BOUNDARY: C5A.  Non-parabolic, and the profile alone is not the marginal.
 
-  (a) RECOVERY + quoted uncertainty.  Asimov fit: every dial returns on its injected truth, with three
-      intervals on one line as nested ribbons -- the quadratic sigma, the Laplace marginal
-      (profile x sqrt(det V_nuis)) and the exact marginal from NUTS.
-  (b) DO THE INTERVALS COVER?  Dchi2 = chi2(theta_true) - chi2(theta_hat) over the toys, against chi2(k).
-      This is the statistic whose distribution DEFINES coverage.  chi2(theta_true) costs nothing: the toy
-      data is m(theta_true)+n, so it is the sum of squared pulls, reconstructed from the seed.
-  (c) AT A BOUNDARY: E_b, a couple of sigma from its wall.  The Gaussian leaks below it; the
-      likelihood-based intervals do not.  The text box carries the boundary atom (Chernoff 1954).
-  (d) AWAY FROM ANY BOUNDARY: C5A.  Non-parabolic with nothing clamped, and the clearest case where the
-      profile alone is NOT the marginal -- the Laplace correction lands on the NUTS histogram.
-
-WHY NO TOY HISTOGRAM IN (a), (c), (d).  Earlier versions overlaid the spread of best-fit values on the
-quoted interval.  Those are different objects: an interval is a coverage statement, a histogram of
-theta_hat is a sampling spread, and they coincide only in the Gaussian limit.  Comparing them made a 0.2
-sigma offset on the degenerate RES directions look like a defect when the measured coverage is correct
-(67.0 +- 1.1% at a nominal 68.27%).  The toys belong in (b).
-
-Goodness of fit is no longer plotted -- it is a different claim (does the MODEL fit) and is printed for
-the caption instead: median chi2/ndf ~ 0.99 at the P1 point.
+Goodness of fit is printed for the caption rather than plotted.
 
 Usage:  python -m analysis.paper.inference.fig_closure_summary [label] [ens_label] [mass]
-        e.g.  ... sec4_P1 sec4_P1_ens          -> 68% (1 sigma), the default
-              ... sec4_P1 sec4_P1_ens 0.9545   -> 95% (2 sigma), written to a separate file
+        mass defaults to 0.6827 (1 sigma); pass e.g. 0.9545 for 95%, written to a separate file.
 """
 import sys
 import glob
@@ -70,11 +55,8 @@ def _credible(grid, prof, mass=0.6827):
 
 def _dchi2_interval(grid, prof, level=1.0):
     """{theta : Dchi2_profile < level} -- the standard profile-likelihood (MINOS/Wilks) interval.
-
-    Distinct from _credible above, which normalises exp(-Dchi2/2) as if it were a density and takes its
-    68% highest-density region.  That is neither a credible interval (nothing is marginalised) nor the
-    standard profile interval; the two coincide only for a parabolic profile.  This one is the object
-    whose coverage was measured against the FC belts (66.0% / 66.7% vs 68.27% for M_A_res / S_Delta).
+    Distinct from _credible, which treats exp(-Dchi2/2) as a density and takes its highest-density
+    region; the two coincide only for a parabolic profile.
     """
     from scipy.interpolate import CubicSpline
     spl = CubicSpline(grid, prof)
@@ -92,10 +74,8 @@ def _dchi2_interval(grid, prof, level=1.0):
 
 
 def _half68_density(grid, prof, anchor=0.0, half=0.3413447):
-    """Interval holding `half` of exp(-dchi2/2) on EACH side of `anchor` (the best fit).
-
-    Anchoring matters: percentiles are anchored at the median and HPD at the mode, so neither is
-    comparable to a toy interval measured from the fit.  Both objects are anchored at the SAME point here.
+    """Interval holding `half` of exp(-dchi2/2) on each side of `anchor`, so it is comparable to a toy
+    interval measured from the same anchor (percentiles anchor at the median, HPD at the mode).
     """
     from scipy.interpolate import CubicSpline
     spl = CubicSpline(grid, prof)
@@ -118,13 +98,10 @@ def _half68_sample(x, anchor, half=0.3413447):
 
 
 def _hpd_density(grid, prof, mass=0.6827):
-    """WATER-FILL: lower a horizontal level from the peak of exp(-Dchi2/2) until the enclosed mass
+    """Water-fill: lower a horizontal level from the peak of exp(-Dchi2/2) until the enclosed mass
     reaches `mass`; return the extent of {density >= level} plus a flag for a disconnected region.
-
-    Preferred over _half68_density because it always EXISTS.  "x% each side of the best fit" needs x%
-    of the mass available on BOTH sides -- at 90% that is 45% a side, and the RES dials do not have it
-    (M_A_res carries 65% of its profile mass below the best fit).  A naive implementation then clips to
-    the end of the scan and silently reports the scan range as the interval.
+    Preferred over _half68_density because it always exists -- a symmetric split can require more mass
+    on one side than the profile has available.
     """
     from scipy.interpolate import CubicSpline
     spl = CubicSpline(grid, prof)
@@ -204,11 +181,7 @@ def _occam(grid, prof, logdet, mass):
 
 
 def _hpd_boot(x, mass=0.6827, nboot=400, seed=0):
-    """Bootstrap error on the two endpoints: resample the toys with replacement and re-measure.
-
-    The endpoints are order statistics, so with a finite ensemble they carry their own uncertainty --
-    without it there is no way to tell a real profile-vs-toys discrepancy from ensemble noise.
-    """
+    """Bootstrap error on the two endpoints: resample the toys with replacement and re-measure."""
     x = np.asarray(x); n = len(x)
     rng = np.random.default_rng(seed)
     lo = np.empty(nboot); hi = np.empty(nboot)

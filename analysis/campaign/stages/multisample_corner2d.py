@@ -1,25 +1,21 @@
-"""2-D corner ingredients for a SELECTED set of dials, in two modes.
+"""2-D corner ingredients for a selected set of dials, in two modes.
 
-MODE=cond  (figure C -- "what the minimiser sees")
-    chi2(theta_i, theta_j) with the other 14 dials HELD at the best fit: the conditional surface the
-    optimiser actually faces, not a profiled one.  Also stores the FULL 16-D Gauss-Newton step at every
-    node, projected onto (i,j) -- gn = -A^-1 grad, A = J^T W J and grad = 2 J^T W r.  That is the direction
-    the algorithm takes, so it lines up with the recorded trajectory even where it looks "uphill" in 2D
-    (the step is buying chi2 in the other 14 directions).  A is held at the BFP: recomputing J at every
-    node would cost more than the surface itself, and near convergence that IS the model the fitter uses.
+MODE=cond ("what the minimiser sees")
+    chi2(theta_i, theta_j) with the other dials HELD at the best fit: the conditional surface the
+    optimiser actually faces, not a profiled one.  Also stores the full Gauss-Newton step at every node,
+    projected onto (i,j) -- gn = -A^-1 grad, A = J^T W J and grad = 2 J^T W r, i.e. the direction the
+    algorithm actually takes.  A is held fixed at the BFP.
 
-MODE=prof  (figure D -- inference)
-    chi2 PROFILED over the other 14 at every node -> honest 68/90% 2-D contours (Dchi2 = 2.30 / 4.61).
-    Warm-started along a snake path so each node starts from its neighbour's solution (1-2 LM iterations
-    instead of ~10).  Shard with S4_PAIR_BASE / S4_NPAIR across a SLURM array; one npz per shard.
+MODE=prof (inference)
+    chi2 PROFILED over the other dials at every node -> honest 68/90% 2-D contours (Dchi2 = 2.30 / 4.61).
+    Warm-started along a snake path so each node starts from its neighbour's solution.  Shard with
+    S4_PAIR_BASE / S4_NPAIR across a SLURM array; one npz per shard.
 
-Both modes take the BFP from PHYSFIT_INJECT: for an Asimov closure the minimum sits exactly on the
-injected truth (verified chi2@bfp ~ 1e-28), so neither needs the closure npz and both can run in parallel
-with it.
+Both modes take the BFP from the injected truth: for an Asimov closure the minimum sits exactly on it,
+so neither mode needs the closure npz and both can run in parallel with it.
 
-Env: S4_CORNER_DIALS (comma list, default the 6 agreed), S4_CORNER_N (grid per axis, default 17),
-     S4_CORNER_RANGE (+- sigma_post, default 3.0), MODE (cond|prof), S4_PAIR_BASE/S4_NPAIR,
-     PHYSFIT_INJECT, ALTGEN_NIT (inner LM iterations for prof, default 3) + the S4_*_CHUNKS caps.
+Env: ADONIS_FIT_CONFIG, ADONIS_FIT_STAGE (profile2d|gradient2d), S4_PAIR_BASE/S4_NPAIR,
+     S4_ROW_BASE/S4_NROW (row-level sharding within a pair).
 Writes output/altgen/<label>_corner2d_<mode>_<pairbase>.npz
 """
 import os
@@ -140,9 +136,8 @@ def main():
            else f"output/altgen/{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}_r{_RB:03d}.npz")
 
     def _save(final=False):
-        """Checkpoint.  These runs are long and often land on PREEMPTABLE nodes; without this a
-        preemption loses the whole view (it happened once already).  Partial grids keep NaN where not yet
-        computed, so a consumer can tell what is missing instead of silently reading zeros."""
+        """Checkpoint: runs are long and often land on preemptable nodes.  Partial grids keep NaN where
+        not yet computed, so a consumer can tell what is missing instead of silently reading zeros."""
         c = chi - np.nanmin(chi) if np.isfinite(chi).any() else chi
         _axsig = np.stack([np.linspace(*_PROF_AX[subset[idx[a]]], N) if (_PROF_AX and subset[idx[a]] in _PROF_AX)
                            else ax for a, _ in pairs]) if pairs else np.array([ax])

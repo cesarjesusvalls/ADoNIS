@@ -1,22 +1,16 @@
 """Build a T2K-like CC0pi-Np STV fake dataset from a GENIE gst tree.
 
-GENUINE foreign-generator sample: GENIE 3.04 AR23_20i_00_000, numu on 12C, T2K-numu
-flux (provenance in docs/logbook/altgen_fakedata.md). We apply the SAME CC0pi-Np
-selection ADoNIS applies to its bank (topological 0-meson + T2K acceptance), so the
-GENIE "data" and the ADoNIS prediction are compared consistently.
+GENUINE foreign-generator sample: GENIE 3.04 AR23_20i_00_000, numu on 12C, T2K-numu flux.  Applies the
+SAME CC0pi-Np selection ADoNIS applies to its bank (mirrors tune.py _sel + bank_plot.signal_cc0pi;
+topological 0-pion + the muon/proton acceptance cuts defined below), so GENIE "data" and the ADoNIS
+prediction compare consistently.  Observables delta_pT, delta_alphaT via the exact ADoNIS formulas (MeV).
 
-Selection (mirrors analysis/t2k/differentiability/tune.py _sel + bank_plot.signal_cc0pi
-topological): CC event, 0 pions (nfpip=nfpim=nfpi0=0), >=1 proton; muon p>250 MeV &
-cos>-0.6; leading (max-p) proton 450<p<1000 MeV & cos>0.4. Observables delta_pT,
-delta_alphaT via the exact ADoNIS formulas (MeV).
+Absolute normalisation: each GENIE event represents <sigma_tot>_Phi / N_gen of cross section per struck
+nucleon, cross-checked via two independent estimates from the per-event gst XSec (harmonic mean identity
+vs flux-reweighted sigma(E) integral).  dsigma/dx in 1E-38 cm^2/(unit)/nucleon, matching the bank.
 
-Absolute normalisation: each GENIE event represents <sigma_tot>_Phi / N_gen of cross
-section (per struck nucleon). We estimate <sigma_tot>_Phi two independent ways from the
-per-event gst XSec [1E-38 cm^2] and cross-check: (a) harmonic mean identity, (b) flux-
-reweighted sigma(E) integral. dsigma/dx in 1E-38 cm^2/(unit)/nucleon, matching the bank.
-
-Output npz: edges, counts, dsigma (abs), and the real T2K covariance adopted as the
-measurement error model (central values = GENIE).
+Output npz: edges, counts, dsigma (abs), and the real T2K covariance adopted as the measurement error
+model (central values = GENIE).
 """
 import os, sys
 from pathlib import Path
@@ -43,9 +37,8 @@ def load_t2k(obs):
 
 
 def extract_cc0pi(GST):
-    """Load a gst, apply the CC0pi-Np topological+acceptance selection, and return per-event
-    observables + absolute normalisation. SINGLE SOURCE OF TRUTH for the CC0pi selection --
-    reused by the fake-data builder (main) and the adaptive-binning design script."""
+    """Load a gst, apply the CC0pi-Np topological+acceptance selection, and return per-event observables
+    + absolute normalisation."""
     print(f"[load] gst {GST}", flush=True)
     t = uproot.open(GST)["gst"]
     b = t.arrays(["cc", "qel", "res", "mec", "coh", "Ev", "XSec",
@@ -115,10 +108,9 @@ def extract_cc0pi(GST):
 
 
 def extract_cc1pi(E):
-    """CC1pi+Np STV selection + observables from an extract_cc0pi() dict. SINGLE SOURCE OF TRUTH --
-    reused by the fake-data builder (main) and physical_fit_run mode=genie. Mirrors
-    bank_plot.signal_cc1pi_stv exactly; observables via the imported validated bank_plot formulas.
-    Returns vals1 {pn,dptt,daT} (selected events) + per_event_nb_CH."""
+    """CC1pi+Np STV selection + observables from an extract_cc0pi() dict; reused by the fake-data builder
+    (main).  Mirrors bank_plot.signal_cc1pi_stv exactly.  Returns vals1 {pn,dptt,daT} (selected events) +
+    per_event_nb_CH."""
     from adonis.reweight import bank_plot as BPX
     b = E["b"]; cc = E["cc"]; pmu = E["pmu"]; cthmu = E["cthmu"]
     pxl = E["pxl"]; pyl = E["pyl"]; pzl = E["pzl"]; per_event = E["per_event"]

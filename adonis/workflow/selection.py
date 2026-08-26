@@ -96,8 +96,8 @@ def _stream_select(bank_dir, loader, select_fn, sd):
 
 def _cc_full(B, sd):
     """Full-length (sel mask, obs dict, w0, chan) for ONE CC bank/chunk -- the pre-compaction body shared
-    by bank_signal (which _finish-compacts it for plotting) and the Gate-I jacobian (which bins the
-    per-event differentiated weight over the same mask/edges).  sel/obs/w0/chan are all bank-length."""
+    by bank_signal (which _finish-compacts it for plotting) and the differentiated-weight jacobian (which
+    bins the per-event weight over the same mask/edges).  sel/obs/w0/chan are all bank-length."""
     mu = B["k_lep"].astype(np.float64)
     pmu = np.linalg.norm(mu[:, 1:], axis=1); cmu = _cos(mu, pmu)
     if sd.pion_id == "none":
@@ -170,8 +170,8 @@ def _ele_full_bank(B, sd):
 
 
 def select_full(B, sd):
-    """Full-length selection dispatch (mask + obs dict + w0 + chan) for the Gate-I jacobian, which bins
-    the per-event differentiated weight over the same mask/edges bank_signal plots.  Dispatches on the
+    """Full-length selection dispatch (mask + obs dict + w0 + chan) for the differentiated-weight jacobian,
+    which bins the per-event weight over the same mask/edges bank_signal plots.  Dispatches on the
     signal type: EleBeamSignalDef -> (e,e') electron; NuSignalDef -> CC."""
     if hasattr(sd, "e_theta_win"):
         return _ele_full_bank(B, sd)
@@ -212,16 +212,11 @@ def _concat_compact(parts):
 def select_bank(bank_dir, sd, max_chunks=None, cap=None):
     """A compact full-record bank of only the signal events (N_selected), built by streaming the full bank
     and filter_events-ing each chunk to `sd`.  Peak memory = one chunk + the accumulated signal, never the
-    whole bank; bank_weight / observables on the result reproduce the full bank restricted to the signal.
-    Lets the fit (sec4) cache N_selected instead of N_total.
+    whole bank.
 
-    `cap` (fit-side subsample): keep exactly `cap` selected events.  Stream chunks; when a chunk would push
-    the total past cap, keep only its first (cap - accumulated) selected events and stop.  w0 is normalized
-    by the effective chunk count = (full chunks kept) + (fraction of the last chunk's selected events kept).
-    This is an unbiased cross section: each chunk's selected-w0 sum is an iid estimate of sigma_selected,
-    and a random fraction f of a chunk's selected events sums to ~f*sigma, so dividing by K+f recovers
-    sigma exactly.  cap=None -> the full signal (loaded chunk count).  Events aren't physically ordered
-    within a chunk, so taking the first N is a valid random subsample."""
+    `cap`: keep exactly `cap` selected events, stopping mid-chunk once reached.  w0 is normalized by the
+    effective chunk count = (full chunks kept) + (fraction of the last chunk's selected events kept).
+    cap=None -> the full signal (all loaded chunks)."""
     import glob
     files = sorted(glob.glob(f"{bank_dir}/chunk_*.npz"))
     if max_chunks:

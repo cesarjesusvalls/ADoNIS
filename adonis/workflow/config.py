@@ -92,8 +92,8 @@ _PROBE_BEAMS = {"CC": ("spectrum",), "NC": ("spectrum",), "EM": ("electron",),
 
 @dataclass
 class GenConfig:
-    """Generation config -- one schema for every bank, used by the single generator
-    adonis.workflow.generate_bank.  `probe` selects the primary interaction:
+    """Generation config -- one schema for every bank, used by adonis.workflow.generate_bank.
+    `probe` selects the primary interaction:
       * CC     : charged-current neutrino hard vertex (channels qe/res), beam=spectrum (a flux table)
       * NC     : neutral-current neutrino hard vertex, beam=spectrum.  theta_acc MUST be full
                  acceptance -- a polar cut on an invisible outgoing neutrino is meaningless and would

@@ -1,16 +1,10 @@
-"""NUTS with our own loop -- no blackjax, no JAX tracing of the sampler.
+"""NUTS driven by a plain Python loop over `eng.model`/`eng.jac` -- no blackjax, no JAX tracing of
+the sampler itself, so the log-density need not be jax-traceable as one fused graph.
 
-Why not blackjax: it jits its kernel, so the log-density must be jax-traceable, and both ways of
-satisfying that fail here.  jax.pure_callback bounces device->host every call (measured 4.05 s against
-0.83 s of real work).  A natively traceable model_jax fuses all 8 sub-samples into ONE graph and OOMs on
-an 11 GB card -- eng.jac only fits because it is 8 SEPARATE jit calls with numpy in between.  Driving the
-loop ourselves imposes neither constraint: this calls eng.model/eng.jac exactly as lm_fit does.
+The gradient is exact: grad chi2 = 2 J^T W r, using the same autodiff Jacobian the fit uses.
 
-The gradient is unchanged and exact: grad chi2 = 2 J^T W r, J the same autodiff Jacobian the fit uses.
-
-Correctness before physics: --selftest samples a 16-D Gaussian with a -0.995 correlated pair (the
-M_A_res/S_Delta geometry) where mean and covariance are known analytically, and checks them.
-
+`--selftest` checks the sampler against a Gaussian with a strongly correlated pair, where the mean
+and covariance are known analytically.
 """
 import os, sys, time
 import pathlib
@@ -20,11 +14,8 @@ MAXDEPTH = 8
 
 
 def leapfrog(q, p, g, eps, Minv, gradf):
-    """One leapfrog step, CARRYING the gradient forward: 1 gradient evaluation per step, not 2.
-
-    The naive form recomputes grad at the current position before the half-kick, but that value is
-    already known from the previous step.  Measured, the duplicate doubled the cost (20.7 s/sample
-    against ~10 s expected from 11.8 grads x 0.843 s).
+    """One leapfrog step, carrying the incoming gradient forward instead of recomputing it: one
+    gradient evaluation per step, not two.
     """
     p = p + 0.5 * eps * g
     q = q + eps * (Minv @ p)
@@ -41,11 +32,8 @@ def _uturn(qm, qp, pm, pp, Minv):
 def build_tree(q, p, g, logu, v, j, eps, Minv, gradf, H0, rng, nfev, ndiv=None):
     """Recursive NUTS tree (Hoffman & Gelman 2014, slice form).  Carries (q, p, g) at both ends.
 
-    `ndiv`, when a one-element list is passed, counts DIVERGENCES -- leaves where the energy error
-    exceeded the 1000-nat threshold.  Without it a caller cannot distinguish a trajectory that stopped
-    because it made a U-turn (healthy) from one that stopped because the integrator blew up (the step
-    size is too large for the local geometry), and the second is exactly the failure that would quietly
-    erode a gradient sampler's apparent advantage as the posterior gets harder.
+    `ndiv`, when a one-element list is passed, counts divergences: leaves where the energy error
+    exceeded the 1000-nat threshold, distinct from a healthy stop caused by a U-turn.
     """
     if j == 0:
         q1, p1, lp1, g1 = leapfrog(q, p, g, v * eps, Minv, gradf); nfev[0] += 1
@@ -73,10 +61,8 @@ def build_tree(q, p, g, logu, v, j, eps, Minv, gradf, H0, rng, nfev, ndiv=None):
 
 
 def nuts_step(q, lp, g, gradf, eps, Minv, Mchol, rng):
-    """ONE NUTS iteration.  Returns (q, lp, g, depth, alpha, nfev, ndiv).
-
-    Extracted so the sampler and the warm-up run the SAME tree code -- two copies of a doubling
-    recursion is how a warm-up ends up tuning a sampler that is not the one that then runs.
+    """One NUTS iteration.  Returns (q, lp, g, depth, alpha, nfev, ndiv).  Shared by both warm-up
+    and sampling, so both run the exact same tree code.
     """
     p = Mchol @ rng.standard_normal(len(q))
     H0 = lp - 0.5 * p @ (Minv @ p)
@@ -101,10 +87,9 @@ def nuts_step(q, lp, g, gradf, eps, Minv, Mchol, rng):
 
 
 def _metric(S, n):
-    """Stan's regularised covariance estimate for a warm-up window.
-
-    Shrinks toward a scaled identity so a window with fewer draws than dimensions still yields a
-    positive-definite metric: Sigma = n/(n+5) S + 1e-3 (5/(n+5)) I.
+    """Stan's regularised covariance estimate for a warm-up window: Sigma = n/(n+5) S +
+    1e-3*(5/(n+5)) I, shrunk toward a scaled identity so it stays positive-definite even with fewer
+    draws than dimensions.
     """
     d = S.shape[0]
     Sig = (n / (n + 5.0)) * S + 1e-3 * (5.0 / (n + 5.0)) * np.eye(d)
@@ -112,18 +97,12 @@ def _metric(S, n):
 
 
 def warmup_stan(q0, gradf, Minv0, nwarm, rng, target=0.8, log=print, dense=True):
-    """Stan-style warm-up: dual-averaging step size + WINDOWED METRIC ADAPTATION.
+    """Stan-style warm-up: dual-averaging step size + windowed metric adaptation.
 
-    Why this exists.  A fixed metric taken from the Laplace covariance describes a posterior well only
-    where that covariance describes it -- i.e. where the posterior is close to Gaussian.  On a curved or
-    near-degenerate direction it does not, the integrator diverges, and the sampler answers by building
-    ever deeper trees.  Measured on a three-way degenerate subset: 137 divergences and Rhat 1.0124, a
-    convergence FAILURE, with a fixed metric.  Re-estimating the metric from the draws is the standard
-    remedy, and this is that remedy.
-
-    Schedule (Stan's, scaled to whatever nwarm is given): a fast init buffer tuning only the step size,
-    then expanding slow windows each of which re-estimates the metric from its own draws and restarts
-    dual averaging, then a fast terminal buffer that re-tunes the step size against the FINAL metric.
+    Schedule (Stan's, scaled to whatever nwarm is given): a fast init buffer that tunes only the
+    step size, then expanding slow windows that each re-estimate the metric from their own draws and
+    restart dual averaging, then a fast terminal buffer that re-tunes the step size against the final
+    metric.
 
     Returns (q, lp, g, eps, Minv, Mchol, info).
     """
@@ -200,7 +179,8 @@ def nuts_sample(q0, gradf, eps, Minv, Mchol, nsamp, rng, log=print, tag="", ndiv
 
 
 def selftest():
-    """16-D Gaussian with a -0.995 correlated pair: mean and covariance are known exactly."""
+    """Correctness check: a Gaussian with a strongly correlated pair, whose mean and covariance are
+    known analytically."""
     n = 16; rng = np.random.default_rng(0)
     C = np.eye(n); C[0, 1] = C[1, 0] = -0.995
     Cinv = np.linalg.inv(C)

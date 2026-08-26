@@ -1,24 +1,18 @@
 """How the three minimisers scale in the number of PARAMETERS and the number of EVENTS.
 
-bench_minimizers.py measures one point of this surface (17 dials, one bank size).  The claim the paper
-wants to make is about scaling, and scaling has to be measured on both axes because the methods do not
-depend on them the same way:
-
   in the DIAL COUNT n
     chi2 evaluation      O(1)   -- one pass over the events, whatever n is
-    reverse-mode grad    O(1)   -- one VJP, independent of n; this is the whole point of reverse mode
-    forward jacobian     O(n)   -- one JVP per dial (batched), so GN's per-iteration cost grows
-    finite-diff grad     O(n)   -- 2n chi2 calls, which is what derivative-free MIGRAD pays per step
+    reverse-mode grad    O(1)   -- one VJP, independent of n
+    forward jacobian     O(n)   -- one JVP per dial (batched)
+    finite-diff grad     O(n)   -- 2n chi2 calls, what derivative-free MIGRAD pays per step
     numerical hessian    O(n^2) -- 2n^2 calls (HESSE)
   in the EVENT COUNT N
-    every one of the above is O(N), because each is some number of passes over the resident events.
-    So the event axis should rescale all methods TOGETHER and leave the ratios flat -- if it does not,
-    something other than the model evaluation is dominating and the comparison needs re-reading.
+    every one of the above is O(N), so the event axis should rescale all methods TOGETHER and leave the
+    ratios flat.
 
-The event axis needs a separate engine build (a bank load, several minutes) so it is the OUTER loop and
-is driven by re-running this script per --sig-cap.  The dial axis is free within one build and is scanned
-internally.  Timing rules are bench_minimizers': only the minimisation is clocked, objectives are
-compiled and warmed outside it, and each dial count gets its own compiled objectives.
+The event axis needs a separate engine build, so it is the OUTER loop, driven by re-running this script
+per --sig-cap; the dial axis is scanned internally within one build.  Timing rules follow
+bench_minimizers': only the minimisation is clocked, objectives are compiled and warmed outside it.
 
 Usage:
     srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_scaling --sig-cap 60000 --dials 4,8,12,17

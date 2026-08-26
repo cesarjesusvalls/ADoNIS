@@ -1,32 +1,26 @@
 """Neutral-current QUASI-ELASTIC scattering: nu N -> nu N, on a free nucleon.
 
-The NC twin of qe.py, and deliberately NOT a `probe=` argument on it: `qe.sample_importance`
-hardcodes `s2 = M_MU**2` in the two-body split and hardcodes the `n -> mu- p` channel, so "reuse it
-with m_lep = 0" is a rewrite wearing a flag's clothing.
+The NC twin of qe.py, kept separate rather than a `probe=` flag on it because qe.sample_importance
+hardcodes the outgoing muon mass and the `n -> mu- p` channel.
 
 NC elastic differs from CC QE in more than the coupling:
 
-  * BOTH nucleons participate.  CC QE is `nu n -> mu- p` only; NC has `nu p -> nu p` AND
-    `nu n -> nu n`, and D3 flags the neutron path as having no CC analogue anywhere in this repo.
+  * BOTH nucleons participate: CC QE is `nu n -> mu- p` only; NC has `nu p -> nu p` AND `nu n -> nu n`.
   * The final nucleon is the SAME species as the initial one, so there is no mass step.
   * The outgoing lepton is massless.
 
-Verified against ACHILLES (`configs/achilles/run_freenucleon_nc_qe_{H,N}.yml`, 20 k events,
-E_nu = 1.5 GeV, free nucleon, no cascade), proc IDs 250 (`nu n -> nu n`) and 251 (`nu p -> nu p`):
-
-    sigma(1H) = 1.4362e-06 nb        sigma(1N) = 2.0569e-06 nb        n/p = 1.432
-
-That n/p ratio is the sharpest available check on the isospin structure and it needs NO
-normalisation convention to be right: the proton's NC vector coupling carries (1/2 - 2 sin^2 th_W)
-~ 0.037 while the neutron's carries -1/2, so the proton's NC elastic is axial-dominated and the
-neutron's is not.  An implementation with the couplings the wrong way round gets ~1/1.43 instead.
+Cross-checked against ACHILLES (`configs/achilles/run_freenucleon_nc_qe_{H,N}.yml`, free nucleon, no
+cascade), proc IDs 250 (`nu n -> nu n`) and 251 (`nu p -> nu p`).  The n/p cross-section ratio is the
+sharpest available isospin check and needs no normalisation convention to be right: the proton's NC
+vector coupling carries (1/2 - 2 sin^2 th_W) while the neutron's carries -1/2, so the proton's NC
+elastic is axial-dominated and the neutron's is not.
 
 Two-body phase space, nucleon at rest, sampled isotropically in the CM:
 
     sigma = <me_xsec>_{Omega* uniform} * Phi_2 ,   Phi_2 = |p*| / (4 pi sqrt(s))
 
 with me_xsec = amps2 * flux_factor * spin_avg from matrix_element.me_cross_section (i.e. everything
-except the phase-space Jacobian -- see that module's docstring).
+except the phase-space Jacobian).
 """
 from __future__ import annotations
 
@@ -61,9 +55,8 @@ def _two_body_cm(k_nu, m_N, u):
 def sigma_free_nucleon_nc_qe(Enu_MeV, is_proton, n=200_000, seed=0, use_achilles_nc_coupling=False, chunk=100_000):
     """Free-nucleon NC elastic sigma(E_nu) [nb] + standard error, nucleon at rest.
 
-    `use_achilles_nc_coupling` selects the D1 convention: False = correct physics (the SM coupling), True = ACHILLES's
-    coupl1 verbatim.  The ACHILLES comparison above must be made with use_achilles_nc_coupling=True to be like-for-like;
-    the difference between the two is the measured 1.0396 on both nucleons' F1/F2.
+    `use_achilles_nc_coupling`: False = correct physics (the SM coupling); True = ACHILLES's coupl1
+    convention verbatim, for a like-for-like comparison against ACHILLES output.
     """
     m_N = MASS_PDG_PROTON if is_proton else MASS_PDG_NEUTRON
     rng = np.random.default_rng(seed)

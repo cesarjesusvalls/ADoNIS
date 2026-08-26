@@ -1,9 +1,8 @@
 """Dump the fit's live-bin mask -- which bins survive the sparse-bin cut AT THE FIT'S OWN STATISTICS.
 
-A figure that claims to show "the bins the fit uses" cannot recompute the cut from the Gate-I Jacobian:
-the two do not see the same sample.  The engine caps selected events per sample (banks.sig_cap, 250k for
-sec4_P1) while the Jacobian streams the whole bank, so the same 5% cut drops 4 bins on the Jacobian and
-43 in the fit.  Recomputing it downstream produces a figure that looks masked and is not.
+The engine caps selected events per sample (banks.sig_cap) while the Gate-I Jacobian streams the whole
+bank, so the same cut drops a different set of bins in each; recomputing it downstream from the Jacobian
+would produce a figure that looks masked to the fit's statistics and is not.
 
     python -m analysis.benchmarks.dump_live_mask [config]   ->  output/altgen/sec4_live_mask.npz
 

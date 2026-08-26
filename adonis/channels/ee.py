@@ -1,22 +1,18 @@
 """Absolute ACHILLES inclusive (e,e') cross section + dsigma/domega, by MC over the struck-nucleon
 spectral function + isotropic two-body final state, using the SAME ported integrand as the CC QE
-driver (adonis/channels/qe_xsec.py) with three changes for the electromagnetic probe:
+driver (adonis/channels/qe.py) with three changes for the electromagnetic probe:
 
-  1. BEAM        : monochromatic e- at fixed E (2.222 GeV JLab point), so J_beam = 1 (no flux weight).
+  1. BEAM        : monochromatic e- beam at fixed E, so J_beam = 1 (no flux weight).
   2. PROBE       : me_cross_section(probe="EM", is_proton=...) -> photon leptonic current + the struck
                    nucleon's OWN vector form factors (no axial), spin_avg = 1/4 (2 e- helicities x 2
-                   nucleon spins).  See adonis/channels/dirac.py probe="EM" and electron_scattering.md.
+                   nucleon spins).  See adonis/channels/dirac.py probe="EM".
   3. BOTH SPECIES: protons AND neutrons are struck incoherently (CC QE hits neutrons only), each
                    weighted by its target count (Z protons, N neutrons) and its own spectral function.
 
 The observable is inclusive dsigma/domega (omega = E_beam - E'_e) inside the detector angular
-acceptance (a HardCut on the outgoing-electron polar angle, exactly the ACHILLES oracle's cut).  The
-two-body final state is sampled isotropically in the CM (as ACHILLES's TwoBodyMapper) and the angle
-cut is applied as a mask -- so the accepted cross section already carries the acceptance, matching the
-oracle's HardCut normalization with no extra factor.
-
-Validation gate: ADoNIS dsigma/domega vs the ACHILLES oracle (output/oracle_ee_C_{qe,res}), ratio +
-chi2/ndf, before this sample enters the knob x sample Fisher (electron_scattering.md).
+acceptance (a HardCut on the outgoing-electron polar angle, matching the ACHILLES oracle's cut).  The
+two-body final state is sampled isotropically in the CM, and the angle cut is applied as a mask, so
+the accepted cross section already carries the acceptance with no extra normalization factor.
 """
 from __future__ import annotations
 
@@ -47,7 +43,7 @@ STRUCK_MASS_MODE = "species"
 def _sample_species(n, rng, E_beam, m_species, had_mass, is_proton, sf, n_target):
     """One species: importance-sample the struck nucleon from its SF, isotropic two-body e'+N_out,
     return per-event contribution c (nb) with SUM_i c_i = sigma_species, plus omega and theta_e' [deg].
-    Mirrors qe_xsec.sample_importance but for the EM probe + monochromatic e- beam (J_beam = 1)."""
+    Mirrors qe.sample_importance but for the EM probe + monochromatic e- beam (J_beam = 1)."""
     kz = np.sqrt(E_beam ** 2 - _M_E ** 2)
     k_e = electron_k(E_beam, n)
     samp = SpectralImportanceSampler(sf)
@@ -91,8 +87,8 @@ def generate(n, material="C", seed=0, E_beam=E_BEAM_JLAB, chunk=500_000, records
     """Inclusive (e,e') MC: n TOTAL samples, split across the struck species (p, n).  Returns per-event contribution c [nb]
     (SUM = sigma), omega [MeV], theta_e' [deg], and the struck-species tag.  Chunked to bound JAX mem.
     records=True also keeps the per-event kinematics (k_e, k_lep, p_struck, p_out, me, had_mass,
-    n_target) for the theta-ACCEPTED events only -- the inputs a knob reweight needs to recompute the
-    EM matrix element (adonis/channels/ee_xsec + analysis/beams/ee_fisher)."""
+    n_target) for the theta-ACCEPTED events only, the inputs needed to recompute the EM matrix
+    element under a knob reweight."""
     Z, N, sf_p_path, sf_n_path = spectral_inputs(material)
     sf_p = SpectralFunction(sf_p_path); sf_n = SpectralFunction(sf_n_path)
     lo, hi = theta_acc

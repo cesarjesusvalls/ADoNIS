@@ -1,4 +1,4 @@
-"""Differentiable spectral-function (initial-state) reweight knobs (differentiable_knobs.md Group E).
+"""Differentiable spectral-function (initial-state) reweight knobs.
 
 The struck nucleon (|p|, E_removal) is SAMPLED from the tabulated spectral function S(p,E); a
 deformation of S reweights each event by the density ratio w = S_theta(p,E) / S_0(p,E) at the

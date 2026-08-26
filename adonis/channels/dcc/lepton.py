@@ -1,12 +1,9 @@
-"""Lepton tensor + contraction L_{mu,nu} W^{mu,nu} (Phase-2.5, milestone 6c option 1).
+"""Lepton tensor + contraction L_{mu,nu} W^{mu,nu}.
 
-Replaces the factorized leptonic flux (Hand / flat W-propagator) with the faithful
-contraction of the lepton tensor against the full hadron tensor W^{mu,nu} from
-hadron_xsec.HadronStructure.tensor_at.  This restores, in one step:
-  * the longitudinal response with its CORRECT kinematic weight (vs the EM-eps
-    placeholder), and
-  * the V-A interference (the antisymmetric -i eps^{mu nu a b} k_a k'_b term, which
-    contracts with the antisymmetric Im part of the Hermitian hadron tensor).
+Contracts the full lepton tensor against the full hadron tensor W^{mu,nu} from
+hadron_xsec.HadronStructure.tensor_at, including the V-A interference (the antisymmetric
+-i eps^{mu nu a b} k_a k'_b term, which contracts with the antisymmetric Im part of the
+Hermitian hadron tensor).
 
 Everything is done in the piN-CM frame with q along +z (the frame the hadron tensor
 is built in): per event we boost the lab lepton momenta into the rest frame of

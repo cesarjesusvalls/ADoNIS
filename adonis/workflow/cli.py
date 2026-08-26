@@ -2,21 +2,12 @@
 
   python -u -m adonis.workflow.cli <config.yaml> --out <outdir> [shard overrides]
 
-`generate_bank(cfg, outdir)` dispatches on `cfg.probe` (weak | EM | hadron); all diversity lives in the
-config, not in the command:
-
-  # neutrino reweight bank (weak hard vertex, T2K flux, QE+RES)
-  python -u -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml --out $OUT/nu_T2K_C
-
-  # electron (e,e') bank -- same command, probe=EM in the config (monochromatic e- beam)
-  python -u -m adonis.workflow.cli configs/banks/beam_e_C.yaml --out $OUT/beam_e_C
-
-  # tagged pi+ beam (pure-FSI cascade) -- same command, probe=hadron in the config
-  python -u -m adonis.workflow.cli configs/banks/beam_pip_C.yaml --out $OUT/beam_pip_C
+`generate_bank(cfg, outdir)` dispatches on `cfg.probe` (CC | NC | EM | hadron); all diversity lives in
+the config, not the command line.  Every bank is chunk_NNN.npz + manifest.json; read it back with
+generate_bank.load_bank().
 
 Production sharding is one independent SLURM array task per seed block: pass
 `--seed0 $SLURM_ARRAY_TASK_ID` (+ --n-per-seed/--n-seeds) and a per-task `--out .../part_$TASK`.
-Every bank is chunk_NNN.npz + manifest.json; read it back with generate_bank.load_bank().
 """
 import argparse
 

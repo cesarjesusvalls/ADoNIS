@@ -38,8 +38,11 @@ def flux_index(e_nu, edges=None):
 
 
 def bin_centres(edges=None):
-    """Representative energy per bin. The open top bin (2000, inf) gets a finite centre, 2150 MeV -- the
-    last finite bin's width extrapolated -- so it has a finite distance to its neighbour in the kernel."""
+    """Representative energy per bin, for the correlation kernel.
+
+    The open top bin is assigned the lower edge plus half the preceding bin's width, so that it has a
+    finite separation from its neighbours; with an infinite centre the kernel would make it
+    uncorrelated with everything."""
     e = np.array(FLUX_EDGES if edges is None else edges, dtype=float)
     c = 0.5 * (e[:-1] + e[1:])
     c[-1] = e[-2] + 0.5 * (e[-2] - e[-3])

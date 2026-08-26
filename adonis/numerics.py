@@ -1,7 +1,6 @@
 """Generic numerical helpers shared across ADoNIS -- interpolation + CDF building.
 
-Backend-neutral utilities that no physics package should privately own.  The ACHILLES Polint
-(Neville) implementation here is bit-exact vs the instrumented reference.
+Backend-neutral (numpy); the Polint routines are bit-exact vs the ACHILLES reference.
 """
 from __future__ import annotations
 

@@ -1,16 +1,9 @@
-"""FIGURE I -- the post-fit correlation matrix of all 90 parameters.
+"""FIGURE I -- the post-fit correlation matrix of all fit parameters, in blocks:
 
-The four blocks are fitted together and cannot be read apart: what the templates cost in uncertainty is
-decided by how strongly they correlate with the flux, the cross-section knobs and the detector dials.
-This is the object that decides it.
+    [ c templates | f flux | theta cross section | d detector ]
 
-    [ c templates (9) | f flux (10) | theta cross section (11) | d detector (60) ]
-
-Read it for three things:
-  * the template-flux block, which is why an injected flux distortion lands on the templates (figure H);
-  * the template-template block, which is why a projection cannot simply add its cells in quadrature;
-  * the detector block, which is nearly diagonal -- 60 independent 5% dials stay independent, because
-    nothing in the data prefers one arrangement of them over another.
+The blocks are fitted together, so what the templates cost in uncertainty is set by how strongly they
+correlate with flux, cross-section, and detector dials -- this is the matrix that shows it.
 
 Usage:  python -m analysis.paper.unfolding.fig_correlation [label] [study]
 """

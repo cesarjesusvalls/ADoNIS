@@ -2,14 +2,12 @@
 
 ADoNIS  = selection.bank_signal over inputs.adonis_bank (paper_banks dirs, k_lep + fs_*, w0).
 ACHILLES = selection.oracle_signal over inputs.reference (fs_rich oracle npzs, lep/prot_p4/pi_pid).
-A config with signal.pion_id == "pi0" (NC1pi0) routes to the *_nc twins instead: they compute
-pion-based observables and never read the lepton, which for NC is an invisible neutrino.
-Both under the config's NuSignalDef, absolute nb; observables/edges/chi2/ratio (+ optional data overlay)
-go through plotting.make_figure -> chi2_ratio_panel.
+A config with signal.pion_id == "pi0" (NC1pi0) routes to the *_nc twins instead, which compute
+pion-based observables and never read the lepton (invisible neutrino for NC).
+Both sides are absolute nb; observables/edges/chi2/ratio (+ optional data overlay) go through
+plotting.make_figure -> chi2_ratio_panel.
 
-Style-agnostic by design: saves PDF+PNG at cfg.out_path and inherits whatever matplotlib rcParams the
-caller set (the paper suite calls analysis.paper.style.use() first for the serif look). This keeps the
-core driver free of any analysis/ (application-layer) dependency.
+Saves PDF+PNG at cfg.out_path and inherits whatever matplotlib rcParams the caller set.
 """
 from __future__ import annotations
 from pathlib import Path

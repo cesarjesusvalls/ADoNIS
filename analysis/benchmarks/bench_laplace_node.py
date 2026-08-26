@@ -1,19 +1,11 @@
-"""What does the Laplace (Occam) correction cost per profile node, by autodiff and by MINUIT?
+"""Cost of the Laplace/Occam log-det correction: autodiff vs MINUIT, timed at a real profile node.
 
-The correction needs log det V_nuis at every node of a profile scan, where V_nuis is the covariance of
-the NUISANCE dials with the scanned dial held fixed.  The two routes to it are not comparable in cost:
-
-  autodiff   the inner fit is a Gauss-Newton step, so it has already built J at the solution and
-             V = (J^T W J + P)^-1 falls out of it.  The marginal cost of the covariance is one
-             decomposition of an (n-1)x(n-1) matrix -- microseconds.  Nothing extra is EVALUATED.
-  MINUIT     m.covariance after migrad() is an ACCUMULATED BFGS-style approximation, not an exact
-             Hessian, and feeding an approximation into a log-det puts an uncontrolled error into the
-             very factor the correction is about.  The defensible route is m.hesse(), which evaluates
-             the objective ~2(n-1)^2 times.
-
-This measures both AT A REAL NODE -- one dial fixed away from the best fit, the rest re-minimised --
-rather than scaling the free-parameter HESSE number by hand, because fixing a dial changes the
-dimension (n-1, not n) and moves the point at which the Hessian is taken.
+autodiff gets V = (J^T W J + P)^-1 as a by-product of the inner Gauss-Newton fit (one cheap
+decomposition, nothing extra evaluated).  MINUIT's defensible route is m.hesse() (~2(n-1)^2 objective
+evaluations), since m.covariance after migrad() is only an approximate BFGS-style covariance.  Measured
+at a real node (one dial fixed away from the best fit, the rest re-minimised), not by scaling a
+free-parameter number, since fixing a dial changes both the dimension and the point the Hessian is
+taken at.
 
 Usage:
     srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_laplace_node [--sig-cap N] [--nodes K]

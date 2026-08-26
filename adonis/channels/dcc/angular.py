@@ -1,8 +1,7 @@
 """Angular primitives and index conventions for the DCC hadron-current port
-(amp_dcc_sl.f::amplitude(), interpolate_amp): turns the knob-scaled DCC partial-wave
-amplitudes into the helicity current zj_mu(isf, isi, mu) and, contracted with the lepton
-tensor, the differential cross section -- replacing the angle-integrated diagonal-bilinear
-approximation (dcc_xsec).
+(amp_dcc_sl.f::amplitude(), interpolate_amp): decodes the amplitude-file index
+conventions and provides the angular primitives (Wigner-d, Clebsch-Gordan, spherical
+harmonics) used to build the helicity current zj_mu(isf, isi, mu).
 
 Amplitude file conventions (from read_amp + amplitude() in amp_dcc_sl.f):
 
@@ -40,12 +39,6 @@ Amplitude file conventions (from read_amp + amplitude() in amp_dcc_sl.f):
       zj_mu[2] = (zcrnt(-1) + zcrnt(+1)) * i / sqrt(2)
   followed by a Lorentz boost xlr (lorentz_trans) from the piN-CM to the lab frame.
 
-* Cross section (gamma*N -> piN, from the dsigma/dOmega comment block):
-      dsigma/dOmega = sum_{si,sf,lambda} (4pi^2 alpha / E_gamma) |zj_mu|^2
-                      * m_N k_pi / (16 pi^3 W) / 4
-  For neutrino CC the photon flux is replaced by the V-A lepton tensor (with the
-  vector-axial interference term, absent from the diagonal approximation).
-
 interpolate_amp (the zampv -> zmtx step, lines 588-960):
  (1) EW isospin combination: from the stored vector (zampv) and isoscalar-vector
      (zampv_is), form  isovector=(V-IS)/2, isoscalar=(V+IS)/2  (per idx,pw,gmb).
@@ -57,10 +50,6 @@ interpolate_amp (the zampv -> zmtx step, lines 588-960):
      photon-helicity / opposite-nucleon-helicity components (idx 4,5,6,8) are filled
      from the stored (idx 1,2,3,7) with a parity phase (zmtx(idxx)=zzz*pha).
  (4) (W,Q^2) bilinear interpolation onto the event point.
-
-The knob-independent angular primitives below (wigner_d_half/int, cbg, legendre_ylm) are
-validated against closed forms; see assembly.py for the SIMPLIFICATIONS used for the
-unpolarized, angle-integrated xsec and the full W^{mu,nu} assembly.
 """
 from __future__ import annotations
 

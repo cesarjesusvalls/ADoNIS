@@ -1,47 +1,10 @@
-"""Computing workload as a function of (number of events, number of parameters), for GN and MIGRAD.
+"""Workload (wall time, event-passes) to reach common convergence targets, as a function of N events/sample
+and n fitted dials, for Gauss-Newton and MIGRAD (with/without gradient) on one shared FitKernel.
 
-Phases 4-5 of docs/bench_fair_plan.md.  Everything both minimisers touch is ONE `FitKernel`, so the only
-difference between the arms is which derivative object the algorithm asks for.  What this produces is a
-workload surface -- time AND event-passes to reach COMMON accuracy targets -- not a headline number.
-
-THE AXES
-
-  N   events per sample (banks.sig_cap).  Ten samples, so the resident set is 10 x N and that is what
-      every model evaluation walks.
-  n   fitted dials: NESTED SUBSETS of the Gate-I 17, ordered by shrinkage (best-constrained first), so
-      n=17 is exactly the sec4 fit and every smaller n is a genuine sub-problem of it.  The estimator
-      stays MLE throughout, as in sec4.  The axis deliberately stops at 17: going to the full 28-knob
-      basis would drag in dials that fail Gate I, and the only way to keep that well-posed would be to
-      turn the prior back on -- i.e. to benchmark a DIFFERENT fit than the paper's.
-
-WHAT IS HELD FIXED ACROSS THE GRID
-
-  The sample definition.  sigma and the live-bin mask are FROZEN from a reference run (the production
-  250k configuration) rather than recomputed at each N.  Without this the N axis is confounded: fewer
-  events means a larger per-bin MC error, which trips the sparse-bin cut, which changes ndf -- measured
-  136/175/219/282 live bins at 150k/300k/600k/2.4M total.  A "scaling with statistics" curve built that
-  way is partly a curve of how many bins were dropped.  Freezing them makes N mean one thing: how many
-  events a model evaluation walks.
-
-  The start point.  Nominal, except that Eb_shift starts OFF its lower bound.  Starting a parameter on a
-  wall measures time-to-fail, not time-to-converge -- MIGRAD's bounded-parameter sine transform has a
-  vanishing derivative there, so it sees zero internal gradient and parks.  That behaviour is already a
-  completed, separately reported result; repeating it inside every cell of a workload scan would just
-  contaminate the scan.
-
-  The data.  Closure truth (injected on the FITTED dials only, so every n is a reachable closure) plus
-  per-bin Gaussian noise at the fit's own sigma.  The throw is generated ONCE per realisation and every
-  method fits that same data.  Noise is the primary regime because Gauss-Newton drops a Hessian term
-  proportional to the residual: on a perfect closure that term vanishes and GN *becomes* Newton, so an
-  Asimov-only surface would flatter it everywhere.  One Asimov fit per cell is kept as the contrast.
-
-HOW THE TIMES ARE COMPARED
-
-  Not by their native stopping rules -- GN stops on the projected gradient, MIGRAD on EDM, and they
-  therefore stop at different accuracies.  Every objective evaluation is timestamped and tagged with the
-  kernel's event-pass count, and the report is time (and passes) to reach a COMMON target, measured
-  against the lowest chi2 any method reached in that cell.  A method that never reaches a target is
-  recorded as not reaching it; a failure is never scored as a fast time.
+n indexes NESTED subsets of the Gate-I dials, ordered by shrinkage (best-constrained first).  Sigma and
+the live-bin mask are frozen from --ref rather than recomputed at each N.  Data is closure truth on the
+fitted dials plus per-bin Gaussian noise (one Asimov fit per cell is kept as a contrast).  Times are
+compared to a COMMON chi2/parameter-distance target, not to each method's native stopping rule.
 
 Usage:
     srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_fair --sig-cap 60000 --ndials 2,4,8,12,17
@@ -61,7 +24,7 @@ DIST_TARGETS = (1e-1, 1e-3, 1e-6)
 
 
 def _dial_order(g, pnames):
-    """The 17 Gate-I dials, best-constrained first.  Deterministic, so the n-subsets are nested."""
+    """The Gate-I dials, best-constrained first.  Deterministic, so the n-subsets are nested."""
     shrink = np.asarray(g["shrink"], float)
     gate1 = np.where(shrink < 0.5)[0]
     return [int(k) for k in gate1[np.argsort(shrink[gate1])]]
@@ -70,9 +33,8 @@ def _dial_order(g, pnames):
 def freeze_sample(eng, ref, log):
     """Impose the REFERENCE run's sigma and live-bin mask on this engine, per dataset key.
 
-    Both are properties of the measurement, not of how many MC events happen to be resident, and letting
-    them follow the event count is what makes an N scan uninterpretable.  Keys are matched by name, so a
-    sample-composition change is a loud KeyError rather than a silent misalignment.
+    Keys are matched by name, so a sample-composition mismatch raises KeyError rather than silently
+    misaligning.
     """
     keys = [str(k) for k in ref["dskeys"]]
     row0 = np.asarray(ref["row0"], int)

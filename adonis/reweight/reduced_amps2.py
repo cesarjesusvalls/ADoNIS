@@ -1,4 +1,4 @@
-"""Reduced-quadratic hard-vertex amps2 reweight (see docs/joint_amps2_plan.md).
+"""Reduced-quadratic hard-vertex amps2 reweight.
 
 amps2 is an EXACT quadratic form in the linear form-factor structures ("atoms"):
 
@@ -7,8 +7,7 @@ amps2 is an EXACT quadratic form in the linear form-factor structures ("atoms"):
 with H_i the per-event UNIT currents (kinematics only; coupling + intrinsic i/2m, q^mu/m folded in) and
 F_i the REAL form factors times the dial scales.  M_ij is knob-INDEPENDENT -- assembled once from
 kinematics -- so the reweight for ANY simultaneous knob setting is F(knobs)^T M F(knobs) / F0^T M F0:
-exact, and differentiable to any order (the only nonlinearity is the smooth dial->F map).  This
-supersedes a per-knob product that kept only the diagonal M_ii and dropped every cross term.
+exact, and differentiable to any order (the only nonlinearity is the smooth dial->F map).
 
 QE atoms = {F1, F2, FA, FAP} (all four dial-touched -> store the full 4x4 M; no frozen atoms).  RES
 (larger atom set, active subset chosen by the dial list) below.

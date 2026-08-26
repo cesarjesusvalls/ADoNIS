@@ -1,10 +1,7 @@
 """Typed unfolding configuration, loaded from `configs/fits/*.yaml`.
 
 One object describes a run: which sample, what detector, which binning, what priors, which studies.
-Nothing in the unfolding path reads the environment.
-
-Unknown keys are an error, not a warning: a config typo must fail loudly rather than silently fall
-back to a default.
+Nothing in the unfolding path reads the environment.  Unknown keys are an error, not a warning.
 
     cfg = UnfoldConfig.load("configs/fits/<study>.yaml")
     cfg.smear_spec()      # SmearSpec for the detector block
@@ -30,9 +27,9 @@ def _only(d: dict, allowed: set, where: str) -> dict:
 
 @dataclass(frozen=True)
 class Detector:
-    """The smearing model.  pi_eff is not cosmetic: with perfect PID a topological CC0pi sample has NO
-    background (purity exactly 1.0), the cross-section knobs -- which reweight only the background --
-    have nothing to act on, and their systematic is identically zero rather than small."""
+    """The smearing model.  `pi_eff` matters beyond realism: at pi_eff=1 (perfect PID) a topological
+    CC0pi sample has no background, so knobs that only reweight the background have nothing to act
+    on."""
     sigma_p: float = 0.10
     sigma_theta_deg: float = 5.0
     pi_eff_p_max: float = 400.0
@@ -45,9 +42,8 @@ class Binning:
     """observables: "stv" (delta-p_T, delta-alpha_T) or "lep" (p_mu, cos theta_mu).
 
     `truth` names the rectangular variant for "stv" and is ignored for "lep", which always uses the
-    published T2K staircase.  `reco_split` subdivides each staircase p_mu bin; unfolding needs more
-    reco bins than truth bins and the templates carry no prior, so 58 truth against 58 reco would
-    leave no margin."""
+    published T2K staircase.  `reco_split` subdivides each staircase p_mu bin: templates carry no
+    prior, so unfolding needs strictly more reco bins than truth bins."""
     observables: str = "lep"
     truth: str = "3x3"
     reco_split: int = 2
@@ -56,8 +52,8 @@ class Binning:
 @dataclass(frozen=True)
 class Flux:
     """Per-bin prior width and the correlation length of the exponential kernel.  The off-diagonal
-    terms are what stop the fit carving a sawtooth out of a smooth flux to absorb one reco bin's
-    fluctuation; `edges: null` keeps the module default."""
+    terms keep the fit from absorbing a single reco bin's fluctuation into a sawtooth-shaped flux.
+    `edges: null` keeps the module default."""
     sigma: float = 0.10
     corr_length: float = 400.0
     edges: list | None = None
@@ -74,8 +70,8 @@ class Priors:
 
 @dataclass(frozen=True)
 class Study:
-    """One fake-data throw.  `scale_c` scales every template; `scale_flux_peak` scales the flux in the
-    peak bins instead -- the separability test, since both move the signal."""
+    """One fake-data throw.  `scale_c` scales every template; `scale_flux_peak` scales the flux in
+    the peak bins instead, so the two can be used to test separability between them."""
     name: str
     scale_c: float = 1.0
     scale_flux_peak: float = 1.0

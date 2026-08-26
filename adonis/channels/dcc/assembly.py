@@ -1,6 +1,5 @@
 """Full DCC hadron-tensor assembly -- the port of amp_dcc_sl.f::amplitude() + interpolate_amp,
-replacing the angle-integrated diagonal bilinear approximation (dcc_xsec) with the real
-helicity current zj_mu and hadron tensor W^{mu,nu}.
+building the helicity current zj_mu and hadron tensor W^{mu,nu}.
 
 Frame choice: this works entirely in the piN centre-of-mass with the momentum transfer q
 along +z (the Fortran `irot_q=0` branch). For the spin-summed, angle-integrated response
@@ -57,7 +56,7 @@ for _k in list(DBG):
 
 
 def pw_phase(two_J, two_L):
-    """phv = (-1)**((2J-1)/2 + L + 1)  (interpolate_amp); pha (axial) = -phv."""
+    """Parity-phase convention from amp_dcc_sl.f::interpolate_amp (axial block uses pha = -phv)."""
     return (-1.0) ** ((two_J - 1) // 2 + two_L // 2 + 1)
 
 

@@ -5,9 +5,9 @@ Every channel separates:
   * `weight(params, S)`     -> (w, aux), pure-JAX and differentiable in `params`, and
   * `event_record(params, S)` -> EventRecord (full lab final state + weight + identities).
 
-This is the kind-1 reweighting estimator made explicit: the proposal is fixed, only the
-weight carries the knobs, so gradients are exact and a single sample can be reweighted /
-differentiated over many parameter values.  New channels (2pi, QE, ...) subclass this.
+This is the kind-1 reweighting estimator: the proposal is fixed and only the weight
+carries the knobs, so a single sample can be reweighted / differentiated over many
+parameter values. Concrete channels subclass this.
 """
 from __future__ import annotations
 

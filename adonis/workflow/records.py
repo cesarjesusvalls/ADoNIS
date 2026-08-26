@@ -1,9 +1,8 @@
-"""The cascade-outcome record builder -- one place, every probe.
+"""The cascade-outcome record builder shared by every probe (neutrino, electron, hadron).
 
 `cascade_outcome_record(out, prim_fate, fsi_rec, primary)` takes the raw cascade output batch (the same
 `out` batch run_cascade_pool returns and cascade_nucleus exposes as nterms[0]) and produces the uniform
-record set that every bank carries, regardless of whether the primary was a neutrino vertex, an electron
-vertex, or a tagged hadron beam:
+record set that every bank carries:
 
   * fs_*   : full ragged final state (fs_off, fs_pid, fs_chg, fs_p4) -- eta-aware (pion charge 3 -> 221)
   * ks_*   : the escaped-particle list as species/charge/|p|/cos_theta (angular view of fs_*)

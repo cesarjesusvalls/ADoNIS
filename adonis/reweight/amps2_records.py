@@ -1,10 +1,10 @@
-"""Exact quadratic-amps2 reweight records for frozen QE/RES proposals -- the ONE mechanism for every
-hard-vertex knob (axial mass, axial/vector strength, Sachs form factors, DCC partial-wave norms, pion
-pole), not just M_A.
+"""Exact quadratic-amps2 reweight records for frozen QE/RES proposals: the mechanism for every
+hard-vertex knob (axial mass, axial/vector strength, Sachs form factors, DCC partial-wave norms,
+pion pole).
 
 amps2 is QUADRATIC in a scale r (the hadron current is linear in FA/FAP for QE, in the axial
 amplitudes for RES): 3 evals at r = 0, 1, -1 give per-event (a, b, c) with amps2(r) = a + b r + c r^2
-exactly (checked to 5e-15 in tests/test_ma_reweight.py).  The fit/overlay-time weight is elementwise:
+exactly.  The fit/overlay-time weight is elementwise:
 
     w_MA = (a + b r_i + c r_i^2) / (a + b + c),
     r_i  = F_A_dipole(Q2_i; MA) / F_A_dipole(Q2_i; 1.0)   (axial_reweight_dipole)

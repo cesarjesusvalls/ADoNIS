@@ -1,15 +1,14 @@
-"""THE single entry point for every ADoNIS-vs-ACHILLES paper figure (arXiv:2508.19213).
+"""Entry point for every ADoNIS-vs-ACHILLES paper figure (arXiv:2508.19213).
 
 Every figure is one YAML spec in this directory; helper.render(spec) draws it (its `render:` key selects
-the render function).  Nothing else generates these figures -- there is exactly one way to run them.
+the render function).
 
-    python -m analysis.paper.validation.make                 # every figure
+    python -m analysis.paper.validation.make                  # every figure
     python -m analysis.paper.validation.make fig07 fig11      # only specs whose stem contains these
     python -m analysis.paper.validation.make --no-ratio       # drop the ACH/ADO ratio strip; write *_noratio
 
 Each figure renders in its own subprocess (isolates its jax import + matplotlib state); --one <stem>
-renders a single spec in-process
-(used internally by the orchestrator).
+renders a single spec in-process.
 """
 import subprocess
 import sys

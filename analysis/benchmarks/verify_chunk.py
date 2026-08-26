@@ -1,14 +1,10 @@
 """Does chunking the EVENT axis reproduce the unchunked weights and binned model exactly, and what does
 it cost in wall time?
 
-Chunking is only worth anything if it is EXACT.  The model is a sum over events, so it decomposes over
-windows -- but the FSI records are ragged (per interaction slot, with an event index), so a window has to
-select its slots, rebase their indices, and pad to a common width.  Any error there is silent: the model
-still returns a plausible number, it is just wrong for some events.  So this compares, on a real bank:
-
-  1. per-event weights, chunked vs unchunked, event by event
-  2. the BINNED model through the real BinSpec, chunked vs unchunked
-  3. wall time per model evaluation as a function of chunk size -- the cost of the extra dispatches
+FSI records are ragged (per interaction slot, with an event index), so a chunk window must select its
+slots, rebase their indices, and pad to a common width -- an error there is silent (still a plausible
+number, just wrong for some events).  Compares, on a real bank: per-event weights, the binned model
+through BinSpec, and wall time per model evaluation, chunked vs unchunked.
 
 Usage:  srun ... python -m analysis.benchmarks.verify_chunk [--sig-cap N] [--chunks 20000,50000,0]
 """

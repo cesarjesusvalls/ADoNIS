@@ -1,25 +1,8 @@
-"""2-D PROFILED confidence contours -- NO LONGER A PAPER FIGURE.
+"""Shared loaders for the corner figures: load_views, snap_axis, view_for.
 
-Superseded by fig_corner_all (figure B), which shows the Gaussian, the Laplace marginal and
-the NUTS marginal on one set of axes; the raw profile is not drawn there because figure A
-(c)/(d) already make the point that it needs the nuisance-volume factor.  This module is kept
-because load_views / snap_axis / view_for live here and figure B imports them -- the shard
-merge, axis and wall conventions must exist in exactly one place.  Still runnable as a
-diagnostic.
-
-Original description:
-
-For every dial pair: chi2 minimised over the other 14 dials at each grid node, so the levels really are
-2-D confidence regions:  Dchi2 = 2.30 (68%) and 4.61 (90%).
-
-This is the ONLY corner in the section whose contours mean that.  fig_corner_minimizer shows a CONDITIONAL
-surface (others frozen), whose levels are far tighter than the marginal errors -- measured factor ~12 for
-M_A_res -- and fig_corner_grad shows gradient fields with no contours at all.  Keeping the distinction is
-the point: a conditional slice read as a confidence region overstates the precision badly.
-
-Physical bounds are SHADED, not masked: the model clamps beyond them so the flat chi2 there is real.
-
-Usage:  python -m analysis.paper.inference.fig_corner_prof [label]
+Also draws 2-D profiled confidence contours (chi2 minimised over the other dials at each grid node).
+Physical bounds are shaded rather than masked: the model clamps beyond them, so the flat chi2 there
+is real.  Imported by fig_corner_all; not a figure driver itself.
 """
 import sys
 import glob
@@ -38,14 +21,11 @@ C68, C90, C_BFP = "#1f4b9c", "#7aa7dd", "#d24"
 
 
 def load_views(label, allow_partial=False):
-    """Assemble the per-pair profiled chi2 surfaces for `label`.
+    """Assemble the per-pair profiled chi2 surfaces for `label`.  Shared with fig_corner_all so the
+    axis/merge/wall-snap conventions live in one place.
 
-    Shared with fig_corner_all so the axis / merge / wall-snap conventions live in ONE place -- each of
-    them has already produced a wrong figure once (global +-3 sigma axes on an adaptive scan, node-count
-    preference reverting to a narrower run, and a rounding-level wall test deleting a whole edge row).
-
-    Returns (views, meta) where views maps (name_i, name_j) -> dict(axi, axj, d, ci, cj) with axi/axj in
-    sigma_post about the BFP, and meta carries pn/sub/bfp/spost/V0/dials.
+    Returns (views, meta): views maps (name_i, name_j) -> dict(axi, axj, d, ci, cj) with axi/axj in
+    sigma_post about the BFP; meta carries pn/sub/bfp/spost/V0/dials.
     """
     fs = sorted(glob.glob(str(style.ALTGEN / f"{label}_corner2d_prof_*.npz")))
     if not fs:
@@ -104,11 +84,8 @@ def load_views(label, allow_partial=False):
         return (round((w["axi"][-1] - w["axi"][0]) * (w["axj"][-1] - w["axj"][0]), 6), len(w["axi"]))
 
     def _complete(w, key):
-        """Did this candidate compute everything it was asked to?
-
-        With stamps, that is an exact statement: the assigned row blocks must tile range(N).  Without
-        them (every shard of the sec4_P1 campaign), fall back to the old NaN-fraction proxy -- which is
-        why the proxy survives here at all.
+        """Did this candidate compute everything it was asked to?  With stamps, the assigned row blocks
+        must tile range(N); without them, fall back to the NaN-fraction proxy.
         """
         if w["blocks"]:
             sub = MG.Report(what="")
@@ -165,14 +142,9 @@ def load_views(label, allow_partial=False):
 
 
 def view_for(views, ni, nj):
-    """The view for the ORDERED pair (x=ni, y=nj), transposing the stored one if it was keyed the
-    other way round.
-
-    Views are keyed in the order the CORNER RUN listed its dials (S4_CORNER_DIALS); the figures index
-    them in DISPLAY order, and the two need not agree -- with S4_CORNER_DIALS=...,res_axial_strength,
-    Eb_shift but res_axial_strength sorting last for display, the C5A x E_b panel was looked up as
-    ("Eb_shift","res_axial_strength"), missed, and silently rendered blank.  Returns None if neither
-    orientation is present, which is a genuinely absent pair.
+    """The view for the ordered pair (x=ni, y=nj), transposing the stored one if it was keyed the other
+    way round (views are keyed in the corner run's dial order, not necessarily display order).  Returns
+    None if neither orientation is present.
     """
     if (ni, nj) in views:
         return views[(ni, nj)]
@@ -185,9 +157,8 @@ def view_for(views, ni, nj):
 
 
 def snap_axis(aa, kk, cc, pn, bfp, spost):
-    """Pull an endpoint that sits a rounding error outside a wall back ONTO the wall (see fig_corner_all).
-    The adaptive scan ends AT the bound but its edge node returns as e.g. Eb=0.00999 vs phys_lo=0.01; a
-    bare `< wall` mask then NaNs the whole edge row and the region stops a full grid cell short."""
+    """Pull an endpoint that sits a rounding error outside a physical wall back onto the wall (the
+    adaptive scan can return an edge node a hair beyond phys_lo/phys_hi)."""
     aa = np.array(aa, float)
     tol = 1e-2 * abs(aa[1] - aa[0])
     for _b in (K.phys_lo(pn[kk]), K.phys_hi(pn[kk])):
@@ -221,13 +192,8 @@ def main(label="sec4_ref", allow_partial=False):
                 ki, kj = sub[ci], sub[cj]
 
                 def _snap(aa, kk, cc):
-                    """Pull an endpoint that sits a rounding error outside a wall back ONTO the wall.
-                    The adaptive scan ends AT the bound, but its last node comes back as e.g. Eb=0.00999
-                    against phys_lo=0.01 (linspace/clip_phys rounding).  A bare `< wall` mask then NaNs the
-                    whole first row, contourf starts one node in, and the region appears to stop a full
-                    grid cell short of the wall -- 0.55 sigma for E_b, 0.60 for M_A_res.  Those nodes are
-                    NOT unphysical: the driver clipped theta before evaluating, so the value stored there
-                    is the value AT the wall.  Snap the coordinate instead of throwing the node away."""
+                    """Pull an endpoint that sits a rounding error outside a physical wall back onto the
+                    wall (see snap_axis)."""
                     aa = np.array(aa, float)
                     tol = 1e-2 * abs(aa[1] - aa[0])
                     for _b in (K.phys_lo(pn[kk]), K.phys_hi(pn[kk])):

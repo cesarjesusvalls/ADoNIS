@@ -1,12 +1,9 @@
 """Parsers for published measurement releases (T2K STV, via the NUISANCE data tree).
 
-Format knowledge -- a ROOT histogram layout, a text covariance layout -- that the fit layer needs to
-build real-data fits (analysis.campaign.stages.build_fakedata already loads CC1pi from here). The data
-root is a parameter, not an assumption about where the files sit on disk: override via
-ADONIS_MEASUREMENT_ROOT, default "../nuisance/data".
+Format knowledge -- ROOT histogram layout, text covariance layout -- needed to build real-data fits.
+The data root is configurable via ADONIS_MEASUREMENT_ROOT (default "../nuisance/data").
 
-Nothing in the physics engine imports this subpackage -- keep it that way, so `adonis` stays publishable
-without the measurement tree.  Only fit stages and drivers may import it.
+Only fit stages and drivers may import this subpackage; the physics engine must not depend on it.
 """
 from __future__ import annotations
 
@@ -18,7 +15,7 @@ import uproot
 DATA_ROOT = os.environ.get("ADONIS_MEASUREMENT_ROOT", "../nuisance/data")
 
 def load_cc0pi(obs):
-    """T2K CC0pi-Np STV data (edges, per-bin conv, data[1e-38], cov[1e-38^2]) -- as in tune.py."""
+    """T2K CC0pi-Np STV data: (edges, per-bin conv, data[1e-38], cov[1e-38^2])."""
     r = uproot.open(f"{DATA_ROOT}/T2K/CC0pi/STV/{'dpt' if obs == 'dpt' else 'dat'}Results.root")
     if obs == "dpt":
         edges = np.asarray(r["Result"].axis().edges()) * 1000.0
@@ -37,9 +34,8 @@ NUCLEONS_CH = 13
 def load_cc1pi(name, nucleons=NUCLEONS_CH):
     """T2K CC1pi+Np STV data: (edges, data, cov).
 
-    The release is per nucleon in cm^2; `nucleons` converts it to the per-CH nb units the CC1pi
-    model side works in.  Pass the count your model is normalised to -- it is not a property of
-    the file.
+    The release is per nucleon in cm^2; `nucleons` converts it to the per-CH nb units the model
+    works in. Pass the count your model is normalised to -- it is not a property of the file.
     """
     scale = NB_PER_CM2 * nucleons
     lines = open(f"{DATA_ROOT}/T2K/CC1pipNp_STV/xsec_{name}.txt").read().splitlines()
