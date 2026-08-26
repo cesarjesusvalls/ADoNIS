@@ -45,11 +45,13 @@ comparing a rebuild against the published set without overwriting it.
 
 ```bash
 python -m analysis.campaign.gate1 --label smoke --fit-config configs/fits/smoke.yaml --max-chunks 4
-python -m analysis.campaign.run configs/fits/smoke.yaml --stage closure
+S4_GATE_NPZ=output/altgen/smoke.npz \
+    python -m analysis.campaign.run configs/fits/smoke.yaml --stage closure
 ```
 
 `configs/fits/smoke.yaml` is the full inference chain at the smallest size that still exercises it.
-Every stage below accepts it in place of the paper config.
+Every stage below accepts it in place of the paper config. `S4_GATE_NPZ` selects which Jacobian the
+stages read; without it they take `output/altgen/multisample_carbon.npz`, the one the paper uses.
 
 ---
 
@@ -69,11 +71,11 @@ One seed produces one chunk. Shards are independent — run them as a job array 
 
 ```bash
 python -m adonis.workflow.merge_bank --parts output/banks/nu_T2K_C --out output/banks/nu_T2K_C/merged
-python -m adonis.workflow.rechunk output/banks/nu_T2K_C/merged output/banks/nu_T2K_C/merged --target-gb 0.5
+python -m adonis.workflow.rechunk output/banks/nu_T2K_C/merged output/banks/nu_T2K_C/packed --target-gb 0.5
 ```
 
-The rechunk is optional and exact; it makes chunks uniform so streaming is not dominated by
-per-chunk overhead.
+The rechunk is optional and exact — `load_bank` gives the same result either way. It writes a second
+copy with uniform chunks, so streaming is not dominated by per-chunk overhead.
 
 The paper uses 10M events per neutrino sample. The banks the analysis configs expect are:
 
