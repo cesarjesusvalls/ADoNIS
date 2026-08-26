@@ -27,7 +27,7 @@ def load_cc0pi(obs):
     cov = np.asarray(r["Covariance_Matrix"].values())
     return edges, conv, data, cov
 
-NB_PER_CM2 = 1e33
+from adonis.constants import NB_PER_CM2
 NUCLEONS_CH = 13
 
 

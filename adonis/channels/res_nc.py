@@ -33,7 +33,7 @@ from adonis.channels.res_ee import _sample_3body_ee
 
 _MN = C.mN
 M_LEP_NC = 0.0
-SPIN_AVG_NC = 0.5
+from adonis.channels.qe_nc import SPIN_AVG_NC
 
 NC_RES_CHANNELS = [
     (2212, +1, 111, MASS_PDG_PROTON,  True),

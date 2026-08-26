@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 
-NB_PER_CM2 = 1e33
+from adonis.constants import NB_PER_CM2
 
 
 def _from_npz(cfg, specs):
