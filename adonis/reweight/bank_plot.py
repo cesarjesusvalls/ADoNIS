@@ -216,28 +216,6 @@ def leading_proton(B):
     return lead, maxk > 0.0
 
 
-# ---- observables + selections (reuse the validated tune formulas) ------------------------------------ #
-def _tune():
-    if not hasattr(_tune, "_T"):
-        from adonis.reweight import tune as T   # import is now side-effect-free (no argv/data at import)
-        _tune._T = T
-    return _tune._T
-
-
-def dpt(B, lead):  return np.asarray(_tune()._dpt(B["k_lep"].astype(float), lead))
-def dat(B, lead):  return np.asarray(_tune()._dat(B["k_lep"].astype(float), lead))
-def acceptance(B, lead):  return np.asarray(_tune()._sel(B["k_lep"].astype(float), lead))
-
-
-def signal_cc0pi(B, topological=False):
-    """model_hist_full CC0pi (primary pion absorbed: prim_pi_pid==0) + acceptance; topological=True instead
-    vetoes ANY surviving pion (true 0-meson final state)."""
-    lead, has = leading_proton(B)
-    sel = acceptance(B, lead) & has
-    pi_ok = (n_pions(B) == 0) if topological else (B["prim_pi_pid"] == 0)
-    return sel & pi_ok, lead
-
-
 def pion_counts(B):
     """(n_pi+, n_pi0, n_pi-) per event from the final state."""
     pid = B["fs_pid"]; eidx = B["_eidx"]; n = len(B["w0"])
@@ -265,12 +243,6 @@ def _single_pion(B, pid_want):
     return out
 
 
-def signal_cc1pi(B):
-    """Topological CC1pi+ : exactly one pi+, no pi0/pi-, and a leading proton.  Returns (mask, lead, pip4)."""
-    npip, npi0, npim = pion_counts(B); lead, has = leading_proton(B)
-    mask = (npip == 1) & (npi0 == 0) & (npim == 0) & has
-    return mask, lead, single_pip(B)
-
 
 def leading_proton_window(B, pmin, pmax, cth=-1.0):
     """Leading proton with momentum in [pmin,pmax) AND cos(theta)>cth (the T2K CC1pi+Np acceptance picks the
@@ -290,19 +262,6 @@ def leading_proton_window(B, pmin, pmax, cth=-1.0):
 _MU_LO, _MU_HI = 250.0, 7000.0; _PI_LO, _PI_HI = 150.0, 1200.0; _P_LO, _P_HI = 450.0, 1200.0
 from adonis.constants import COS70 as _CTH, M_12C as _M12C, M_11B as _M11B   # single source
 
-
-def signal_cc1pi_stv(B):
-    """T2K CC1pi+Np STV signal: exactly one pi+ (no other meson) + muon/pion/leading-proton in acceptance
-    (momentum windows + cos(theta)>cos70 on all three).  Returns (mask, lead, pip4)."""
-    npip, npi0, npim = pion_counts(B); pip = single_pip(B)
-    lead, hasp = leading_proton_window(B, _P_LO, _P_HI, cth=_CTH)
-    kmu = B["k_lep"].astype(np.float64)
-    pmu = np.linalg.norm(kmu[:, 1:], axis=1); cmu = kmu[:, 3] / np.clip(pmu, 1e-9, None)
-    ppi = np.linalg.norm(pip[:, 1:], axis=1); cpi = pip[:, 3] / np.clip(ppi, 1e-9, None)
-    mask = ((npip == 1) & (npi0 == 0) & (npim == 0) & hasp
-            & (pmu >= _MU_LO) & (pmu < _MU_HI) & (cmu > _CTH)
-            & (ppi >= _PI_LO) & (ppi < _PI_HI) & (cpi > _CTH))
-    return mask, lead, pip
 
 
 def dptt_1pi(kmu, lead, pip):
