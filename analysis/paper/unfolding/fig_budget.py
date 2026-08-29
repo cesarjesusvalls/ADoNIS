@@ -14,6 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from analysis._cli import fig_cfg
 from analysis.paper import style
 
 ASPECT = 0.5
@@ -22,16 +23,6 @@ BLOCKS = [("stat", "statistical", "#b9c6de"),
           ("xsec", "cross section", style.C_QE),
           ("flux", "flux", style.C_RES),
           ("det", "detector", "#1a9e57")]
-
-
-def _fig_cfg(z):
-    """The `figures:` block of the config that produced `z`, read from the npz (not the yaml, which can
-    change after the fit ran).  Older files carry no cfg_json; the module defaults stand in.
-    """
-    import json
-    if "cfg_json" in z.files:
-        return json.loads(str(z["cfg_json"])).get("figures", {}) or {}
-    return {}
 
 
 def main(label="sec5"):
@@ -43,7 +34,7 @@ def main(label="sec5"):
 
     total = e["det"]
 
-    height = max(3.2, float(_fig_cfg(z).get("aspect", ASPECT)) * (0.135 * nt + 1.1))
+    height = max(3.2, float(fig_cfg(z).get("aspect", ASPECT)) * (0.135 * nt + 1.1))
     fig = plt.figure(figsize=(4.2, height))
     ax = fig.add_subplot(1, 1, 1)
     for k, lab, col in reversed(BLOCKS):

@@ -63,3 +63,12 @@ def shard_range(base, count, total):
         return 0, total
     return base, min(base + count, total)
 
+
+def fig_cfg(z):
+    """The `figures:` block of the config that produced `z`, read from the npz rather than the yaml,
+    which can change after the fit ran.  Files carrying no cfg_json yield {}, so module defaults stand.
+    """
+    import json
+    if "cfg_json" in z.files:
+        return json.loads(str(z["cfg_json"])).get("figures", {}) or {}
+    return {}

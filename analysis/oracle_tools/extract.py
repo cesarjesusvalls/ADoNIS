@@ -5,7 +5,8 @@ own selection + observable logic.  cc0pi cuts are parametrized by --experiment (
 
 Usage:
   python -m analysis.oracle_tools.extract <channel> <hepmc> [out.npz] [--experiment t2k|minerva] [--seed 0]
-    channel : cc0pi | cc1pi | cc1pi_rich | res_w
+
+Run with --help for the channels CHANNELS defines.
 """
 import argparse
 import sys

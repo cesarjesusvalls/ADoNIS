@@ -34,8 +34,8 @@ def run_real():
     MAXDEPTH = int(st.get("max_depth", 8))
     _inj = cfg.inject_string()
     if not _inj:
-        raise SystemExit("PHYSFIT_INJECT is required: the truth the Asimov data is built at, e.g.\n"
-                         "  PHYSFIT_INJECT='M_A_qe=1.12,M_A_res=0.85,...'")
+        raise SystemExit(f"{cfg.path}: data.inject is empty; it is the truth the Asimov "
+                         "data is built at, e.g. data: {inject: {M_A_qe: 1.12}}")
     star, _ = parse_inject(_inj, nominal_knobs())
     log(f"truth: {_inj[:90]}...")
     eng.set_closure_data(star)

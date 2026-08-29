@@ -1,12 +1,9 @@
-"""FIGURE A -- the closure argument: four panels, all from one reference fit.
+"""FIGURE A -- the closure argument: two panels, both from one reference fit.
 
   (a) RECOVERY.  Asimov fit: each dial returns on its injected truth, with three nested interval
       estimates -- quadratic sigma, Laplace marginal (profile x sqrt(det V_nuis)), and the exact NUTS
       marginal.
   (b) COVERAGE.  Dchi2 = chi2(theta_true) - chi2(theta_hat) over the toy ensemble, against chi2(k).
-  (c) AT A BOUNDARY: E_b.  The Gaussian leaks below the wall; the likelihood-based intervals do not
-      (Chernoff 1954).
-  (d) AWAY FROM A BOUNDARY: C5A.  Non-parabolic, and the profile alone is not the marginal.
 
 Goodness of fit is printed for the caption rather than plotted.
 

@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from analysis._cli import fig_cfg
 from analysis.paper import style
 
 C_A, C_S = style.C_QE, style.C_RES
@@ -23,16 +24,6 @@ STUDIES = [("asimov", "closure", C_A, "o"), ("sig120", r"signal $\times1.20$", C
 W0_TO_CM2, A_NUCLEON, XS_UNIT = 1e-33, 13.0, 1e39
 
 SLICES = [(0.20, 0.60), (0.94, 0.98)]
-
-
-def _fig_cfg(z):
-    """The `figures:` block of the config that produced `z`, read from the npz (not the yaml, which can
-    change after the fit ran).  Older files carry no cfg_json; the module defaults stand in.
-    """
-    import json
-    if "cfg_json" in z.files:
-        return json.loads(str(z["cfg_json"])).get("figures", {}) or {}
-    return {}
 
 
 def _legend():
@@ -56,7 +47,7 @@ def main(label="sec5lep"):
     pl, ph = np.asarray(z["true_p_lo"]), np.asarray(z["true_p_hi"])
     nt = len(N)
     xs = W0_TO_CM2 / A_NUCLEON * XS_UNIT / float(z["norm_scale"])
-    slices = [tuple(v) for v in _fig_cfg(z).get("slices", SLICES)]
+    slices = [tuple(v) for v in fig_cfg(z).get("slices", SLICES)]
 
     fig = plt.figure(figsize=(5.04, 2.72))
     gs = fig.add_gridspec(1, len(slices), width_ratios=[1] * len(slices), wspace=0.34)
