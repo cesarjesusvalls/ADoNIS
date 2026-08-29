@@ -13,8 +13,9 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
-CACHE = Path(os.environ.get("ADONIS_PLOT_CACHE", str(ROOT / "data" / "cache" / "plot")))
+from adonis.io import output_root
+
+CACHE = Path(os.environ.get("ADONIS_PLOT_CACHE") or output_root() / "cache" / "plot")
 _FP = "__fingerprint__"
 
 

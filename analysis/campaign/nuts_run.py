@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from adonis.fit.nuts import nuts_sample, warmup_stan, _metric
+from adonis.fit.nuts import nuts_sample, warmup_stan
 from adonis.reweight import knobs as K
 
 

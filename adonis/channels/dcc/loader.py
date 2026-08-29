@@ -105,9 +105,17 @@ def parse_dcc_ew(path=None) -> DCCTable:
 
 
 def load_cached(path=None, cache=None) -> DCCTable:
-    """Parse once and cache to .npz next to this module for fast reload."""
+    """Parse once and memoise to .npz under the output root, for fast reload.
+
+    The memo must not live beside this module: an installed package directory is often read-only, and
+    a file written there would be shared between unrelated checkouts.
+    """
     path = io_paths.require("dcc_EW.dat") if path is None else path
-    cache = cache or os.path.join(os.path.dirname(__file__), "_dcc_ew_cache.npz")
+    if cache is None:
+        from adonis.io import output_root
+        cache_dir = output_root() / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache = str(cache_dir / "dcc_ew_table.npz")
     if os.path.exists(cache) and os.path.getmtime(cache) >= os.path.getmtime(path):
         d = np.load(cache)
         return DCCTable(d["pw_2J"], d["pw_2L"], d["pw_ispin"], d["pw_2I"],
