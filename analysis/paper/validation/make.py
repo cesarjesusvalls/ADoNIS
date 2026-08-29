@@ -1,14 +1,14 @@
 """Entry point for every ADoNIS-vs-ACHILLES paper figure (arXiv:2508.19213).
 
-Every figure is one YAML spec in this directory; helper.render(spec) draws it (its `render:` key selects
-the render function).
+Each figure is one sample config in configs/samples/; helper.render draws it, choosing the render
+function from the config's `render:` key.  FIGURES names which configs are paper figures -- the
+directory holds measurements that have no figure.
 
     python -m analysis.paper.validation.make                  # every figure
-    python -m analysis.paper.validation.make fig07 fig11      # only specs whose stem contains these
-    python -m analysis.paper.validation.make --no-ratio       # drop the ACH/ADO ratio strip; write *_noratio
+    python -m analysis.paper.validation.make fig07 fig11      # only these
+    python -m analysis.paper.validation.make --no-ratio       # drop the ACH/ADO ratio strip
 
-Each figure renders in its own subprocess (isolates its jax import + matplotlib state); --one <stem>
-renders a single spec in-process.
+One subprocess per figure isolates the jax import and matplotlib state; --one renders in-process.
 """
 import subprocess
 import sys
@@ -23,9 +23,24 @@ from analysis.paper import style
 from analysis.paper.validation import helper
 
 
-def specs_for(names):
-    allspecs = sorted(HERE.glob("*.yaml"))
-    return allspecs if not names else [p for p in allspecs if any(n in p.stem for n in names)]
+SAMPLES = ROOT / "configs" / "samples"
+
+FIGURES = {
+    "fig01_ee_domega":                "fig01_ee_domega",
+    "fig03_pi_nucleus_sigma":         "fig03_pi_nucleus_sigma",
+    "fig0456_e4nu":                   "fig0456_e4nu",
+    "fig07_t2k_cc0pi":                "t2k_cc0pi",
+    "fig08_t2k_cc1pi":                "t2k_cc1pi",
+    "fig09_minerva_cc0pi":            "minerva_stv",
+    "fig10_uboone_cc1p0pi":           "fig10_uboone_cc1p0pi",
+    "fig11_uboone_nc1pi0_doublediff": "fig11_uboone_nc1pi0_doublediff",
+}
+
+
+def figures_for(names):
+    """(figure key, sample config) for each selected figure."""
+    keys = sorted(FIGURES) if not names else [k for k in sorted(FIGURES) if any(n in k for n in names)]
+    return [(k, SAMPLES / f"{FIGURES[k]}.yaml") for k in keys]
 
 
 def _load(path):
@@ -40,24 +55,26 @@ def main(argv=None):
     one = "--one" in argv
     no_ratio = "--no-ratio" in argv
     names = [a for a in argv if not a.startswith("--")]
-    specs = specs_for(names)
-    if not specs:
-        raise SystemExit(f"[figures] no spec matches {names or '<all>'} in {HERE}")
+    selected = figures_for(names)
+    if not selected:
+        raise SystemExit(f"[figures] no figure matches {names}; known: {sorted(FIGURES)}")
 
     if one:
         style.use()
-        for p in specs:
-            helper.render(_load(p), show_ratio=not no_ratio)
+        for key, path in selected:
+            spec = _load(path)
+            spec["name"] = key
+            helper.render(spec, show_ratio=not no_ratio)
         return
 
     ok = 0
-    for p in specs:
-        print(f"\n=== {p.stem} ===", flush=True)
-        cmd = [sys.executable, "-m", "analysis.paper.validation.make", "--one", p.stem]
+    for key, _path in selected:
+        print(f"\n=== {key} ===", flush=True)
+        cmd = [sys.executable, "-m", "analysis.paper.validation.make", "--one", key]
         if no_ratio:
             cmd.append("--no-ratio")
         ok += subprocess.run(cmd, cwd=str(ROOT)).returncode == 0
-    print(f"\n{ok}/{len(specs)} figures built", flush=True)
+    print(f"\n{ok}/{len(selected)} figures built", flush=True)
 
 
 if __name__ == "__main__":
