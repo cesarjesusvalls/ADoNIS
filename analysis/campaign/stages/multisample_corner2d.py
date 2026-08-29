@@ -19,7 +19,7 @@ Env: ADONIS_FIT_CONFIG, ADONIS_FIT_STAGE (profile2d|gradient2d), S4_PAIR_BASE/S4
 Writes <results>/<label>_corner2d_<mode>_<pairbase>.npz
 """
 
-from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
+from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log, shard_range
 import os
 import sys
 import time
@@ -132,7 +132,7 @@ def main():
 
     _RB = int(os.environ.get("S4_ROW_BASE", "-1"))
     _NR = int(os.environ.get("S4_NROW", "1"))
-    _ROWS = range(N) if _RB < 0 else range(_RB, min(_RB + _NR, N))
+    _ROWS = range(*shard_range(_RB, _NR, N))
     out = (str(results_dir() / f"{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}.npz") if _RB < 0
            else str(results_dir() / f"{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}_r{_RB:03d}.npz"))
 

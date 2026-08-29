@@ -17,7 +17,7 @@ Env: ADONIS_FIT_CONFIG, S4_PROF_BASE/S4_PROF_N (dial-level sharding).  Writes
 <results>/<label>_profile.npz.
 """
 
-from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
+from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log, shard_range
 import os
 import sys
 import time
@@ -88,7 +88,7 @@ def main():
     logdetV = np.full((len(subset), NGRID), np.nan)
     PB = int(os.environ.get("S4_PROF_BASE", "-1"))
     PN = int(os.environ.get("S4_PROF_N", "1"))
-    mine = range(len(subset)) if PB < 0 else range(PB, min(PB + PN, len(subset)))
+    mine = range(*shard_range(PB, PN, len(subset)))
     if PB >= 0:
         log(f"shard: dials {[eng.pnames[subset[c]] for c in mine]}")
     for c in mine:
