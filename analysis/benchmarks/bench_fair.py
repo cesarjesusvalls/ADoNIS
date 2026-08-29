@@ -79,6 +79,9 @@ def main(argv=None):
     ap.add_argument("--tol", type=float, default=0.1, help="iminuit tol")
     ap.add_argument("--max-calls", type=int, default=100000)
     ap.add_argument("--jac-batch", type=int, default=0, help="0 = all dials in one dispatch")
+    ap.add_argument("--allow-cpu", action="store_true",
+                    help="permit a CPU run, for the CPU-vs-GPU comparison; never mix platforms "
+                         "in one grid")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
 
@@ -96,8 +99,10 @@ def main(argv=None):
     from adonis.reweight.reweight_model import nominal_knobs
 
     log(f"jax {jax.__version__}  devices={jax.devices()}  x64={jax.config.jax_enable_x64}")
-    if jax.devices()[0].platform != "gpu":
-        raise SystemExit("not on a GPU: every number here would be off a different machine")
+    if jax.devices()[0].platform != "gpu" and not a.allow_cpu:
+        raise SystemExit("not on a GPU: rows from different machines are not comparable. "
+                         "Pass --allow-cpu to time this machine deliberately; the platform is "
+                         "recorded in the output either way.")
     if not jax.config.jax_enable_x64:
         raise SystemExit("jax_enable_x64 is off: the objective would be float32")
 
