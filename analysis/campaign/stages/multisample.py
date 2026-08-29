@@ -21,7 +21,7 @@ Label, injection, iteration count and bank chunk caps all come from the FitConfi
 S4_GATE_NPZ overrides which multisample_carbon.npz is read.
 """
 
-from analysis._cli import results_dir
+from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
 import os
 import sys
 import sys
@@ -479,8 +479,7 @@ def fit_subset(g, pnames, cfg, log=None):
 
 
 def main():
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
 
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(sys.argv[1] if len(sys.argv) > 1 else "configs/fits/sec4_P1.yaml")
@@ -504,7 +503,7 @@ def main():
 
     PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
-        eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
+        eng.prior = eng.prior * (FLAT_PRIOR_SCALE if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
     log(f"estimator: {cfg.fit.estimator.upper()}"
         + (" (data-only, no prior)" if cfg.fit.estimator == "mle"
            else f" (prior width x{PRIOR_SCALE:g})"))

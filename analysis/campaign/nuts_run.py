@@ -5,7 +5,7 @@ the engine from a fit config, reads NUTS_CHAIN to pick a chain, and writes
 <results>/<label>_nuts_<chain>.npz.
 """
 
-from analysis._cli import results_dir
+from analysis._cli import results_dir, timed_log
 import os
 import sys
 import time
@@ -18,8 +18,7 @@ from adonis.reweight import knobs as K
 
 
 def run_real():
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
     from analysis.campaign.stages.multisample import build_multisample_engine, MULTISAMPLE_NPZ
     from adonis.fit.fitters import parse_inject
     from adonis.reweight.reweight_model import nominal_knobs

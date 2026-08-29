@@ -17,7 +17,7 @@ Usage:
 """
 from __future__ import annotations
 
-from analysis._cli import results_dir
+from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
 
 import argparse
 import sys
@@ -119,8 +119,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     methods = [s.strip() for s in a.methods.split(",") if s.strip()]
 
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
 
     import jax
     log(f"jax {jax.__version__}  devices={jax.devices()}  default={jax.devices()[0].platform}")
@@ -147,7 +146,7 @@ def main(argv=None):
     eng.set_closure_data(truth)
     prior_true = eng.prior[np.array(subset, int)].copy()
     if cfg.fit.prior_scale != 1.0:
-        eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
+        eng.prior = eng.prior * (FLAT_PRIOR_SCALE if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
     nd = len(subset)
     x0 = np.asarray(eng.th0)[np.array(subset, int)].copy()
     xt = np.asarray(truth)[np.array(subset, int)]

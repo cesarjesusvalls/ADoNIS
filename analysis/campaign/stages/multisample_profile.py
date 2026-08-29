@@ -17,7 +17,7 @@ Env: ADONIS_FIT_CONFIG, S4_PROF_BASE/S4_PROF_N (dial-level sharding).  Writes
 <results>/<label>_profile.npz.
 """
 
-from analysis._cli import results_dir
+from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
 import os
 import sys
 import time
@@ -41,8 +41,7 @@ def _inner(eng, free, tag, nit, th_init):
 
 
 def main():
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
 
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
@@ -67,7 +66,7 @@ def main():
     data = np.concatenate([d["data"] for d in eng.ds]); sigma = np.concatenate([d["sigma"] for d in eng.ds])
     PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
-        eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
+        eng.prior = eng.prior * (FLAT_PRIOR_SCALE if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
     log(f"estimator: {cfg.fit.estimator.upper()}"
         + (" (data-only, no prior)" if cfg.fit.estimator == "mle"
            else f" (prior width x{PRIOR_SCALE:g})"))

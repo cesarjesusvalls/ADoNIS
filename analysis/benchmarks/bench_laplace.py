@@ -14,7 +14,7 @@ against the Delta-chi2=1 scale rather than against each other's cost.
 """
 from __future__ import annotations
 
-from analysis._cli import results_dir
+from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
 
 import argparse
 import sys
@@ -39,8 +39,7 @@ def main(argv=None):
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
 
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
 
     import dataclasses
     import jax
@@ -71,7 +70,7 @@ def main(argv=None):
         throw(eng, np.random.default_rng(1_000_000 + a.noise_seed))
         log(f"statistical noise thrown, seed {a.noise_seed} (the regime the correction is used in)")
     if cfg.fit.prior_scale != 1.0:
-        eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
+        eng.prior = eng.prior * (FLAT_PRIOR_SCALE if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
 
     if a.stage == "bfp":
         kern = FitKernel(eng, subset)

@@ -17,7 +17,7 @@ import time
 import yaml
 from pathlib import Path
 
-from analysis._cli import results_dir
+from analysis._cli import results_dir, timed_log
 
 import numpy as np
 
@@ -37,8 +37,7 @@ def _beam_spec():
 
 def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbins=None, syst=None,
           max_chunks=None, out_label="multisample_carbon"):
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
 
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(fit_config)

@@ -26,3 +26,40 @@ def result(label: str, suffix: str = ".npz") -> Path:
     d = results_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{label}{suffix}"
+
+FLAT_PRIOR_SCALE = 1e6
+
+
+def timed_log(prefix=""):
+    """A logger stamping seconds since it was created."""
+    import time
+    t0 = time.time()
+    def log(m):
+        print(f"[{time.time() - t0:7.1f}s] {prefix}{m}", flush=True)
+    return log
+
+
+def apply_prior_scale(eng, cfg, log=None):
+    """Widen the engine's prior by cfg.fit.prior_scale; 0 means flat, applied as FLAT_PRIOR_SCALE.
+
+    Returns the untouched prior.
+    """
+    import numpy as np
+    prior_true = np.asarray(eng.prior, float).copy()
+    scale = cfg.fit.prior_scale
+    if scale != 1.0:
+        eng.prior = eng.prior * (FLAT_PRIOR_SCALE if scale == 0.0 else scale)
+    if log:
+        log(f"estimator {cfg.fit.estimator.upper()} (prior x{scale:g})")
+    return prior_true
+
+
+def shard_range(base, count, total):
+    """The half-open slice of `total` items this shard owns.
+
+    `base` < 0 means every item; otherwise the shard starts at `base` and takes `count`.
+    """
+    if base < 0:
+        return 0, total
+    return base, min(base + count, total)
+

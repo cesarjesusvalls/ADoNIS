@@ -11,7 +11,7 @@ Usage:
 """
 from __future__ import annotations
 
-from analysis._cli import results_dir
+from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
 
 import argparse
 import gc
@@ -87,8 +87,7 @@ def main(argv=None):
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
 
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
 
     import dataclasses
     import jax
@@ -128,7 +127,7 @@ def main(argv=None):
     th0 = np.asarray(eng.th0, float)
     prior_true = np.asarray(eng.prior, float).copy()
     if cfg.fit.prior_scale != 1.0:
-        eng.prior = eng.prior * (1e6 if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
+        eng.prior = eng.prior * (FLAT_PRIOR_SCALE if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
     log(f"estimator {cfg.fit.estimator.upper()} (prior x{cfg.fit.prior_scale:g})")
 
     rows, out, kern = [], {}, None

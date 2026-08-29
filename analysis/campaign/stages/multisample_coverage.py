@@ -17,7 +17,7 @@ per-shard npz are meant to be concatenated downstream.  Saves incrementally (pre
 Env: S4_TOY_BASE, ADONIS_FIT_CONFIG; toy count/iterations/fixed-truth come from the config's "toys" stage.
 """
 
-from analysis._cli import results_dir
+from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
 import os
 import sys
 import time
@@ -66,8 +66,7 @@ def _throw_truth(eng, subset, real_prior, rng):
 
 
 def main():
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
 
     BASE = int(os.environ.get("S4_TOY_BASE", "0"))
 
@@ -84,7 +83,7 @@ def main():
     LABEL = f"{cfg.name}_ens"
     PRIOR_SCALE = cfg.fit.prior_scale
     if PRIOR_SCALE != 1.0:
-        eng.prior = eng.prior * (1e6 if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
+        eng.prior = eng.prior * (FLAT_PRIOR_SCALE if PRIOR_SCALE == 0.0 else PRIOR_SCALE)
     log(f"estimator: {cfg.fit.estimator.upper()}"
         + (" (data-only, no prior)" if cfg.fit.estimator == "mle"
            else f" (prior width x{PRIOR_SCALE:g})"))

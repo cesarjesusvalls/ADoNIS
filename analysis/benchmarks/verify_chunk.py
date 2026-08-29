@@ -9,6 +9,8 @@ through BinSpec, and wall time per model evaluation, chunked vs unchunked.
 Usage:  srun ... python -m analysis.benchmarks.verify_chunk [--sig-cap N] [--chunks 20000,50000,0]
 """
 from __future__ import annotations
+
+from analysis._cli import timed_log
 import argparse, sys, time
 import numpy as np
 
@@ -20,8 +22,7 @@ def main(argv=None):
     ap.add_argument("--chunks", default="5000,12500,25000")
     ap.add_argument("--reps", type=int, default=5)
     a = ap.parse_args(argv)
-    t0 = time.time()
-    def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+    log = timed_log()
 
     import dataclasses, jax, jax.numpy as jnp
     from adonis.fit.config import FitConfig
