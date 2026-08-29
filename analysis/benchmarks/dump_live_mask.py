@@ -4,11 +4,13 @@ The engine caps selected events per sample (banks.sig_cap) while the Gate-I Jaco
 bank, so the same cut drops a different set of bins in each; recomputing it downstream from the Jacobian
 would produce a figure that looks masked to the fit's statistics and is not.
 
-    python -m analysis.benchmarks.dump_live_mask [config]   ->  output/altgen/sec4_live_mask.npz
+    python -m analysis.benchmarks.dump_live_mask [config]   ->  <results>/sec4_live_mask.npz
 
 Read by analysis/paper/grad_info/make.py.  Re-run whenever the sample list, the bank caps or
 data.sigma.mask_mcfrac change.
 """
+
+from analysis._cli import results_dir
 import numpy as np
 from adonis.fit.config import FitConfig
 from analysis.campaign.stages.multisample import build_multisample_engine
@@ -25,7 +27,7 @@ for s in eng.samples:
         keys.append(d["key"]); keep.append(good); ntot += len(good); nkeep += int(good.sum())
         print(f"  {d['key']:28s} {int(good.sum()):3d}/{len(good):3d} kept", flush=True)
 print(f"TOTAL {nkeep}/{ntot} bins kept at the fit's statistics (nu_chunks={cfg.banks.nu_chunks})")
-np.savez("output/altgen/sec4_live_mask.npz",
+np.savez(str(results_dir() / "sec4_live_mask.npz"),
          keys=np.array(keys, dtype=object),
          **{f"{k}_keep": m for k, m in zip(keys, keep)})
-print("[out] output/altgen/sec4_live_mask.npz")
+print("[out] <results>/sec4_live_mask.npz")

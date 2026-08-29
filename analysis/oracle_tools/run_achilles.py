@@ -41,8 +41,8 @@ NO_CASCADE = (ORACLE, False, "/achilles/bin/achilles")
 def cascade_is_on(raw):
     """True if the card's top-level `Cascade:` block sets `Run: true`.
 
-    A line scan, not a regex: an expression spanning the block with a nested quantifier backtracks
-    exponentially on a card whose cascade is off, because the closing `Run:` it looks for is not there.
+    A line scan, not a regex: a pattern spanning the block with a nested quantifier backtracks
+    exponentially when `Run:` is absent.
     """
     lines = raw.splitlines()
     for i, ln in enumerate(lines):
@@ -59,12 +59,9 @@ def cascade_is_on(raw):
 def image_for(card_path):
     """(image, native, binary) for a card, decided by what the card asks for.
 
-    A card with no `Processes` fires a hadron at the nucleus and runs the standalone cascade binary.
-    Otherwise it is an event generation card, and it needs the cascade build only if it turns the
-    cascade on -- the no-cascade image does not contain one and exits non-zero if asked.
-
-    This reads the card rather than its name.  A name-prefix table had routed every run_ee_*_fsi card
-    to the no-cascade image, because no prefix covered them, and they could not run at all.
+    Decided from the card's contents, not its name.  No `Processes` means a hadron fired at the
+    nucleus, which runs the standalone cascade binary; otherwise it is an event generation card and
+    needs the cascade build only if it turns the cascade on, since the no-cascade image has none.
     """
     raw = Path(card_path).read_text()
     if not any(ln.startswith("Processes:") for ln in raw.splitlines()):
@@ -247,7 +244,6 @@ def main(argv=None):
     want = len(points) * a.seeds
     print(f"DONE: {len(produced)}/{want} hepmc -> {a.out_dir}", flush=True)
     if len(produced) < want:
-        # Exiting 0 here made a card that produced nothing look like a card that worked.
         raise SystemExit(f"{want - len(produced)} of {want} run(s) produced no hepmc")
 
 

@@ -16,6 +16,8 @@ import sys
 import time
 from pathlib import Path
 
+from analysis._cli import results_dir
+
 from adonis.fit.config import FitConfig
 
 STAGE_MODULE = {
@@ -108,7 +110,7 @@ def main(argv=None):
         print(json.dumps(man, indent=2))
         return
 
-    outdir = Path("output/altgen"); outdir.mkdir(parents=True, exist_ok=True)
+    outdir = results_dir(); outdir.mkdir(parents=True, exist_ok=True)
     tag = f"{cfg.name}_{a.stage}" + (f"_{a.shard.replace('/', 'of')}" if a.shard else "")
     (outdir / f"{tag}.manifest.json").write_text(json.dumps(man, indent=2))
 

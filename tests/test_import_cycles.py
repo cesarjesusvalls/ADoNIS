@@ -1,14 +1,10 @@
 """No two first-party modules import each other at module level.
 
-An import cycle raises ImportError from whichever module the interpreter reaches second, so it breaks
-every path through both modules and takes the test suite down at collection rather than at a test.
-`test_imports_resolve.py` cannot see it: each import in a cycle names a module that exists, and
-`find_spec` answers without executing anything.
+A cycle raises ImportError from whichever module the interpreter reaches second, so it breaks every
+path through both and fails at collection.  find_spec cannot see it: both modules exist.
 
-The graph is built from top-level `import`/`from` statements only.  An import inside a function body
-is deferred to call time and does not participate, which is the standard way to break a cycle
-deliberately.  Edges to a parent package are not modelled, so a cycle that runs only through an
-`__init__` that imports its own submodules is not reported.
+The graph uses top-level import statements only -- an import inside a function is deferred and is the
+standard way to break a cycle on purpose -- and does not model edges through a package __init__.
 """
 from __future__ import annotations
 

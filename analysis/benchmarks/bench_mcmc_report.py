@@ -10,9 +10,11 @@ Only then the efficiency table, which separates:
   ESS per model evaluation   portable across implementations of the same model
   ESS per EVENT-PASS         portable across hardware AND model implementations
 
-    python -m analysis.benchmarks.bench_mcmc_report [--glob 'output/altgen/mcmc_*.npz']
+    python -m analysis.benchmarks.bench_mcmc_report [--glob '<results>/mcmc_*.npz']
 """
 from __future__ import annotations
+
+from analysis._cli import results_dir
 
 import argparse
 import glob as globmod
@@ -43,7 +45,7 @@ def stack(zs):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--glob", default="output/altgen/mcmc_*.npz")
+    ap.add_argument("--glob", default=str(results_dir() / "mcmc_*.npz"))
     ap.add_argument("--rhat-max", type=float, default=RHAT_MAX)
     a = ap.parse_args(argv)
     by = load(globmod.glob(a.glob))

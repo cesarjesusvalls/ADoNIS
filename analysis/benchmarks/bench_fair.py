@@ -11,6 +11,8 @@ Usage:
 """
 from __future__ import annotations
 
+from analysis._cli import results_dir
+
 import argparse
 import gc
 import sys
@@ -67,7 +69,7 @@ def main(argv=None):
     ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
     ap.add_argument("--sig-cap", type=int, required=True, help="events per sample for this job")
     ap.add_argument("--ndials", default="2,4,8,12,17")
-    ap.add_argument("--ref", default="output/altgen/sec4_P1.npz",
+    ap.add_argument("--ref", default=str(results_dir() / "sec4_P1.npz"),
                     help="run whose sigma + live-bin mask define the sample at EVERY N")
     ap.add_argument("--noise-seeds", default="1,2,3", help="statistical realisations; '' for none")
     ap.add_argument("--asimov", action="store_true", default=True)
@@ -243,7 +245,7 @@ def main(argv=None):
               f"{(f'{h[0]:9.2f}' if h else '        -')} {(f'{h[1]:9.0f}' if h else '        -')} "
               f"{'y' if r['converged'] else 'N':>5}")
 
-    outfile = a.out or f"output/altgen/bench_fair_N{a.sig_cap}.npz"
+    outfile = a.out or str(results_dir() / f"bench_fair_N{a.sig_cap}.npz")
     np.savez(outfile, rows=np.array(rows, dtype=object), sig_cap=a.sig_cap,
              ndials=np.array(ndials), order=np.array(order), nlive=nlive_ref,
              chi2_targets=np.array(CHI2_TARGETS), dist_targets=np.array(DIST_TARGETS),

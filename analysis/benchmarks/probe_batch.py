@@ -10,6 +10,8 @@ failure is unreliable.
     srun ... python -m analysis.benchmarks.probe_batch --sig-cap 250000 [--ndials 17]
 """
 from __future__ import annotations
+
+from analysis._cli import results_dir
 import argparse, dataclasses, gc, sys, time
 import numpy as np
 
@@ -41,7 +43,7 @@ def main(argv=None):
     eng = MS.build_multisample_engine(log, cfg)
     g = np.load(MS.MULTISAMPLE_NPZ, allow_pickle=True)
     subset = sorted(_dial_order(g, eng.pnames)[:a.ndials])
-    freeze_sample(eng, np.load("output/altgen/sec4_P1.npz", allow_pickle=True), log)
+    freeze_sample(eng, np.load(str(results_dir() / "sec4_P1.npz"), allow_pickle=True), log)
     truth, _ = parse_inject(cfg.inject_string(), nominal_knobs())
     th0 = np.asarray(eng.th0, float)
     t = th0.copy(); t[np.asarray(subset, int)] = truth[np.asarray(subset, int)]

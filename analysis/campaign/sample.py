@@ -31,7 +31,7 @@ from adonis.workflow.config import load_analysis_config, EleBeamSignalDef
 from adonis.workflow import selection as SG
 from adonis.reweight import knobs as K
 
-ALTGEN = Path("output/altgen")
+from analysis._cli import results_dir
 T2K_H_BANK = os.environ.get("ADONIS_T2K_H_BANK", "output/paper_banks_p4/nu_T2K_H/merged")
 
 
@@ -213,7 +213,7 @@ class AnaSample:
 
     def dump_cache(self, label=None, res=None, max_chunks=None, log=print):
         """Persist the Gate-I npz (J, sigma, row0, dskeys, shrink, F, V + per-obs edges/central) to
-        output/altgen/{label}.npz -- what SampleSet / the figures load."""
+        <results>/{label}.npz -- what SampleSet / the figures load."""
         r = res or self.gate1(max_chunks=max_chunks, log=log)
         ALTGEN.mkdir(parents=True, exist_ok=True)
         out = ALTGEN / f"{label or self.name}.npz"

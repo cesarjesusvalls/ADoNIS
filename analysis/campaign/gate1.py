@@ -5,7 +5,7 @@ and stacks the cached beam jvps; no selection/binning lives here.
     python -m analysis.campaign.gate1 --label multisample_carbon
     python -m analysis.campaign.gate1 --label smoke --max-chunks 4
 
-Writes output/altgen/<label>.npz.  dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) plus the beam
+Writes <results>/<label>.npz.  dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) plus the beam
 keys (pip_react, ...).
 """
 import argparse
@@ -17,9 +17,11 @@ import time
 import yaml
 from pathlib import Path
 
+from analysis._cli import results_dir
+
 import numpy as np
 
-ALTGEN = Path(os.environ.get('ADONIS_OUT', 'output')) / 'altgen'
+ALTGEN = results_dir()
 
 from analysis.campaign.sample import SampleSet, gate1_from
 from adonis.reweight import knobs as K
@@ -82,7 +84,7 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="analysis.campaign.gate1", description=__doc__.split("\n")[0])
     ap.add_argument("--label", default="multisample_carbon",
-                    help="output name: output/altgen/<label>.npz")
+                    help="output name: <results>/<label>.npz")
     ap.add_argument("--fit-config", default="configs/fits/sec4_P1.yaml",
                     help="which config names the samples and beams")
     ap.add_argument("--max-chunks", type=int, default=None,

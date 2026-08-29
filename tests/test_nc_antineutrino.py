@@ -81,12 +81,7 @@ def test_anti_is_still_unexercised_by_any_production_caller():
 
 
 def test_a_card_gets_the_image_its_own_contents_ask_for():
-    """Routing reads the card, not its name.
-
-    A name-prefix table used to decide this, and nothing in it covered run_ee_*_fsi, so every
-    (e,e')-with-FSI card was sent to the no-cascade image and could not run at all.  Asserting the
-    rule over every card is only possible because the choice now comes from the card.
-    """
+    """Every card gets the image its own contents ask for, over the whole card set."""
     from analysis.oracle_tools.run_achilles import image_for, cascade_is_on
     cards = sorted((ROOT / "configs" / "achilles").glob("*.yml"))
     assert cards, "no ACHILLES cards found"

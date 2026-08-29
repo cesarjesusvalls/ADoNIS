@@ -14,6 +14,8 @@ against the Delta-chi2=1 scale rather than against each other's cost.
 """
 from __future__ import annotations
 
+from analysis._cli import results_dir
+
 import argparse
 import sys
 import time
@@ -32,7 +34,7 @@ def main(argv=None):
     ap.add_argument("--bfp", default="", help="npz written by stage=bfp")
     ap.add_argument("--offset", type=float, default=1.0, help="node offset from the BFP, in sigma_post")
     ap.add_argument("--noise-seed", type=int, default=1, help="0 = Asimov")
-    ap.add_argument("--ref", default="output/altgen/sec4_P1.npz")
+    ap.add_argument("--ref", default=str(results_dir() / "sec4_P1.npz"))
     ap.add_argument("--tol", type=float, default=0.1)
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
@@ -92,7 +94,7 @@ def main(argv=None):
         log(f"  max|H/2 - J^T J| / max|J^T J| = {rel:.3e}"
             + ("   <- must be ~0: the residual is zero here" if not a.noise_seed else
                "   (residual is NOT zero here, so a difference is expected)"))
-        out = a.out or f"output/altgen/laplace_bfp_N{a.sig_cap}_s{a.noise_seed}.npz"
+        out = a.out or str(results_dir() / f"laplace_bfp_N{a.sig_cap}_s{a.noise_seed}.npz")
         np.savez(out, xb=r_bfp.x, spost=spost, subset=np.array(subset), chi2=r_bfp.chi2,
                  ld_gn_bfp=ld_gn, ld_exact_bfp=ld_ex, hess_rel=rel)
         log(f"[out] {out}")
@@ -184,7 +186,7 @@ def main(argv=None):
         print(f"{tag:>14} {nn*tg:12.4f} {nn*te:12.2f} {nn*th_/3600:10.2f} "
               f"{nn*pg:10.0f} {nn*pe:10.0f} {nn*ph:12.0f}")
 
-    out = a.out or (f"output/altgen/bench_laplace_N{a.sig_cap}_s{a.noise_seed}_k{a.node}.npz")
+    out = a.out or (str(results_dir() / f"bench_laplace_N{a.sig_cap}_s{a.noise_seed}_k{a.node}.npz"))
     np.savez(out, rows=np.array(R, dtype=object), sig_cap=a.sig_cap, ndials=a.ndials,
              noise_seed=a.noise_seed, n_nodes_1d=N1D, n_nodes_2d=N2D)
     log(f"[out] {out}")

@@ -7,7 +7,7 @@
 
 One figure per subprocess (each figure imports jax and mutates global matplotlib state).  Figures are
 driven by a fit LABEL rather than a YAML spec: the fit definition lives in configs/fits/, and the label
-selects which run under output/altgen/ to read.  Pass --label to keep every figure in a rebuilt set
+selects which run under the results directory to read.  Pass --label to keep every figure in a rebuilt set
 reading the same run.
 """
 import subprocess

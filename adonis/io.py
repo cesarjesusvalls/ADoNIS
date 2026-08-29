@@ -20,6 +20,20 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ACHILLES_DATA = str(_REPO_ROOT / "data" / "achilles")
+PATHS_CONFIG = _REPO_ROOT / "configs" / "paths.yaml"
+
+
+def _configured(key):
+    """One value from configs/paths.yaml, or None when the file is absent."""
+    if not PATHS_CONFIG.exists():
+        return None
+    import yaml
+    return (yaml.safe_load(PATHS_CONFIG.read_text()) or {}).get(key)
+
+
+def output_root() -> Path:
+    """Everything this project writes.  $ADONIS_OUT, then configs/paths.yaml, then <repo>/output."""
+    return Path(os.environ.get("ADONIS_OUT") or _configured("output_root") or _REPO_ROOT / "output")
 
 
 def achilles_data_root() -> Path:

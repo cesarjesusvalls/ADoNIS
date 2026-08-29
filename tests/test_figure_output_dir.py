@@ -1,14 +1,8 @@
 """Every paper figure lands under style.OUTDIR, so ADONIS_PAPER_OUT redirects all of them.
 
-Rendering a figure set somewhere other than the published directory is how a regenerated figure is
-compared against the one in the paper.  Two of the validation renderers did not allow it: render_panels
-joined "output/paper" itself and render_multiobs took the directory from the spec's out_path, so
-ADONIS_PAPER_OUT moved four figure groups and silently overwrote the other eight.
-
 A path literal is checked rather than a render, because rendering needs the banks.  Docstrings are
-skipped: naming the default directory in prose is not a save target.  style.py is skipped because the
-default belongs there, and the match is on a directory boundary so that sibling directories such as
-output/paper_banks_p4 are not swept up.
+skipped, style.py is skipped because the default belongs there, and the match is on a directory
+boundary so sibling directories such as output/paper_banks_p4 are not swept up.
 """
 from __future__ import annotations
 

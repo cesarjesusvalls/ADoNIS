@@ -12,6 +12,8 @@ Usage:
 """
 from __future__ import annotations
 
+from analysis._cli import results_dir
+
 import argparse
 import sys
 import time
@@ -32,7 +34,7 @@ def main(argv=None):
     ap.add_argument("--offset", type=float, default=1.0, help="node offset from the BFP, in sigma_post")
     ap.add_argument("--tol", type=float, default=0.1)
     ap.add_argument("--nit", type=int, default=200)
-    ap.add_argument("--out", default="output/altgen/bench_laplace_node.npz")
+    ap.add_argument("--out", default=str(results_dir() / "bench_laplace_node.npz"))
     a = ap.parse_args(argv)
 
     t0 = time.time()

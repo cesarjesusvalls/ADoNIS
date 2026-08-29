@@ -1,6 +1,6 @@
 """Run the unfolding studies and persist everything the figures need.
 
-One pass: build the inputs from the bank, run every study, write output/altgen/<label>_unfold.npz.  The
+One pass: build the inputs from the bank, run every study, write <results>/<label>_unfold.npz.  The
 figures never refit, so restyling costs seconds and a figure can never disagree with the fit it shows.
 
 Studies:
@@ -11,6 +11,8 @@ Studies:
   budget       the same Asimov fit with systematic blocks switched on one at a time.
 """
 from __future__ import annotations
+
+from analysis._cli import results_dir
 
 import numpy as np
 
@@ -117,7 +119,7 @@ def main(config="configs/fits/sec5_unfold.yaml", label=None, log=print):
         if log:
             log(f"[budget] {name:5s} mean c_err {r['c_err'].mean():.4f}")
 
-    path = f"output/altgen/{label}_unfold.npz"
+    path = str(results_dir() / f"{label}_unfold.npz")
     np.savez(path, **out)
     if log:
         log(f"[out] {path}")

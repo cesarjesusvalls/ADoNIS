@@ -1,14 +1,8 @@
 """A keyword argument at a call site must exist in the callee's signature.
 
-Renaming a parameter and missing a caller is invisible until that path runs.  It happened twice here:
-`qe_nc.generate(quirk=...)` in adonis/workflow/generate_bank.py kept the old name after the parameter
-became `use_achilles_nc_coupling`, and would have raised TypeError on every NC bank generation -- a
-path with no fast test.  `nc_coupl1(quirk=...)` was the same thing in the test suite.
-
-Resolution is static: the callee module is located from the importing file's own import statements and
-parsed, never executed.  Only first-party modules are checked, and only calls of the form
-`alias.func(...)` or a bare `func(...)` defined in the same file, because those are the ones whose
-definition can be found with certainty.  A callee taking **kwargs accepts anything and is skipped.
+Resolution is static: the callee module is located from the importing file's own imports and parsed,
+never executed.  Only first-party `alias.func(...)` calls and same-file functions are checked, since
+those are the ones whose definition can be found with certainty; a callee taking **kwargs is skipped.
 """
 from __future__ import annotations
 

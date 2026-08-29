@@ -8,8 +8,10 @@ incomplete tiling knowingly and marks the product partial.
 """
 import os, sys, glob
 from pathlib import Path
+from analysis._cli import results_dir
+
 import numpy as np
-ALTGEN = Path(os.environ.get('ADONIS_OUT', 'output')) / 'altgen'
+ALTGEN = results_dir()
 from adonis.fit import merge as MG
 
 def main(label="sec4_all16", allow_partial=False):

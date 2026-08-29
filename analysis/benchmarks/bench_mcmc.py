@@ -17,6 +17,8 @@ quantiles a physics result quotes.
 """
 from __future__ import annotations
 
+from analysis._cli import results_dir
+
 import argparse
 import sys
 import time
@@ -46,7 +48,7 @@ def main(argv=None):
                          "MH comparison -- NUTS then acquires geometry MH does not have -- so it is a "
                          "SEPARATE arm answering 'what would production do', not a replacement for the "
                          "matched-geometry run.")
-    ap.add_argument("--ref", default="output/altgen/sec4_P1.npz")
+    ap.add_argument("--ref", default=str(results_dir() / "sec4_P1.npz"))
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
 
@@ -197,7 +199,7 @@ def main(argv=None):
 
     D = np.asarray(draws)
     c = dict(kern.counts)
-    out = a.out or f"output/altgen/mcmc_{a.method}_n{a.ndials}_c{a.chain}.npz"
+    out = a.out or str(results_dir() / f"mcmc_{a.method}_n{a.ndials}_c{a.chain}.npz")
     np.savez(out, draws=D, names=np.array(names, dtype=object), method=a.method, ndials=a.ndials,
              chain=a.chain, sig_cap=a.sig_cap, nlive=nlive, bfp=xb, V=V, spost=spost,
              t_sample=t_samp, t_warm=t_warm, n_logp=c["chi2"], n_vg=c["vg"], n_grad=c["grad"],

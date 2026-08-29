@@ -1,10 +1,7 @@
-"""The advertised top-level API must import and run.
+"""Every name adonis/__init__ advertises resolves, and the composed generator runs.
 
-`adonis/__init__` exports a lazy table of names -- Generator, DCCSinglePion, NoFSI, Monochromatic,
-FreeNucleon, SpectralFunction, PhysicsParams, ChainConfig, DCCKnobs -- and lazy exports fail only when
-someone reaches for them.  Nothing in the package or the analysis layer instantiates Generator, so the
-composed-generator path had no coverage at all: it could have broken in any refactor with nothing to
-say so.
+The exports are lazy, so a stale entry raises only on attribute access; instantiating Generator with a
+primary channel is the composition the package documents.
 """
 from __future__ import annotations
 

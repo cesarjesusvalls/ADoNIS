@@ -1,12 +1,7 @@
 """A named numeric constant is defined in one module.
 
-Two modules assigning the same UPPERCASE name a number is a drift waiting to happen, and it had
-already happened: HBARC was 197.3269804 in constants.py and 197.32 in the ANL amplitude port, so
-importing both gave two values of hbar*c under one name. E_BEAM_JLAB and NB_PER_CM2 were duplicated
-with equal values, which is the same fault before it bites.
-
-A deliberate second value must say so in its name -- HBARC_ANL, not HBARC -- so that a reader who sees
-both knows they are different quantities rather than a mistake.
+Two modules binding the same UPPERCASE name to a number give one name two values depending on which is
+imported.  A deliberate second value must say so in its name (HBARC_ANL, not HBARC).
 """
 from __future__ import annotations
 

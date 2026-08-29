@@ -4,7 +4,7 @@
     python -m analysis.paper.grad_info.make fisher                   # only one
     python -m analysis.paper.grad_info.make --label multisample_carbon
 
-Reads the Jacobian npz in output/altgen/<label>.npz, produced by `python -m analysis.campaign.gate1`.
+Reads the Jacobian npz in <results>/<label>.npz, produced by `python -m analysis.campaign.gate1`.
 `fisher` = Fisher info per subset; `gradients` = per-bin gradient shapes.
 """
 import subprocess

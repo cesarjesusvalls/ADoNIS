@@ -3,7 +3,7 @@
     python -m analysis.paper.performance.make                  # every figure
     python -m analysis.paper.performance.make minimizers       # only figures whose key contains this
 
-  minimizers   gradients vs no gradients in the optimiser.  Reads output/altgen/bench_fair_*.npz,
+  minimizers   gradients vs no gradients in the optimiser.  Reads <results>/bench_fair_*.npz,
                produced by `python -m analysis.benchmarks.bench_fair`.
   generation   CPU vs GPU event-generation throughput.  Reads the `stage_seconds` block
                adonis.workflow.generate_bank writes into every bank manifest.

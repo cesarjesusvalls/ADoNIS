@@ -6,9 +6,11 @@ run-to-run spread here, so the min-max across seeds is carried alongside every m
 Asimov is reported separately and never pooled with the noise cells: on a perfect closure the Hessian
 term Gauss-Newton drops vanishes and it becomes Newton, so mixing the two would flatter it.
 
-    python -m analysis.benchmarks.bench_report [--glob output/altgen/bench_fair_amp_N*.npz]
+    python -m analysis.benchmarks.bench_report [--glob <results>/bench_fair_amp_N*.npz]
 """
 from __future__ import annotations
+
+from analysis._cli import results_dir
 import argparse, glob as globmod, sys
 import numpy as np
 
@@ -37,7 +39,7 @@ def med(rows, key):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--glob", default="output/altgen/bench_fair_amp_N*.npz")
+    ap.add_argument("--glob", default=str(results_dir() / "bench_fair_amp_N*.npz"))
     a = ap.parse_args(argv)
     paths = globmod.glob(a.glob)
     if not paths:

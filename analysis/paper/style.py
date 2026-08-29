@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 
+from analysis._cli import results_dir
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -10,7 +12,7 @@ from matplotlib.text import Text
 from matplotlib.legend_handler import HandlerBase
 
 OUTDIR = Path(os.environ.get("ADONIS_PAPER_OUT", "output/paper"))
-ALTGEN = Path(os.environ.get("ADONIS_ALTGEN", "output/altgen"))
+ALTGEN = results_dir()
 
 PANEL_W = 3.5
 PANEL_H = 3.0

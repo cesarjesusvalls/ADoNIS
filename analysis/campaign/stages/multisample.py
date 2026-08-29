@@ -1,6 +1,6 @@
 """Closure fit over the SAME dials + samples as the Fisher/gradient studies.
 
-Both read ONE stacked-Jacobian object, `output/altgen/multisample_carbon.npz` (built by
+Both read ONE stacked-Jacobian object, the stacked-Jacobian npz (built by
 `python -m analysis.campaign.gate1`): the dials passing Gate I (combined marginalized shrinkage < 0.5),
 and the joint sample set (T2K CC0pi/CC1pi STV+muon, MINERvA CC0pi-Np STV, MINERvA qelike pT/p||, (e,e')
 QE/RES omega, pi+/p/n -> C beams).
@@ -20,6 +20,8 @@ unchanged.  Every sample shares the one 28-knob `physical_fit` basis; the reweig
 Label, injection, iteration count and bank chunk caps all come from the FitConfig, not the environment;
 S4_GATE_NPZ overrides which multisample_carbon.npz is read.
 """
+
+from analysis._cli import results_dir
 import os
 import sys
 import sys
@@ -42,7 +44,7 @@ from adonis.reweight.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
 from analysis.campaign.sample import AnaSample
 from analysis.campaign.beams import beam_model
 
-MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", "output/altgen/multisample_carbon.npz")
+MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", str(results_dir() / "multisample_carbon.npz"))
 JAC_BATCH = int(os.environ.get("S4_JAC_BATCH", "16"))
 
 
@@ -526,7 +528,7 @@ def main():
         b = (th[k] - truth[k]) / s if s > 0 else 0.0
         print(f"{eng.pnames[k]:>18} {truth[k]:7.3f} {th[k]:8.3f} {s:7.3f} {b:8.2f}")
 
-    out = f"output/altgen/{LABEL}.npz"
+    out = str(results_dir() / f"{LABEL}.npz")
     np.savez(out, mode="closure_multisample", inj=INJECT, truth=truth, subset=subset,
              pnames=eng.pnames, prior=eng.prior, row0=eng.row0, dskeys=[d["key"] for d in eng.ds],
              data=np.concatenate([d["data"] for d in eng.ds]),

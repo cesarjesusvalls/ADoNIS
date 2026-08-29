@@ -8,8 +8,8 @@ The run itself is produced by the core package:
 
     python -m analysis.campaign.unfold_run configs/fits/sec5_unfold.yaml --label sec5cfg
 
-which writes output/altgen/<label>_unfold.npz.  These figures are pure consumers of that npz; every
-physics choice is in the config, stamped into the npz.  Pass --label explicitly -- output/altgen holds
+which writes <results>/<label>_unfold.npz.  These figures are pure consumers of that npz; every
+physics choice is in the config, stamped into the npz.  Pass --label explicitly -- the results directory holds
 multiple unfolding runs and the module defaults may not match the one you want.
 """
 import subprocess

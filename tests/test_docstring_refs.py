@@ -1,14 +1,9 @@
 """A module named in a docstring must exist.
 
-Documentation that names a module is a promise a reader will act on, and it rots silently: renaming or
-moving code does not touch the prose that points at it.  This pass alone found seven dead references --
-adonis.channels.res_xsec, qe_xsec, ee_xsec, analysis/beams/ee_fisher, validate_final_state.py, a
-"SIMPLIFICATIONS" section of assembly.py, and a function dcc_fold_full that had been renamed.  Each read
-as authoritative and pointed at nothing.
-
 Only dotted first-party paths are checked, and only where the leading segment is a real top-level
 package, so ordinary prose is not mistaken for a reference.  Resolution is by finder: nothing is
-imported, so this costs nothing and has no side effects.
+imported.  tests/ is excluded, because a test's docstring may legitimately name a module it asserts
+is absent.
 """
 from __future__ import annotations
 
@@ -20,8 +15,6 @@ import re
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-# adonis/ and analysis/ only.  A test's docstring legitimately names modules that no longer exist --
-# that is what it is testing for -- so checking tests/ would flag the guards themselves.
 FILES = sorted(p for d in ("adonis", "analysis") for p in (ROOT / d).rglob("*.py")
                if "__pycache__" not in str(p))
 OURS = ("adonis", "analysis")

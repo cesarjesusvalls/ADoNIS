@@ -14,8 +14,10 @@ or walls off shows up as a departure.  Reads the BFP + injected data from an exi
 profiles the SAME likelihood.
 
 Env: ADONIS_FIT_CONFIG, S4_PROF_BASE/S4_PROF_N (dial-level sharding).  Writes
-output/altgen/<label>_profile.npz.
+<results>/<label>_profile.npz.
 """
+
+from analysis._cli import results_dir
 import os
 import sys
 import time
@@ -51,7 +53,7 @@ def main():
     global _INNER
     _INNER = trf_fit if cfg.fit.minimizer.method == "trf" else lm_fit
 
-    z = np.load(f"output/altgen/{LABEL}.npz", allow_pickle=True)
+    z = np.load(str(results_dir() / f"{LABEL}.npz"), allow_pickle=True)
     subset = [int(k) for k in z["subset"]]
     bfp = np.asarray(z["fit_th"] if "fit_th" in z.files else z["M0_th"])
     V = np.asarray(z["fit_V"] if "fit_V" in z.files else z["M0_V"])
@@ -144,8 +146,8 @@ def main():
             f"[{np.exp(-0.5*_d0):.3f},{np.exp(-0.5*_d1):.3f}]"
             + ("   *** STILL NOT DECAYED ***" if _bad else ""))
 
-    out = (f"output/altgen/{LABEL}_profile.npz" if PB < 0
-           else f"output/altgen/{LABEL}_profile_sh{PB:02d}.npz")
+    out = (str(results_dir() / f"{LABEL}_profile.npz") if PB < 0
+           else str(results_dir() / f"{LABEL}_profile_sh{PB:02d}.npz"))
     np.savez(out, **provenance.stamp(dial_base=max(PB, 0), n_dial=len(mine), n_subset=len(subset)),
              subset=subset, pnames=eng.pnames, grid_sigma=grid, grids_sigma=grids,
              prof_dobj=prof, prof_dchi2=profd, logdet_Vnuis=logdetV,

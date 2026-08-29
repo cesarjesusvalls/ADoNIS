@@ -17,6 +17,8 @@ Usage:
 """
 from __future__ import annotations
 
+from analysis._cli import results_dir
+
 import argparse
 import sys
 import time
@@ -113,7 +115,7 @@ def main(argv=None):
     ap.add_argument("--jac-bench", action="store_true",
                     help="also time the DERIVATIVE objects themselves: MINUIT finite differences vs "
                          "ADoNIS forward/reverse autodiff, on the identical cost function")
-    ap.add_argument("--out", default="output/altgen/bench_minimizers.npz")
+    ap.add_argument("--out", default=str(results_dir() / "bench_minimizers.npz"))
     a = ap.parse_args(argv)
     methods = [s.strip() for s in a.methods.split(",") if s.strip()]
 

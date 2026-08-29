@@ -2,8 +2,10 @@
 
 The sampler itself is adonis.fit.nuts (leapfrog, tree building, Stan-style warm-up); this module builds
 the engine from a fit config, reads NUTS_CHAIN to pick a chain, and writes
-output/altgen/<label>_nutsown_<chain>.npz.
+<results>/<label>_nuts_<chain>.npz.
 """
+
+from analysis._cli import results_dir
 import os
 import sys
 import time
@@ -41,7 +43,7 @@ def run_real():
     data, sigma = eng.data_sigma()
     ok = np.isfinite(sigma) & (sigma > 0)
     W = np.where(ok, 1.0 / np.where(ok, sigma, 1.0) ** 2, 0.0)
-    zc = np.load(f"output/altgen/{LABEL}.npz", allow_pickle=True)
+    zc = np.load(str(results_dir() / f"{LABEL}.npz"), allow_pickle=True)
     bfp = np.asarray(zc["fit_th"]); V = np.asarray(zc["fit_V"])
     _fs = [int(k) for k in zc["fit_sub"]] if "fit_sub" in zc.files else sub
     if _fs != list(sub):
@@ -100,9 +102,9 @@ def run_real():
         eps *= (am / 0.8) ** 0.5 if am > 0 else 1.0
         log(f"warmup acceptance {am:.3f} -> eps {eps:.4f}")
     s, dep, acc, nf = nuts_sample(q_start, gradf, eps, Minv, Mchol, NS, rng, log=log, tag="")
-    out = f"output/altgen/{LABEL}_nutsown_{CH}.npz"
+    out = str(results_dir() / f"{LABEL}_nutsown_{CH}.npz")
     if RES:
-        out = f"output/altgen/{LABEL}_nutsown_{CH}_ext{os.environ.get('NUTS_EXT','1')}.npz"
+        out = str(results_dir() / f"{LABEL}_nutsown_{CH}_ext{os.environ.get('NUTS_EXT','1')}.npz")
     np.savez(out, u=s, bfp=bfp, sigma_post=sp, subset=sub,
              pnames=eng.pnames, truth=star, depth=dep, accept=acc, ngrad=nf, eps=eps,
              resumed_from=RES)

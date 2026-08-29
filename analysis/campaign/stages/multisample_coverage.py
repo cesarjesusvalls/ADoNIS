@@ -16,6 +16,8 @@ per-shard npz are meant to be concatenated downstream.  Saves incrementally (pre
 
 Env: S4_TOY_BASE, ADONIS_FIT_CONFIG; toy count/iterations/fixed-truth come from the config's "toys" stage.
 """
+
+from analysis._cli import results_dir
 import os
 import sys
 import time
@@ -98,7 +100,7 @@ def main():
             " ".join(f"{eng.pnames[k]}={fixed_star[k]:.3f}" for k in subset))
 
     th_star, th_fit, sig_fit, chi2d = [], [], [], []
-    out = f"output/altgen/{LABEL}_{BASE:04d}.npz"
+    out = str(results_dir() / f"{LABEL}_{BASE:04d}.npz")
     for t in range(NTOYS):
         seed = BASE + t
         rng = np.random.default_rng(1_000_000 + seed)

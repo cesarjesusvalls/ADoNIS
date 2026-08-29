@@ -16,6 +16,8 @@ Usage:
 """
 from __future__ import annotations
 
+from analysis._cli import results_dir
+
 import argparse
 import sys
 import time
@@ -77,7 +79,7 @@ def main(argv=None):
                          "Tests whether the wall trapping is a property of the START point rather than "
                          "of the minimiser's tolerance.")
     ap.add_argument("--seed", type=int, default=20260815)
-    ap.add_argument("--out", default="output/altgen/bench_tol_boundary.npz")
+    ap.add_argument("--out", default=str(results_dir() / "bench_tol_boundary.npz"))
     a = ap.parse_args(argv)
     tols = [float(s) for s in a.tols.split(",") if s.strip()]
 

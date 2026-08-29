@@ -16,8 +16,10 @@ so neither mode needs the closure npz and both can run in parallel with it.
 
 Env: ADONIS_FIT_CONFIG, ADONIS_FIT_STAGE (profile2d|gradient2d), S4_PAIR_BASE/S4_NPAIR,
      S4_ROW_BASE/S4_NROW (row-level sharding within a pair).
-Writes output/altgen/<label>_corner2d_<mode>_<pairbase>.npz
+Writes <results>/<label>_corner2d_<mode>_<pairbase>.npz
 """
+
+from analysis._cli import results_dir
 import os
 import sys
 import time
@@ -106,7 +108,7 @@ def main():
 
     _PROF_AX = None
     if st.get("axes_from") == "profile":
-        _pf = f"output/altgen/{LABEL}_profile.npz"
+        _pf = str(results_dir() / f"{LABEL}_profile.npz")
         if os.path.exists(_pf):
             _z = np.load(_pf, allow_pickle=True)
             _gs = np.asarray(_z["grids_sigma"])
@@ -132,8 +134,8 @@ def main():
     _RB = int(os.environ.get("S4_ROW_BASE", "-1"))
     _NR = int(os.environ.get("S4_NROW", "1"))
     _ROWS = range(N) if _RB < 0 else range(_RB, min(_RB + _NR, N))
-    out = (f"output/altgen/{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}.npz" if _RB < 0
-           else f"output/altgen/{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}_r{_RB:03d}.npz")
+    out = (str(results_dir() / f"{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}.npz") if _RB < 0
+           else str(results_dir() / f"{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}_r{_RB:03d}.npz"))
 
     def _save(final=False):
         """Checkpoint: runs are long and often land on preemptable nodes.  Partial grids keep NaN where

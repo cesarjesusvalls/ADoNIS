@@ -19,6 +19,8 @@ Usage:
 """
 from __future__ import annotations
 
+from analysis._cli import results_dir
+
 import argparse
 import sys
 import time
@@ -42,7 +44,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     counts = [int(s) for s in a.dials.split(",") if s.strip()]
     methods = [s.strip() for s in a.methods.split(",") if s.strip()]
-    out = a.out or f"output/altgen/bench_scaling_{a.sig_cap}.npz"
+    out = a.out or str(results_dir() / f"bench_scaling_{a.sig_cap}.npz")
 
     t0 = time.time()
     def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)

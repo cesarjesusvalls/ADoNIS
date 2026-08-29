@@ -1,0 +1,6 @@
+# Where this project writes: banks, ACHILLES output, analysis results, figures.
+#
+# Resolution order: $ADONIS_OUT, then this file, then a repo-local output/.  A cluster checkout
+# normally exports $ADONIS_OUT and leaves this alone; set it here to point a workstation at a data
+# volume without exporting anything.
+output_root: output
