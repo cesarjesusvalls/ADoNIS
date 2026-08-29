@@ -14,7 +14,6 @@ DCC_mode = -1, so only the leptonic current differs.  That is asserted below rat
 because it is the fact that makes P9 small.
 """
 import pathlib
-import re
 
 import numpy as np
 import pytest
@@ -88,14 +87,14 @@ def test_a_card_gets_the_image_its_own_contents_ask_for():
     (e,e')-with-FSI card was sent to the no-cascade image and could not run at all.  Asserting the
     rule over every card is only possible because the choice now comes from the card.
     """
-    from analysis.oracle_tools.run_achilles import image_for
+    from analysis.oracle_tools.run_achilles import image_for, cascade_is_on
     cards = sorted((ROOT / "configs" / "achilles").glob("*.yml"))
     assert cards, "no ACHILLES cards found"
     wrong = []
     for c in cards:
         raw = c.read_text()
-        wants_cascade = re.search(r"^Cascade:\s*\n(?:[ \t]+.*\n)*?[ \t]+Run:[ \t]*[Tt]rue", raw, re.M)
-        has_processes = re.search(r"^Processes:", raw, re.M)
+        wants_cascade = cascade_is_on(raw)
+        has_processes = any(ln.startswith("Processes:") for ln in raw.splitlines())
         image, _native, binary = image_for(c)
         if not has_processes:
             ok = image.endswith("cascade") and binary.endswith("achilles-cascade")

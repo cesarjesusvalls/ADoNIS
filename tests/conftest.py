@@ -39,3 +39,18 @@ def pytest_ignore_collect(collection_path, config):
     if config.getoption("--runslow"):
         return None
     return True if collection_path.name in _HEAVY else None
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests marked `slow` unless --runslow.
+
+    pytest.ini declares the marker and two files apply it, but nothing read it, so those tests ran on
+    every invocation -- about 5.5 minutes of MC integration in a suite that is otherwise a few minutes.
+    The `_HEAVY` list above solves a different problem: files whose IMPORT is expensive have to be
+    dropped at collection, which a marker cannot do because the marker is only visible after import.
+    """
+    if config.getoption("--runslow"):
+        return
+    skip = pytest.mark.skip(reason="marked slow; run with --runslow")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip)

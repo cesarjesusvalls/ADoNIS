@@ -38,6 +38,24 @@ FULL_CASCADE = ("achilles:fullcascade", True, "/achilles/bin/achilles")
 NO_CASCADE = (ORACLE, False, "/achilles/bin/achilles")
 
 
+def cascade_is_on(raw):
+    """True if the card's top-level `Cascade:` block sets `Run: true`.
+
+    A line scan, not a regex: an expression spanning the block with a nested quantifier backtracks
+    exponentially on a card whose cascade is off, because the closing `Run:` it looks for is not there.
+    """
+    lines = raw.splitlines()
+    for i, ln in enumerate(lines):
+        if ln.rstrip() == "Cascade:":
+            for nxt in lines[i + 1:]:
+                if nxt.strip() and not nxt[:1].isspace():
+                    break                      # dedented: the block ended
+                key, _, val = nxt.strip().partition(":")
+                if key == "Run":
+                    return val.strip().lower() == "true"
+    return False
+
+
 def image_for(card_path):
     """(image, native, binary) for a card, decided by what the card asks for.
 
@@ -49,10 +67,9 @@ def image_for(card_path):
     to the no-cascade image, because no prefix covered them, and they could not run at all.
     """
     raw = Path(card_path).read_text()
-    if not re.search(r"^Processes:", raw, re.M):
+    if not any(ln.startswith("Processes:") for ln in raw.splitlines()):
         return STANDALONE_CASCADE
-    m = re.search(r"^Cascade:\s*\n(?:[ \t]+.*\n)*?[ \t]+Run:[ \t]*(\w+)", raw, re.M)
-    return FULL_CASCADE if (m and m.group(1).lower() == "true") else NO_CASCADE
+    return FULL_CASCADE if cascade_is_on(raw) else NO_CASCADE
 
 
 def container_runtime():
