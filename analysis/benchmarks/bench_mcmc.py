@@ -57,7 +57,7 @@ def main(argv=None):
     import dataclasses
     import jax
     from adonis.fit import nuts as NU
-    from analysis.benchmarks.bench_fair import _dial_order, freeze_sample, throw
+    from analysis.benchmarks._shared import _dial_order, freeze_sample, throw
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
     from adonis.fit.kernels import FitKernel

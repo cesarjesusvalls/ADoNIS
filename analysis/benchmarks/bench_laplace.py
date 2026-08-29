@@ -45,7 +45,7 @@ def main(argv=None):
     import jax
     from iminuit import Minuit
 
-    from analysis.benchmarks.bench_fair import _dial_order, freeze_sample, throw
+    from analysis.benchmarks._shared import _dial_order, freeze_sample, throw
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
     from adonis.fit.kernels import FitKernel

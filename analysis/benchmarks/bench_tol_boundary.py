@@ -92,7 +92,7 @@ def main(argv=None):
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import trf_fit
     from analysis.campaign.stages.multisample import (MULTISAMPLE_NPZ, build_multisample_engine, fit_subset)
-    from analysis.benchmarks.bench_minimizers import _bounds, _migrad
+    from analysis.benchmarks._shared import _bounds, _migrad
     from adonis.fit.fitters import parse_inject
     from adonis.reweight.reweight_model import nominal_knobs
 

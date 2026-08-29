@@ -25,78 +25,15 @@ import time
 
 import numpy as np
 
+from analysis.benchmarks._shared import _bounds, _gn, _migrad
+
 from adonis.reweight import knobs as K
 
 
-def _bounds(eng, subset):
-    """(lo, hi) per fitted dial from the PHYS_BOUND registry -- the same box the GN fit uses, so MIGRAD
-    is not quietly given a different feasible set."""
-    lo = np.array([-np.inf if K.phys_lo(eng.pnames[k]) is None else K.phys_lo(eng.pnames[k])
-                   for k in subset], float)
-    hi = np.array([np.inf if K.phys_hi(eng.pnames[k]) is None else K.phys_hi(eng.pnames[k])
-                   for k in subset], float)
-    return lo, hi
 
 
-def _migrad(eng, subset, x0, lo, hi, use_grad, tol, max_calls, f, vg):
-    """One MIGRAD fit.  Returns (x, (nvalue, nderiv), chi2, seconds) with ONLY migrad() in the clock.
-
-    `f` and `vg` must be the ALREADY-COMPILED objectives, passed in rather than built here: eng.chi2_fn()
-    returns a FRESH jax.jit wrapper on each call, with an empty compilation cache, so building them
-    inside this function would recompile on every repeat.
-    """
-    from iminuit import Minuit
-
-    names = [eng.pnames[k] for k in subset]
-    if use_grad:
-        nf = [0, 0]
-
-        def fcn(*a):
-            nf[0] += 1
-            return f(np.asarray(a, float))
-
-        def grd(*a):
-            nf[1] += 1
-            return vg(np.asarray(a, float))[1]
-
-        m = Minuit(fcn, *x0, name=names, grad=grd)
-    else:
-        nf = [0, 0]
-
-        def fcn(*a):
-            nf[0] += 1
-            return f(np.asarray(a, float))
-
-        m = Minuit(fcn, *x0, name=names)
-
-    m.errordef = Minuit.LEAST_SQUARES
-    for i, n in enumerate(names):
-        m.limits[n] = (None if not np.isfinite(lo[i]) else lo[i],
-                       None if not np.isfinite(hi[i]) else hi[i])
-    m.tol = tol
-    m.strategy = 1
-
-    t0 = time.perf_counter()
-    m.migrad(ncall=max_calls)
-    dt = time.perf_counter() - t0
-    return np.array(m.values), (nf[0], nf[1]), float(m.fval), dt
 
 
-def _gn(eng, subset, tol, nit):
-    """One Gauss-Newton (TRF) fit, clock around the fit only.
-
-    The clock includes trf_fit's POST-CONVERGENCE work (one model evaluation and two Jacobians for the
-    covariance and Newton-decrement diagnostic), which is not minimisation; main() reports a corrected
-    figure alongside the raw one.
-    """
-    from adonis.fit.fitters import trf_fit
-
-    t0 = time.perf_counter()
-    th, _V, _J, _m, _c_tot, c_data = trf_fit(eng, subset, "bench", nit=nit)
-    dt = time.perf_counter() - t0
-    return (th[np.array(subset, int)],
-            (int(getattr(eng, "last_nfev", -1)), int(getattr(eng, "last_njev", -1))),
-            float(c_data), dt)
 
 
 def main(argv=None):

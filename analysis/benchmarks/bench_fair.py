@@ -20,48 +20,17 @@ import time
 
 import numpy as np
 
+from analysis.benchmarks._shared import _dial_order, freeze_sample, throw
+
 
 CHI2_TARGETS = (1.0, 1e-2, 1e-4, 1e-8)
 DIST_TARGETS = (1e-1, 1e-3, 1e-6)
 
 
-def _dial_order(g, pnames):
-    """The Gate-I dials, best-constrained first.  Deterministic, so the n-subsets are nested."""
-    shrink = np.asarray(g["shrink"], float)
-    gate1 = np.where(shrink < 0.5)[0]
-    return [int(k) for k in gate1[np.argsort(shrink[gate1])]]
 
 
-def freeze_sample(eng, ref, log):
-    """Impose the REFERENCE run's sigma and live-bin mask on this engine, per dataset key.
-
-    Keys are matched by name, so a sample-composition mismatch raises KeyError rather than silently
-    misaligning.
-    """
-    keys = [str(k) for k in ref["dskeys"]]
-    row0 = np.asarray(ref["row0"], int)
-    sig_ref = np.asarray(ref["sigma"], float)
-    by_key = {k: sig_ref[row0[i]:row0[i + 1]] for i, k in enumerate(keys)}
-    nlive = 0
-    for s in eng.samples:
-        for d in s.ds:
-            sg = by_key[d["key"]]
-            if len(sg) != d["nbin"]:
-                raise SystemExit(f"{d['key']}: reference has {len(sg)} bins, engine has {d['nbin']}")
-            d["sigma"] = sg.copy()
-            d["_sigma0"] = sg.copy()
-            nlive += int(np.isfinite(sg).sum())
-    log(f"  sample frozen from reference: {nlive} live bins, sigma fixed (independent of sig_cap)")
-    return nlive
 
 
-def throw(eng, rng, log=None):
-    """data <- data + N(0, sigma) on live bins.  Dead bins are left alone; their sigma is inf."""
-    for s in eng.samples:
-        for d in s.ds:
-            sg = np.asarray(d["sigma"], float)
-            ok = np.isfinite(sg) & (sg > 0)
-            d["data"] = np.asarray(d["data"], float) + np.where(ok, rng.normal(0, np.where(ok, sg, 1.0)), 0.0)
 
 
 def main(argv=None):

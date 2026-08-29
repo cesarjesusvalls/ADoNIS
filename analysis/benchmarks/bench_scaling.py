@@ -27,7 +27,7 @@ import time
 
 import numpy as np
 
-from analysis.benchmarks.bench_minimizers import _bounds, _gn, _migrad
+from analysis.benchmarks._shared import _bounds, _gn, _migrad
 
 
 def main(argv=None):

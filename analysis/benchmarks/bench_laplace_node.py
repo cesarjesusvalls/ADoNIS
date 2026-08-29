@@ -20,7 +20,7 @@ import time
 
 import numpy as np
 
-from analysis.benchmarks.bench_minimizers import _bounds
+from analysis.benchmarks._shared import _bounds
 
 N_NODES_1D = 221
 N_NODES_2D = 7938

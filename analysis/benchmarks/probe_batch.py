@@ -32,7 +32,7 @@ def main(argv=None):
     from adonis.fit.config import FitConfig
     from adonis.fit.fitters import parse_inject
     from adonis.fit.kernels import FitKernel
-    from analysis.benchmarks.bench_fair import _dial_order, freeze_sample
+    from analysis.benchmarks._shared import _dial_order, freeze_sample
     from analysis.campaign.stages import multisample as MS
     from adonis.reweight.reweight_model import nominal_knobs
 
