@@ -83,9 +83,6 @@ def main(label="sec5", study="asimov"):
             cb.set_label("correlation (symlog)", fontsize=8)
             cb.ax.set_yticklabels(["$-1$", "$-0.1$", "$-0.01$", "$0$", "$0.01$", "$0.1$", "$1$"],
                                   fontsize=7)
-    ct = [(s, e) for b, s, e in bounds if b == "template"][0]
-    fl = [(s, e) for b, s, e in bounds if b == "flux"][0]
-    cf = R[ct[0]:ct[1], fl[0]:fl[1]]
 
     style.save(fig, "unfolding_param_correlations")
 

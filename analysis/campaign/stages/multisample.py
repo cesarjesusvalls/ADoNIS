@@ -465,21 +465,13 @@ def fit_subset(g, pnames, cfg, log=None):
     if add:
         bad = [a for a in add if a not in list(pnames)]
         if bad:
-            raise SystemExit(f"S4_ADD_DIALS: unknown dial(s) {bad}")
+            raise SystemExit(f"fit.dials names unknown dial(s) {bad}")
         for a in add:
             k = list(pnames).index(a)
             if k not in sub:
                 sub = sorted(sub + [k])
                 if log:
                     log(f"  ADDED (failed Gate I, forced in): {a} (shrink {float(g['shrink'][k]):.3f})")
-    fix = []
-    if fix:
-        bad = [f for f in fix if f not in list(pnames)]
-        if bad:
-            raise SystemExit(f"S4_FIX_DIALS: unknown dial(s) {bad}")
-        keep = [k for k in sub if pnames[k] not in fix]
-        if log:
-            log(f"  FIXED (held at nominal, not fitted, not thrown): {fix} -> {len(keep)} dials fitted")
         return keep
     return sub
 

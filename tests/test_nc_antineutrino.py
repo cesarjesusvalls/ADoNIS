@@ -13,8 +13,13 @@ The hadronic side needs nothing: `currents_pi_dcc.f90:71-101` maps BOTH nu and n
 DCC_mode = -1, so only the leptonic current differs.  That is asserted below rather than assumed,
 because it is the fact that makes P9 small.
 """
+import pathlib
+import re
+
 import numpy as np
 import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 from adonis.channels import constants as C
 from adonis.channels.currents.leptonic import lepton_current, _couplings
@@ -76,31 +81,45 @@ def test_anti_is_still_unexercised_by_any_production_caller():
                       "free-nucleon oracle gate must land with it:\n" + "\n".join(hits))
 
 
-def test_the_nc_fsi_card_name_routes_correctly_and_the_obvious_name_does_not():
-    """`run_achilles._RULES` routes by card-name PREFIX, and the obvious NC name breaks it.
+def test_a_card_gets_the_image_its_own_contents_ask_for():
+    """Routing reads the card, not its name.
 
-    `run_MicroBooNE_Ar_nc_fsi` does NOT start with `run_MicroBooNE_Ar_fsi`, so it falls through to
-    the amd64 `:oracle` default -- which is the no-cascade image.  Putting the suffix AFTER the
-    matched prefix, `run_MicroBooNE_Ar_fsi_nc`, fixes it with zero code change.  This test pins the
-    naming rule so the fix cannot be undone by someone choosing the more natural-looking name.
-
-    Scoped deliberately to the NC card.  A broader "every cascade card must route natively" assertion
-    fails on pre-existing cards (run_ee_*_fsi route to the amd64 oracle today); whether that is a
-    latent bug or those cards are simply never driven through this runner is NOT established here,
-    so it is recorded in the plan rather than asserted as a test.
+    A name-prefix table used to decide this, and nothing in it covered run_ee_*_fsi, so every
+    (e,e')-with-FSI card was sent to the no-cascade image and could not run at all.  Asserting the
+    rule over every card is only possible because the choice now comes from the card.
     """
-    from analysis.oracle_tools.run_achilles import _image_for
-    good_img, good_native, _ = _image_for("run_MicroBooNE_Ar_fsi_nc")
-    bad_img, bad_native, _ = _image_for("run_MicroBooNE_Ar_nc_fsi")
-    assert good_img == "achilles:fullcascade" and good_native, \
-        "run_MicroBooNE_Ar_fsi_nc no longer inherits the MicroBooNE cascade rule"
-    assert bad_img != good_img, \
-        "the prefix rule changed -- re-check whether the _nc_fsi naming is still a trap"
+    from analysis.oracle_tools.run_achilles import image_for
+    cards = sorted((ROOT / "configs" / "achilles").glob("*.yml"))
+    assert cards, "no ACHILLES cards found"
+    wrong = []
+    for c in cards:
+        raw = c.read_text()
+        wants_cascade = re.search(r"^Cascade:\s*\n(?:[ \t]+.*\n)*?[ \t]+Run:[ \t]*[Tt]rue", raw, re.M)
+        has_processes = re.search(r"^Processes:", raw, re.M)
+        image, _native, binary = image_for(c)
+        if not has_processes:
+            ok = image.endswith("cascade") and binary.endswith("achilles-cascade")
+        elif wants_cascade:
+            ok = image.endswith("fullcascade")
+        else:
+            ok = "oracle" in image
+        if not ok:
+            wrong.append(f"{c.name} -> {image}")
+    assert not wrong, "cards routed against what they ask for: " + ", ".join(wrong)
 
 
-def test_the_nc_cards_route_to_the_no_cascade_oracle():
-    from analysis.oracle_tools.run_achilles import _image_for
+def test_the_nc_cascade_card_gets_the_cascade_build():
+    """The NC MicroBooNE card turns the cascade on, so it must not get the no-cascade image."""
+    from analysis.oracle_tools.run_achilles import image_for
+    image, native, _ = image_for(ROOT / "configs" / "achilles" / "run_MicroBooNE_Ar_fsi_nc.yml")
+    assert image == "achilles:fullcascade" and native
+
+
+def test_the_free_nucleon_nc_cards_route_to_the_no_cascade_oracle():
+    from analysis.oracle_tools.run_achilles import image_for
     for stem in ("run_freenucleon_nc_res_H", "run_freenucleon_nc_res_N",
                  "run_freenucleon_nc_qe_H", "run_freenucleon_nc_qe_N"):
-        image, native, entry = _image_for(stem)
+        image, _native, _entry = image_for(ROOT / "configs" / "achilles" / f"{stem}.yml")
         assert "oracle" in image, f"{stem} routed to {image}, expected the no-cascade oracle"
+
+

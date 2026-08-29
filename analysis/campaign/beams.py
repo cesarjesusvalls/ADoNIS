@@ -167,12 +167,3 @@ def bank_sigma(beam, nbins, target="C", suffix=""):
         er = PIR2 * np.sqrt(nr * np.clip(1.0 - nr / ntry, 0.0, 1.0)) / ntry
         es = PIR2 * np.sqrt(ns * np.clip(1.0 - ns / ntry, 0.0, 1.0)) / ntry
     return edges, sr, ss, er, es
-
-
-def chi2(a, b, ea, eb):
-    m = np.isfinite(a) & np.isfinite(b) & ((ea > 0) | (eb > 0)) & (a + b > 0)
-    if not m.any():
-        return np.nan, 0
-    d = (a[m] - b[m]) ** 2 / (ea[m] ** 2 + eb[m] ** 2)
-    return float(d.sum()), int(m.sum())
-

@@ -98,9 +98,8 @@ def test_manifests_on_disk_carry_no_retired_probe(adonis_out):
             continue
         if probe in RETIRED:
             stale.append(str(m))
-    assert not stale, (f"{len(stale)} manifest(s) still carry a retired probe value; run "
-                       f"`python -m analysis.campaign.migrate_probe_names <root>`:\n"
-                       + "\n".join(stale[:10]))
+    assert not stale, (f"{len(stale)} manifest(s) still carry a retired probe value, so they predate "
+                       f"the rename and must be regenerated:\n" + "\n".join(stale[:10]))
 
 
 @pytest.fixture
