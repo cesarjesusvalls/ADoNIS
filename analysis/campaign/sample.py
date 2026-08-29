@@ -215,8 +215,9 @@ class AnaSample:
         """Persist the Gate-I npz (J, sigma, row0, dskeys, shrink, F, V + per-obs edges/central) to
         <results>/{label}.npz -- what SampleSet / the figures load."""
         r = res or self.gate1(max_chunks=max_chunks, log=log)
-        ALTGEN.mkdir(parents=True, exist_ok=True)
-        out = ALTGEN / f"{label or self.name}.npz"
+        out_dir = results_dir()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out = out_dir / f"{label or self.name}.npz"
         np.savez(out, J=r["J"], sigma=r["sigma"], row0=r["row0"], prior=K.PRIOR, pnames=K.PNAMES,
                  dskeys=r["keys"], shrink=r["shrink"], F=r["F"], V=r["V"],
                  **{f"{k}_edges": r["edges"][k] for k in r["keys"]},
@@ -228,7 +229,7 @@ class AnaSample:
 
     @staticmethod
     def load_cache(label):
-        return np.load(ALTGEN / f"{label}.npz", allow_pickle=True)
+        return np.load(results_dir() / f"{label}.npz", allow_pickle=True)
 
     def __add__(self, other):
         return SampleSet([self, other])

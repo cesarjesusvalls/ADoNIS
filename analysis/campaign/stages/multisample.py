@@ -470,7 +470,6 @@ def fit_subset(g, pnames, cfg, log=None):
                 sub = sorted(sub + [k])
                 if log:
                     log(f"  ADDED (failed Gate I, forced in): {a} (shrink {float(g['shrink'][k]):.3f})")
-        return keep
     return sub
 
 

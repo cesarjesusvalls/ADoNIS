@@ -26,3 +26,14 @@ _paper_release/
 
 # local working rules, not part of the repo
 CLAUDE.md
+
+# container images and rendered batch scripts, which pick up site paths
+*.sif
+jobs/generated/
+
+# credentials, none of which belong in a public repo
+.env
+*.pem
+*.key
+id_rsa*
+.netrc

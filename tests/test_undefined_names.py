@@ -20,7 +20,8 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-FILES = sorted(p for p in (ROOT / "adonis").rglob("*.py") if "__pycache__" not in str(p))
+FILES = sorted(p for d in ("adonis", "analysis")
+               for p in (ROOT / d).rglob("*.py") if "__pycache__" not in str(p))
 BUILTINS = set(dir(builtins)) | {"__file__", "__name__", "__doc__", "__package__", "__spec__"}
 
 
@@ -68,7 +69,10 @@ def test_no_undefined_globals(path):
     if any(isinstance(n, ast.ImportFrom) and any(a.name == "*" for a in n.names) for n in ast.walk(tree)):
         pytest.skip("star import: available names are not statically knowable")
 
-    module_scope = _bound_by(tree) | BUILTINS
+    # `global X` inside any function binds X at module scope, and _bound_by does not descend into
+    # function bodies, so those names have to be collected separately.
+    declared_global = {n for node in ast.walk(tree) if isinstance(node, ast.Global) for n in node.names}
+    module_scope = _bound_by(tree) | BUILTINS | declared_global
     enclosing = {}                       # function -> the names its enclosing functions bind
     def _descend(node, outer):
         for n in _walk_scope(node):
