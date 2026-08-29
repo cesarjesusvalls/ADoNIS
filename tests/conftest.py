@@ -52,3 +52,18 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "slow" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def _restore_environment():
+    """Each test sees the environment the session started with.
+
+    Several modules pass values to each other through os.environ, so a test that generates a bank
+    leaves variables set that decide what a later test reads.  Without this the suite's result
+    depends on collection order: tests pass alone and fail in a full run.
+    """
+    import os
+    before = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(before)
