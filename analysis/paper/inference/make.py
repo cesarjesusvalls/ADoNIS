@@ -1,65 +1,17 @@
-"""Entry point for the inference (closure + uncertainty) figures.
+"""Closure fit, coverage and corner plots, all from one fit label.
 
-    python -m analysis.paper.inference.make                    # every figure
-    python -m analysis.paper.inference.make corner             # only figures whose key contains this
-    python -m analysis.paper.inference.make --one rates        # render one figure in-process (no subprocess)
-    python -m analysis.paper.inference.make --label sec4_P2    # which fit the figures are built from
-
-One figure per subprocess (each figure imports jax and mutates global matplotlib state).  Figures are
-driven by a fit LABEL rather than a YAML spec: the fit definition lives in configs/fits/, and the label
-selects which run under the results directory to read.  Pass --label to keep every figure in a rebuilt set
-reading the same run.
+    python -m analysis.paper.inference.make [names...] [--label L]
 """
-import subprocess
-import sys
-from pathlib import Path
-
-HERE = Path(__file__).resolve().parent
-ROOT = next(p for p in HERE.parents if (p / "adonis").is_dir())
-sys.path.insert(0, str(ROOT))
+from analysis.paper._driver import run
 
 FIGURES = {
-    "rates":   ("analysis.paper.inference.fig_rates", "main", lambda L: (L,)),
-    "closure": ("analysis.paper.inference.fig_closure_summary", "main", lambda L: (L, f"{L}_ens")),
-    "corner":  ("analysis.paper.inference.fig_corner_all", "main", lambda L: (L, L)),
+    "rates":   ("analysis.paper.inference.fig_rates", "main"),
+    "closure": ("analysis.paper.inference.fig_closure_summary", "main", lambda a: (a.label, f"{a.label}_ens")),
+    "corner":  ("analysis.paper.inference.fig_corner_all", "main", lambda a: (a.label, a.label)),
 }
 
 DEFAULT_LABEL = "sec4_P2"
 
 
-def _selected(names):
-    return list(FIGURES) if not names else [k for k in FIGURES if any(n in k for n in names)]
-
-
-def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    one = "--one" in argv
-    label = DEFAULT_LABEL
-    if "--label" in argv:
-        i = argv.index("--label")
-        label = argv[i + 1]
-        argv = argv[:i] + argv[i + 2:]
-    names = [a for a in argv if not a.startswith("--")]
-    keys = _selected(names)
-    if not keys:
-        raise SystemExit(f"[figures] no figure matches {names}; known: {sorted(FIGURES)}")
-
-    if one:
-        import importlib
-        from analysis.paper import style
-        style.use()
-        for k in keys:
-            mod, fn, args_of = FIGURES[k]
-            getattr(importlib.import_module(mod), fn)(*args_of(label))
-        return
-
-    ok = 0
-    for k in keys:
-        print(f"\n=== {k}  (label={label}) ===", flush=True)
-        cmd = [sys.executable, "-m", "analysis.paper.inference.make", "--one", "--label", label, k]
-        ok += subprocess.run(cmd, cwd=str(ROOT)).returncode == 0
-    print(f"\n{ok}/{len(keys)} figures built", flush=True)
-
-
 if __name__ == "__main__":
-    main()
+    run("analysis.paper.inference.make", FIGURES, label=DEFAULT_LABEL)

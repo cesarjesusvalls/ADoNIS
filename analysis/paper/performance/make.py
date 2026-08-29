@@ -1,4 +1,4 @@
-"""Entry point for the computational-performance figures.
+"""Computational-performance figures.
 
     python -m analysis.paper.performance.make                  # every figure
     python -m analysis.paper.performance.make minimizers       # only figures whose key contains this
@@ -17,62 +17,27 @@ semicolon-separated list of `Label=path`, or pass them after `generation`:
 A bank with no `stage_seconds` (pre-dates per-stage timing) is rejected rather than plotted as zero.
 """
 import os
-import subprocess
-import sys
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-ROOT = next(p for p in HERE.parents if (p / "adonis").is_dir())
-sys.path.insert(0, str(ROOT))
+from analysis.paper._driver import run
+
+
+def bank_specs(args):
+    """`Label=path` pairs for the generation figure, from the command line or the environment."""
+    return args.extra or [s for s in os.environ.get("ADONIS_PERF_BANKS", "").split(";") if s.strip()]
+
 
 FIGURES = {
-    "minimizers": "analysis.paper.performance.fig_minimizers",
-    "generation": "analysis.paper.performance.fig_generation",
+    "minimizers": ("analysis.paper.performance.fig_minimizers", "main", lambda a: ()),
+    "generation": ("analysis.paper.performance.fig_generation", "main",
+                   lambda a: tuple(bank_specs(a))),
 }
 
 
-def _selected(names):
-    return list(FIGURES) if not names else [k for k in FIGURES if any(n in k for n in names)]
-
-
-def _bank_specs(extra):
-    if extra:
-        return extra
-    env = os.environ.get("ADONIS_PERF_BANKS", "")
-    return [s for s in env.split(";") if s.strip()]
-
-
-def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    one = "--one" in argv
-    args = [a for a in argv if not a.startswith("--")]
-    names = [a for a in args if "=" not in a]
-    banks = [a for a in args if "=" in a]
-    keys = _selected(names)
-    if not keys:
-        raise SystemExit(f"[figures] no figure matches {names}; known: {sorted(FIGURES)}")
-
-    if one:
-        import importlib
-        from analysis.paper import style
-        style.use()
-        for k in keys:
-            mod = importlib.import_module(FIGURES[k])
-            mod.main(*(_bank_specs(banks) if k == "generation" else ()))
-        return
-
-    ok = 0
-    for k in keys:
-        spec = _bank_specs(banks) if k == "generation" else []
-        if k == "generation" and not spec:
-            print("  [skip generation] no bank directories given "
-                  "(pass 'Label=path' args or set ADONIS_PERF_BANKS)", flush=True)
-            continue
-        print(f"\n=== {k} ===", flush=True)
-        cmd = [sys.executable, "-m", "analysis.paper.performance.make", "--one", k, *spec]
-        ok += subprocess.run(cmd, cwd=str(ROOT)).returncode == 0
-    print(f"\n{ok} figures built", flush=True)
+def _skip(key, args):
+    if key == "generation" and not bank_specs(args):
+        return "no bank directories given (pass 'Label=path' args or set ADONIS_PERF_BANKS)"
+    return None
 
 
 if __name__ == "__main__":
-    main()
+    run("analysis.paper.performance.make", FIGURES, skip=_skip)
