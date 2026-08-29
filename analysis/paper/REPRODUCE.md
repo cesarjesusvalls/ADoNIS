@@ -45,13 +45,13 @@ comparing a rebuild against the published set without overwriting it.
 
 ```bash
 python -m analysis.campaign.gate1 --label smoke --fit-config configs/fits/smoke.yaml --max-chunks 4
-S4_GATE_NPZ=output/altgen/smoke.npz \
+S4_GATE_NPZ=output/results/smoke.npz \
     python -m analysis.campaign.run configs/fits/smoke.yaml --stage closure
 ```
 
 `configs/fits/smoke.yaml` is the full inference chain at the smallest size that still exercises it.
 Every stage below accepts it in place of the paper config. `S4_GATE_NPZ` selects which Jacobian the
-stages read; without it they take `output/altgen/multisample_carbon.npz`, the one the paper uses.
+stages read; without it they take `output/results/multisample_carbon.npz`, the one the paper uses.
 
 ---
 
@@ -119,7 +119,7 @@ python -m analysis.oracle_tools.combine "output/achilles/nu_T2K_C/*.npz" \
 python -m analysis.campaign.gate1 --label multisample_carbon
 ```
 
-Writes `output/altgen/multisample_carbon.npz`: the stacked per-bin Jacobian over all samples and
+Writes `output/results/multisample_carbon.npz`: the stacked per-bin Jacobian over all samples and
 beams, plus the Fisher matrix and the resulting σ_post/σ_prior per parameter.
 
 **The fit** — closure and the four uncertainty constructions.  One stage per command, all
@@ -150,7 +150,7 @@ runs out of room.
 python -m analysis.campaign.unfold_run configs/fits/sec5_unfold.yaml --label sec5f10
 ```
 
-Runs every study in the config and writes `output/altgen/sec5f10_unfold.npz`.
+Runs every study in the config and writes `output/results/sec5f10_unfold.npz`.
 
 ## 4. Figures
 

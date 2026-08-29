@@ -73,6 +73,6 @@ def test_package_reads_no_campaign_env(path):
 def test_package_names_no_study_point(path):
     """No module may hardcode a path into this paper's config or output tree."""
     src = path.read_text()
-    bad = [s for s in ("configs/fits/sec", "output/altgen") if s in src]
+    bad = [s for s in ("configs/fits/sec", "output/results", "output/altgen") if s in src]
     assert not bad, (f"{path.relative_to(PKG)} hardcodes {bad}. The package should take paths from "
                      "its caller; naming this campaign's files makes it unusable for another.")

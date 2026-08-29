@@ -15,7 +15,7 @@
 # with no keys is dropped as a column, and any dskey no group picks up is reported as `uncovered`, so
 # a newly added sample is never silently ignored.
 
-# The input npz under output/altgen/; an axis may override it with its own `npz:`.  It is the same
+# The input npz under output/results/; an axis may override it with its own `npz:`.  It is the same
 # multi-sample Jacobian the per-bin gradient figure uses, so the two show the same samples and signal
 # definitions: T2K, MINERvA, (e,e'), and the pi+/p/n beams.
 npz: multisample_carbon

@@ -13,13 +13,15 @@ import pathlib
 import numpy as np
 import pytest
 
+from analysis._cli import results_dir
+
 yaml = pytest.importorskip("yaml")
 
 from adonis.fit.config import FitConfig
 
 FIT_CFG = "configs/fits/sec4_P1.yaml"
 BEAMS_CFG = "configs/samples/beams.yaml"
-GATE_NPZ = pathlib.Path("output/altgen/multisample_carbon.npz")
+GATE_NPZ = results_dir() / "multisample_carbon.npz"
 
 
 @pytest.fixture(scope="module")
@@ -49,7 +51,7 @@ def test_beams_declared_once_and_only_once(cfg, beams):
     assert "SAMPLES = [" not in src, "the sample list is hardcoded again; it belongs in the fit config"
 
 
-@pytest.mark.skipif(not GATE_NPZ.exists(), reason="needs output/altgen/multisample_carbon.npz")
+@pytest.mark.skipif(not GATE_NPZ.exists(), reason="needs the Gate-I npz")
 def test_gate_jacobian_matches_the_fit_config(cfg, beams):
     """THE GUARDRAIL.  The committed Jacobian's dskeys must be exactly what the fit config declares:
     every observable of every sample, in config order, then the beam blocks, in config order.
@@ -71,7 +73,7 @@ def test_gate_jacobian_matches_the_fit_config(cfg, beams):
         f"  npz    {got}\n  config {want}")
 
 
-@pytest.mark.skipif(not GATE_NPZ.exists(), reason="needs output/altgen/multisample_carbon.npz")
+@pytest.mark.skipif(not GATE_NPZ.exists(), reason="needs the Gate-I npz")
 def test_beam_blocks_are_the_declared_width(cfg, beams):
     z = np.load(GATE_NPZ, allow_pickle=True)
     row0 = [int(x) for x in z["row0"]]
