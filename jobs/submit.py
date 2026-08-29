@@ -1,10 +1,8 @@
-"""Generic S3DF SLURM submitter for the ADoNIS reproduce pipeline (CPU productions).
+"""Submit an ADoNIS pipeline job to SLURM.
 
-Models LUCiD's s3df_jobs/submit_job.py, but for CPU jobs on the `milano` partition and wired to
-the ADoNIS `jobs/env.sh` so a batch job behaves exactly like the hand-verified smoke tests.
-
-The job body is: `source jobs/env.sh` (pins venv, ACHILLES_DATA, JAX float64, output root), then run
-the command you pass. Logs land in $ADONIS_LOGS/<name>_<timestamp>.log.
+The job body sources `jobs/env.sh`, so a batch job runs in the same environment as an interactive
+one. Logs land in $ADONIS_LOGS/<name>_<timestamp>.log.  Site values -- partition, account, paths --
+come from the site file env.sh selects; nothing here is specific to one cluster.
 
 Usage:
     python jobs/submit.py --name event_bank --time 08:00:00 --cpus 32 --mem 128G \
@@ -19,13 +17,14 @@ Without --submit it writes the script and prints the sbatch command (dry run).
 """
 import argparse
 import os
+import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
-ENV = "/sdf/data/neutrino/cjesus/ADoNIS/jobs/env.sh"
-JOBS = Path("/sdf/data/neutrino/cjesus/ADoNIS/jobs")
-LOGS = Path("/sdf/data/neutrino/cjesus/ADoNIS/logs")
+JOBS = Path(__file__).resolve().parent
+ENV = str(JOBS / "env.sh")
+LOGS = Path(os.environ.get("ADONIS_LOGS") or JOBS.parent / "logs")
 
 
 def parse_args():
@@ -35,9 +34,10 @@ def parse_args():
     p.add_argument("--time", default="08:00:00", help="wall time HH:MM:SS")
     p.add_argument("--cpus", type=int, default=32, help="cpus-per-task")
     p.add_argument("--mem", default="128G", help="memory (e.g. 128G)")
-    p.add_argument("--partition", default=None, help="override partition (else milano, or turing with --gpu)")
+    p.add_argument("--partition", default=None,
+                   help="override the partition the site file names")
     p.add_argument("--account", default=os.environ.get("ADONIS_SLURM_ACCOUNT", "neutrino:default"))
-    p.add_argument("--gpu", action="store_true", help="run on the GPU partition (turing) with a GPU (bank gen)")
+    p.add_argument("--gpu", action="store_true", help="run on the site's GPU partition, with a GPU")
     p.add_argument("--gres", default=None, help="SLURM generic resource, e.g. 'gpu:1' (implied by --gpu)")
     p.add_argument("--array", default=None, help="SLURM array spec, e.g. '0-7' or '0-47%8' (optional)")
     p.add_argument("--dependency", default=None,
@@ -56,8 +56,11 @@ def main():
     log = LOGS / f"{a.name}_{ts}_{arr}.log"
     array_line = f"#SBATCH --array={a.array}\n" if a.array else ""
     dep_line = f"#SBATCH --dependency={a.dependency}\n" if a.dependency else ""
-    part = a.partition or (os.environ.get("ADONIS_SLURM_GPU_PARTITION", "turing") if a.gpu
-                           else os.environ.get("ADONIS_SLURM_PARTITION", "milano"))
+    var = "ADONIS_SLURM_GPU_PARTITION" if a.gpu else "ADONIS_SLURM_PARTITION"
+    part = a.partition or os.environ.get(var)
+    if not part:
+        raise SystemExit(f"no partition: pass --partition, or set {var} in the site file "
+                         f"jobs/env.sh selects (ADONIS_SITE).")
     gres = a.gres or (os.environ.get("ADONIS_SLURM_GRES", "gpu:1") if a.gpu else None)
     gres_line = f"#SBATCH --gres={gres}\n" if gres else ""
 
@@ -95,6 +98,9 @@ exit $rc
     print(f"script: {script_file}")
     print(f"log:    {log}")
     if a.submit:
+        if shutil.which("sbatch") is None:
+            raise SystemExit("sbatch not found: this host has no SLURM. The script was written; run "
+                             "its command directly, or submit it where SLURM is available.")
         r = subprocess.run(["sbatch", str(script_file)], stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, universal_newlines=True)
         print((r.stdout or "").strip() or (r.stderr or "").strip())
