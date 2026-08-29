@@ -54,16 +54,21 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+_ENV_AT_START = dict(os.environ)
+
+
 @pytest.fixture(autouse=True)
 def _restore_environment():
     """Each test sees the environment the session started with.
 
-    Several modules pass values to each other through os.environ, so a test that generates a bank
-    leaves variables set that decide what a later test reads.  Without this the suite's result
-    depends on collection order: tests pass alone and fail in a full run.
+    Several modules pass values to each other through os.environ, so generating a bank leaves
+    variables set that decide what a later test reads.  The snapshot is taken when this file is
+    imported, which is before any test module: some of them generate at import, so a snapshot taken
+    per test would already contain the pollution.
     """
     import os
-    before = dict(os.environ)
+    os.environ.clear()
+    os.environ.update(_ENV_AT_START)
     yield
     os.environ.clear()
-    os.environ.update(before)
+    os.environ.update(_ENV_AT_START)
