@@ -22,8 +22,15 @@ STEP_SCALE = 1.0
 F_RESP = 0.3
 HUBER_C = 1.345
 
-t0 = time.time()
-def log(m): print(f"[{time.time()-t0:7.1f}s] {m}", flush=True)
+_t0 = None
+
+
+def log(m):
+    """Progress line, stamped from the first call rather than from import."""
+    global _t0
+    if _t0 is None:
+        _t0 = time.time()
+    print(f"[{time.time() - _t0:7.1f}s] {m}", flush=True)
 
 def parse_inject(s, nom):
     th = theta_nominal(nom)

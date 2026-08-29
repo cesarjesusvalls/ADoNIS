@@ -137,33 +137,3 @@ def beam_jacobian(beam, nbins=15, syst=0.05, log=print, max_chunks=None):
                          deps=[BEAM_DIRS[beam]],
                          params={"beam": beam, "nbins": nbins, "syst": syst, "max_chunks": max_chunks})
     return d["J"], d["sigma"], d["central"], d["edges"], d["n_tried"]
-
-
-
-def bank_sigma(beam, nbins, target="C", suffix=""):
-    import os
-    from adonis.workflow.generate_bank import load_bank as _load_bank
-    pattern = os.environ.get("ADONIS_BEAM_PATTERN", "output/beam_{beam}_{target}{suffix}")
-    path = pattern.format(beam=beam, target=target, suffix=suffix)
-    if suffix and not Path(path).is_dir():
-        path = pattern.format(beam=beam, target=target, suffix="")
-    B = _load_bank(path)
-    man = B["manifest"]
-    bank_sigma.last = (path, int(man.get("n_total", 0)))
-    p = np.asarray(B["beam_p"], float)
-    edges = np.linspace(man["pmin"], man["pmax"], nbins + 1)
-    idx = np.clip(np.digitize(p, edges) - 1, 0, nbins - 1)
-    ntry = np.bincount(idx, minlength=nbins).astype(float)
-    from adonis.workflow import records as REC
-    _fl = REC.derive_flags(B)
-    react = _fl["reacted"].astype(float)
-    second = _fl["absorbed"].astype(float) if man["species"] == "PION" \
-        else (np.asarray(B["n_pi_out"]) > 0).astype(float)
-    nr = np.bincount(idx, weights=react, minlength=nbins)
-    ns = np.bincount(idx, weights=second, minlength=nbins)
-    PIR2 = man["pir2_mb"]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        sr, ss = PIR2 * nr / ntry, PIR2 * ns / ntry
-        er = PIR2 * np.sqrt(nr * np.clip(1.0 - nr / ntry, 0.0, 1.0)) / ntry
-        es = PIR2 * np.sqrt(ns * np.clip(1.0 - ns / ntry, 0.0, 1.0)) / ntry
-    return edges, sr, ss, er, es

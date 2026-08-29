@@ -203,18 +203,17 @@ def render_panels(spec, show_ratio=True):
 def render_beam_sigma(spec, show_ratio=True):
     """pi+ nucleus absorption+reaction sigma(p), 2x2 curve blocks (nucleus rows, channel cols).
     show_ratio=False drops the per-block ACH/ADO ratio strip and writes to a *_noratio file."""
-    import os
     import matplotlib.pyplot as plt
     pp = _p(spec)
     BANK = pp.get("bank_pattern", "output/paper_banks_p4/beam_{beam}_{target}/merged")
-    os.environ.setdefault("ADONIS_BEAM_PATTERN", BANK)
-    from analysis.campaign.beams import bank_sigma as adonis_sigma
+    from adonis.workflow.beam_xsec import beam_cross_section
     from analysis.oracle_tools import beam_sigma as AB
     nbins = int(pp.get("nbins", 30)); BEAM = pp.get("beam", "pip")
 
     def reduce_nuc(nuc):
         def _b():
-            edges, sr, ss, er, es = adonis_sigma(BEAM, nbins, nuc)
+            edges, sr, ss, er, es = beam_cross_section(
+                ROOT / BANK.format(beam=BEAM, target=nuc), nbins)
             hr, hs, her, hes, _nr, _ns, _nt = AB.sigma_of_p(BEAM, edges, nuc)
             return dict(edges=edges, sr=sr, ss=ss, er=er, es=es, hr=hr, hs=hs, her=her, hes=hes)
         d = plotcache.cached(f"fig03_{BEAM}_{nuc}_n{nbins}", _b,
