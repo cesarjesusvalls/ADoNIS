@@ -318,9 +318,10 @@ _M_SHARED_NF, _M_SHARED_PI = M_P, M_PI0
 _SMIN0 = (M_MU + M_P + M_PI0) ** 2
 
 
-def _sample_shared(n, rng, flux, maxE):
+def _sample_shared(n, rng, flux, maxE, imp=None):
     """ONE shared phase-space point per draw, ACHILLES process[0]=(m_p,m_pi0) masses & Smin0,
     struck nucleon sampled FLAT (QESpectralMapper) with explicit J_had (no importance)."""
+    imp = imp or _imp_for(_default_sf('n'))
     u = rng.random((n, 10))
     mpi, mNf, Smin = _M_SHARED_PI, _M_SHARED_NF, _SMIN0
     minE = max((Smin - mNf ** 2) / (2 * mNf) / 1000.0, flux.min_energy)
@@ -377,7 +378,7 @@ def generate_faithful(n=20000, seed=0, return_events=False, sf_n=None, sf_p=None
              (2212, +1, 211, sf_p, n_proton, MASS_PDG_PROTON)]
     rng = np.random.default_rng(seed)
     flux = SpectrumFlux(); maxE = flux.max_energy
-    s = _sample_shared(n, rng, flux, maxE)
+    s = _sample_shared(n, rng, flux, maxE, imp=_imp_for(sf_n))
     v = s["valid"]; idx = np.where(v & (s["J"] > 0))[0]
     out = {}; w_tot = np.zeros(n)
     for (ipid, itiz, ppid, sf, ncount, hadmass) in group:
