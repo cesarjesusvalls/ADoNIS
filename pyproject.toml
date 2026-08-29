@@ -12,6 +12,7 @@ dependencies = [
     "jax>=0.6",
     "jaxlib>=0.6",
     "numpy",
+    "scipy",
     "PyYAML>=6.0",
     "tqdm",
 ]
@@ -20,6 +21,7 @@ dependencies = [
 # Needed only by specific modules; the generator, reweight, cascade and fit paths do not import them.
 plots = ["matplotlib"]          # adonis.workflow.plotting
 measurements = ["uproot"]       # adonis.measurements.t2k_stv (ROOT data releases)
+minuit = ["iminuit"]            # adonis.fit.minimizers, for the MIGRAD comparison
 dev = ["pytest>=7"]
 
 [project.scripts]
