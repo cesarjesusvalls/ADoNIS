@@ -11,6 +11,7 @@ failure is unreliable.
 """
 from __future__ import annotations
 
+from adonis.fit.device_plan import is_oom, memory_note
 from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
 import argparse, dataclasses, gc, sys, time
 import numpy as np
@@ -51,12 +52,7 @@ def main(argv=None):
         eng.prior = eng.prior * (FLAT_PRIOR_SCALE if cfg.fit.prior_scale == 0.0 else cfg.fit.prior_scale)
 
     def mem():
-        try:
-            m = jax.local_devices()[0].memory_stats()
-            return (f"{m['bytes_in_use']/2**30:.2f}/{m['bytes_limit']/2**30:.2f} GB in use, "
-                    f"peak {m['peak_bytes_in_use']/2**30:.2f} GB")
-        except Exception:
-            return "memory_stats unavailable"
+        return memory_note() or "memory_stats unavailable"
 
     stages = [s_.strip() for s_ in a.stages.split(",") if s_.strip()]
     ok, k, rows = [], None, []
@@ -88,8 +84,7 @@ def main(argv=None):
                 if st == "jac":
                     ok.append(B)
             except Exception as e:
-                s_ = str(e)
-                if "RESOURCE_EXHAUSTED" in s_ or "OUT_OF_MEMORY" in s_.upper():
+                if is_oom(e):
                     rows.append((B, st, False))
                     log(f"  batch {B:2d} {st:>9}: OOM  {mem()}")
                     log(f"  stopping: the CUDA context is unreliable after an OOM")

@@ -11,6 +11,7 @@ Usage:
 """
 from __future__ import annotations
 
+from adonis.fit.device_plan import is_oom, memory_note
 from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
 
 import argparse
@@ -118,15 +119,11 @@ def main(argv=None):
             kern = FitKernel(eng, subset, jac_batch=(a.jac_batch or n))
             kern.warmup()
         except Exception as e:
-            s_ = str(e)
-            if "RESOURCE_EXHAUSTED" in s_ or "OUT_OF_MEMORY" in s_.upper():
-                try:
-                    mm = jax.local_devices()[0].memory_stats()
-                    log(f"  device at failure: {mm['bytes_in_use']/2**30:.2f}/"
-                        f"{mm['bytes_limit']/2**30:.2f} GB in use, peak {mm['peak_bytes_in_use']/2**30:.2f} GB")
-                except Exception:
-                    pass
-                log(f"  XLA said:\n{s_}")
+            if is_oom(e):
+                note = memory_note()
+                if note:
+                    log(f"  at failure -- {note}")
+                log(f"  XLA said:\n{e}")
                 raise SystemExit(
                     f"device OOM building the n={n} jacobian at batch {a.jac_batch or n} "
                     f"(see the allocation breakdown above).")

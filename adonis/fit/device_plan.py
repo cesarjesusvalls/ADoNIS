@@ -59,6 +59,24 @@ def device_gb():
         return None
 
 
+def is_oom(exc):
+    """Whether `exc` is a device out-of-memory, in any of the spellings XLA raises it under."""
+    s = str(exc)
+    return ("RESOURCE_EXHAUSTED" in s or "OUT_OF_MEMORY" in s
+            or "out of memory" in s.lower() or "out-of-memory" in s.lower())
+
+
+def memory_note():
+    """One line of device occupancy, or None where the runtime does not report it."""
+    try:
+        import jax
+        m = jax.local_devices()[0].memory_stats()
+        return (f"device: {m['bytes_in_use'] / 2**30:.2f}/{m['bytes_limit'] / 2**30:.2f} GB in use, "
+                f"peak {m['peak_bytes_in_use'] / 2**30:.2f} GB")
+    except Exception:
+        return None
+
+
 def resolve(cfg, n_dials, n_events_max, log=print):
     """Return the memory plan {event_chunk, jac_batch, hvp_batch} for this device and problem.
 

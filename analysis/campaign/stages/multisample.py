@@ -37,6 +37,7 @@ import jax.numpy as jnp
 from adonis.reweight import bank_plot as BP, bank_reweight as BR
 from adonis.reweight.reweight_model import nominal_knobs
 from adonis.workflow import selection as SG
+from adonis.fit.device_plan import is_oom
 from adonis.fit import binning as IC
 from adonis.stats import fisher as _FI
 from adonis.stats.gaussian import bin_sigma as _bin_sigma
@@ -46,11 +47,6 @@ from analysis.campaign.beams import beam_model
 
 MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", str(results_dir() / "multisample_carbon.npz"))
 JAC_BATCH = int(os.environ.get("S4_JAC_BATCH", "16"))
-
-
-def _oom(e):
-    s = str(e)
-    return "RESOURCE_EXHAUSTED" in s or "out of memory" in s.lower() or "OUT_OF_MEMORY" in s
 
 
 def _batched_jac(subset, call, bin_cols):
@@ -68,7 +64,7 @@ def _batched_jac(subset, call, bin_cols):
                 cols += [bin_cols(g) for g in G]
             return cols
         except Exception as e:
-            if bs == 1 or not _oom(e):
+            if bs == 1 or not is_oom(e):
                 raise
             bs = max(1, bs // 2)
             print(f"[jac] device OOM at batch {bs * 2} -> retrying at {bs} "
