@@ -23,3 +23,6 @@ data/
 output
 output/
 _paper_release/
+
+# local working rules, not part of the repo
+CLAUDE.md
