@@ -1,10 +1,7 @@
 """No module may reference a global name that does not exist.
 
-adonis/measurements/t2k_stv.py::load_cc1pi multiplied by NB_PER_CM2 and A_CH, neither of which was
-defined in that module or anywhere else in the repo -- NB_PER_CM2 lived in adonis/workflow/data_overlay.py
-and A_CH had never existed at all.  The function raised NameError on any call, and nothing noticed
-because nothing had ever called it.  Import checks do not catch this: the names are resolved when the
-body runs, not when the module loads.
+A name resolved only when a function body runs is invisible to an import check: the module loads
+cleanly and fails at the call, which for an uncalled function means never.
 
 This walks each module's AST, collects the names a function body reads, and subtracts everything that
 could legitimately provide them (module globals, imports, builtins, enclosing scopes, parameters,
