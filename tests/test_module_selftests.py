@@ -4,7 +4,7 @@ vs ACHILLES) through the uniform contract on the base classes.
 
 These are the CI-facing gates -- they assert each module's own self-test passes,
 so the same checks run locally and in the cloud.  Statistics are deliberately
-modest; the full high-statistics comparison lives in scripts/validate_final_state.py.
+modest: these gate that each self-test runs and passes, not the physics precision.
 """
 import os
 import jax

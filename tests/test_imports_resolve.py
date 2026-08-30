@@ -1,10 +1,8 @@
 """Every `import` in the repo must name something that exists -- including the lazy ones.
 
-Moving adonis/reweight/tune.py to analysis/campaign/ left a `from adonis.reweight import tune as T`
-inside a function in bank_plot.py.  It survived three separate checks: a module-path rewrite that
-matched `adonis.reweight.tune` but not the `from X import Y` spelling, an import sweep that only
-imported modules (the broken import was never reached), and a compile pass (it is valid syntax).  The
-call raised ImportError, and only a caller would have found out.
+An import inside a function is invisible to the checks that would otherwise catch a moved module: a
+path rewrite matching `pkg.mod` does not match the `from pkg import mod` spelling, an import sweep
+never reaches it, and it compiles because the syntax is valid.  It fails only when called.
 
 Resolution here is by FINDER, not by execution: importlib.util.find_spec locates the module without
 running it, so a heavy module costs nothing and a module whose import has side effects has none.

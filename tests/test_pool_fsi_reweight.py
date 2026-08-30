@@ -1,6 +1,6 @@
 """Pool kind-1 FSI reweight (pool_fsi_reweight): nominal identity, autodiff==FD, backward-compat, and the
-GRANULAR pion knobs (s_piN_elastic / s_piN_cex / s_conv).  Synthetic representative records (no pool
-compile -> fast); the real pool record is gated separately by scripts/_pool_rec_check.py."""
+GRANULAR pion knobs (s_piN_elastic / s_piN_cex / s_conv).  Synthetic representative records, so no pool
+compile is needed."""
 import numpy as np
 import jax, jax.numpy as jnp
 from adonis.fsi.cascade import pool_fsi_reweight
