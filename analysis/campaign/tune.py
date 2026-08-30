@@ -208,8 +208,10 @@ def main():
     V = 2.0 * np.linalg.inv(H); sig = np.sqrt(np.diag(V)); corr = V[0, 1] / (sig[0] * sig[1])
     log(f"BFP: s_abs={bfp[0]:.4f}+/-{sig[0]:.4f}  s_scat={bfp[1]:.4f}+/-{sig[1]:.4f}  corr={corr:+.3f}  chi2/ndf={chi2_bf/(8-2):.2f}")
 
-    os.makedirs("/tmp/adonis_tune_runs", exist_ok=True)
-    npz = f"/tmp/adonis_tune_runs/datafit_{OBS}.npz"
+    from analysis._cli import results_dir
+    outdir = results_dir() / "tune"
+    outdir.mkdir(parents=True, exist_ok=True)
+    npz = str(outdir / f"datafit_{OBS}.npz")
     np.savez(npz, obs=OBS, A=A, data=np.asarray(DATA), derr=D_ERR, nom=nom, mb_traj=traj,
              bfp=bfp, sig=sig, V=V, chi2_nom=chi2_nom, chi2_bf=chi2_bf, edges=EDGES)
     log(f"history saved -> {npz}")
