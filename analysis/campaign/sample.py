@@ -42,8 +42,8 @@ def _cfg_h_bank(cfg):
     sample cannot borrow the T2K one -- it needs nu_MINERvA_H (NuMI)."""
     hb = getattr(getattr(cfg, "inputs", None), "h_bank", None)
     if hb is None:
-        return T2K_H_BANK
-    return hb[0] if isinstance(hb, (list, tuple)) else hb
+        return str(bank_path(T2K_H_BANK))
+    return str(bank_path(hb[0] if isinstance(hb, (list, tuple)) else hb))
 FREEH_KEYS = ("pn", "dptt", "dalphat", "tpi", "q2")
 
 
