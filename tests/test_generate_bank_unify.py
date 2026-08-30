@@ -72,11 +72,11 @@ def test_cc_schema():
 
 
 def test_em_schema():
-    """EM bank carries the (e,e') weight c + omega/theta + f_* + fs_*, NO hv_*; ground truth present."""
+    """EM bank carries the (e,e') weight c + omega/theta + f_* + fs_* + hv_*; ground truth present."""
     assert _FSI <= set(_EM), sorted(_FSI - set(_EM))
     assert _FS <= set(_EM), sorted(_FS - set(_EM))
     assert {"c", "omega", "theta"} <= set(_EM)
-    assert not any(k.startswith("hv_") for k in _EM), "EM bank must not carry hard-vertex amps2 records"
+    assert _HV <= set(_EM), sorted(_HV - set(_EM))
     assert set(np.unique(_EM["channel"])) == {0, 1}
     _check_ground_truth(_EM, wmax=2)
 
