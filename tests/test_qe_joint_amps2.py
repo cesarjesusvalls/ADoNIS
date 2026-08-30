@@ -118,7 +118,8 @@ _SINGLE = [("vector_strength", 1.2), ("axial_strength", 0.85), ("M_A_qe", 1.05),
 
 
 def test_single_knob_matches_legacy():
-    """Moving ONE knob: joint == the old per-knob reweight (the old code is exact single-axis -> no regression)."""
+    """Moving one knob, the joint reweight equals the per-knob one: the product form is exact on a
+    single axis, and only fails under simultaneous variation."""
     nom = nominal_knobs()
     for fld, val in _SINGLE:
         w_new = np.asarray(qe_reduced_reweight(_REC, nom._replace(**{fld: val})))

@@ -87,11 +87,8 @@ def test_repeated_values_do_not_break_rank_normalisation():
 
 
 def test_frozen_chain_has_no_effective_samples():
-    """A stuck chain carries no information: ESS must be ~0, never N, and must not depend on the value.
-
-    The old code returned m*n (perfect independence) for a constant chain, and which branch it took was
-    decided by FFT round-off: frozen at 3.14 -> ESS = N, frozen at 7.77 -> ESS = 8.
-    """
+    """A stuck chain carries no information: ESS must be ~0, never N, and must be the same whatever
+    constant the chain is stuck at."""
     for c in (0.0, 3.14, 7.77, -2.5):
         x = np.full((4, 4000), c)
         assert ess_basic(x) == 0.0, c

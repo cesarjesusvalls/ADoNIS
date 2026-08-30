@@ -85,8 +85,8 @@ def test_me_cross_section_refuses_unknown_probes_and_underspecified_nc():
 
 
 def test_me_cross_section_spin_avg_comes_from_the_probe_when_unset():
-    """The old default was 0.5 (CC's value) for every probe, so an EM caller that forgot spin_avg
-    silently got the CC average.  The probe now decides."""
+    """spin_avg must default to the calling probe's registry value, never a fixed literal, so a
+    caller that omits it cannot silently receive another probe's average."""
     from adonis.channels.currents.matrix_element import me_cross_section
     k = np.array([[1000.0, 0.0, 0.0, 1000.0]])
     kp = np.array([[900.0, 0.0, 100.0, 890.0]])

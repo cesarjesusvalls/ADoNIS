@@ -7,7 +7,7 @@ Each case below is one where a wrong figure is the alternative to an error:
   * a preempted shard, whose NaNs are indistinguishable from a genuinely undefined region.
 
 The checks are exercised on synthetic npz files: the real products predate stamping (that path is tested
-too, as the grandfather warning), and reproducing a corner shard means running the fit.
+too), and reproducing a corner shard means running the fit.
 """
 import numpy as np
 import pytest
@@ -97,7 +97,7 @@ def test_missing_rows_are_named_not_counted():
 
 
 def test_a_single_missing_row_still_fails():
-    """1/1681 nodes missing is 99.94% finite -- it passed the old >= 0.999 threshold."""
+    """A single missing grid row must fail the check, however small a fraction of the total it is."""
     rep = MG.Report("x")
     rep.rows([(0, 20)], grid=21)
     assert not rep.ok and "20" in rep.errors[0]
