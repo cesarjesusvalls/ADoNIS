@@ -36,7 +36,8 @@ def parse_args():
     p.add_argument("--mem", default="128G", help="memory (e.g. 128G)")
     p.add_argument("--partition", default=None,
                    help="override the partition the site file names")
-    p.add_argument("--account", default=os.environ.get("ADONIS_SLURM_ACCOUNT", "neutrino:default"))
+    p.add_argument("--account", default=None,
+                   help="override the account the site file names; omitted if neither is set")
     p.add_argument("--gpu", action="store_true", help="run on the site's GPU partition, with a GPU")
     p.add_argument("--gres", default=None, help="SLURM generic resource, e.g. 'gpu:1' (implied by --gpu)")
     p.add_argument("--array", default=None, help="SLURM array spec, e.g. '0-7' or '0-47%8' (optional)")
@@ -61,6 +62,8 @@ def main():
     if not part:
         raise SystemExit(f"no partition: pass --partition, or set {var} in the site file "
                          f"jobs/env.sh selects (ADONIS_SITE).")
+    acct = a.account or os.environ.get("ADONIS_SLURM_ACCOUNT")
+    acct_line = f"#SBATCH --account={acct}\n" if acct else ""
     gres = a.gres or (os.environ.get("ADONIS_SLURM_GRES", "gpu:1") if a.gpu else None)
     gres_line = f"#SBATCH --gres={gres}\n" if gres else ""
 
@@ -69,8 +72,7 @@ def main():
 #SBATCH --output={log}
 #SBATCH --error={log}
 #SBATCH --partition={part}
-#SBATCH --account={a.account}
-#SBATCH --nodes=1
+{acct_line}#SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task={a.cpus}
 #SBATCH --mem={a.mem}
