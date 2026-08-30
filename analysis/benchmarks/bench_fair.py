@@ -6,6 +6,10 @@ the live-bin mask are frozen from --ref rather than recomputed at each N.  Data 
 fitted dials plus per-bin Gaussian noise (one Asimov fit per cell is kept as a contrast).  Times are
 compared to a COMMON chi2/parameter-distance target, not to each method's native stopping rule.
 
+Iteration counts are not reproducible between runs on identical inputs: the fit crosses its
+convergence threshold at a slightly different step depending on where the arithmetic lands.  Compare
+these columns as distributions over repeats, never by equality between two runs.
+
 Usage:
     srun --jobid=<ID> --overlap python -m analysis.benchmarks.bench_fair --sig-cap 60000 --ndials 2,4,8,12,17
 """
