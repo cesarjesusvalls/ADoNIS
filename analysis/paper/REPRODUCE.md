@@ -55,14 +55,16 @@ comparing a rebuild against the published set without overwriting it.
 ### Check the installation
 
 ```bash
-python -m analysis.campaign.constrained --label smoke --fit-config configs/fits/smoke.yaml --max-chunks 4
-ADONIS_JACOBIAN_NPZ=output/results/smoke.npz \
+python -m analysis.campaign.constrained --label smoke_jacobian --fit-config configs/fits/smoke.yaml --max-chunks 4
+ADONIS_JACOBIAN_NPZ=output/results/smoke_jacobian.npz \
     python -m analysis.campaign.run configs/fits/smoke.yaml --stage closure
 ```
 
 `configs/fits/smoke.yaml` is the full inference chain at the smallest size that still exercises it.
 Every stage below accepts it in place of the paper config. `ADONIS_JACOBIAN_NPZ` selects which Jacobian the
 stages read; without it they take `output/results/multisample_carbon.npz`, the one the paper uses.
+Give it a label of its own: a stage writes `<results>/<fit name>.npz`, so a Jacobian sharing that
+name would be overwritten by the first fit that runs.
 
 ---
 

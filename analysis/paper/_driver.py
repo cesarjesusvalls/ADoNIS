@@ -72,3 +72,5 @@ def run(module, figures, label=None, flags=(), skip=None, argv=None):
         cmd = [sys.executable, "-m", module, "--one", k, *a.as_argv()]
         ok += subprocess.run(cmd, cwd=str(ROOT)).returncode == 0
     print(f"\n{ok}/{ran} figures built", flush=True)
+    if ok != ran:
+        raise SystemExit(f"{ran - ok} of {ran} figures failed")
