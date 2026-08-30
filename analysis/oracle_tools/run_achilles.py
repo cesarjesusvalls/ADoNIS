@@ -27,7 +27,7 @@ from pathlib import Path
 
 import yaml
 
-from adonis.io import achilles_data_root
+from adonis.io import achilles_data_root, achilles_flux_root
 
 
 OUT_DIR = "output/achilles"
@@ -106,7 +106,7 @@ def _apptainer_cmd(card_in_out, image, _native, entrypoint, out_abs):
                          f"  set ACHILLES_IMAGES to the directory holding achilles-*.sif, or pull it:\n"
                          f"    apptainer pull {sif} docker://{image}")
     data = achilles_data_root()
-    flux = Path(os.environ.get("ACHILLES_FLUX", str(data.parent / "achilles_flux")))
+    flux = achilles_flux_root()
     # ACHILLES writes these two beside its working directory, which is read-only in the image.
     out = Path(out_abs)
     binds = [f"{out}:/out", f"{data}:/achilles/data", f"{flux}:/achilles/flux"]

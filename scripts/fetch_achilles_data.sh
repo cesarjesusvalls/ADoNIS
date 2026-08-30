@@ -18,42 +18,40 @@ else
     exit 1
 fi
 
-FILES=(
-    "dcc_EW.dat"
-    "Spectral_Functions/pke12p_tot.data"
-    "Spectral_Functions/pke12n_tot.data"
-    "Spectral_Functions/pke40p_tot.data"
-    "Spectral_Functions/pke40n_tot.data"
-)
+mkdir -p "$DEST"
 
-mkdir -p "$DEST/Spectral_Functions" "$DEST/MesonBaryonAmplitudes" "$DEST/flux" "$DEST/configurations" "$DEST/densities"
-
+# Copy the data and flux trees whole: ADoNIS reads some of these tables directly and the ACHILLES
+# binary reads others (data/Rules.yml, data/Particles.yml, data/default/), and a selective list
+# drifts out of step with what a run needs.
 if [ "$RUNTIME" = docker ]; then
     docker pull "$IMAGE"
     cid=$(docker create "$IMAGE")
     trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
-    for f in "${FILES[@]}"; do
-        docker cp "$cid:/achilles/data/$f" "$DEST/$f"
-    done
-    docker cp "$cid:/achilles/data/MesonBaryonAmplitudes/ANL" "$DEST/MesonBaryonAmplitudes/ANL"
-    docker cp "$cid:/achilles/data/configurations" "$DEST/" 2>/dev/null || true
-    docker cp "$cid:/achilles/data/densities" "$DEST/" 2>/dev/null || true
-    for f in T2K_nu.dat minerva_numu_fhc.dat microboone_numu.dat; do
-        docker cp "$cid:/achilles/flux/$f" "$DEST/flux/$f" 2>/dev/null || true
-    done
+    docker cp "$cid:/achilles/data/." "$DEST/"
+    mkdir -p "$DEST/flux"
+    docker cp "$cid:/achilles/flux/." "$DEST/flux/"
 else
     sif="$DEST/.achilles-oracle.sif"
     apptainer pull --force "$sif" "docker://$IMAGE"
-    for f in "${FILES[@]}"; do
-        apptainer exec "$sif" cat "/achilles/data/$f" > "$DEST/$f"
-    done
-    apptainer exec "$sif" tar -C /achilles/data/MesonBaryonAmplitudes -cf - ANL | tar -C "$DEST/MesonBaryonAmplitudes" -xf -
-    for d in configurations densities; do
-        apptainer exec "$sif" tar -C /achilles/data -cf - "$d" 2>/dev/null | tar -C "$DEST" -xf - || true
-    done
-    for f in T2K_nu.dat minerva_numu_fhc.dat microboone_numu.dat; do
-        apptainer exec "$sif" cat "/achilles/flux/$f" > "$DEST/flux/$f" 2>/dev/null || rm -f "$DEST/flux/$f"
-    done
+    apptainer exec "$sif" tar -C /achilles/data -cf - . | tar -C "$DEST" -xf -
+    mkdir -p "$DEST/flux"
+    apptainer exec "$sif" tar -C /achilles/flux -cf - . | tar -C "$DEST/flux" -xf -
+fi
+
+# The MicroBooNE run cards read a flux table upstream does not ship; it is the YAML above in
+# ACHILLES' own format.
+python3 "$(dirname "$0")/microboone_flux_to_dat.py" \
+    "$DEST/flux/microboone_flux_numu.yaml" "$DEST/flux/microboone_numu.dat"
+
+missing=""
+for f in dcc_EW.dat Rules.yml Particles.yml Spectral_Functions/pke12p_tot.data \
+         MesonBaryonAmplitudes/ANL flux/T2K_nu.dat flux/minerva_numu_fhc.dat \
+         flux/microboone_numu.dat default/OptionDefaults.yml; do
+    [ -e "$DEST/$f" ] || missing="$missing $f"
+done
+if [ -n "$missing" ]; then
+    echo "error: these required files were not written:$missing" >&2
+    exit 1
 fi
 
 echo
