@@ -1,10 +1,9 @@
 """One sample layer: the constrained-set Jacobian and the sec4 engine must describe the same stack.
 
-The regression this guards is concrete.  The list of samples used to live in two places -- SAMPLES in
-the constrained-set builder and a literal list of _bank() calls in the sec4 engine -- and the sec4 engine
-asserts its dskeys against the npz constrained produced.  Adding the MINERvA CC1pi+ samples meant editing both
-in step; getting it wrong surfaces as an AssertionError several minutes into a GPU job, or (worse) as a
-Jacobian and a fit that quietly describe different data.
+The sample list exists in two places -- SAMPLES in the builder, and the _bank() calls in the engine --
+and the engine asserts its dskeys against the npz the builder produced.  They must be edited in step:
+a mismatch surfaces minutes into a GPU job, or, worse, as a Jacobian and a fit that describe
+different data.
 
 These tests run without banks: they compare declared structure, not computed numbers.
 """

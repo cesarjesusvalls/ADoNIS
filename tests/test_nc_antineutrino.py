@@ -1,8 +1,7 @@
 """P9/G9 -- antineutrino NC, and the oracle card-routing landmine.
 
-`lepton_current(..., anti=True)` has existed since before this work and **no production caller has
-ever passed it**, for ANY probe.  An implemented-but-ungated path is worse than a raise, because it
-looks available.  So: gate it.
+`lepton_current(..., anti=True)` has no production caller for any probe.  An implemented but
+unvalidated path is worse than a raise, because it looks available; it is therefore gated.
 
 What is NOT here, stated plainly rather than omitted: the nubar flux plumbing (`_PROBE_BEAMS` /
 a nubar spectrum table) and a nubar free-nucleon ACHILLES card.  Those are the rest of P9.  They

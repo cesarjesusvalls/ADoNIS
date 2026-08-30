@@ -1,10 +1,10 @@
 """A merge must refuse an incomplete or inconsistent shard set.
 
-Every failure below is one that previously produced a figure instead of an error:
+Each case below is one where a wrong figure is the alternative to an error:
 
-  * a missing row block -> the fine scan was dropped and the COARSE one silently drawn in its place;
-  * two campaigns under one label -> merged, because the axes agreed even though the estimator did not;
-  * a preempted shard -> its NaNs were indistinguishable from "this region is genuinely undefined".
+  * a missing row block, which would drop the fine scan and draw the coarse one in its place;
+  * two campaigns under one label, whose axes agree while their estimators do not;
+  * a preempted shard, whose NaNs are indistinguishable from a genuinely undefined region.
 
 The checks are exercised on synthetic npz files: the real products predate stamping (that path is tested
 too, as the grandfather warning), and reproducing a corner shard means running the fit.

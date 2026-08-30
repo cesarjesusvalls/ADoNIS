@@ -1,10 +1,8 @@
 """isotropic_two_body_cm reproduces the inline qe/ee two-body formula BIT-FOR-BIT.
 
-qe.py and ee.py used to inline the identical "form s, get pcm from Kallen, draw isotropic CM, boost"
-block; C9 extracted it to adonis.channels.twobody.  This pins that the extraction changed nothing: the
-helper's (k1, k2, pcm, sqrts, s, lam) equal the former inline computation exactly, for both the CC
-(mu, p) and EM (e, N) mass pairs.  (qe_nc's rest-frame variant is covered by the G6(2) free-nucleon
-sigma gate in test_nc_free_nucleon, not here.)
+The helper's (k1, k2, pcm, sqrts, s, lam) equal the explicit "form s, get pcm from Kallen, draw
+isotropic CM, boost" computation exactly, for both the CC (mu, p) and EM (e, N) mass pairs.  The
+rest-frame variant used by qe_nc is covered by the free-nucleon sigma gate, not here.
 """
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))

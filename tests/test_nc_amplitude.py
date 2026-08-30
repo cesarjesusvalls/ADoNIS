@@ -153,9 +153,9 @@ def test_norm_nc_over_norm_em_matches_the_value_registered_before_measurement():
 
 
 def test_nc_qe_demands_the_struck_nucleon_species():
-    """UPDATED when P6 landed: NC QE used to raise NotImplementedError, and now it works.  What the
-    test guards is unchanged -- the NC QE path must never silently produce a number it cannot
-    justify.  The NC couplings are PER NUCLEON (LeptonicCurrent.cc:97-115), unlike CC's single
+    """The NC QE path must never produce a number it cannot justify.
+
+    The NC couplings are per nucleon (LeptonicCurrent.cc:97-115), unlike CC's single
     isovector combination, so a caller who does not say which nucleon was struck gets an error
     rather than the proton's answer."""
     from adonis.channels.currents.dirac import hadron_current_qe_dirac

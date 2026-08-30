@@ -1,10 +1,8 @@
 """G1 -- no probe dispatch may fall through to CC.
 
-Four sites used to answer "not EM" with "then it is CC", so an unimplemented probe (`"NC"`) or a
-typo produced charged-current numbers with no error.  These tests pin that they resolve honestly.
-
-NC RES has since landed (P4/P5), so the NC assertions were UPDATED, never deleted -- they now read
-"NC produces NC".  The garbage-probe assertions are untouched, and NC QE still raises until P6.
+Answering "not EM" with "then it is CC" turns an unimplemented probe or a typo into charged-current
+numbers with no error.  Each dispatch site must name what it produces: NC RES produces NC, NC QE
+raises, and an unknown probe raises rather than defaulting.
 """
 import numpy as np
 import pytest
