@@ -1,7 +1,8 @@
 # T2K CC1pi+Np on a CH target (carbon + free hydrogen) -- the "non-pure target changes nothing" demo.
 # Identical to t2k_cc1pi.yaml except signal.target: CH, which adds the reweightable free-H
-# (nu_mu p -> mu- p pi+, RES-only) contribution -- central offset + its gradient -- to pn/dptt/dalphat,
-# streamed from the nu_T2K_H bank (delta_alphaT undefined for free-H -> uniform, NUISANCE prescription).
+# (nu_mu p -> mu- p pi+, RES-only) contribution -- central offset + its gradient -- to every
+# observable, streamed from the nu_T2K_H bank (delta_alphaT is undefined for free-H, so it is
+# drawn uniform, the NUISANCE prescription).
 render: multiobs
 name: t2k_cc1pi_ch
 inputs:

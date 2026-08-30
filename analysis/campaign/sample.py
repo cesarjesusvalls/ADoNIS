@@ -45,9 +45,6 @@ def _cfg_h_bank(cfg):
     if hb is None:
         return str(bank_path(T2K_H_BANK))
     return str(bank_path(hb[0] if isinstance(hb, (list, tuple)) else hb))
-FREEH_KEYS = ("pn", "dptt", "dalphat", "tpi", "q2")
-
-
 def _binidx(mask, vals, edges):
     """(sel_idx, binidx, nbin) for `vals` under boolean `mask`, overflow folded into the edge bins -- the
     binning convention every driver uses (clip to [edge0+eps, edgeN-eps] then digitize)."""
@@ -182,7 +179,7 @@ class AnaSample:
         J, row0, sumw, sumw2 = self._stream_grad(self.bank, self.cfg.signal, keys, edges_by, ctx,
                                                  max_chunks=max_chunks, log=log)
         if getattr(self.cfg.signal, "target", "carbon") == "CH":
-            fk = [k for k in keys if k in FREEH_KEYS]
+            fk = list(keys)
             if fk:
                 def _rand_daT(obs, n):
                     if "dalphat" in obs:
