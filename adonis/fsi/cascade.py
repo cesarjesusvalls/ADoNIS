@@ -1265,7 +1265,8 @@ def compact_fsi_record(rec):
         if cmax > K:
             raise ValueError(
                 f"FSI '{tag}' record overflow: max per-event steps = {cmax} exceeds the buffer cap K = {K} "
-                f"(rec_caps). Set rec_caps / ADONIS_REC_CAPS for this species above {cmax} (with margin).")
+                f"(rec_caps). Raise rec_caps for this species above {cmax}, or ADONIS_REC_MARGIN, which "
+                f"scales the caps the bank generator calibrates.")
         keep = _np.arange(K)[None, :] < c[:, None]
         out[f"{tag}_eidx"] = _np.repeat(_np.arange(len(c), dtype=_np.int32), c)
         for f in names:
