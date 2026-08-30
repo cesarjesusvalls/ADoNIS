@@ -37,3 +37,8 @@ jobs/generated/
 *.key
 id_rsa*
 .netrc
+
+# build artifacts
+build/
+dist/
+*.egg-info/
