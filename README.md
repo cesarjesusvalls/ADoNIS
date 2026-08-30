@@ -56,6 +56,10 @@ Generate a small bank and select a signal over it:
     python -m adonis.workflow.merge_bank \
         --parts output/banks/nu_T2K_C --out output/banks/nu_T2K_C/merged
 
+Generation first sizes its final-state-interaction buffers from a calibration pass over a fixed
+number of events, per channel.  For a bank this small that calibration, not the bank, is most of
+the work; it is a fixed cost that disappears at production sizes.
+
 The full inference chain at its smallest size, to check an installation end to end, is
 `configs/fits/minimal.yaml` -- see the reproduction instructions below.
 
