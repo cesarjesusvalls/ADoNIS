@@ -6,7 +6,7 @@ render: multiobs
 name: ee_omega
 probe: electron
 inputs:
-  adonis_bank: [output/beam_e_C_hv/merged]
+  adonis_bank: [beam_e_C_hv/merged]
   reference:   [output/achilles/fsrich/inclusive_ee_C_qe.npz, output/achilles/fsrich/inclusive_ee_C_res.npz]
 signal:
   beam_energy: 2222.0         # MeV

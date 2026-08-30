@@ -130,7 +130,7 @@ def _compute_ele(spec):
 
     def ado_for(bank):
         if bank not in ado_cache:
-            ado_cache[bank] = SG.ele_signal(_rel(bank), sd)
+            ado_cache[bank] = SG.ele_signal(str(bank_path(bank)), sd)
         return ado_cache[bank]
 
     def ref_for(refs):

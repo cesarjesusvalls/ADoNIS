@@ -4,7 +4,7 @@ render: panels
 compute: sliced
 name: fig11_uboone_nc1pi0_doublediff
 inputs:
-  adonis_bank: [output/nc_uBooNE_Ar/merged]
+  adonis_bank: [nc_uBooNE_Ar/merged]
   reference:   [output/achilles/fsrich/nc_uBooNE_Ar.npz]
 signal:
   pion_id: pi0
