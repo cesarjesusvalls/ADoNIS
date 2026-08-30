@@ -874,7 +874,7 @@ FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT, FATE_CAPTURE = 0, 1, 2, 3, 4
 _ORIG_PRIM_PI = 2
 _TRACK_OFFSET = 1000
 _DEFAULT_NW = 2048
-# Record layout for the cascade history: one row per interaction, not a flat buffer.
+# Default cascade-history layout when a caller passes no flat_rec: per-event slots.
 FLAT_FSI_REC = False
 _DEFAULT_QCAP = 64
 _HARD_STEPS = 100000
@@ -1335,7 +1335,8 @@ def _round_betamax(stk, wait, round_gt, betamax):
 
 def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_origin=-999,
                      rec_caps=None, log_cap=None, bg=None, q_cap=0,
-                     pending=None, n_w=None, per_event_cap=None, time_sync=False, step=0.04):
+                     pending=None, n_w=None, per_event_cap=None, time_sync=False, step=0.04,
+                     flat_rec=None):
     """POOLED engine loop: ONE fixed-size (W, M) particle stack stepped once per step; the in/out
     reconcile (pool_reconcile) runs inside the step.
       stepper(stack, key, state) -> (stack2 (W,M), terminal (W,M) bool, spawn (W,K), state2[, rec|seg])
@@ -1354,6 +1355,8 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     logger.  rec_caps and log_cap are mutually exclusive.
     Returns (out_batch, stack_overflow, out_overflow, prim_fate[, fsi_record | (log, counts, log_overflow)])."""
     with_rec = rec_caps is not None
+    # Flat: rec_caps is one budget for the batch.  Per-event: rec_caps is the budget per event.
+    flat_sel = FLAT_FSI_REC if flat_rec is None else flat_rec
     do_log = log_cap is not None
     Wprim = init["species"].shape[1]
     assert not (with_rec and do_log), "rec_caps and log_cap are mutually exclusive"
@@ -1439,7 +1442,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
             stack, _ = compact(init, M, sort_priority=True)
             wait0 = empty_batch(n, max(Q, 1))
         out0 = empty_batch(n, M_out)
-        rec0 = _empty_flat_fsi_record(Kp, Kn, n) if (with_rec and FLAT_FSI_REC) else _empty_fsi_record(n, Kp, Kn)
+        rec0 = _empty_flat_fsi_record(Kp, Kn, n) if (with_rec and flat_sel) else _empty_fsi_record(n, Kp, Kn)
         log0 = _logbuf(n); wptr0 = jnp.zeros(n, jnp.int32); logofl0 = jnp.int32(0)
         evt_id0 = jnp.arange(n, dtype=jnp.int32); nstep0 = jnp.zeros(n, jnp.int32)
 
@@ -1475,7 +1478,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
     Ntot = pending["stack"]["alive"].shape[0]
     W = min(int(n_w) if n_w else Ntot, Ntot); ar = jnp.arange(W)
     _NEVT = Ntot
-    _flat = with_rec and FLAT_FSI_REC
+    _flat = with_rec and flat_sel
     if Q > 0:
         _pfull, _ = compact(pending["stack"], M + Q, sort_priority=True)
         pstack = {k: v[:, :M] for k, v in _pfull.items()}
@@ -1573,7 +1576,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
 
 
 def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log_cap=None,
-                  n_w=0, q_cap=0, per_event_cap=None):
+                  n_w=0, q_cap=0, per_event_cap=None, flat_rec=None):
     """POOLED-engine realization of cascade_nucleus (QE + RES), mapping the flat (n,M_out) terminal
     buffer back to the rich (pterm, nterms, overflow, created) schema.
     log_cap=L: run the same cascade with the in-engine segment logger on and return (log, counts,
@@ -1616,12 +1619,12 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
         _o, _so, _oo, _pf, logtuple = run_cascade_pool(
             g0, stepper, knuc, su["consumed0"], M=1, max_steps=cfg.max_steps, M_out=24,
             prim_origin=prim_origin, log_cap=log_cap, pending=pend, n_w=nw, q_cap=q_cap,
-            per_event_cap=per_event_cap, time_sync=cfg.time_step, step=cfg.step)
+            per_event_cap=per_event_cap, time_sync=cfg.time_step, step=cfg.step, flat_rec=flat_rec)
         return logtuple
     stepper = make_pool_stepper(su, cfg, with_rec=rec_caps is not None)
     _rc = run_cascade_pool(g0, stepper, knuc, su["consumed0"], M=1, max_steps=cfg.max_steps,
                            M_out=24, prim_origin=prim_origin, rec_caps=rec_caps, pending=pend, n_w=nw,
-                           q_cap=q_cap, per_event_cap=per_event_cap, time_sync=cfg.time_step, step=cfg.step)
+                           q_cap=q_cap, per_event_cap=per_event_cap, time_sync=cfg.time_step, step=cfg.step, flat_rec=flat_rec)
     if rec_caps is not None:
         out, sofl, oofl, prim_fate, (fsi_rec, _rofl) = _rc
     else:
@@ -1659,7 +1662,7 @@ def _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=None, log
 
 def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, sabs=1.0, sscat=1.0,
                       channel="res", rec_caps=None, log_cap=None, n_w=None, q_cap=None, per_event_cap=None,
-                      su_external=None, return_fate=False):
+                      su_external=None, return_fate=False, flat_rec=None):
     """Faithful engine, shared by RES (CC1pi) and QE (CC0pi).
     channel="res": a primary pion segment (+ its top-K knockouts) then a nucleon BFS over {RES recoil,
                    pion knockouts}; pterm = the surviving pion.
@@ -1683,7 +1686,7 @@ def cascade_nucleus(p_pi, p_N, pid_pi, pid_Ni, Npid, cfg, key, sabs=1.0, sscat=1
         return _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, log_cap=log_cap,
                              n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
     res6 = _cascade_pool(channel, p_pi, p_N, Npid, su, cfg, knuc, n, rec_caps=rec_caps,
-                         n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap)
+                         n_w=nw_eff, q_cap=q_eff, per_event_cap=per_event_cap, flat_rec=flat_rec)
     base = res6[:5] if rec_caps is not None else res6[:4]
     return (base + (res6[5],)) if return_fate else base
 
@@ -1702,5 +1705,5 @@ def pool_cascade_config(**k):
 
 cascade_nucleus_jit = jax.jit(
     cascade_nucleus,
-    static_argnames=("cfg", "channel", "rec_caps", "log_cap", "n_w", "q_cap", "per_event_cap"),
+    static_argnames=("cfg", "channel", "rec_caps", "log_cap", "n_w", "q_cap", "per_event_cap", "flat_rec"),
 )

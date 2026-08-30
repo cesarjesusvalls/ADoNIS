@@ -80,7 +80,6 @@ def _generate_hardvertex(cfg, outdir, log, t0):
         set_default_flux(FLUX_FILES[cfg.flux])
     tgt = resolve_targets(cfg.material)[0][0]
     n_neutron = tgt.A - tgt.Z; n_proton = tgt.Z
-    CF.FLAT_FSI_REC = True
     _MARGIN = float(os.environ.get("ADONIS_REC_MARGIN", "1.5"))
     POOL = lambda **k: CF.pool_cascade_config(nucleus=tgt.density_p, density_n=tgt.density_n,
                                               configs=tgt.configs, **k)
@@ -160,7 +159,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                                   jnp.asarray(ev["ppid"]).astype(jnp.int32), jnp.asarray(ev["ipid"]).astype(jnp.int32),
                                   jnp.asarray(ev["Npid"]).astype(jnp.int32),
                                   POOL(seed=(2 if chan == "qe" else 1)), key, channel=chan,
-                                  rec_caps=caps, return_fate=True)
+                                  rec_caps=caps, return_fate=True, flat_rec=True)
 
     def cal_caps(gen, chan):
         """Size the flat FSI record from a calibration run, extrapolated to the chunk.
@@ -308,7 +307,7 @@ def _generate_hadron(cfg, outdir, log, t0):
         stepper = CF.make_pool_stepper(su, ccfg, with_rec=True)
         out, _sofl, _oofl, prim_fate, (rec, rofl) = CF.run_cascade_pool(
             g0, stepper, knuc, su["consumed0"], M=12, max_steps=2000, M_out=24,
-            prim_origin=CF._ORIG_PRIM_PI, rec_caps=(96 * _sc, 256 * _sc))
+            prim_origin=CF._ORIG_PRIM_PI, rec_caps=(96 * _sc, 256 * _sc), flat_rec=False)
         assert int(rofl) == 0, f"FSI record overflow in chunk {c}"
         log(f"chunk {c+1}/{n_chunks}: cascade done ({m:,} ev, {time.time()-t0:.0f}s)")
 
