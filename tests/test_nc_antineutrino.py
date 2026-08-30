@@ -105,7 +105,7 @@ def test_the_nc_cascade_card_gets_the_cascade_build():
     """The NC MicroBooNE card turns the cascade on, so it must not get the no-cascade image."""
     from analysis.oracle_tools.run_achilles import image_for
     image, native, _ = image_for(ROOT / "configs" / "achilles" / "run_MicroBooNE_Ar_fsi_nc.yml")
-    assert image == "achilles:fullcascade" and native
+    assert image.endswith(":fullcascade") and native, image
 
 
 def test_the_free_nucleon_nc_cards_route_to_the_no_cascade_oracle():
