@@ -7,7 +7,7 @@ leaves to apply.  A shard that did not store its normalisation has it read back 
 
 Fields that vary per event are concatenated; scalars are dropped, since they describe one shard.
 
-    python -m analysis.oracle_tools.combine "output/achilles/nu_T2K_C/*.fsrich.npz" \\
+    python -m analysis.oracle_tools.combine "output/achilles/nu_T2K_C/*.npz" \\
         output/achilles/fsrich/nu_T2K_C.npz
 """
 from __future__ import annotations
