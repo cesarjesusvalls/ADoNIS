@@ -12,7 +12,7 @@ each fit iteration is a pure reweight via pool_fsi_reweight.
 """
 import os, sys, time
 from pathlib import Path
-import numpy as np, uproot
+import numpy as np
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
@@ -24,6 +24,7 @@ NQE, NRES = 120000, 120000
 CONV = 1e-33 / 12.0 * 1000.0 * 1e38
 
 def _set_obs(obs="dpt"):
+    import uproot          # only this path reads a ROOT data release
     global OBS, EDGES, DATA, D_ERR, COV, COVINV, CONV, _obs
     assert obs in ("dpt", "dat"), obs
     OBS = obs

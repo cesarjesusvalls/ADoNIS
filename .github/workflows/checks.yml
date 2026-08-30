@@ -1,0 +1,51 @@
+name: checks
+
+# The gate on every push: structure, contracts and configuration.  It installs the package and
+# nothing else -- no container pull, no data tables, no event generation -- so it finishes in a
+# couple of minutes and costs almost nothing to run.  The physics suite is workflows/ci.yml.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - run: pip install -e ".[dev]"
+
+      - name: Package builds and installs on its own
+        run: |
+          pip install build
+          python -m build --wheel --outdir dist .
+          python -c "import zipfile,glob; z=zipfile.ZipFile(glob.glob('dist/*.whl')[0]); print(len(z.namelist()), 'files in the wheel')"
+
+      - name: Structure, contracts, configuration
+        env:
+          JAX_PLATFORMS: cpu
+          OMP_NUM_THREADS: "2"
+        run: |
+          python -m pytest -q --no-header \
+            tests/test_layering.py \
+            tests/test_import_cycles.py \
+            tests/test_undefined_names.py \
+            tests/test_declared_dependencies.py \
+            tests/test_imports_resolve.py \
+            tests/test_figure_output_dir.py \
+            tests/test_oracle_schema.py \
+            tests/test_shard_range.py \
+            tests/test_oom_predicate.py \
+            tests/test_fit_config.py \
+            tests/test_probe_naming.py \
+            tests/test_nc_selection.py \
+            tests/test_constant_duplication.py

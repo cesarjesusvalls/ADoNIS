@@ -1,10 +1,11 @@
 name: CI
 
 # The pytest suite, against ACHILLES tables extracted from the published reference image.
+# The physics suite: minutes-long, so it does not run on every push.  workflows/checks.yml is the
+# per-push gate.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
   workflow_dispatch:
 
 permissions:
