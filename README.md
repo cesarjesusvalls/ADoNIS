@@ -43,14 +43,21 @@ cascade, and the fits are practical without one at reduced statistics.
 
 ## Quick start
 
-Generate a small bank and fit it, end to end, in a few minutes:
+ADoNIS reads tabulated inputs that ship with the ACHILLES reference image:
 
-    python -m adonis.workflow.cli configs/gen/smoke.yaml
-    python -m analysis.campaign.run configs/fits/smoke.yaml --stage closure
+    scripts/fetch_achilles_data.sh
+    export ACHILLES_DATA=$PWD/achilles_data
+    export JAX_ENABLE_X64=1
 
-Gradients of a generated sample, directly:
+Generate a small bank and select a signal over it:
 
-    from adonis import Generator, DCCSinglePion, SpectralFunction, Monochromatic, PhysicsParams
+    python -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml \
+        --out output/banks/nu_T2K_C/part_0 --seed0 0 --n-per-seed 2000 --n-seeds 1
+    python -m adonis.workflow.merge_bank \
+        --parts output/banks/nu_T2K_C --out output/banks/nu_T2K_C/merged
+
+The full inference chain at its smallest size, to check an installation end to end, is
+`configs/fits/minimal.yaml` -- see the reproduction instructions below.
 
 ## Reproducing the paper
 

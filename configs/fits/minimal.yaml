@@ -2,7 +2,7 @@
 # Physics-identical to sec4_P2, scaled down: use it to check an installation end to end,
 # not to produce a result.
 
-name: smoke
+name: minimal
 
 samples: [t2k_cc0pi, t2k_cc1pi_ch, minerva_stv, minerva_ptpz, ee_omega,
           minerva_cc1pip_tpi, minerva_cc1pip_q2]

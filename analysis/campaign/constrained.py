@@ -3,7 +3,7 @@ FSI beam Jacobians.  A thin caller: composes the samples through analysis.campai
 and stacks the cached beam jvps; no selection/binning lives here.
 
     python -m analysis.campaign.constrained --label multisample_carbon
-    python -m analysis.campaign.constrained --label smoke --max-chunks 4
+    python -m analysis.campaign.constrained --label minimal --max-chunks 4
 
 Writes <results>/<label>.npz.  dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) plus the beam
 keys (pip_react, ...).
@@ -87,7 +87,7 @@ def main(argv=None):
     ap.add_argument("--fit-config", default="configs/fits/sec4_P1.yaml",
                     help="which config names the samples and beams")
     ap.add_argument("--max-chunks", type=int, default=None,
-                    help="cap the bank chunks per sample (a smoke run; default: the whole bank)")
+                    help="cap the bank chunks per sample (a minimal run; default: the whole bank)")
     a = ap.parse_args(argv)
     return build(fit_config=a.fit_config, max_chunks=a.max_chunks, out_label=a.label)
 

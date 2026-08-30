@@ -14,7 +14,7 @@ definition drives plot and gradient identically.  Shrinkage is invariant to a pe
 gradient uses scale = 1/binwidth; real display units are a .plot() concern.
 
 Memory: the Jacobian STREAMS the bank one chunk at a time (peak = one chunk); the same pass accumulates
-the nominal central + MC error, so J and sigma stay consistent and `max_chunks` gives a fast smoke run.
+the nominal central + MC error, so J and sigma stay consistent and `max_chunks` gives a fast minimal run.
 """
 import glob
 import os
