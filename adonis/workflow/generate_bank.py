@@ -165,12 +165,11 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     def cal_caps(gen, chan):
         """Size the flat FSI record from a calibration run, extrapolated to the chunk.
 
-        The per-event record count is heavy-tailed for a large nucleus, so a small calibration
-        sample scatters the estimate over a factor of two while the requirement itself is stable.
-        An undersized buffer aborts the generation, so the sample has to be large enough that the
-        estimate does not swing below the truth.
+        The calibration runs the cascade on a small sample and scales linearly to the chunk.  The
+        estimate is not conservative: an undersized buffer aborts the generation, and a larger
+        nucleus needs a larger ADONIS_REC_MARGIN than the default carries.
         """
-        ncal = min(CHUNK, int(os.environ.get("ADONIS_REC_NCAL", "1000")))
+        ncal = min(CHUNK, int(os.environ.get("ADONIS_REC_NCAL", "100")))
         ev = gen(ncal, SEED0); rec = cascade(ev, jax.random.PRNGKey(7), (8, 8), chan)[4]
         scale = CHUNK / ncal * _MARGIN
         t = max(max(64, math.ceil(int(rec["gc_p"]) * scale)), max(64, math.ceil(int(rec["gc_n"]) * scale)))
