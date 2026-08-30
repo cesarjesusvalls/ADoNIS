@@ -40,19 +40,8 @@ IGM1_LIST = (-1, 0, 1, 2)
 LAM_LIST = (-1, 1)
 ISF_LIST = (-1, 1)
 
-DBG = {
-    "pion_pole": 1.0,
-    "axial_z": 1.0,
-    "axial_time": 1.0,
-    "vec_cc_z": 1.0,
-    "idxp_start": 1,
-    "axial_sign": -1.0,
-}
-import os as _os
-for _k in list(DBG):
-    _v = _os.environ.get("ADONIS_DBG_" + _k.upper())
-    if _v is not None:
-        DBG[_k] = float(_v) if ("." in _v or "e" in _v.lower()) else int(_v)
+# Sign of the axial block relative to the vector block (amp_dcc_sl.f).
+AXIAL_SIGN = -1.0
 
 
 def pw_phase(two_J, two_L):
@@ -83,20 +72,17 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
     zmtx = jnp.zeros((8, npw), dtype=jnp.complex128)
 
     if mode < 10:
-        a = DBG["axial_sign"] * axial
+        a = AXIAL_SIGN * axial
         if r_axial is not None:
             a = a * jnp.asarray(r_axial)
-        _ax_scale = {(0, 5): 1.0, (1, 4): 1.0,
-                     (2, 3): DBG["axial_time"], (6, 7): DBG["axial_z"]}
-        keep_idxp1 = jnp.asarray([0.0 if (DBG["idxp_start"] and int(two_J[i]) == 1) else 1.0
-                                  for i in range(npw)])
+        # J=1/2 partial waves start at idxp=2, so their idx=0 axial component is absent.
+        keep_idxp1 = jnp.asarray([0.0 if int(two_J[i]) == 1 else 1.0 for i in range(npw)])
         for src, dst in ((0, 5), (1, 4), (2, 3), (6, 7)):
-            sc = _ax_scale[(src, dst)]
             av = a[src] * keep_idxp1 if (src, dst) == (0, 5) else a[src]
-            zmtx = zmtx.at[src].set(av * sc)
-            zmtx = zmtx.at[dst].set(av * pha * sc)
+            zmtx = zmtx.at[src].set(av)
+            zmtx = zmtx.at[dst].set(av * pha)
         if mode > 0:
-            facpp = DBG["pion_pole"] / (-Q2 - m_pi ** 2)
+            facpp = 1.0 / (-Q2 - m_pi ** 2)
             zp = (qc0 * zmtx[2] - qc * zmtx[6]) * facpp
             zm = (qc0 * zmtx[3] - qc * zmtx[7]) * facpp
             zmtx = zmtx.at[2].add(-qc0 * zp)
@@ -112,7 +98,7 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
             src_block = -isv
         else:
             src_block = vec
-        idxp_start = 2 if (DBG["idxp_start"] and int(two_J[ipw]) == 1) else 1
+        idxp_start = 2 if int(two_J[ipw]) == 1 else 1
         for idxp, (src, dst) in enumerate(((0, 5), (1, 4), (2, 3)), start=1):
             if idxp < idxp_start:
                 continue
@@ -120,8 +106,8 @@ def build_zmtx(vec, isv, axial, W, Q2, two_J, two_L, two_I, *, mode, itiz,
             zmtx = zmtx.at[src, ipw].add(vz)
             zmtx = zmtx.at[dst, ipw].add(vz * phv[ipw])
             if idxp == 3:
-                zmtx = zmtx.at[6, ipw].add(vz * xxx * DBG["vec_cc_z"])
-                zmtx = zmtx.at[7, ipw].add(vz * xxx * phv[ipw] * DBG["vec_cc_z"])
+                zmtx = zmtx.at[6, ipw].add(vz * xxx)
+                zmtx = zmtx.at[7, ipw].add(vz * xxx * phv[ipw])
     return zmtx
 
 

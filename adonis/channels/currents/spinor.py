@@ -30,9 +30,6 @@ METRIC = np.array([1.0, -1.0, -1.0, -1.0])
 GAMMA_J = jnp.asarray(GAMMA); GAMMA5_J = jnp.asarray(GAMMA5)
 PL_J = jnp.asarray(PL); PR_J = jnp.asarray(PR)
 
-import os as _os
-FORCE_MASSLESS = _os.environ.get("ADONIS_MASSLESS_LEPTON", "0") not in ("0", "", "false", "False")
-
 
 def sigma_munu(mu, nu):
     """sigma^{mu nu} = (i/2)[gamma^mu, gamma^nu], the hardcoded matrices of Spinor.cc:89-112."""
@@ -92,7 +89,7 @@ def spinor(type_, bar, hel, mom, ms=1):
     omp = jnp.sqrt((mom[..., 0] + phE) / (2.0 * phE))
     omm = jnp.sqrt((mom[..., 0] - phE) / (2.0 * phE))
     r = 0 if mode else 2
-    nz = (jnp.abs(m2) > 1e-8) & (not FORCE_MASSLESS)
+    nz = jnp.abs(m2) > 1e-8
     new_r0 = sgn * omm * u[2 - r]; new_r1 = sgn * omm * u[3 - r]
     u_2r = u[2 - r] * omp; u_3r = u[3 - r] * omp
     out = list(u)

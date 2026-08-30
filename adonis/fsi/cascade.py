@@ -11,7 +11,6 @@ cascade_nucleus (eager core) and cascade_nucleus_jit (jitted). Config: CascadeCo
 """
 from __future__ import annotations
 
-import os
 import gzip
 from dataclasses import dataclass, field
 from functools import partial
@@ -875,7 +874,8 @@ FATE_NONE, FATE_ESCAPE, FATE_ABSORB, FATE_CONVERT, FATE_CAPTURE = 0, 1, 2, 3, 4
 _ORIG_PRIM_PI = 2
 _TRACK_OFFSET = 1000
 _DEFAULT_NW = 2048
-FLAT_FSI_REC = os.environ.get("ADONIS_FLAT_FSI", "0") != "0"
+# Record layout for the cascade history: one row per interaction, not a flat buffer.
+FLAT_FSI_REC = False
 _DEFAULT_QCAP = 64
 _HARD_STEPS = 100000
 
@@ -1373,7 +1373,7 @@ def run_cascade_pool(init, stepper, key, state0, M, max_steps, M_out=24, prim_or
         maths regardless of refill mode.  time_sync: ACHILLES AdaptiveStep per-event dt = step/beta_max."""
         if time_sync:
             round_gt, betamax = _round_betamax(stk, wait, round_gt, betamax)
-            dt_evt = jnp.full_like(betamax, step) if os.environ.get("ADONIS_DECOUPLED") == "1" else step / betamax
+            dt_evt = step / betamax
         else:
             dt_evt = None
         if bg_w is not None:

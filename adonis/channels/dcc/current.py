@@ -303,15 +303,8 @@ def exclusive_amps2_batch(k_nu, k_lep, p_struck, p_outN, p_pi, itiz, hPID, tcrz=
         return dict(zj=zjs, L=L, gate=gate, Q2=Q2, norm=_norm)
 
     zjx = _zmtx_to_zjx(zmtx, *ang)
-    import os as _os
-    if _os.environ.get("ADONIS_CONTRACT_FRAME", "lab") == "cm":
-        xlrs = boost_matrix_batch(pcm, to_cm=True)
-        knu_c = np.einsum('nmk,nk->nm', xlrs, k_nu); kmu_c = np.einsum('nmk,nk->nm', xlrs, k_lep)
-        zj = zjx.reshape(N, 4, 4)
-        L = np.asarray(lepton_current(jnp.asarray(knu_c), jnp.asarray(kmu_c), kind=_lep_kind))
-    else:
-        zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)
-        L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_lep), kind=_lep_kind))
+    zj = np.einsum('nmk,nabk->nabm', xlr, zjx).reshape(N, 4, 4)
+    L = np.asarray(lepton_current(jnp.asarray(k_nu), jnp.asarray(k_lep), kind=_lep_kind))
     if return_zj:
         return zj
     LH = np.einsum('ncm,nbm,m->ncb', L, zj, _METRIC)

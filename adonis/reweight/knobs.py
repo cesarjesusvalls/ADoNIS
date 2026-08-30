@@ -72,14 +72,8 @@ def _base(name):
     return name.split("[", 1)[0]
 
 
-from adonis.constants import EB_MIRROR
-_MIRRORED = {"Eb_shift"} if EB_MIRROR else set()
-
-
 def phys_lo(name):
     """Smallest value a dial may take, offset off the clamp by FLOOR_EPS.  None if unbounded below."""
-    if _base(name) in _MIRRORED:
-        return None
     b = PHYS_BOUND.get(_base(name))
     return None if b is None or b[0] is None else b[0] + FLOOR_EPS
 

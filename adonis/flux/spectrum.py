@@ -11,7 +11,6 @@ J_beam (the event.Weight() beam factor) = (delta * m_flux(E_GeV)) / flux_integra
 """
 from __future__ import annotations
 
-import os as _os
 from pathlib import Path
 import numpy as np
 
@@ -125,7 +124,7 @@ class SpectrumFlux:
 
         Sampling from the nominal (frozen) flux keeps the kind-1 contract: flux gradients would be
         recovered by an extra smooth per-event factor f_theta(E)/f_nom(E) (not applied here).
-        mode=None resolves to the module-level BEAM_MODE toggle."""
+        mode=None resolves to BEAM_MODE."""
         mode = mode or BEAM_MODE
         u = np.atleast_1d(np.asarray(u, float))
         maxE = self.max_energy
@@ -149,4 +148,4 @@ class SpectrumFlux:
         return E, J
 
 
-BEAM_MODE = _os.environ.get("ADONIS_BEAM_MODE", "is")
+BEAM_MODE = "is"

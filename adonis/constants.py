@@ -73,7 +73,3 @@ PDG_CHARGED_LEPTONS = frozenset({11, 13, -11, -13})
 PDG_PIONS = frozenset({111, 211, -211})
 PDG_NUCLEONS = frozenset({2112, 2212})
 PDG_MESONS = frozenset({111, 211, -211, 221, 130, 310, 311, 321, -321, -311})
-
-
-import os as _os
-EB_MIRROR = _os.environ.get("ADONIS_EB_MIRROR", "") == "1"
