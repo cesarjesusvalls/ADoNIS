@@ -238,7 +238,7 @@ DSKEY_COMPACT = {"t2k_cc0pi:dpt": "CC0$\\pi$ $\\delta p_T$", "t2k_cc0pi:dalphat"
            "t2k_cc0pi:pmu": "CC0$\\pi$ $p_\\mu$", "t2k_cc0pi:cos_mu": "CC0$\\pi$ $\\cos\\theta_\\mu$",
            "t2k_cc1pi_ch:pn": "CC1$\\pi$ $p_N$", "t2k_cc1pi_ch:dptt": "CC1$\\pi$ $\\delta p_{TT}$",
            "t2k_cc1pi_ch:dalphat": "CC1$\\pi$ $\\delta\\alpha_T$",
-           "minerva_stv:dalphat": "CC0$\\pi$ $\\delta\\alpha_T$", "minerva_stv:pn": "CC0$\\pi$ $p_n$",
+           "minerva_stv:dalphat": "CC0$\\pi$ $\\delta\\alpha_T$", "minerva_stv:pn": "CC0$\\pi$ $p_N$",
            "minerva_stv:dpt": "CC0$\\pi$ $\\delta p_T$",
            "minerva_ptpz:pt": "incl. $p_T^\\mu$", "minerva_ptpz:pz": "incl. $p_\\parallel^\\mu$",
            "minerva_cc1pip_tpi:tpi": "CC1$\\pi^+$ $T_\\pi$",
