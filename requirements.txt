@@ -1,7 +1,0 @@
-jax>=0.6
-jaxlib>=0.6
-numpy
-matplotlib
-PyYAML>=6.0
-tqdm
-pytest>=7

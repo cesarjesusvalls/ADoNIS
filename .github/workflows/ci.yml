@@ -1,14 +1,10 @@
 name: CI
 
-# Fast PR/push gate: the pytest suite (per-module closure + self-consistency + reweight
-# gates).  The ACHILLES data tables (DCC amplitudes + spectral function) are extracted from
-# the published oracle image so the cross-section building blocks match ACHILLES reference
-# dumps.  (The ADoNIS-vs-ACHILLES high-statistics oracle gates + reproduce scripts were
-# retired; that validation lives in the analysis/paper pipeline.)
-
-# push trigger disabled 2026-06-12 (was failing on every push; not a priority) --
-# run manually from the Actions tab when needed.
+# The pytest suite, against ACHILLES tables extracted from the published reference image.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -38,9 +34,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: pyproject.toml
 
-      - run: pip install -r requirements.txt
+      - run: pip install -e ".[plots,dev]"
 
       - name: Cache ACHILLES data tables
         id: dcache
@@ -51,19 +47,7 @@ jobs:
 
       - name: Extract ACHILLES data tables from image
         if: steps.dcache.outputs.cache-hit != 'true'
-        run: |
-          docker pull "$IMAGE"
-          cid=$(docker create "$IMAGE")
-          mkdir -p achilles_data/Spectral_Functions
-          docker cp "$cid:/achilles/data/dcc_EW.dat" achilles_data/dcc_EW.dat
-          docker cp "$cid:/achilles/data/Spectral_Functions/pke12p_tot.data" achilles_data/Spectral_Functions/pke12p_tot.data
-          docker cp "$cid:/achilles/data/Spectral_Functions/pke40p_tot.data" achilles_data/Spectral_Functions/pke40p_tot.data
-          docker cp "$cid:/achilles/data/Spectral_Functions/pke40n_tot.data" achilles_data/Spectral_Functions/pke40n_tot.data
-          mkdir -p achilles_data/MesonBaryonAmplitudes
-          docker cp "$cid:/achilles/data/MesonBaryonAmplitudes/ANL" \
-                    achilles_data/MesonBaryonAmplitudes/ANL
-          docker rm "$cid"
-          ls -la achilles_data achilles_data/Spectral_Functions
+        run: scripts/fetch_achilles_data.sh "$ACHILLES_DATA"
 
       - name: Runner resources (diagnostic)
         run: |
