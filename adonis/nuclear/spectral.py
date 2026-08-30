@@ -19,7 +19,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.io import achilles_data_root, achilles_sibling_root
+from adonis.io import achilles_data_root, achilles_sibling_root, checkout_path
 from adonis.nuclear.base import NuclearModel
 
 from adonis.channels import constants as C
