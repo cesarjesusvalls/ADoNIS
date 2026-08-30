@@ -12,7 +12,7 @@ The uppercase aliases (``M_P``, ``MQE``, ``M_PI``, ``W_THR``, ...) serve the
 differentiable DCC path (hard cuts from ``currents_pi_dcc.f90``).
 ``adonis/channels/constants.py`` re-exports the lowercase family.
 Mass-convention ROLES (which mass plays which part in RES) live in
-``adonis/primary/dcc/conventions.py``, not here.
+``adonis/channels/dcc/conventions.py``, not here.
 """
 import numpy as np
 

@@ -1,4 +1,4 @@
-"""Gate for the GiBUU N N -> N Delta production core (adonis/fsi/mb/nn_delta.py) -- the heart
+"""Gate for the GiBUU N N -> N Delta production core  -- the heart
 of the Propagating-Resonances mode / paper Fig 14.  Exact port of ResonanceHelper.cc; here we
 gate the Delta effective width (= the pole width at the pole) and the production cross section's
 physical shape (rises from the N+Delta threshold through the Delta region).

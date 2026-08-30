@@ -1,4 +1,4 @@
-"""Gate for the DCC meson-baryon cascade cross sections (adonis/fsi/mb/meson_baryon_xsec.py) -- the
+"""Gate for the DCC meson-baryon cascade cross sections (adonis/fsi/interactions/meson_baryon_xsec.py) -- the
 piN sigma(W) per charge channel the ACHILLES Virtual-Resonances cascade scatters through
 (= Phase E ANL-Osaka amplitudes).  These must be sharply Delta-peaked (the resonance shape),
 carry the right charge-exchange structure, and agree with the standalone Phase-E channel

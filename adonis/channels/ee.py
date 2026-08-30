@@ -5,7 +5,7 @@ driver (adonis/channels/qe.py) with three changes for the electromagnetic probe:
   1. BEAM        : monochromatic e- beam at fixed E, so J_beam = 1 (no flux weight).
   2. PROBE       : me_cross_section(probe="EM", is_proton=...) -> photon leptonic current + the struck
                    nucleon's OWN vector form factors (no axial), spin_avg = 1/4 (2 e- helicities x 2
-                   nucleon spins).  See adonis/channels/dirac.py probe="EM".
+                   nucleon spins).  See adonis/channels/currents/dirac.py probe="EM".
   3. BOTH SPECIES: protons AND neutrons are struck incoherently (CC QE hits neutrons only), each
                    weighted by its target count (Z protons, N neutrons) and its own spectral function.
 
