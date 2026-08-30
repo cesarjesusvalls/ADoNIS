@@ -49,7 +49,9 @@ def _grad_fd(setk, v0, ibin=None):
         h = _hist(setk(v))
         return h[ibin] if ibin is not None else jnp.sum(h)
     g_ad = float(jax.grad(f)(v0))
-    eps = 1e-4
+    # Differencing a histogram is cancellation-limited, so the error grows as the step shrinks:
+    # a step this large is what makes the finite difference the accurate side of the comparison.
+    eps = 1e-2
     g_fd = (float(f(v0 + eps)) - float(f(v0 - eps))) / (2 * eps)
     return g_ad, g_fd
 
