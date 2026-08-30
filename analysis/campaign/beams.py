@@ -7,9 +7,10 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 
-_BANKS = ""
+from adonis.io import bank_path
+
 BEAM_DIRS = {"pip": "beam_pip_C/merged", "prot": "beam_prot_C/merged",
-             "neut": f"{_BANKS}/beam_neut_C/merged"}
+             "neut": "beam_neut_C/merged"}
 BEAM_LABEL = {"pip": "$\\pi^+$–C", "prot": "p–C", "neut": "n–C"}
 
 
@@ -32,7 +33,7 @@ def beam_model(beam, nbins=15, syst=0.05, log=print, max_chunks=None, cap=None):
     from adonis.stats import fisher as FE
     from adonis.stats.gaussian import bin_sigma as _bin_sigma
 
-    B = _load_bank(BEAM_DIRS[beam], max_chunks=max_chunks)
+    B = _load_bank(str(bank_path(BEAM_DIRS[beam])), max_chunks=max_chunks)
     man = B["manifest"]
     nom = nominal_knobs()
     p = np.asarray(B["beam_p"], float)
