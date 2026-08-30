@@ -10,7 +10,7 @@ on:
         default: "AchillesGen/Achilles"
       achilles_ref:
         description: "commit, tag or branch to build"
-        default: "main"
+        default: "91b5ea5adfe13a83a30b6365664053af11414dbc"
       push:
         description: "push to ghcr.io (otherwise build only)"
         type: boolean

@@ -52,6 +52,14 @@ for tag in oracle cascade fullcascade; do
 done
 ```
 
+A tag can be republished. To pull exactly what the paper ran, name the digest instead of the tag,
+taking each one from `configs/achilles/images.yaml`:
+
+```bash
+apptainer pull images/achilles-cascade.sif \
+    docker://ghcr.io/cesarjesusvalls/achilles@sha256:<digest from images.yaml>
+```
+
 Only the figures with final-state interactions need the two cascade images.  They are built by
 `.github/workflows/images.yml` from upstream ACHILLES, with one build-time change: upstream's
 standalone `achilles-cascade` does not link the interaction library, so the cascade has no
