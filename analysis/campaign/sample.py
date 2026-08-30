@@ -31,6 +31,7 @@ from adonis.workflow.config import load_analysis_config, EleBeamSignalDef
 from adonis.workflow import selection as SG
 from adonis.reweight import knobs as K
 
+from adonis.io import bank_path
 from analysis._cli import results_dir
 T2K_H_BANK = "nu_T2K_H/merged"
 
@@ -87,7 +88,6 @@ class AnaSample:
 
     @property
     def bank(self):
-        from adonis.io import bank_path
         return str(bank_path(self.cfg.inputs["adonis_bank"][0]))
 
     @property
