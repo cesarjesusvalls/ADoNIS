@@ -1,4 +1,4 @@
-"""G2 -- probe names are honest, everywhere, permanently.
+"""probe names are honest, everywhere, permanently.
 
 Two bug classes are pinned dead here:
 
@@ -75,7 +75,7 @@ def test_gen_config_default_probe_is_cc():
 
 
 def test_manifest_probe_equals_config_probe():
-    """THE structural fix.  Reads the literal source of the manifest dicts rather than generating a
+    """The manifest must not disagree with the config that wrote it.  Reads the literal source of the manifest dicts rather than generating a
     bank (minutes of GPU): every `probe=` in a MANIFEST construction must be `cfg.probe`.  The one
     legitimate probe= LITERAL is build_hv_sf(..., probe="EM"): the (e,e') hard-vertex records are the EM
     records by construction, independent of any config, so that call line is excluded from the scan."""

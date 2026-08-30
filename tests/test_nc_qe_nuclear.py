@@ -39,7 +39,7 @@ def test_theta_acc_cut_on_invisible_neutrino_is_refused():
 
 @pytest.mark.slow
 def test_nuclear_nc_qe_absolute_sigma_matches_achilles():
-    """G6-nuclear: flux-averaged nuclear NC-QE sigma on 12C must match the ACHILLES oracle within 2%."""
+    """-nuclear: flux-averaged nuclear NC-QE sigma on 12C must match the ACHILLES oracle within 2%."""
     sig = qe_nc.generate(400_000, material="C", seed=0, return_events=False, use_achilles_nc_coupling=True)["sigma"]
     ratio = sig / _ACHILLES_ORACLE_NB
     assert 0.97 < ratio < 1.03, f"ADoNIS/ACHILLES nuclear NC-QE sigma ratio = {ratio:.4f} (sig={sig:.4e} nb)"

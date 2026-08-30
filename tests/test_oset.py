@@ -1,4 +1,4 @@
-"""Phase F gate: Oset pion absorption self-energy (transcription + differentiability).
+"""gate: Oset pion absorption self-energy (transcription + differentiability).
 
 Faithful transcription of ACHILLES OsetCrossSections.cc: the absorption self-energy peaks
 in the Delta region, the 3N piece is clamped >=0 at low T_pi, and Im Sigma_abs is exactly

@@ -75,7 +75,8 @@ def test_unfinished_shard_is_an_error(tmp_path):
 
 
 def test_unstamped_shards_warn_but_do_not_block(tmp_path):
-    """GRANDFATHERING: the whole sec4_P1 campaign predates stamping and must still merge."""
+    """A shard with no provenance stamp must warn, not block: a check that always refused unstamped
+    input could never process data written before the stamp existed."""
     fs = [_shard(tmp_path, f"s{i}", stamped=False) for i in range(3)]
     rep = MG.check(fs, _load(fs))
     assert rep.ok and rep.warnings and "no provenance" in rep.warnings[0]

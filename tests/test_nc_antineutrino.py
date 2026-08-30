@@ -1,4 +1,4 @@
-"""P9/G9 -- antineutrino NC, and the oracle card-routing landmine.
+"""/G9 -- antineutrino NC, and the oracle card-routing landmine.
 
 `lepton_current(..., anti=True)` has no production caller for any probe.  An implemented but
 unvalidated path is worse than a raise, because it looks available; it is therefore gated.

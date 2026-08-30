@@ -1,4 +1,4 @@
-"""G4(2) + G5(3) -- the NC RES vector current, checked against ANALYTIC limits and a pre-registration.
+"""The NC RES vector current, checked against analytic limits and a normalisation fixed by theory.
 
 Not one of these needs an oracle.  Each is a closed-form consequence of the Fortran, so they can be
 written from the source and cannot be tuned to whatever the implementation happens to produce:
@@ -7,7 +7,7 @@ written from the source and cannot be tuned to whatever the implementation happe
   * the axial is present for NC and absent for EM;
   * the pion pole is CC-only, so its knob must move NC by EXACTLY zero;
   * proton and neutron differ ONLY by the VVFAC sign on the I=1/2 isoscalar term;
-  * `_NORM_NC/_NORM_EM` equals the 0.7113 registered BEFORE any measurement.
+  * `_NORM_NC/_NORM_EM` equals (2 sw cw)^2, which follows from the couplings and not from any fit.
 
 The form under test (amp_dcc_sl_module.f, read directly).  The step that matters is NOT in the
 assembly loops at all -- it is at :675-691, once at table read, in place:
@@ -59,8 +59,6 @@ def test_sw2_to_zero_would_leave_a_pure_isovector_coupling():
     """VFAC -> 1 and VVFAC -> 0 as sw2 -> 0, so the NC vector current would collapse onto the raw
     `vec` block on every wave.  Checked as an identity on the coefficients rather than by patching
     the constant, so it holds no matter how the code spells the arithmetic."""
-    assert 1.0 - 2.0 * 0.0 == 1.0
-    assert -2.0 * 0.0 == 0.0
     vec, isv, axial = _amps()
     z_full = _zmtx(-1, 1, vec, isv, axial)
     z_novs = _zmtx(-1, 1, vec, np.zeros_like(isv), axial)
@@ -131,7 +129,7 @@ def test_the_pion_pole_knob_has_exactly_zero_effect_on_nc():
 
 
 def test_cc_and_em_are_bit_identical_to_the_isv_recombination_they_were_validated_with():
-    """G4(1) in miniature.  The governing rule is that NC work must not regress CC, so the CC branch
+    """in miniature.  The governing rule is that NC work must not regress CC, so the CC branch
     must still compute i32*vec + (1-i32)*0.5*(vec-isv) exactly, and EM its own forms."""
     vec, isv, axial = _amps(seed=3)
     two_J, two_L, two_I = _waves()

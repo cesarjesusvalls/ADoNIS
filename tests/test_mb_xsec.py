@@ -1,4 +1,4 @@
-"""Phase E1 gate: ANL-Osaka meson-baryon partial-wave cross section.
+"""1 gate: ANL-Osaka meson-baryon partial-wave cross section.
 
 The pi+ p -> pi+ p total cross section (pure I=3/2) from the ANL partial-wave amplitudes
 must reproduce the known Delta(1232) resonance: peak ~200 mb near W=1232 MeV. This

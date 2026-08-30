@@ -1,12 +1,9 @@
-"""G5(1) -- the ANALYTIC propagator gate for the NC leptonic current.  No oracle, no bank.
+"""Analytic propagator gate for the NC leptonic current.  No oracle, no bank.
 
-This test was written BEFORE the current it tests, on purpose.  The failure mode it exists to catch
-is the `e3319a5` one: the EM leptonic current omitted the photon 1/q^2 propagator, the absolute
-(e,e') scale came out ~1e15 too large, and every ratio-only gate was blind to it because a ratio
-divides the error away.  A gate written after the fact gets tuned, however unconsciously, to whatever
-the implementation already produces.
+An overall missing or extra propagator factor cancels in any ratio-of-samples comparison, so it needs
+a check whose two sides are both closed-form.  That is what this file is.
 
-The construction is propagator-SENSITIVE by design.  At Q^2 << M_Z^2 the whole NC/CC leptonic ratio
+The construction is propagator-sensitive by design.  At Q^2 << M_Z^2 the whole NC/CC leptonic ratio
 collapses to a pure number built from the couplings and the two boson masses:
 
     |L_NC|^2 / |L_CC|^2  ->  |c_NC / c_CC|^2 * (M_W^2 / M_Z^2)^2
@@ -64,7 +61,7 @@ def test_nc_coupling_equals_the_textbook_form():
 
 
 def test_nc_over_cc_amps2_reduces_to_the_analytic_ratio():
-    """G5(1).  At Q^2 << M_Z^2 the ratio must be |c_NC/c_CC|^2 * (M_W^2/M_Z^2)^2 to <= 1e-3."""
+    """.  At Q^2 << M_Z^2 the ratio must be |c_NC/c_CC|^2 * (M_W^2/M_Z^2)^2 to <= 1e-3."""
     q2 = (50.0) ** 2
     p_in, p_out = _kin(q2)
     r = _amps2(lepton_current(p_in, p_out, kind="NC_nu")) / \
@@ -86,11 +83,10 @@ def test_the_ratio_is_flat_in_q2_far_below_mz():
 
 
 def test_the_propagator_runs_with_q2_exactly_as_the_z_pole_demands():
-    """The `e3319a5` insurance, in the only form that is actually decisive.
+    """The NC/CC ratio, not the raw NC amps2, is the decisive quantity.
 
-    An earlier version of this test asserted that NC amps2 FALLS as Q^2 -> M_Z.  That is wrong as a
-    test: reaching a larger Q^2 needs a larger beam energy, and the spinor norms grow with E fast
-    enough to swamp the propagator entirely -- it "failed" on kinematics, not on physics.
+    Raw amps2 grows with the beam energy needed to reach a given Q^2, fast enough to swamp the
+    propagator; the ratio cancels that growth and isolates the coupling and propagator content.
 
     The decisive statement takes the NC/CC ratio at each Q^2, where the spinor content cancels
     identically, leaving ONLY the couplings and the two propagators:

@@ -1,4 +1,4 @@
-"""G6 -- NC QE: the coupl1 two-sided gate, the strange omission, and the p/n differential.
+"""NC QE: the coupl1 two-sided gate, the strange omission, and the p/n differential.
 
 The centrepiece is the D1 gate.  Whether ACHILLES's `coupl1` is a typo is an INFERENCE, not a fact,
 so ADoNIS implements BOTH conventions and MEASURES the difference instead of betting on one:
@@ -97,7 +97,7 @@ def test_the_quirk_cannot_touch_cc_or_em():
 
 
 def test_proton_and_neutron_are_genuinely_different_currents():
-    """D3: NC elastic on a NEUTRON has no CC analogue in this repo, so exercise it explicitly."""
+    """NC elastic on a NEUTRON has no CC analogue in this repo, so exercise it explicitly."""
     assert not np.allclose(_H(True), _H(False)), "NC QE gives the same current for p and n"
 
 

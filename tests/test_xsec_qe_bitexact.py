@@ -7,7 +7,7 @@ so it is basis-independent -- the Weyl leptonic x Dirac hadronic currents must m
 
 flux is bit-exact (<1e-8).  amps2 median ~7e-11 (bit-exact); a <=1e-5 tail survives on ~4% of
 events at LOW Q^2 / deep removal energy -- float64 summation-order roundoff between the einsum and
-ACHILLES's explicit Fortran matmul chains (confirmed: NOT mqe, NOT mass, NOT dump precision).
+ACHILLES's explicit Fortran matmul chains.
 """
 import re
 from pathlib import Path

@@ -131,34 +131,6 @@ def j_had(k_nu, p_struck, Smin):
     return mom ** 2 * dp * dCos * TWO_PI * emax
 
 
-def main():
-    rows = parse_res(str(Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"))
-    flux = SpectrumFlux("flux/T2K_nu.dat"); minE = flux.seed_min_GeV(); maxE = flux.max_energy
-    rel = []
-    for r in rows:
-        k_nu, k_lep, p_struck = r["li"], r["lo"], r["hi"]
-        p_N, p_pi = r["hN"], r["hP"]
-        mN_f = np.sqrt(max(m2(p_N), 0.0)); mpi = np.sqrt(max(m2(p_pi), 0.0)); mmu = np.sqrt(max(m2(k_lep), 0.0))
-        Smin = (mmu + mN_f + mpi) ** 2
-        seed_GeV = ((Smin - mN_f ** 2) / (2 * mN_f)) / 1000.0
-        minE_ev = max(seed_GeV, flux.min_energy)
-        Jb = (maxE - minE_ev) * flux.f(k_nu[0] / 1000.0) / flux.flux_integral
-        Jh = j_had(k_nu, p_struck, Smin)
-        gw = three_body_genweight(p_struck, k_nu, p_N, p_pi, k_lep)
-        if gw == 0.0:
-            continue
-        recon = Jb * Jh * (1.0 / gw)
-        rel.append(abs(recon - r["psw"]) / abs(r["psw"]))
-    rel = np.array(rel)
-    print(f"RES psw reconstruction over {len(rel)}/{len(rows)} events:")
-    print(f"  median rel {np.median(rel):.3e}   mean {rel.mean():.3e}   max {rel.max():.3e}")
-    print(f"  PASS<1e-9: {np.median(rel) < 1e-9}")
-
-
-if __name__ == "__main__":
-    main()
-
-
 def test_res_psw_bit_exact():
     """RES event.Weight (psw) reconstructs to ~1e-12 from the ported ACHILLES mappers."""
     rows = parse_res(str(Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"))

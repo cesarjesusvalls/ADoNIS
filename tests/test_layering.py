@@ -4,8 +4,7 @@ adonis/ imported analysis/paper/ at 14 sites, reached by sys.path.insert in 9 fi
 only worked when the paper application happened to sit next to it.  Most of it was not even used --
 adonis/fit/fitters.py imported nine names from analysis.paper.physical_fit and used two.
 
-This is a test rather than a convention because a convention did not hold: adonis/fit/__init__.py
-already stated the rule in prose while five modules under it broke the rule.
+The boundary is enforced by a test rather than by convention, because nothing enforces prose.
 
 If this fails, the fix is never to add the module to an allow-list.  Either the thing being imported is
 reusable -- move it into adonis/ -- or the importer is an application and belongs in analysis/.

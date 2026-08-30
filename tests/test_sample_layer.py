@@ -39,7 +39,7 @@ def test_every_named_sample_has_a_config(cfg):
 
 
 def test_beams_declared_once_and_only_once(cfg, beams):
-    """BEAM_OBS was a dict hardcoded in two modules.  It now lives in configs/samples/beams.yaml, and
+    """BEAM_OBS is declared once, in configs/samples/beams.yaml, and
     nothing may redeclare it."""
     assert set(cfg.beams) <= set(beams["beams"]), "fit config names a beam beams.yaml does not declare"
     for b in cfg.beams:
@@ -52,7 +52,7 @@ def test_beams_declared_once_and_only_once(cfg, beams):
 
 @pytest.mark.skipif(not JACOBIAN_NPZ.exists(), reason="needs the constrained-set npz")
 def test_gate_jacobian_matches_the_fit_config(cfg, beams):
-    """THE GUARDRAIL.  The committed Jacobian's dskeys must be exactly what the fit config declares:
+    """The committed Jacobian's dskeys must be exactly what the fit config declares:
     every observable of every sample, in config order, then the beam blocks, in config order.
 
     This is the check the sec4 engine performs at runtime after minutes of bank loading; doing it here

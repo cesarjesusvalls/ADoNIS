@@ -1,13 +1,12 @@
-"""G5(2) + G6(2) -- the ABSOLUTE free-nucleon oracle gates, in nb, against ACHILLES.
+"""+ G6(2) -- the ABSOLUTE free-nucleon oracle gates, in nb, against ACHILLES.
 
-These checks are non-negotiable, because a wrong
-absolute normalisation is invisible to every shape/ratio comparison.  That is not hypothetical here:
-it is the `e3319a5` failure mode (a missing photon 1/q^2 made the (e,e') scale ~1e15 too large and
-the ratio gate could not see it), and during this work the RES gate caught a genuinely wrong I=1/2
-isospin treatment that agreed with ACHILLES to 3.5% on the totals.
+These checks are non-negotiable, because a wrong absolute
+normalisation is invisible to every shape/ratio comparison: a missing propagator factor leaves the
+scale wrong while every ratio still looks right, and a wrong isospin treatment can reproduce the
+totals while breaking the channel structure.
 
 Two rules, both load-bearing:
-  * NO BRIDGE CONSTANT.  Absolute nb on both sides or the gate means nothing.
+  * No bridge constant.  Absolute nb on both sides, or the gate means nothing.
   * mean and spread are reported SEPARATELY.  A flat offset is a coupling / _NORM error; a slope or
     a channel-to-channel scatter is a structural one.  A single averaged number hides the difference.
 
@@ -76,12 +75,11 @@ def test_nc_qe_neutron_over_proton_ratio_is_convention_free():
 
 
 def test_the_rotated_isovector_form_beats_the_raw_vec_one():
-    """Regression guard for the D2 resolution.
+    """The rotated isovector I=1/2 form must give a smaller channel spread than the raw one.
 
-    The raw-`vec` I=1/2 transcription reproduced the ACHILLES TOTALS to 3.5% -- easy to accept -- but
-    broke ACHILLES's near-exact p/n mirror symmetry, giving a 6.8% channel spread against 0.5% for
-    the rotated form.  This test fails if anyone reverts to it, and it fails on the SPREAD, which is
-    the statistic that carries the information.
+    An unrotated transcription can reproduce the ACHILLES totals while breaking their near-exact p/n
+    mirror symmetry, so the spread across channels, not the mean, is the statistic that carries the
+    information.
     """
     import adonis.channels.dcc.differential as D
     from adonis.channels.res_nc import sigma_free_nucleon_nc, NC_RES_CHANNELS

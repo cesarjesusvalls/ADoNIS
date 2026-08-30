@@ -18,7 +18,7 @@ _M_MU, _M_P, _M_E, _M_N = 105.6583745, 938.272, 0.5109989, 939.565
 
 
 def _inline(P, m1, m2, ucos, uphi):
-    """The pre-C9 inline block, verbatim from qe.py/ee.py."""
+    """The two-body decay-and-boost block written out explicitly, as the samplers express it."""
     s = P[:, 0] ** 2 - np.sum(P[:, 1:] ** 2, axis=1)
     sqrts = np.sqrt(np.clip(s, 1e-9, None))
     s2, s3 = m1 ** 2, m2 ** 2

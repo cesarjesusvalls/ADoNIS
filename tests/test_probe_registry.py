@@ -1,4 +1,4 @@
-"""G1 -- no probe dispatch may fall through to CC.
+"""no probe dispatch may fall through to CC.
 
 Answering "not EM" with "then it is CC" turns an unimplemented probe or a typo into charged-current
 numbers with no error.  Each dispatch site must name what it produces: NC RES produces NC, NC QE

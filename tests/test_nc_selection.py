@@ -1,4 +1,4 @@
-"""G8 -- the NC1pi0 selection path, and the two config lies it fixes.
+"""the NC1pi0 selection path, and the two config lies it fixes.
 
 The NC selection is deliberately a PARALLEL path, not a flag on the CC one.  Every observable `_obs`
 computes -- dpt, dalphat, dphit, pn, dptt -- takes the outgoing lepton as a required argument and is
@@ -83,7 +83,7 @@ def test_a_heavy_meson_vetoes_but_a_pi0_does_not(tmp_path, monkeypatch):
 
 
 def test_nc_selection_never_reads_the_lepton(tmp_path, monkeypatch):
-    """G8(4): the NC path must be independent of k_lep entirely.  Zeroing it must change nothing."""
+    """the NC path must be independent of k_lep entirely.  Zeroing it must change nothing."""
     from adonis.workflow import selection as S
     B = _bank([[111, 2212], [111, 2112]])
     B["k_lep"] = np.tile([1000.0, 0.0, 0.0, 1000.0], (2, 1))

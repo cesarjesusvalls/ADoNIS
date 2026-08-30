@@ -29,13 +29,10 @@ def _axis(groups, name="ax"):
 
 
 def _declared_dskeys():
-    """The real observable stack, read from the SAME declarations the Jacobian builder reads.
+    """The observable stack, read from the same declarations the Jacobian builder reads.
 
-    Hardcoding it is what broke this test: the keys became namespaced `sample:obs` (commit a41b9b1) and
-    the literal list here stayed on the old bare names, so `t2k_*`/`ee_*` matched nothing and two probe
-    groups silently vanished from an assertion that was still checking group NAMES.  Deriving them means
-    a change of sample composition -- exactly what the resolver exists to survive -- updates this test
-    instead of breaking it.
+    Deriving the list rather than hardcoding it means a change of sample composition updates this
+    test, instead of leaving it asserting against names that no longer exist.
     """
     import pathlib
 
