@@ -6,7 +6,7 @@ has the nuclear inputs to run, and threads the result into the generators + casc
 
 Each NuclearTarget mirrors ACHILLES's per-nucleus inputs (Nucleus.cc / Configuration.cc /
 SpectralFunction.cc):
-  density_p / density_n : proton / neutron number-density files (data/nuclear/).  ACHILLES reads
+  density_p / density_n : proton / neutron number-density files (ACHILLES densities/).  ACHILLES reads
       SEPARATE p and n densities; for N=Z nuclei (C) both point to the same file.  Nuclear radius
       is the first r where rho_proton drops below 1e-6 fm^-3; local Fermi momentum is PER-SPECIES
       k_F^s = cbrt(3 pi^2 rho_s) hbarc.
@@ -49,7 +49,7 @@ class NuclearTarget:
 
 
 REGISTRY: dict[str, NuclearTarget] = {
-    "C": NuclearTarget("C", 12, 6, "c12_density.txt", "c12_density.txt",
+    "C": NuclearTarget("C", 12, 6, "c12.prova.txt", "c12.prova.txt",
                        "data/Spectral_Functions/pke12n_tot.data",
                        "data/Spectral_Functions/pke12p_tot.data",
                        "QMC_configs.out.gz", free_nucleon=False),

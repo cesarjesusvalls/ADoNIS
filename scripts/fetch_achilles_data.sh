@@ -26,7 +26,7 @@ FILES=(
     "Spectral_Functions/pke40n_tot.data"
 )
 
-mkdir -p "$DEST/Spectral_Functions" "$DEST/MesonBaryonAmplitudes" "$DEST/flux" "$DEST/configurations"
+mkdir -p "$DEST/Spectral_Functions" "$DEST/MesonBaryonAmplitudes" "$DEST/flux" "$DEST/configurations" "$DEST/densities"
 
 if [ "$RUNTIME" = docker ]; then
     docker pull "$IMAGE"
@@ -37,6 +37,7 @@ if [ "$RUNTIME" = docker ]; then
     done
     docker cp "$cid:/achilles/data/MesonBaryonAmplitudes/ANL" "$DEST/MesonBaryonAmplitudes/ANL"
     docker cp "$cid:/achilles/data/configurations" "$DEST/" 2>/dev/null || true
+    docker cp "$cid:/achilles/data/densities" "$DEST/" 2>/dev/null || true
     for f in T2K_nu.dat minerva_numu_fhc.dat microboone_numu.dat; do
         docker cp "$cid:/achilles/flux/$f" "$DEST/flux/$f" 2>/dev/null || true
     done
@@ -47,7 +48,9 @@ else
         apptainer exec "$sif" cat "/achilles/data/$f" > "$DEST/$f"
     done
     apptainer exec "$sif" tar -C /achilles/data/MesonBaryonAmplitudes -cf - ANL | tar -C "$DEST/MesonBaryonAmplitudes" -xf -
-    apptainer exec "$sif" tar -C /achilles/data -cf - configurations 2>/dev/null | tar -C "$DEST" -xf - || true
+    for d in configurations densities; do
+        apptainer exec "$sif" tar -C /achilles/data -cf - "$d" 2>/dev/null | tar -C "$DEST" -xf - || true
+    done
     for f in T2K_nu.dat minerva_numu_fhc.dat microboone_numu.dat; do
         apptainer exec "$sif" cat "/achilles/flux/$f" > "$DEST/flux/$f" 2>/dev/null || rm -f "$DEST/flux/$f"
     done

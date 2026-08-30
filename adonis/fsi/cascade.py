@@ -35,12 +35,13 @@ _DENS = {}
 
 
 def _read_density_file(name):
-    p = Path(__file__).resolve().parents[2] / "data" / "nuclear" / name
-    d = np.loadtxt(p, comments="#")
+    """(r, rho) from an ACHILLES number-density table, resolved under the ACHILLES data directory."""
+    from adonis.io import require
+    d = np.loadtxt(require("densities", name), comments="#")
     return d[:, 0], d[:, 1]
 
 
-def _load_density(name="c12_density.txt", name_n=None):
+def _load_density(name="c12.prova.txt", name_n=None):
     """Proton & neutron number densities.  ACHILLES reads SEPARATE p/n densities (Nucleus.cc:36-80);
     for N=Z nuclei (C) name_n defaults to name -> rho_n == rho_p.  rho_n is interpolated onto the
     proton radial grid so a single rgrid serves both species.  Radius = first r where rho_proton <
@@ -129,7 +130,7 @@ _CH_MASS = jnp.array([ox.M_PIP, ox.M_PI0, ox.M_PIP, _M_ETA_PHYS])
 _QE_IN = jnp.array([0, 0, 0, 1, 1, 1, 2, 2, 2])
 _QE_OUT = jnp.array([0, 1, 2, 0, 1, 2, 0, 1, 2])
 
-def sample_vertex(key, n, nucleus="c12_density.txt", density_n=None):
+def sample_vertex(key, n, nucleus="c12.prova.txt", density_n=None):
     """Sample n production vertices in the nucleus ~ rho(r) (radial pdf rho(r) r^2), as the
     pion's cascade starting point.  Uses the proton density grid (== total shape for N=Z)."""
     rgrid, rho, _rho_n, radius = _load_density(nucleus, density_n)
@@ -373,8 +374,8 @@ def nucleon_scat_reweight(srec, sscat):
 
 @dataclass(frozen=True)
 class CascadeConfig:
-    nucleus: str = "c12_density.txt"
-    density_n: str = "c12_density.txt"
+    nucleus: str = "c12.prova.txt"
+    density_n: str = "c12.prova.txt"
     configs: str = "QMC_configs.out.gz"
     step: float = 0.05
     max_steps: int = 100000
