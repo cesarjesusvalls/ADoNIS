@@ -48,4 +48,5 @@ jobs:
             tests/test_fit_config.py \
             tests/test_probe_naming.py \
             tests/test_nc_selection.py \
-            tests/test_constant_duplication.py
+            tests/test_constant_duplication.py \
+            tests/test_fsi_record_layout.py
