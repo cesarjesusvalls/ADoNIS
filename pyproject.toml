@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "A differentiable generator of neutrino interaction samples"
 requires-python = ">=3.10"
 license = {text = "MIT"}
+authors = [{name = "César Jesús-Valls"}]
 dependencies = [
     "jax>=0.6",
     "jaxlib>=0.6",
