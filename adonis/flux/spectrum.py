@@ -17,13 +17,35 @@ import numpy as np
 
 from adonis.numerics import polint as _polint
 
+import contextlib as _contextlib
+
 from adonis.io import achilles_sibling_root
 _ACH = achilles_sibling_root()
 from adonis.constants import MASS_PDG_MUON as M_MU, MASS_PDG_PROTON as M_P
 
 
+_DEFAULT_FLUX = "flux/T2K_nu.dat"
+
+
 def _default_flux():
-    return _os.environ.get("ADONIS_FLUX_FILE", "flux/T2K_nu.dat")
+    return _DEFAULT_FLUX
+
+
+def set_default_flux(name):
+    """Set the table the no-argument SpectrumFlux() reads.  Returns the previous value."""
+    global _DEFAULT_FLUX
+    previous, _DEFAULT_FLUX = _DEFAULT_FLUX, name
+    return previous
+
+
+@_contextlib.contextmanager
+def use_flux(name):
+    """Scope the default flux table to a block, restoring whatever was set before."""
+    previous = set_default_flux(name)
+    try:
+        yield name
+    finally:
+        set_default_flux(previous)
 
 
 def _parse_spectrum(path):
@@ -54,7 +76,7 @@ def _parse_spectrum(path):
 
 class SpectrumFlux:
     """Piecewise-constant Spectrum flux with ACHILLES-faithful beam sampling.  Reads ANY spectrum
-    table; the no-arg constructor uses ADONIS_FLUX_FILE (T2K_nu.dat by default)."""
+    table; the no-arg constructor uses the module default (T2K_nu.dat unless set)."""
 
     def __init__(self, filename=None):
         path = _ACH / (filename if filename is not None else _default_flux())

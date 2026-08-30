@@ -7,7 +7,8 @@ structural invariants (massless outgoing neutrino, elastic on BOTH species, no p
 """
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-_os.environ.setdefault("ADONIS_FLUX_FILE", "flux/microboone_numu.dat")
+from adonis.flux.spectrum import set_default_flux
+set_default_flux("flux/microboone_numu.dat")
 
 import numpy as np
 import pytest

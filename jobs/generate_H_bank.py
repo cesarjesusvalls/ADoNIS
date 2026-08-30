@@ -3,7 +3,7 @@ reachable through adonis.workflow.cli with a free-nucleon config.
 
     python jobs/generate_H_bank.py <outdir> <n_per_chunk> <n_chunks> [seed0]
 
-The flux is taken from ADONIS_FLUX_FILE here, as it always was.  Prefer the config-driven form, where
+The flux is the module default here.  Prefer the config-driven form, where
 the flux comes from the bank config and is recorded in the manifest.
 """
 import os

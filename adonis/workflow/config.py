@@ -149,10 +149,6 @@ class GenConfig:
         if self.beam == "spectrum":
             if self.flux not in FLUX_FILES:
                 raise ValueError(f"flux {self.flux!r} not in {sorted(FLUX_FILES)}")
-            import os
-            want = FLUX_FILES[self.flux]; have = os.environ.get("ADONIS_FLUX_FILE")
-            if have is not None and have != want:
-                raise ValueError(f"flux key {self.flux!r} expects ADONIS_FLUX_FILE={want!r} but env has {have!r}")
 
     @property
     def bank_prefix(self) -> str:

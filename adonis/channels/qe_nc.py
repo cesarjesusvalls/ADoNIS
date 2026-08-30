@@ -111,7 +111,7 @@ def _sample_species_nc(n, rng, flux, minE, m_species, is_proton, sf, n_target, u
 def generate(n, material="C", seed=0, chunk=500_000, return_events=False, use_achilles_nc_coupling=False, theta_acc=None):
     """Nuclear NC-QE generator: nu N -> nu N' on `material`, n draws SPLIT across BOTH struck species
     (protons AND neutrons -- NC is elastic on either, unlike CC nu n -> mu p).  Flux-averaged over the
-    beam (ADONIS_FLUX_FILE, set per-bank by generate_bank).  Per-event weight w already carries the MC
+    beam (the module default flux, set per-bank by generate_bank).  Per-event weight w already carries the MC
     norm so sum(w) = flux-averaged nuclear NC-QE sigma [nb].  return_events=True returns the bank fields
     the generate_bank NC branch consumes (k_lep = outgoing neutrino, p_N = outgoing nucleon, no pion).
 

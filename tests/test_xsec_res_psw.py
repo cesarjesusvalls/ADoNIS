@@ -133,7 +133,7 @@ def j_had(k_nu, p_struck, Smin):
 
 def main():
     rows = parse_res(str(Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"))
-    flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
+    flux = SpectrumFlux("flux/T2K_nu.dat"); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     rel = []
     for r in rows:
         k_nu, k_lep, p_struck = r["li"], r["lo"], r["hi"]
@@ -162,7 +162,7 @@ if __name__ == "__main__":
 def test_res_psw_bit_exact():
     """RES event.Weight (psw) reconstructs to ~1e-12 from the ported ACHILLES mappers."""
     rows = parse_res(str(Path(__file__).resolve().parents[1] / "tests/data/res_dump_achilles.txt"))
-    flux = SpectrumFlux(); minE = flux.seed_min_GeV(); maxE = flux.max_energy
+    flux = SpectrumFlux("flux/T2K_nu.dat"); minE = flux.seed_min_GeV(); maxE = flux.max_energy
     rel = []
     for r in rows:
         k_nu, k_lep, p_struck, p_N, p_pi = r["li"], r["lo"], r["hi"], r["hN"], r["hP"]

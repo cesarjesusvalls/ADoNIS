@@ -75,8 +75,9 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     do_qe = "qe" in cfg.channels
     do_res = "res" in cfg.channels
     if not EM:
+        from adonis.flux.spectrum import set_default_flux
         from adonis.workflow.config import FLUX_FILES
-        os.environ["ADONIS_FLUX_FILE"] = FLUX_FILES[cfg.flux]
+        set_default_flux(FLUX_FILES[cfg.flux])
     tgt = resolve_targets(cfg.material)[0][0]
     n_neutron = tgt.A - tgt.Z; n_proton = tgt.Z
     CF.FLAT_FSI_REC = True
