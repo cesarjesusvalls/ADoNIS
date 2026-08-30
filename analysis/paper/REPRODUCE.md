@@ -37,17 +37,25 @@ scripts/fetch_achilles_data.sh              # writes ./achilles_data
 export ACHILLES_DATA=$PWD/achilles_data
 ```
 
-To also run ACHILLES itself you need its images. The no-cascade reference is published and is pulled
-for you; the two cascade images are built from an ACHILLES checkout:
+To also run ACHILLES itself you need its images. All three are published, so nothing is built:
 
 ```bash
-docker/build.sh cascade      /path/to/achilles     # hadron-nucleus cross sections
-docker/build.sh fullcascade  /path/to/achilles     # in-event FSI
-export ACHILLES_IMAGES=$PWD                        # where the .sif files are
-export ADONIS_CONTAINER=apptainer                  # or docker; omit to auto-detect
+export ADONIS_CONTAINER=apptainer     # or docker; omit to auto-detect
 ```
 
-Only the figures with final-state interactions need the cascade images.
+Docker pulls them on demand.  Apptainer reads `.sif` files, so fetch them once and say where:
+
+```bash
+mkdir -p images && export ACHILLES_IMAGES=$PWD/images
+for tag in oracle cascade fullcascade; do
+    apptainer pull images/achilles-$tag.sif docker://ghcr.io/cesarjesusvalls/achilles:$tag
+done
+```
+
+Only the figures with final-state interactions need the two cascade images.  They are built from
+unmodified upstream ACHILLES by `.github/workflows/images.yml`; `configs/achilles/images.yaml` pins
+the source commit and each image's digest, so a run can name the exact generator rather than a tag
+that may move.
 
 Figures are written to `output/paper/`. Set `ADONIS_PAPER_OUT` to send them elsewhere — useful for
 comparing a rebuild against the published set without overwriting it.

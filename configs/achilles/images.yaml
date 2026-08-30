@@ -1,0 +1,15 @@
+# The ACHILLES images the comparison runs against, pinned by digest.
+#
+# A tag can be moved; a digest cannot, so a reproduction that names one of these is running the exact
+# generator the paper used.  cascade and fullcascade are built from unmodified upstream ACHILLES by
+# .github/workflows/images.yml.
+registry: ghcr.io/cesarjesusvalls/achilles
+
+source:
+  repository: AchillesGen/Achilles
+  commit: 91b5ea5adfe13a83a30b6365664053af11414dbc
+
+digests:
+  oracle:      sha256:0c36e0d80f7afd20cab742b2f7c74134304253b4bf28cbf954e4cf0ef61dc697
+  cascade:     sha256:eda3dac5074d8b19877ae603df954787aadc5961f368ad16b923d9478d4efb56
+  fullcascade: sha256:d1a4f8afb9f0e51dbf60f3851ab84fc3d3fdb0be9ffb8fd79db9a114943b8f56
