@@ -1,10 +1,6 @@
 # ACHILLES NEUTRAL-CURRENT nu_mu on 40Ar with the FULL cascade, BNB (MicroBooNE) flux -- the
 # reference for the NC 1pi0 Xp comparison.
 #
-# The name is load-bearing: run_achilles routes to an image by card-name prefix, and the suffix has to
-# come after `run_MicroBooNE_Ar_fsi` for this card to get the cascade image rather than the no-cascade
-# default.  tests/test_nc_antineutrino.py pins it.
-#
 # Differs from run_MicroBooNE_Ar_fsi.yml in two lines, `Leptons: [14, [14]]` and the output name, so
 # any NC/CC difference between the two references is the current and nothing else.  That is also why
 # the HardCuts block below still cuts on a muon that an NC event does not contain: the block is inert
