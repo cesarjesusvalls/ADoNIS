@@ -8,7 +8,7 @@ weight, so gradients stay exact). One sampler, `SpectralImportanceSampler` (nump
 (`SpectralFunction.sample_nucleon`) callers, which wrap its draw in `jnp.asarray` + `stop_gradient`.
 
 Table-path convention: a filename with a directory (e.g. "data/Spectral_Functions/pke12p_tot.data")
-resolves relative to the sibling Achilles/ checkout; a bare filename (e.g. "pke12p_tot.data")
+resolves the way ACHILLES addresses its own tree; a bare filename (e.g. "pke12p_tot.data")
 resolves under $ACHILLES_DATA/Spectral_Functions.
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ def _resolve_sf_path(filename) -> Path:
     if p.is_absolute():
         return p
     if p.parent != Path("."):
-        return _ACH / filename
+        return checkout_path(filename)
     return SF_DIR / filename
 
 

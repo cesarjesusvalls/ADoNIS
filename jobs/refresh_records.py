@@ -12,6 +12,8 @@ are written (the OTHER channel's rows are 0 -> reduced reweight == 1).  Everythi
 import os
 import sys
 import glob
+
+from adonis.io import bank_path
 import shutil
 
 import numpy as np
@@ -54,16 +56,16 @@ _BANKS = [("nu_T2K_C", "merged_perknob"), ("nu_MINERvA_C", "merged"), ("nu_uBooN
 def _worklist():
     wl = []
     for bank, src in _BANKS:
-        ddir = f"output/paper_banks_p4/{bank}/merged_mij"
-        for c in sorted(glob.glob(f"output/paper_banks_p4/{bank}/{src}/chunk_*.npz")):
+        ddir = str(bank_path(f"{bank}/merged_mij"))
+        for c in sorted(glob.glob(str(bank_path(f"{bank}/{src}")) + "/chunk_*.npz")):
             wl.append((c, os.path.join(ddir, os.path.basename(c))))
     return wl
 
 
 def _ensure_dst():
     for bank, src in _BANKS:
-        ddir = f"output/paper_banks_p4/{bank}/merged_mij"; os.makedirs(ddir, exist_ok=True)
-        man, dman = f"output/paper_banks_p4/{bank}/{src}/manifest.json", os.path.join(ddir, "manifest.json")
+        ddir = str(bank_path(f"{bank}/merged_mij")); os.makedirs(ddir, exist_ok=True)
+        man, dman = str(bank_path(f"{bank}/{src}/manifest.json")), os.path.join(ddir, "manifest.json")
         if os.path.exists(man) and not os.path.exists(dman):
             shutil.copy(man, dman)
 

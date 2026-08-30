@@ -5,7 +5,7 @@
 render: multiobs
 name: minerva_ptpz
 inputs:
-  adonis_bank: [output/paper_banks_p4/nu_MINERvA_C/merged]
+  adonis_bank: [nu_MINERvA_C/merged]
   reference:   [output/achilles/fsrich/nu_MINERvA_C.npz]
 signal:
   mu_win: [0.0, inf]

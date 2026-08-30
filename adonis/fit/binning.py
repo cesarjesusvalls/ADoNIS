@@ -24,7 +24,7 @@ class BinSpec:
     Two index orderings are kept:
       HOST   events in BANK order -- the gather w[sel] favors sequential reads over bin-sorted ones.
       DEVICE events sorted by bin, so segment_sum uses a segmented reduction instead of contended
-             atomics. Built lazily; nothing pays for it unless S4_JAX_BIN=1.
+             atomics. Built lazily, so nothing pays for it unless the caller asks for jax binning.
     """
 
     __slots__ = ("sel", "coef", "binidx", "nbin", "scale", "offset", "_dev", "_chunks")

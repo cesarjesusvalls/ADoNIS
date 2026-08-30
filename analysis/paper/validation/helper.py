@@ -22,6 +22,7 @@ from adonis.workflow.analyze import run_analysis
 from adonis.workflow.config import load_analysis_config
 from adonis.workflow import selection as SG
 from adonis.workflow.plotting import make_figure, chi2_ratio_panel
+from adonis.io import bank_path
 from analysis.paper import style
 from adonis import cache as plotcache
 
@@ -75,7 +76,7 @@ def _compute_sliced(spec):
     cfg = load_analysis_config(_rel(spec["_path"]))
     nc = bool(p.get("nc", False))
     getsel = (SG.bank_signal_nc, SG.oracle_signal_nc) if nc else (SG.bank_signal, SG.oracle_signal)
-    ado = getsel[0](cfg.inputs["adonis_bank"][0], cfg.signal)
+    ado = getsel[0](str(bank_path(cfg.inputs["adonis_bank"][0])), cfg.signal)
     ref = getsel[1](cfg.inputs["reference"][0], cfg.signal)
 
     slice_by = p["slice_by"]; s_edges = np.asarray(p["slice_edges"], float)
@@ -205,7 +206,7 @@ def render_beam_sigma(spec, show_ratio=True):
     show_ratio=False drops the per-block ACH/ADO ratio strip and writes to a *_noratio file."""
     import matplotlib.pyplot as plt
     pp = _p(spec)
-    BANK = pp.get("bank_pattern", "output/paper_banks_p4/beam_{beam}_{target}/merged")
+    BANK = pp.get("bank_pattern", "beam_{beam}_{target}/merged")
     from adonis.workflow.beam_xsec import beam_cross_section
     from analysis.oracle_tools import beam_sigma as AB
     nbins = int(pp.get("nbins", 30)); BEAM = pp.get("beam", "pip")
@@ -213,11 +214,11 @@ def render_beam_sigma(spec, show_ratio=True):
     def reduce_nuc(nuc):
         def _b():
             edges, sr, ss, er, es = beam_cross_section(
-                ROOT / BANK.format(beam=BEAM, target=nuc), nbins)
+                bank_path(BANK.format(beam=BEAM, target=nuc)), nbins)
             hr, hs, her, hes, _nr, _ns, _nt = AB.sigma_of_p(BEAM, edges, nuc)
             return dict(edges=edges, sr=sr, ss=ss, er=er, es=es, hr=hr, hs=hs, her=her, hes=hes)
         d = plotcache.cached(f"fig03_{BEAM}_{nuc}_n{nbins}", _b,
-                             deps=[ROOT / BANK.format(beam=BEAM, target=nuc), *AB.source_paths(BEAM, nuc)],
+                             deps=[bank_path(BANK.format(beam=BEAM, target=nuc)), *AB.source_paths(BEAM, nuc)],
                              params={"beam": BEAM, "target": nuc, "nbins": nbins})
         return d["edges"], d["sr"], d["ss"], d["er"], d["es"], d["hr"], d["hs"], d["her"], d["hes"]
 
@@ -263,7 +264,7 @@ def render(spec, show_ratio=True):
 
 def render_sample(cfg_path, show_ratio=True):
     """Render the ADoNIS-vs-ACHILLES figure for a sample config.  render_multiobs/render_panels re-load
-    the AnalysisConfig from _path, so one config file drives both this and AnaSample.gate1().
+    the AnalysisConfig from _path, so one config file drives both this and AnaSample.constrained().
     """
     import yaml
     from pathlib import Path

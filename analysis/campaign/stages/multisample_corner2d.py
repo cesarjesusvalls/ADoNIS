@@ -9,13 +9,13 @@ MODE=cond ("what the minimiser sees")
 MODE=prof (inference)
     chi2 PROFILED over the other dials at every node -> honest 68/90% 2-D contours (Dchi2 = 2.30 / 4.61).
     Warm-started along a snake path so each node starts from its neighbour's solution.  Shard with
-    S4_PAIR_BASE / S4_NPAIR across a SLURM array; one npz per shard.
+    ADONIS_PAIR_BASE / ADONIS_PAIR_COUNT across a SLURM array; one npz per shard.
 
 Both modes take the BFP from the injected truth: for an Asimov closure the minimum sits exactly on it,
 so neither mode needs the closure npz and both can run in parallel with it.
 
-Env: ADONIS_FIT_CONFIG, ADONIS_FIT_STAGE (profile2d|gradient2d), S4_PAIR_BASE/S4_NPAIR,
-     S4_ROW_BASE/S4_NROW (row-level sharding within a pair).
+Env: ADONIS_FIT_CONFIG, ADONIS_FIT_STAGE (profile2d|gradient2d), ADONIS_PAIR_BASE/ADONIS_PAIR_COUNT,
+     ADONIS_ROW_BASE/ADONIS_ROW_COUNT (row-level sharding within a pair).
 Writes <results>/<label>_corner2d_<mode>_<pairbase>.npz
 """
 
@@ -93,8 +93,8 @@ def main():
 
     idx = [subset.index(pn.index(w)) for w in want]
     pairs_all = list(itertools.combinations(range(len(idx)), 2))
-    PB = int(os.environ.get("S4_PAIR_BASE", "0"))
-    NP = int(os.environ.get("S4_NPAIR", str(len(pairs_all))))
+    PB = int(os.environ.get("ADONIS_PAIR_BASE", "0"))
+    NP = int(os.environ.get("ADONIS_PAIR_COUNT", str(len(pairs_all))))
     pairs = pairs_all[PB:PB + NP]
     log(f"dials {want}\n  {len(pairs_all)} pairs total, this shard does {len(pairs)} from index {PB}")
 
@@ -130,8 +130,8 @@ def main():
         hi = min(hi, K.phys_hi(pn[kk]) or np.inf)
         return np.linspace(lo, hi, N)
 
-    _RB = int(os.environ.get("S4_ROW_BASE", "-1"))
-    _NR = int(os.environ.get("S4_NROW", "1"))
+    _RB = int(os.environ.get("ADONIS_ROW_BASE", "-1"))
+    _NR = int(os.environ.get("ADONIS_ROW_COUNT", "1"))
     _ROWS = range(*shard_range(_RB, _NR, N))
     out = (str(results_dir() / f"{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}.npz") if _RB < 0
            else str(results_dir() / f"{LABEL}_corner2d_{MODE}_n{N:02d}_{PB:02d}_r{_RB:03d}.npz"))

@@ -4,7 +4,7 @@
 render: multiobs
 name: minerva_stv
 inputs:
-  adonis_bank: [output/paper_banks_p4/nu_MINERvA_C/merged]
+  adonis_bank: [nu_MINERvA_C/merged]
   reference:   [output/achilles/fsrich/nu_MINERvA_C.npz]
 signal:      # CC0pi (Lu et al.): mu 1500-10000 & cos>cos20 ; global leading p 450-1200 & cos>cos70 ; zero mesons
   mu_win: [1500.0, 10000.0]

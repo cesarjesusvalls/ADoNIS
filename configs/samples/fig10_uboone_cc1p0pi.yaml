@@ -4,7 +4,7 @@ render: panels
 compute: sliced
 name: fig10_uboone_cc1p0pi
 inputs:
-  adonis_bank: [output/paper_banks_p4/nu_uBooNE_Ar/merged]
+  adonis_bank: [nu_uBooNE_Ar/merged]
   reference:   [output/achilles/fsrich/nu_uBooNE_Ar.npz]
 signal:
   mu_win: [100.0, 1200.0]

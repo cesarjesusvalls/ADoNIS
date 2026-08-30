@@ -38,7 +38,7 @@ data:
     freeze_at: nominal        # sigma and the mask are fixed at nominal, not recomputed per toy
 
 fit:
-  dials: gate1                # the parameters with sigma_post/sigma_prior < 0.5 on the Fisher: 17
+  dials: constrained                # the parameters with sigma_post/sigma_prior < 0.5 on the Fisher: 17
   estimator: mle              # no parameter priors; the physical ranges still apply
   minimizer:
     method: trf

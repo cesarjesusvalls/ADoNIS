@@ -4,4 +4,4 @@ render: beam_sigma
 params:
   nbins: 30
   beam: pip
-  bank_pattern: output/paper_banks_p4/beam_{beam}_{target}/merged   # ADoNIS transport banks (per target)
+  bank_pattern: beam_{beam}_{target}/merged   # ADoNIS transport banks (per target)

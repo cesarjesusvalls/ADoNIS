@@ -19,7 +19,7 @@ params:
       linspace: [0.05, 0.95, 46]
       label: '$\omega$ [GeV]'
       annotate: '$^{40}$Ar'
-      bank: output/paper_banks_p4/beam_e_Ar/merged
+      bank: beam_e_Ar/merged
       ref: [output/achilles/fsrich/inclusive_ee_Ar_qe.npz, output/achilles/fsrich/inclusive_ee_Ar_res.npz]
     - obs: omega
       topo: incl
@@ -27,5 +27,5 @@ params:
       linspace: [0.05, 0.95, 46]
       label: '$\omega$ [GeV]'
       annotate: '$^{12}$C'
-      bank: output/paper_banks_p4/beam_e_C/merged
+      bank: beam_e_C/merged
       ref: [output/achilles/fsrich/inclusive_ee_C_qe.npz, output/achilles/fsrich/inclusive_ee_C_res.npz]

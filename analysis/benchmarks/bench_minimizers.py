@@ -120,16 +120,16 @@ def main(argv=None):
     from analysis.campaign.stages import multisample as _MS
     audit, fatal = {}, []
 
-    audit["S4_JAX_BIN"] = _os.environ.get("S4_JAX_BIN", "<unset>")
+    audit["ADONIS_JAX_BINNING"] = _os.environ.get("ADONIS_JAX_BINNING", "<unset>")
     if not _MS._JAX_BIN:
-        fatal.append("S4_JAX_BIN is off: GN bins on the host, MIGRAD's objective on the device. "
-                     "Set S4_JAX_BIN=1 or the timings are not comparable.")
+        fatal.append("ADONIS_JAX_BINNING is off: GN bins on the host, MIGRAD's objective on the device. "
+                     "Set ADONIS_JAX_BINNING=1 or the timings are not comparable.")
 
-    audit["S4_JAC_BATCH"] = _MS.JAC_BATCH
+    audit["ADONIS_JAC_BATCH"] = _MS.JAC_BATCH
     audit["n_dispatch"] = int(np.ceil(nd / max(1, _MS.JAC_BATCH)))
     if _MS.JAC_BATCH < nd:
         fatal.append(f"JAC_BATCH={_MS.JAC_BATCH} < {nd} dials -> {audit['n_dispatch']} dispatches, "
-                     f"one extra primal pass each. Set S4_JAC_BATCH>={nd}.")
+                     f"one extra primal pass each. Set ADONIS_JAC_BATCH>={nd}.")
 
     audit["x64"] = bool(jax.config.jax_enable_x64)
     if not audit["x64"]:

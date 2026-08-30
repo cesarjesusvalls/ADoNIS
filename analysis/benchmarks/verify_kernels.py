@@ -75,7 +75,7 @@ def main(argv=None):
             "benchmark will use, since that is where a numerical difference would appear")
 
     if MS._JAX_BIN:
-        raise SystemExit("S4_JAX_BIN=1: the reference here must be the HOST path. Unset it and re-run.")
+        raise SystemExit("ADONIS_JAX_BINNING=1: the reference here must be the HOST path. Unset it and re-run.")
 
     cfg = FitConfig.load(a.config)
     if a.sig_cap:

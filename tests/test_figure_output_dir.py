@@ -2,7 +2,7 @@
 
 A path literal is checked rather than a render, because rendering needs the banks.  Docstrings are
 skipped, style.py is skipped because the default belongs there, and the match is on a directory
-boundary so sibling directories such as output/paper_banks_p4 are not swept up.
+boundary, so a sibling directory whose name starts with the same characters is not swept up.
 """
 from __future__ import annotations
 

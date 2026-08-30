@@ -5,7 +5,7 @@
 render: multiobs
 name: t2k_cc1pi_ch
 inputs:
-  adonis_bank: [output/paper_banks_p4/nu_T2K_C/merged]
+  adonis_bank: [nu_T2K_C/merged]
   reference:   [output/achilles/fsrich/nu_T2K_C.npz]
 signal:
   mu_win: [250.0, 7000.0]

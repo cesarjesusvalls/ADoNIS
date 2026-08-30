@@ -9,10 +9,10 @@ from adonis.reweight import knobs as K
 
 
 def _dial_order(g, pnames):
-    """The Gate-I dials, best-constrained first.  Deterministic, so the n-subsets are nested."""
+    """The constrained-set dials, best-constrained first.  Deterministic, so the n-subsets are nested."""
     shrink = np.asarray(g["shrink"], float)
-    gate1 = np.where(shrink < 0.5)[0]
-    return [int(k) for k in gate1[np.argsort(shrink[gate1])]]
+    constrained = np.where(shrink < 0.5)[0]
+    return [int(k) for k in constrained[np.argsort(shrink[constrained])]]
 
 def freeze_sample(eng, ref, log):
     """Impose the REFERENCE run's sigma and live-bin mask on this engine, per dataset key.

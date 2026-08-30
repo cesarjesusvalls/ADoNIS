@@ -11,10 +11,10 @@ One ensemble, the SAME dials + samples as the closure.  Per toy:
 Over the ensemble: the pooled pull should be ~N(0,1) (the quadratic error is calibrated / the likelihood
 is locally Gaussian) and chi2_data ~ chi2(nbins - k_eff).
 
-The engine is loaded ONCE; the toys loop over it.  Shard with S4_TOY_BASE across a SLURM array; the
+The engine is loaded ONCE; the toys loop over it.  Shard with ADONIS_TOY_BASE across a SLURM array; the
 per-shard npz are meant to be concatenated downstream.  Saves incrementally (preemption-safe).
 
-Env: S4_TOY_BASE, ADONIS_FIT_CONFIG; toy count/iterations/fixed-truth come from the config's "toys" stage.
+Env: ADONIS_TOY_BASE, ADONIS_FIT_CONFIG; toy count/iterations/fixed-truth come from the config's "toys" stage.
 """
 
 from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
@@ -68,7 +68,7 @@ def _throw_truth(eng, subset, real_prior, rng):
 def main():
     log = timed_log()
 
-    BASE = int(os.environ.get("S4_TOY_BASE", "0"))
+    BASE = int(os.environ.get("ADONIS_TOY_BASE", "0"))
 
     from adonis.fit.config import FitConfig
     cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))

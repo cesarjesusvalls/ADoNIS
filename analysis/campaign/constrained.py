@@ -2,8 +2,8 @@
 FSI beam Jacobians.  A thin caller: composes the samples through analysis.campaign.sample.SampleSet
 and stacks the cached beam jvps; no selection/binning lives here.
 
-    python -m analysis.campaign.gate1 --label multisample_carbon
-    python -m analysis.campaign.gate1 --label smoke --max-chunks 4
+    python -m analysis.campaign.constrained --label multisample_carbon
+    python -m analysis.campaign.constrained --label smoke --max-chunks 4
 
 Writes <results>/<label>.npz.  dskeys are namespaced `sample:obs` (t2k_cc0pi:dpt) plus the beam
 keys (pip_react, ...).
@@ -23,7 +23,7 @@ import numpy as np
 
 ALTGEN = results_dir()
 
-from analysis.campaign.sample import SampleSet, gate1_from
+from analysis.campaign.sample import SampleSet, constrained_from
 from adonis.reweight import knobs as K
 from analysis.campaign import beams as BF
 
@@ -49,7 +49,7 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
     log(f"from {fit_config}: {len(samples)} samples + {len(beams)} beams; beams from {_BEAMS_CFG}")
 
     ss = SampleSet.from_configs([f"configs/samples/{s}.yaml" for s in samples])
-    r = ss.gate1(max_chunks=max_chunks, log=log)
+    r = ss.constrained(max_chunks=max_chunks, log=log)
     J = [r["J"]]; sigma = [r["sigma"]]; dskeys = list(r["keys"]); row0 = list(r["row0"])
     edges = {f"{k}_edges": r["edges"][k] for k in r["keys"]}
     central = {f"{k}_central": r["central"][k] for k in r["keys"]}
@@ -62,7 +62,7 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
         log(f"  + beam {beam} ({np.asarray(Jb).shape[0]} bins)")
 
     J = np.vstack(J); sigma = np.concatenate(sigma); row0 = np.asarray(row0)
-    F, V, _sig_post, shrink, _reach = gate1_from(J, sigma, K.PRIOR)
+    F, V, _sig_post, shrink, _reach = constrained_from(J, sigma, K.PRIOR)
 
     ALTGEN.mkdir(parents=True, exist_ok=True)
     import json
@@ -76,12 +76,12 @@ def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbin
     log(f"[out] {out}")
     log(f"  bins={J.shape[0]}  knobs={J.shape[1]}  observables={len(dskeys)}  "
         f"({'+'.join(list(samples) + list(beams))})")
-    log(f"  {int((shrink < 0.5).sum())}/{len(K.PRIOR)} knobs pass Gate I on the combined set")
+    log(f"  {int((shrink < 0.5).sum())}/{len(K.PRIOR)} knobs are constrained on the combined set")
     return out
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="analysis.campaign.gate1", description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(prog="analysis.campaign.constrained", description=__doc__.split("\n")[0])
     ap.add_argument("--label", default="multisample_carbon",
                     help="output name: <results>/<label>.npz")
     ap.add_argument("--fit-config", default="configs/fits/sec4_P1.yaml",

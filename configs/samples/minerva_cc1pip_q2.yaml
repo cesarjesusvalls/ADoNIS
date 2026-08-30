@@ -10,8 +10,8 @@
 render: multiobs
 name: minerva_cc1pip_q2
 inputs:
-  adonis_bank: [output/paper_banks_p4/nu_MINERvA_C/merged]
-  h_bank:      [output/paper_banks_p4/nu_MINERvA_H/merged]   # free-H (CH); NuMI flux, RES-only, no FSI
+  adonis_bank: [nu_MINERvA_C/merged]
+  h_bank:      [nu_MINERvA_H/merged]   # free-H (CH); NuMI flux, RES-only, no FSI
 signal:
   mu_win: [1500.0, 20000.0]        # 1.5 < p_mu < 20 GeV/c
   cth: 0.9396926208                # theta_mu < 20 deg

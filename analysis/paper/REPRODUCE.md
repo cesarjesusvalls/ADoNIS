@@ -55,13 +55,13 @@ comparing a rebuild against the published set without overwriting it.
 ### Check the installation
 
 ```bash
-python -m analysis.campaign.gate1 --label smoke --fit-config configs/fits/smoke.yaml --max-chunks 4
-S4_GATE_NPZ=output/results/smoke.npz \
+python -m analysis.campaign.constrained --label smoke --fit-config configs/fits/smoke.yaml --max-chunks 4
+ADONIS_JACOBIAN_NPZ=output/results/smoke.npz \
     python -m analysis.campaign.run configs/fits/smoke.yaml --stage closure
 ```
 
 `configs/fits/smoke.yaml` is the full inference chain at the smallest size that still exercises it.
-Every stage below accepts it in place of the paper config. `S4_GATE_NPZ` selects which Jacobian the
+Every stage below accepts it in place of the paper config. `ADONIS_JACOBIAN_NPZ` selects which Jacobian the
 stages read; without it they take `output/results/multisample_carbon.npz`, the one the paper uses.
 
 ---
@@ -127,7 +127,7 @@ python -m analysis.oracle_tools.combine "output/achilles/nu_T2K_C/*.npz" \
 **The Jacobian** — the gradient-information results, and the parameter selection the fit uses:
 
 ```bash
-python -m analysis.campaign.gate1 --label multisample_carbon
+python -m analysis.campaign.constrained --label multisample_carbon
 ```
 
 Writes `output/results/multisample_carbon.npz`: the stacked per-bin Jacobian over all samples and

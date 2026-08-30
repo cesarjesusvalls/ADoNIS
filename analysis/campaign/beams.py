@@ -1,4 +1,4 @@
-"""Tagged-beam samples (pi+/p/n on carbon): the model behind the beam half of the Gate-I stack.
+"""Tagged-beam samples (pi+/p/n on carbon): the model behind the beam half of the constrained-set stack.
 
 Consumed by analysis.campaign.stages.multisample (BeamSample) via beam_model.
 """
@@ -7,8 +7,8 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 
-_BANKS = "output/paper_banks_p4"
-BEAM_DIRS = {"pip": f"{_BANKS}/beam_pip_C/merged", "prot": f"{_BANKS}/beam_prot_C/merged",
+_BANKS = ""
+BEAM_DIRS = {"pip": "beam_pip_C/merged", "prot": "beam_prot_C/merged",
              "neut": f"{_BANKS}/beam_neut_C/merged"}
 BEAM_LABEL = {"pip": "$\\pi^+$–C", "prot": "p–C", "neut": "n–C"}
 

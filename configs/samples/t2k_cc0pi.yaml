@@ -4,7 +4,7 @@
 render: multiobs
 name: t2k_cc0pi
 inputs:
-  adonis_bank: [output/paper_banks_p4/nu_T2K_C/merged]
+  adonis_bank: [nu_T2K_C/merged]
   reference:   [output/achilles/fsrich/nu_T2K_C.npz]
 signal:      # CC0pi: mu 250-inf & cos>-0.6 ; global leading p 450-1000 & cos>0.4 ; zero mesons
   mu_win: [250.0, inf]

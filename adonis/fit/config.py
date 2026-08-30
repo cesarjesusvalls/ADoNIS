@@ -99,7 +99,7 @@ class Minimizer:
 
 @dataclass(frozen=True)
 class Fit:
-    dials: Any = "gate1"
+    dials: Any = "constrained"
     estimator: str = "mle"
     minimizer: Minimizer = field(default_factory=Minimizer)
 
@@ -109,7 +109,7 @@ class Fit:
         est = d.get("estimator", "mle")
         if est not in ("mle", "map"):
             raise ValueError(f"fit.estimator: expected mle|map, got {est!r}")
-        return cls(dials=d.get("dials", "gate1"), estimator=est,
+        return cls(dials=d.get("dials", "constrained"), estimator=est,
                    minimizer=Minimizer.parse(d.get("minimizer")))
 
     @property

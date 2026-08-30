@@ -5,12 +5,12 @@ A `sample` is bank(s) + signal + observables(+edges): one definition, built from
 
     s = AnaSample.from_config("configs/samples/t2k_cc0pi.yaml")
     s.plot()            # ADoNIS-vs-ACHILLES figure
-    s.gate1()           # Gate-I Fisher / shrinkage
+    s.constrained()           # Fisher / shrinkage of the constrained subset
     s.dump_cache()      # persist the Jacobian npz
-    combined = s1 + s2  # SampleSet -> joint Gate-I (Fisher is additive)
+    combined = s1 + s2  # SampleSet -> joint constrained subset (Fisher is additive)
 
 The Jacobian bins on the sample's REAL edges (ObservableSpec.edges), not auto design_edges: one sample
-definition drives plot and gradient identically.  Gate-I shrinkage is invariant to a per-bin scale, so the
+definition drives plot and gradient identically.  Shrinkage is invariant to a per-bin scale, so the
 gradient uses scale = 1/binwidth; real display units are a .plot() concern.
 
 Memory: the Jacobian STREAMS the bank one chunk at a time (peak = one chunk); the same pass accumulates
@@ -32,7 +32,7 @@ from adonis.workflow import selection as SG
 from adonis.reweight import knobs as K
 
 from analysis._cli import results_dir
-T2K_H_BANK = os.environ.get("ADONIS_T2K_H_BANK", "output/paper_banks_p4/nu_T2K_H/merged")
+T2K_H_BANK = "nu_T2K_H/merged"
 
 
 def _cfg_h_bank(cfg):
@@ -61,7 +61,7 @@ def _binidx(mask, vals, edges):
 from adonis.stats.gaussian import bin_sigma as _bin_sigma
 
 
-def gate1_from(J, sigma, prior):
+def constrained_from(J, sigma, prior):
     """Asimov Fisher F=(J/sigma)^T(J/sigma), marginalized V=inv(F+diag(1/prior^2)), shrink=sqrt(diagV)/prior
     (FIT when <0.5), reach=sqrt(diagF).  Fisher is ADDITIVE, so composing samples = stacking their rows."""
     Jw = np.asarray(J) / np.asarray(sigma)[:, None]
@@ -87,7 +87,8 @@ class AnaSample:
 
     @property
     def bank(self):
-        return self.cfg.inputs["adonis_bank"][0]
+        from adonis.io import bank_path
+        return str(bank_path(self.cfg.inputs["adonis_bank"][0]))
 
     @property
     def is_electron(self):
@@ -204,17 +205,17 @@ class AnaSample:
         r = self._gradient(**kw)
         return r["J"], r["sigma"], r["row0"], r["keys"]
 
-    def gate1(self, max_chunks=None, log=print):
+    def constrained(self, max_chunks=None, log=print):
         r = self._gradient(max_chunks=max_chunks, log=log)
-        F, V, sig_post, shrink, reach = gate1_from(r["J"], r["sigma"], K.PRIOR)
+        F, V, sig_post, shrink, reach = constrained_from(r["J"], r["sigma"], K.PRIOR)
         r.update(F=F, V=V, sig_post=sig_post, shrink=shrink, reach=reach, prior=K.PRIOR, pnames=K.PNAMES)
         return r
 
 
     def dump_cache(self, label=None, res=None, max_chunks=None, log=print):
-        """Persist the Gate-I npz (J, sigma, row0, dskeys, shrink, F, V + per-obs edges/central) to
+        """Persist the constrained-set npz (J, sigma, row0, dskeys, shrink, F, V + per-obs edges/central) to
         <results>/{label}.npz -- what SampleSet / the figures load."""
-        r = res or self.gate1(max_chunks=max_chunks, log=log)
+        r = res or self.constrained(max_chunks=max_chunks, log=log)
         out_dir = results_dir()
         out_dir.mkdir(parents=True, exist_ok=True)
         out = out_dir / f"{label or self.name}.npz"
@@ -248,7 +249,7 @@ class SampleSet:
     def __add__(self, other):
         return SampleSet(self.samples + ([other] if isinstance(other, AnaSample) else other.samples))
 
-    def gate1(self, max_chunks=None, log=print):
+    def constrained(self, max_chunks=None, log=print):
         Js, sigs, keys, row0 = [], [], [], [0]
         edges, central = {}, {}
         for s in self.samples:
@@ -259,6 +260,6 @@ class SampleSet:
                 edges[tag] = r["edges"][k]; central[tag] = r["central"][k]
                 row0.append(row0[-1] + (len(r["edges"][k]) - 1))
         J = np.vstack(Js); sigma = np.concatenate(sigs)
-        F, V, sig_post, shrink, reach = gate1_from(J, sigma, K.PRIOR)
+        F, V, sig_post, shrink, reach = constrained_from(J, sigma, K.PRIOR)
         return dict(J=J, sigma=sigma, row0=np.asarray(row0), keys=keys, edges=edges, central=central,
                     F=F, V=V, sig_post=sig_post, shrink=shrink, reach=reach, prior=K.PRIOR, pnames=K.PNAMES)

@@ -1,7 +1,7 @@
 """Workload (wall time, event-passes) to reach common convergence targets, as a function of N events/sample
 and n fitted dials, for Gauss-Newton and MIGRAD (with/without gradient) on one shared FitKernel.
 
-n indexes NESTED subsets of the Gate-I dials, ordered by shrinkage (best-constrained first).  Sigma and
+n indexes NESTED subsets of the constrained-set dials, ordered by shrinkage (best-constrained first).  Sigma and
 the live-bin mask are frozen from --ref rather than recomputed at each N.  Data is closure truth on the
 fitted dials plus per-bin Gaussian noise (one Asimov fit per cell is kept as a contrast).  Times are
 compared to a COMMON chi2/parameter-distance target, not to each method's native stopping rule.
@@ -87,7 +87,7 @@ def main(argv=None):
     eng = MS.build_multisample_engine(log, cfg)
     g = np.load(MS.MULTISAMPLE_NPZ, allow_pickle=True)
     order = _dial_order(g, eng.pnames)
-    log(f"dial order (Gate-I, best constrained first): "
+    log(f"dial order (constrained-set, best constrained first): "
         + " ".join(eng.pnames[k] for k in order))
 
     ref = np.load(a.ref, allow_pickle=True)

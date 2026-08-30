@@ -15,7 +15,7 @@
 render: multiobs
 name: t2k_cc0pi_ddxs
 inputs:
-  adonis_bank: [output/paper_banks_p4/nu_T2K_C/merged]
+  adonis_bank: [nu_T2K_C/merged]
   reference:   [output/achilles/fsrich/nu_T2K_C.npz]
 signal:
   mu_win: [0.0, inf]        # published binning starts at p_mu = 0

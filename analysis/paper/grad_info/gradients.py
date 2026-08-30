@@ -2,7 +2,7 @@
 
 Reads the persisted Jacobian J_ik = d(dsigma/dx)_i/dtheta_k (one jax.jvp per knob through
 bank_reweight.weight_jit).  Plots the signed, per-row-normalized pull S_ik = (dtheta_k^prior)*J_ik/sigma_i
-for the Gate-I fittable knobs (marginalized shrinkage < 0.5), grouped by physics block, styled to match
+for the constrained-set fittable knobs (marginalized shrinkage < 0.5), grouped by physics block, styled to match
 the Fisher figure (grad_info/fisher.py).
 
 Usage:  python -m analysis.paper.grad_info.make [label]
@@ -50,7 +50,7 @@ SYST = 0.05
 
 
 def main(label="multisample_carbon"):
-    """Per-bin gradient SHAPE for the Gate-I fittable knobs.
+    """Per-bin gradient SHAPE for the constrained-set fittable knobs.
 
     Rows = knobs the combined data can constrain (marginalized shrinkage < FIT_CUT), grouped by physics
     block; columns = bins grouped by observable.  Each row is normalized to its own peak; sign shows

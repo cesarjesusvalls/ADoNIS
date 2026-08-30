@@ -1,7 +1,7 @@
 """Closure fit over the SAME dials + samples as the Fisher/gradient studies.
 
 Both read ONE stacked-Jacobian object, the stacked-Jacobian npz (built by
-`python -m analysis.campaign.gate1`): the dials passing Gate I (combined marginalized shrinkage < 0.5),
+`python -m analysis.campaign.constrained`): the dials passing the constrained set (combined marginalized shrinkage < 0.5),
 and the joint sample set (T2K CC0pi/CC1pi STV+muon, MINERvA CC0pi-Np STV, MINERvA qelike pT/p||, (e,e')
 QE/RES omega, pi+/p/n -> C beams).
 
@@ -11,14 +11,14 @@ an injected truth; the blind fit walks the dials back from nominal through the t
 across every sample jointly.
 
 `MultiEngine` duck-types the single-bank `fitters.Engine` (`model`, `jac`, `data_sigma`, `th0`, `prior`,
-`pnames`, `npar`, `row0`, `ds`), so `fitters.lm_fit` and the Gate-II / flag machinery run over it
+`pnames`, `npar`, `row0`, `ds`), so `fitters.lm_fit` and the constrained-setI / flag machinery run over it
 unchanged.  Every sample shares the one 28-knob `physical_fit` basis; the reweight is
 `bank_reweight.bank_weight` for the nu/electron banks and `cascade.pool_fsi_reweight` for the beams (via
 `beams.beam_model`) -- both pure-JAX and differentiable, so the per-knob Jacobian is exact.
 
     python -m analysis.campaign.stages.multisample            # closure at the default injection
 Label, injection, iteration count and bank chunk caps all come from the FitConfig, not the environment;
-S4_GATE_NPZ overrides which multisample_carbon.npz is read.
+ADONIS_JACOBIAN_NPZ overrides which multisample_carbon.npz is read.
 """
 
 from analysis._cli import results_dir, FLAT_PRIOR_SCALE, timed_log
@@ -45,8 +45,8 @@ from adonis.reweight.knobs import NPAR, PNAMES, PRIOR, theta_nominal, knobs_of
 from analysis.campaign.sample import AnaSample
 from analysis.campaign.beams import beam_model
 
-MULTISAMPLE_NPZ = os.environ.get("S4_GATE_NPZ", str(results_dir() / "multisample_carbon.npz"))
-JAC_BATCH = int(os.environ.get("S4_JAC_BATCH", "16"))
+MULTISAMPLE_NPZ = os.environ.get("ADONIS_JACOBIAN_NPZ", str(results_dir() / "multisample_carbon.npz"))
+JAC_BATCH = int(os.environ.get("ADONIS_JAC_BATCH", "16"))
 
 
 def _batched_jac(subset, call, bin_cols):
@@ -69,7 +69,7 @@ def _batched_jac(subset, call, bin_cols):
             bs = max(1, bs // 2)
             print(f"[jac] device OOM at batch {bs * 2} -> retrying at {bs} "
                   f"(identical result, more dispatches)", flush=True)
-_JAX_BIN = os.environ.get("S4_JAX_BIN", "") == "1"
+_JAX_BIN = os.environ.get("ADONIS_JAX_BINNING", "") == "1"
 
 T2K_KEEP = ("dpt", "dat", "pmu", "cosmu", "pn", "dptt", "daT")
 
@@ -444,7 +444,7 @@ def build_multisample_engine(log, cfg):
 
 
 def fit_subset(g, pnames, cfg, log=None):
-    """The fitted dials: Gate-I shrink<0.5, plus anything `fit.dials` names explicitly.
+    """The fitted dials: constrained-set shrink<0.5, plus anything `fit.dials` names explicitly.
 
     Fixing a dial removes it from the fit and from the toy truth throw alike (multisample_coverage
     iterates the same subset), so it is held at nominal everywhere -- i.e. "assumed known".
@@ -459,7 +459,7 @@ def fit_subset(g, pnames, cfg, log=None):
                 log(f"  GATE-I VIF: dropping {pnames[k]} (shrink {float(g['shrink'][k]):.3f} passes, but "
                     f"VIF={vif[k]:.0f}, R_multi={rmul[k]:.4f} > cut {cut:g})")
         sub = [k for k in sub if vif[k] <= cut]
-    add = [] if cfg.fit.dials == "gate1" else list(cfg.fit.dials)
+    add = [] if cfg.fit.dials == "constrained" else list(cfg.fit.dials)
     if add:
         bad = [a for a in add if a not in list(pnames)]
         if bad:
@@ -469,7 +469,7 @@ def fit_subset(g, pnames, cfg, log=None):
             if k not in sub:
                 sub = sorted(sub + [k])
                 if log:
-                    log(f"  ADDED (failed Gate I, forced in): {a} (shrink {float(g['shrink'][k]):.3f})")
+                    log(f"  ADDED (failed the constrained set, forced in): {a} (shrink {float(g['shrink'][k]):.3f})")
     return sub
 
 

@@ -43,7 +43,7 @@ data:
     freeze_at: nominal
 
 fit:
-  dials: gate1
+  dials: constrained
   estimator: mle
   minimizer:
     method: trf

@@ -26,7 +26,7 @@ axes:
   # What each probe type constrains: neutrino, electron, hadron beams.
   by_probe:
     figure: constraints_per_subset
-    title: Gate I per probe type
+    title: the constrained set per probe type
     marginalized_only: true              # single panel: what the joint fit delivers (no raw/degeneracy panel)
     groups:                              # all samples, grouped by beam particle (uses the default npz)
       # dskeys are now namespaced `sample:obs` (AnaSample/SampleSet), so a probe is a clean glob over samples

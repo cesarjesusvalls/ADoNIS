@@ -1,4 +1,4 @@
-"""Fisher information per subset (Gate I): does the DATA determine each knob, given a prior?
+"""Fisher information per subset (the constrained set): does the DATA determine each knob, given a prior?
 
 Asimov posterior V = (J^T C^-1 J + Pi^-1)^-1; a knob is FIT when shrinkage = sigma_post/prior < 0.5.
 Reports both raw = 1/sqrt(F_kk)/prior (other knobs fixed) and marg = sqrt(V_kk)/prior (other knobs
@@ -25,7 +25,7 @@ from analysis.paper.grad_info import subsets as SS
 plab = style.plab
 
 
-def gate1(J, sigma, prior, rows):
+def constrained(J, sigma, prior, rows):
     """(marginalized shrinkage, raw shrinkage, Fisher) for the given bin rows -- via the shared engine."""
     F, _V, _sig_post, marg, reach = FE.fisher_shrinkage(J, sigma, prior, rows)
     with np.errstate(divide="ignore"):
@@ -119,7 +119,7 @@ def main(label=None):
         M = np.zeros((len(pnames), len(groups)))
         R = np.zeros_like(M)
         for c, (_n, _l, keys) in enumerate(groups):
-            M[:, c], R[:, c], _ = gate1(J, sigma, prior, SS.rows_for(keys, dskeys, row0))
+            M[:, c], R[:, c], _ = constrained(J, sigma, prior, SS.rows_for(keys, dskeys, row0))
 
         print(f"\n==== GATE I · axis '{aname}' ({alabel}) -- shrinkage, FIT < {fit_cut} ====")
         names = [g[0] for g in groups]

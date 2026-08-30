@@ -21,7 +21,7 @@ def posterior(F, prior):
     return np.linalg.inv(F + np.diag(1.0 / np.asarray(prior) ** 2))
 
 def shrink_from_fisher(F, prior):
-    """Gate-I marginalized shrinkage sqrt(diag(V))/prior for a Fisher matrix already in hand."""
+    """Marginalized shrinkage sqrt(diag(V))/prior for a Fisher matrix already in hand."""
     return np.sqrt(np.diag(posterior(F, prior))) / np.asarray(prior)
 
 def vif_from_fisher(F, prior):

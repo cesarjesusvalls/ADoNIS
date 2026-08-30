@@ -1,6 +1,6 @@
 """Dump the fit's live-bin mask -- which bins survive the sparse-bin cut AT THE FIT'S OWN STATISTICS.
 
-The engine caps selected events per sample (banks.sig_cap) while the Gate-I Jacobian streams the whole
+The engine caps selected events per sample (banks.sig_cap) while the constrained-set Jacobian streams the whole
 bank, so the same cut drops a different set of bins in each; recomputing it downstream from the Jacobian
 would produce a figure that looks masked to the fit's statistics and is not.
 

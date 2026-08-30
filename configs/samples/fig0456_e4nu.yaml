@@ -7,7 +7,7 @@ compute: ele
 name: fig0456_e4nu
 probe: electron
 inputs:
-  adonis_bank: [output/paper_banks_p4/beam_e_C_1159/merged]
+  adonis_bank: [beam_e_C_1159/merged]
   reference:   [output/achilles/fsrich/ee_C_1159_qe_fsi.npz, output/achilles/fsrich/ee_C_1159_res_fsi.npz]
 signal:
   beam_energy: 1159.0         # MeV

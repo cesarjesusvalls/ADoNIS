@@ -13,7 +13,7 @@ If the two agree over +/-3 sigma the marginal error is trustworthy; a dial whose
 or walls off shows up as a departure.  Reads the BFP + injected data from an existing closure run, so it
 profiles the SAME likelihood.
 
-Env: ADONIS_FIT_CONFIG, S4_PROF_BASE/S4_PROF_N (dial-level sharding).  Writes
+Env: ADONIS_FIT_CONFIG, ADONIS_PROFILE_BASE/ADONIS_PROFILE_COUNT (dial-level sharding).  Writes
 <results>/<label>_profile.npz.
 """
 
@@ -86,8 +86,8 @@ def main():
     prof = np.full((len(subset), NGRID), np.nan)
     profd = np.full((len(subset), NGRID), np.nan)
     logdetV = np.full((len(subset), NGRID), np.nan)
-    PB = int(os.environ.get("S4_PROF_BASE", "-1"))
-    PN = int(os.environ.get("S4_PROF_N", "1"))
+    PB = int(os.environ.get("ADONIS_PROFILE_BASE", "-1"))
+    PN = int(os.environ.get("ADONIS_PROFILE_COUNT", "1"))
     mine = range(*shard_range(PB, PN, len(subset)))
     if PB >= 0:
         log(f"shard: dials {[eng.pnames[subset[c]] for c in mine]}")

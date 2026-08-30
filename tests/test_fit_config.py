@@ -1,7 +1,7 @@
 """The fit config must describe the sec4 P1 campaign exactly, and must reject a typo.
 
 The regression this guards: the P1 run's parameters lived only as environment variables spread across
-SLURM submitters, and the one that was missing from one script (S4_PRIOR_SCALE, absent from the corner)
+SLURM submitters, and the one that was missing from one script (ADONIS_PRIOR_SCALE, absent from the corner)
 made that stage run MAP while every other stage ran MLE.  A config is only an improvement if it is
 provably the same numbers -- hence the exact-string check below -- and only safe if a mistyped key is an
 error rather than a silent default.

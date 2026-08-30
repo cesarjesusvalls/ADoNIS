@@ -19,7 +19,7 @@ from adonis.numerics import polint as _polint
 
 import contextlib as _contextlib
 
-from adonis.io import achilles_sibling_root
+from adonis.io import achilles_sibling_root, checkout_path
 _ACH = achilles_sibling_root()
 from adonis.constants import MASS_PDG_MUON as M_MU, MASS_PDG_PROTON as M_P
 
@@ -79,7 +79,7 @@ class SpectrumFlux:
     table; the no-arg constructor uses the module default (T2K_nu.dat unless set)."""
 
     def __init__(self, filename=None):
-        path = _ACH / (filename if filename is not None else _default_flux())
+        path = checkout_path(filename if filename is not None else _default_flux())
         self.edges, self.heights0 = _parse_spectrum(path)
         self.flux_integral = float(np.sum(np.diff(self.edges) * self.heights0))
         centres = [self.edges[0]] + [(self.edges[i] + self.edges[i - 1]) / 2 for i in range(1, len(self.edges))] + [self.edges[-1]]

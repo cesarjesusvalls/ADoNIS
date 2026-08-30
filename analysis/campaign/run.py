@@ -30,16 +30,16 @@ STAGE_MODULE = {
 }
 
 SHARD_ENV = {
-    "profile":    "S4_PROF_BASE",
-    "profile2d":  "S4_PAIR_BASE",
-    "gradient2d": "S4_PAIR_BASE",
-    "toys":       "S4_TOY_BASE",
+    "profile":    "ADONIS_PROFILE_BASE",
+    "profile2d":  "ADONIS_PAIR_BASE",
+    "gradient2d": "ADONIS_PAIR_BASE",
+    "toys":       "ADONIS_TOY_BASE",
     "nuts":       "NUTS_CHAIN",
 }
 
-_OWNED = {"S4_PROF_BASE", "S4_PROF_N", "S4_PAIR_BASE", "S4_NPAIR", "S4_ROW_BASE", "S4_NROW",
-          "S4_TOY_BASE", "NUTS_CHAIN", "ADONIS_FIT_CONFIG", "ADONIS_FIT_STAGE",
-          "S4_JAC_BATCH", "S4_JAX_BIN", "S4_GATE_NPZ"}
+_OWNED = {"ADONIS_PROFILE_BASE", "ADONIS_PROFILE_COUNT", "ADONIS_PAIR_BASE", "ADONIS_PAIR_COUNT", "ADONIS_ROW_BASE", "ADONIS_ROW_COUNT",
+          "ADONIS_TOY_BASE", "NUTS_CHAIN", "ADONIS_FIT_CONFIG", "ADONIS_FIT_STAGE",
+          "ADONIS_JAC_BATCH", "ADONIS_JAX_BINNING", "ADONIS_JACOBIAN_NPZ"}
 
 
 def _reject_stale_env():
@@ -65,12 +65,12 @@ def _shard(stage, spec, cfg):
         npair = len(st["dials"]) * (len(st["dials"]) - 1) // 2
         rows_per = max(1, -(-int(st["n"]) // max(1, n // npair)))
         pair, blk = divmod(k, max(1, n // npair))
-        return {"S4_PAIR_BASE": str(pair), "S4_NPAIR": "1",
-                "S4_ROW_BASE": str(blk * rows_per), "S4_NROW": str(rows_per)}
+        return {"ADONIS_PAIR_BASE": str(pair), "ADONIS_PAIR_COUNT": "1",
+                "ADONIS_ROW_BASE": str(blk * rows_per), "ADONIS_ROW_COUNT": str(rows_per)}
     if stage == "profile":
-        return {"S4_PROF_BASE": str(k), "S4_PROF_N": "1"}
+        return {"ADONIS_PROFILE_BASE": str(k), "ADONIS_PROFILE_COUNT": "1"}
     if stage == "toys":
-        return {"S4_TOY_BASE": str(k * int(cfg.stage("toys").get("shard_size", 50)))}
+        return {"ADONIS_TOY_BASE": str(k * int(cfg.stage("toys").get("shard_size", 50)))}
     if stage == "nuts":
         return {"NUTS_CHAIN": str(k)}
     raise SystemExit(f"stage {stage!r} is not shardable")

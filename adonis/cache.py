@@ -1,10 +1,10 @@
 """On-disk memo for an expensive reduction, fingerprinted on its inputs.  No physics.
 
 Memoises a pure function of (input files, parameters) to <CACHE>/<name>.npz. The fingerprint
-covers each dependency's (relative path, size, mtime) plus `params`; a mismatch rebuilds the
+covers each dependency's (path, size, mtime) plus `params`; a mismatch rebuilds the
 entry. `ADONIS_PLOT_REFRESH=1` forces a rebuild (needed if a file is rewritten with its mtime
-preserved, which fingerprinting cannot see). Cache root: `ADONIS_PLOT_CACHE`, default
-`<repo>/data/cache/plot`.
+preserved, which fingerprinting cannot see). Cache root: `ADONIS_PLOT_CACHE`, else a cache
+directory under the output root.
 """
 import os
 import json

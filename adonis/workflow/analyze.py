@@ -27,7 +27,8 @@ def _merge(parts):
 
 
 def build_adonis(cfg):
-    banks = cfg.inputs.get("adonis_bank") or []
+    from adonis.io import bank_path
+    banks = [str(bank_path(b)) for b in (cfg.inputs.get("adonis_bank") or [])]
     if not banks:
         raise ValueError("no ADoNIS input banks (expected inputs.adonis_bank: [<paper_banks dir>, ...])")
     fn = SG.bank_signal_nc if cfg.signal.pion_id == "pi0" else SG.bank_signal
