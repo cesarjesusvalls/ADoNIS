@@ -26,6 +26,11 @@ dev = ["pytest>=7"]
 [project.scripts]
 adonis-generate = "adonis.workflow.cli:main"
 
+[tool.setuptools.package-data]
+# Non-code files the package reads at run time.  Large physics inputs are NOT here: they belong to
+# ACHILLES and are resolved through ACHILLES_DATA.
+adonis = ["py.typed"]
+
 [tool.setuptools.packages.find]
 # `analysis` is the application layer that consumes this package: the paper's figures, its fit
 # campaign and its benchmarks.  It is deliberately NOT packaged -- it is not reusable, and shipping
