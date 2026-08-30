@@ -31,10 +31,11 @@ from adonis.io import achilles_data_root
 
 
 OUT_DIR = "output/achilles"
-ORACLE = "ghcr.io/cesarjesusvalls/achilles:oracle"
+REGISTRY = os.environ.get("ADONIS_ACHILLES_REGISTRY", "ghcr.io/cesarjesusvalls/achilles")
+ORACLE = f"{REGISTRY}:oracle"
 
-STANDALONE_CASCADE = ("achilles:cascade", True, "/achilles/bin/achilles-cascade")
-FULL_CASCADE = ("achilles:fullcascade", True, "/achilles/bin/achilles")
+STANDALONE_CASCADE = (f"{REGISTRY}:cascade", True, "/achilles/bin/achilles-cascade")
+FULL_CASCADE = (f"{REGISTRY}:fullcascade", True, "/achilles/bin/achilles")
 NO_CASCADE = (ORACLE, False, "/achilles/bin/achilles")
 
 
@@ -102,8 +103,8 @@ def _apptainer_cmd(card_in_out, image, _native, entrypoint, out_abs):
     sif = image_file(image)
     if not sif.exists():
         raise SystemExit(f"image not found: {sif}\n"
-                         f"  set ACHILLES_IMAGES to the directory holding achilles-*.sif, or build it "
-                         f"from docker/{image.rsplit(':', 1)[-1]}.def")
+                         f"  set ACHILLES_IMAGES to the directory holding achilles-*.sif, or pull it:\n"
+                         f"    apptainer pull {sif} docker://{image}")
     data = achilles_data_root()
     flux = Path(os.environ.get("ACHILLES_FLUX", str(data.parent / "achilles_flux")))
     # ACHILLES writes these two beside its working directory, which is read-only in the image.
