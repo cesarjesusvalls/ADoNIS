@@ -1,10 +1,8 @@
-"""Per-module self-test gate (gap 1): exercise every chain module's
-closure_test() (standalone differentiability) and oracle_test() (physics validity
-vs ACHILLES) through the uniform contract on the base classes.
+"""Every chain module's own self-tests pass through the uniform base-class contract.
 
-These are the CI-facing gates -- they assert each module's own self-test passes,
-so the same checks run locally and in the cloud.  Statistics are deliberately
-modest: these gate that each self-test runs and passes, not the physics precision.
+Each module exposes closure_test() (standalone differentiability) and oracle_test() (physics
+validity against ACHILLES).  These assert that each self-test runs and passes, so the same checks
+run locally and in CI; the statistics are modest by design and do not gate physics precision.
 """
 import os
 import jax
