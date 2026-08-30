@@ -5,9 +5,16 @@ name: images
 on:
   workflow_dispatch:
     inputs:
+      achilles_repo:
+        description: "ACHILLES source repository"
+        default: "AchillesGen/Achilles"
       achilles_ref:
-        description: "ACHILLES commit or branch to build"
-        default: "7054913"
+        description: "commit, tag or branch to build"
+        default: "main"
+      patch:
+        description: "apply docker/patch_cascade_registry.py (upstream may no longer need it)"
+        type: boolean
+        default: false
       push:
         description: "push to ghcr.io (otherwise build only)"
         type: boolean
@@ -31,14 +38,18 @@ jobs:
       - name: Fetch the ACHILLES source
         uses: actions/checkout@v4
         with:
-          repository: cesarjesusvalls/Achilles-adonis
+          repository: ${{ inputs.achilles_repo }}
           ref: ${{ inputs.achilles_ref }}
           path: achilles-src
-          # Needed only while that repository is private; a public one uses the default token.
           token: ${{ secrets.ACHILLES_SRC_TOKEN || github.token }}
 
       - name: Stage the build context
-        run: cp docker/patch_cascade_registry.py achilles-src/
+        run: |
+          cp docker/patch_cascade_registry.py achilles-src/
+          if [ "${{ inputs.patch }}" != "true" ]; then
+            # The recipe applies it unconditionally; a no-op script keeps the build honest.
+            printf 'import sys\nprint("registry patch not requested")\n' > achilles-src/patch_cascade_registry.py
+          fi
 
       - uses: docker/login-action@v3
         if: ${{ inputs.push }}
