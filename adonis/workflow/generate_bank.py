@@ -169,7 +169,7 @@ def _generate_hardvertex(cfg, outdir, log, t0):
         estimate is not conservative: an undersized buffer aborts the generation, and a larger
         nucleus needs a larger ADONIS_REC_MARGIN than the default carries.
         """
-        ncal = min(CHUNK, int(os.environ.get("ADONIS_REC_NCAL", "100")))
+        ncal = min(CHUNK, int(os.environ.get("ADONIS_REC_NCAL", "2000")))
         ev = gen(ncal, SEED0); rec = cascade(ev, jax.random.PRNGKey(7), (8, 8), chan)[4]
         scale = CHUNK / ncal * _MARGIN
         t = max(max(64, math.ceil(int(rec["gc_p"]) * scale)), max(64, math.ceil(int(rec["gc_n"]) * scale)))
