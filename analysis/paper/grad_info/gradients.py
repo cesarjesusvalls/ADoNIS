@@ -16,19 +16,7 @@ import matplotlib.pyplot as plt
 from analysis.paper import style
 from adonis.stats import fisher as FE
 
-DSLABEL = {"t2k_cc0pi:dpt": "CC0$\\pi$ $\\delta p_T$", "t2k_cc0pi:dalphat": "CC0$\\pi$ $\\delta\\alpha_T$",
-           "t2k_cc0pi:pmu": "CC0$\\pi$ $p_\\mu$", "t2k_cc0pi:cos_mu": "CC0$\\pi$ $\\cos\\theta_\\mu$",
-           "t2k_cc1pi_ch:pn": "CC1$\\pi$ $p_N$", "t2k_cc1pi_ch:dptt": "CC1$\\pi$ $\\delta p_{TT}$",
-           "t2k_cc1pi_ch:dalphat": "CC1$\\pi$ $\\delta\\alpha_T$",
-           "minerva_stv:dalphat": "CC0$\\pi$ $\\delta\\alpha_T$", "minerva_stv:pn": "CC0$\\pi$ $p_n$",
-           "minerva_stv:dpt": "CC0$\\pi$ $\\delta p_T$",
-           "minerva_ptpz:pt": "incl. $p_T^\\mu$", "minerva_ptpz:pz": "incl. $p_\\parallel^\\mu$",
-           "minerva_cc1pip_tpi:tpi": "CC1$\\pi^+$ $T_\\pi$",
-           "minerva_cc1pip_q2:q2": "CC1$\\pi^+$ $Q^2$",
-           "ee_omega:omega": "$(e,e')$ $\\omega$",
-           "pip_react": "$\\pi^+$ $\\sigma_{\\rm reac}$", "pip_abs": "$\\pi^+$ $\\sigma_{\\rm abs}$",
-           "prot_react": "$p$ $\\sigma_{\\rm reac}$", "prot_pipro": "$p$ $\\sigma_{\\pi\\rm prod}$",
-           "neut_react": "$n$ $\\sigma_{\\rm reac}$", "neut_pipro": "$n$ $\\sigma_{\\pi\\rm prod}$"}
+DSLABEL = style.DSKEY_COMPACT
 
 
 SAMPLE_GROUP = [("T2K", ("t2k_",), "#4a4a4a"),

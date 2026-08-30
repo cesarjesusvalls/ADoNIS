@@ -216,3 +216,44 @@ def knob_group_tabs(ax, gid, tabx=-0.15, tabw=0.022, labx=-0.185, lw=1.6, fontsi
                                facecolor=KNOB_GROUP_COLOR[g], edgecolor="none", zorder=5))
         ax.text(labx, (a + b) / 2, KNOB_GROUP_NAME[g], ha="center", va="center", rotation=90,
                 fontsize=fontsize, color="0.2", fontweight="bold", transform=yt)
+
+
+# Figure labels.  One owner, so a name cannot read one way on one axis and another way elsewhere.
+SAMPLE = {"t2k_cc0pi": "T2K CC0$\\pi$", "t2k_cc1pi_ch": "T2K CC1$\\pi$",
+         "minerva_stv": "MINERvA CC0$\\pi$", "minerva_ptpz": "MINERvA incl.",
+         "minerva_cc1pip_tpi": "MINERvA CC1$\\pi^+$", "minerva_cc1pip_q2": "MINERvA CC1$\\pi^+$",
+         "ee_omega": "$(e,e')$C"}
+
+OBSERVABLE = {"dpt": "$\\delta p_T$", "dalphat": "$\\delta\\alpha_T$", "pmu": "$p_\\mu$",
+        "cos_mu": "$\\cos\\theta_\\mu$", "pn": "$p_N$", "dptt": "$\\delta p_{TT}$",
+        "pt": "$p_T^\\mu$", "pz": "$p_\\parallel^\\mu$", "omega": "$\\omega$",
+        "tpi": "$T_\\pi$", "q2": "$Q^2$"}
+
+BEAM = {"pip_react": "$\\pi^+$C $\\sigma_{\\rm reac}$", "pip_abs": "$\\pi^+$C $\\sigma_{\\rm abs}$",
+         "prot_react": "$p$C $\\sigma_{\\rm reac}$", "prot_pipro": "$p$C $\\sigma_{\\pi\\rm prod}$",
+         "neut_react": "$n$C $\\sigma_{\\rm reac}$", "neut_pipro": "$n$C $\\sigma_{\\pi\\rm prod}$"}
+
+# Compact forms, for tick labels where the experiment is already given by the panel.
+DSKEY_COMPACT = {"t2k_cc0pi:dpt": "CC0$\\pi$ $\\delta p_T$", "t2k_cc0pi:dalphat": "CC0$\\pi$ $\\delta\\alpha_T$",
+           "t2k_cc0pi:pmu": "CC0$\\pi$ $p_\\mu$", "t2k_cc0pi:cos_mu": "CC0$\\pi$ $\\cos\\theta_\\mu$",
+           "t2k_cc1pi_ch:pn": "CC1$\\pi$ $p_N$", "t2k_cc1pi_ch:dptt": "CC1$\\pi$ $\\delta p_{TT}$",
+           "t2k_cc1pi_ch:dalphat": "CC1$\\pi$ $\\delta\\alpha_T$",
+           "minerva_stv:dalphat": "CC0$\\pi$ $\\delta\\alpha_T$", "minerva_stv:pn": "CC0$\\pi$ $p_n$",
+           "minerva_stv:dpt": "CC0$\\pi$ $\\delta p_T$",
+           "minerva_ptpz:pt": "incl. $p_T^\\mu$", "minerva_ptpz:pz": "incl. $p_\\parallel^\\mu$",
+           "minerva_cc1pip_tpi:tpi": "CC1$\\pi^+$ $T_\\pi$",
+           "minerva_cc1pip_q2:q2": "CC1$\\pi^+$ $Q^2$",
+           "ee_omega:omega": "$(e,e')$ $\\omega$",
+           "pip_react": "$\\pi^+$ $\\sigma_{\\rm reac}$", "pip_abs": "$\\pi^+$ $\\sigma_{\\rm abs}$",
+           "prot_react": "$p$ $\\sigma_{\\rm reac}$", "prot_pipro": "$p$ $\\sigma_{\\pi\\rm prod}$",
+           "neut_react": "$n$ $\\sigma_{\\rm reac}$", "neut_pipro": "$n$ $\\sigma_{\\pi\\rm prod}$"}
+
+
+def dskey_label(key):
+    """`sample:observable` rendered for a legend, or the beam label for a beam key."""
+    if key in BEAM:
+        return BEAM[key]
+    if ":" in key:
+        smp, obs = key.split(":", 1)
+        return f"{SAMPLE.get(smp, smp)} {OBSERVABLE.get(obs, obs)}"
+    return key

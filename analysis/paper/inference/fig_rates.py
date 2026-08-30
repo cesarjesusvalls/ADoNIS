@@ -25,23 +25,15 @@ from analysis.paper import style
 C_PRE, C_POST, C_DATA = "#c8842a", "#1f4b9c", "0.15"
 
 
-_SAMP = {"t2k_cc0pi": "T2K CC0$\\pi$", "t2k_cc1pi_ch": "T2K CC1$\\pi$",
-         "minerva_stv": "MINERvA CC0$\\pi$", "minerva_ptpz": "MINERvA incl.",
-         "minerva_cc1pip_tpi": "MINERvA CC1$\\pi^+$", "minerva_cc1pip_q2": "MINERvA CC1$\\pi^+$",
-         "ee_omega": "$(e,e')$C"}
-_OBS = {"dpt": "$\\delta p_T$", "dalphat": "$\\delta\\alpha_T$", "pmu": "$p_\\mu$",
-        "cos_mu": "$\\cos\\theta_\\mu$", "pn": "$p_N$", "dptt": "$\\delta p_{TT}$",
-        "pt": "$p_T^\\mu$", "pz": "$p_\\parallel^\\mu$", "omega": "$\\omega$",
-        "tpi": "$T_\\pi$", "q2": "$Q^2$"}
+_SAMP = style.SAMPLE
+_OBS = style.OBSERVABLE
 _OVERFLOW = {"t2k_cc0pi:pmu", "ee_omega:omega"}
 _XSCALE = {"pz": 1e-3, "pt": 1e-3}
 _XUNIT = {"dpt": "[MeV/c]", "pn": "[MeV/c]", "dptt": "[MeV/c]", "pmu": "[MeV/c]",
           "pt": "[GeV/c]", "pz": "[GeV/c]", "tpi": "[MeV]", "omega": "[MeV]",
           "dalphat": "[rad]", "q2": "[GeV$^2$]", "cos_mu": ""}
 _BEAMX = {"pip": "$p_{\\pi^+}$ [MeV/c]", "prot": "$p_p$ [MeV/c]", "neut": "$p_n$ [MeV/c]"}
-_BEAM = {"pip_react": "$\\pi^+$C $\\sigma_{\\rm reac}$", "pip_abs": "$\\pi^+$C $\\sigma_{\\rm abs}$",
-         "prot_react": "$p$C $\\sigma_{\\rm reac}$", "prot_pipro": "$p$C $\\sigma_{\\pi\\rm prod}$",
-         "neut_react": "$n$C $\\sigma_{\\rm reac}$", "neut_pipro": "$n$C $\\sigma_{\\pi\\rm prod}$"}
+_BEAM = style.BEAM
 
 
 def _pretty(k):
