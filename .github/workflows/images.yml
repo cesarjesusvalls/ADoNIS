@@ -11,10 +11,6 @@ on:
       achilles_ref:
         description: "commit, tag or branch to build"
         default: "main"
-      patch:
-        description: "apply docker/patch_cascade_registry.py (upstream may no longer need it)"
-        type: boolean
-        default: false
       push:
         description: "push to ghcr.io (otherwise build only)"
         type: boolean
@@ -44,12 +40,7 @@ jobs:
           token: ${{ secrets.ACHILLES_SRC_TOKEN || github.token }}
 
       - name: Stage the build context
-        run: |
-          cp docker/patch_cascade_registry.py achilles-src/
-          if [ "${{ inputs.patch }}" != "true" ]; then
-            # The recipe applies it unconditionally; a no-op script keeps the build honest.
-            printf 'import sys\nprint("registry patch not requested")\n' > achilles-src/patch_cascade_registry.py
-          fi
+        run: cp docker/patch_cascade_registry.py achilles-src/
 
       - uses: docker/login-action@v3
         if: ${{ inputs.push }}

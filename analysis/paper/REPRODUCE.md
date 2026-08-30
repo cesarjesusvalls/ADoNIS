@@ -52,10 +52,12 @@ for tag in oracle cascade fullcascade; do
 done
 ```
 
-Only the figures with final-state interactions need the two cascade images.  They are built from
-unmodified upstream ACHILLES by `.github/workflows/images.yml`; `configs/achilles/images.yaml` pins
-the source commit and each image's digest, so a run can name the exact generator rather than a tag
-that may move.
+Only the figures with final-state interactions need the two cascade images.  They are built by
+`.github/workflows/images.yml` from upstream ACHILLES, with one build-time change: upstream's
+standalone `achilles-cascade` does not link the interaction library, so the cascade has no
+interactions registered and aborts.  The recipes in `docker/` add that link and nothing else.
+`configs/achilles/images.yaml` pins the source commit and each image's digest, so a run names the
+exact generator rather than a tag that may move.
 
 Figures are written to `output/paper/`. Set `ADONIS_PAPER_OUT` to send them elsewhere — useful for
 comparing a rebuild against the published set without overwriting it.

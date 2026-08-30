@@ -1,8 +1,10 @@
 # The ACHILLES images the comparison runs against, pinned by digest.
 #
 # A tag can be moved; a digest cannot, so a reproduction that names one of these is running the exact
-# generator the paper used.  cascade and fullcascade are built from unmodified upstream ACHILLES by
-# .github/workflows/images.yml.
+# generator the paper used.  cascade and fullcascade are built by .github/workflows/images.yml from
+# upstream ACHILLES at the commit below, with one build-time change: the standalone achilles-cascade
+# target does not link the interaction library, so its self-registering interactions are absent and
+# the driver aborts on the first lookup.  The recipes in docker/ add that link.
 registry: ghcr.io/cesarjesusvalls/achilles
 
 source:
