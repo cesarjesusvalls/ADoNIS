@@ -27,7 +27,7 @@ def _apply_overrides(gc, a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="ADoNIS bank generation -- one backbone for weak/EM/hadron.")
-    ap.add_argument("config", help="a GenConfig YAML (configs/*.yaml)")
+    ap.add_argument("config", help="a GenConfig YAML; the repository ships a set under configs/banks/")
     ap.add_argument("--out", default=None,
                     help="bank output dir (default: <config out_dir>/<prefix>_<material><tag>)")
     ap.add_argument("--n-per-seed", type=int, default=None, help="events per chunk (one seed = one chunk)")
