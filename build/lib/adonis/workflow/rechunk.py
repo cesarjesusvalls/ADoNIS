@@ -8,7 +8,7 @@ Normalization: the bank convention is  cross_section = sum(stored w0) / n_chunks
 1/n_chunks estimate).  Repacking into M chunks stores  w0_final * M  and sets manifest n_chunks = M, so
 load_bank(dst) reproduces load_bank(src) exactly.
 
-    python -m adonis.workflow.rechunk output/beam_e_C_hv/merged output/beam_e_C_hv_rechunk/merged --target-gb 0.5
+    python -m adonis.workflow.rechunk output/banks/beam_e_C/merged output/banks/beam_e_C_packed/merged --target-gb 0.5
 
 Loads the whole source bank into memory once; writes stream out.
 """

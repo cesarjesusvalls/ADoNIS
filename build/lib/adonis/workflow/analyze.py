@@ -14,7 +14,6 @@ from pathlib import Path
 import numpy as np
 
 from adonis.workflow import selection as SG
-from adonis.workflow.plotting import make_figure
 from adonis.workflow.data_overlay import load_overlay
 
 
@@ -54,6 +53,7 @@ def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, tit
     if lf is not None and getattr(cfg, "legend_loc", ""):
         _inner, _loc = lf, cfg.legend_loc
         lf = lambda ax, has_parts: _inner(ax, has_parts, loc=_loc)
+    from adonis.workflow.plotting import make_figure   # matplotlib is the `plots` extra
     fig, results, sig = make_figure(specs, ref, ado, title=cfg.title if title is None else title,
                                     ratio_band=cfg.ratio_band,
                                     ratio_ylim=cfg.ratio_ylim, ado_label=ado_label,
