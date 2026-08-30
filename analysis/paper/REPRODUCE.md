@@ -11,32 +11,43 @@ The work is in producing those `.npz` files. There are four stages, in order:
 3. **Analysis runs** — the Jacobian, the fits, the unfolding.
 4. **Figures** — this directory.
 
-Stages 1 and 2 are the expensive ones (hours on a cluster at paper statistics). Stages 3 and 4 take
-minutes to hours from their output.
+Every stage runs at two statistics. **Low** confirms the chain works end to end on one machine and
+produces every figure with large error bars; run it first, because it catches a broken setup in
+minutes rather than after a long job. **Published** uses the event counts behind the paper, sharded
+across a cluster, and is what reproduces the figures as printed. The commands are the same; only the
+event counts and the sharding differ.
 
 ---
 
 ## 0. Setup
 
 ```bash
-pip install -e .            # the adonis package
-pip install matplotlib      # figures
+pip install -e ".[plots]"   # the adonis package, with matplotlib for the figures
 export JAX_ENABLE_X64=1     # required: the FSI nominal reweight is exact only in double precision
 ```
 
+For a GPU, add the matching JAX wheel: `pip install "jax[cuda12]"`. A GPU is not required; it is
+roughly an order of magnitude faster for bank generation and the cascade.
+
 ADoNIS reads ACHILLES' tabulated inputs (amplitudes, spectral functions, nucleon configurations,
-flux). Point it at them:
+flux). They come out of the public reference image:
 
 ```bash
-export ACHILLES_DATA=/path/to/achilles/data
+scripts/fetch_achilles_data.sh              # writes ./achilles_data
+export ACHILLES_DATA=$PWD/achilles_data
 ```
 
-To also run ACHILLES itself you need its container images:
+To also run ACHILLES itself you need its images. The no-cascade reference is published and is pulled
+for you; the two cascade images are built from an ACHILLES checkout:
 
 ```bash
-export ACHILLES_IMAGES=/path/to/images   # achilles-oracle.sif, achilles-fullcascade.sif, achilles-cascade.sif
-export ADONIS_CONTAINER=apptainer        # or docker; omit to auto-detect
+docker/build.sh cascade      /path/to/achilles     # hadron-nucleus cross sections
+docker/build.sh fullcascade  /path/to/achilles     # in-event FSI
+export ACHILLES_IMAGES=$PWD                        # where the .sif files are
+export ADONIS_CONTAINER=apptainer                  # or docker; omit to auto-detect
 ```
+
+Only the figures with final-state interactions need the cascade images.
 
 Figures are written to `output/paper/`. Set `ADONIS_PAPER_OUT` to send them elsewhere — useful for
 comparing a rebuild against the published set without overwriting it.
