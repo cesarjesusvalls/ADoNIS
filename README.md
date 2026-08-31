@@ -1,3 +1,5 @@
+<img src="assets/adonis_logo.png" alt="" width="150" align="right">
+
 # ADoNIS
 
 A differentiable generator of neutrino interaction samples.

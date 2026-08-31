@@ -10,6 +10,8 @@ __pycache__/
 
 # Run products, all regenerable: figures, banks and caches, ACHILLES events, logs.
 *.png
+# assets/ is source artwork, not a run product
+!assets/*.png
 *.npz
 *.hepmc
 *.log
