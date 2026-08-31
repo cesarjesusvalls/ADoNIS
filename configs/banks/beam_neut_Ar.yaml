@@ -5,6 +5,8 @@ beam: neut
 material: Ar
 pmin: 300.0
 pmax: 1400.0
-n_per_seed: 50000      # events/chunk (dense FSI buffers scale with this)
-n_seeds: 10            # chunks -> 500k total by default (jobs override --n-seeds/--seed0 per shard)
+# 25,000 events/chunk: argon's per-event FSI slots scale by ceil(A/12), four times carbon's,
+# so half the chunk holds the record to ~2.0 GB and it still fits a GPU.
+n_per_seed: 25000
+n_seeds: 20            # 500k by default; a shard scales with --n-seeds/--seed0, never --n-per-seed
 seed0: 0

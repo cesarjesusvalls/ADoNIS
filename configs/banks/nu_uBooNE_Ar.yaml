@@ -5,3 +5,8 @@ flux: microboone
 material: Ar
 channels: [qe, res]
 fsi: true
+# 250,000 events/chunk: the nuclear path sizes its FSI record from a calibration run, so the
+# chunk is bounded by host memory, not by per-event slots.
+n_per_seed: 250000
+n_seeds: 2             # 500k by default; a shard scales with --n-seeds/--seed0, never --n-per-seed
+seed0: 0
