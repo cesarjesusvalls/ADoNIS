@@ -1,15 +1,18 @@
-# The closure fit at four times the resident statistics of sec4_P2, which no longer fits in
-# one dispatch on a 40 GB card: the compute block below is what makes it run there.
+# The closure fit and its four uncertainty constructions: 17 parameters, 21 observables.
 
-name: sec4_P2_500000
+name: closure
 
 samples: [t2k_cc0pi, t2k_cc1pi_ch, minerva_stv, minerva_ptpz, ee_omega,
           minerva_cc1pip_tpi, minerva_cc1pip_q2]
 beams:   [pip, prot, neut]
 
 # How many events are resident, which sets the MC error per bin and so the sparse-bin mask.
+#
+# sig_cap is also bounded from above by the GPU: at 250000 the fused Jacobian's compiled kernel will
+# not load on a 40 GB card at any dial batch, and the fit falls back to a host round trip every
+# iteration.  At 125000 it runs in a single dispatch.  Raising it needs the compute block below.
 banks:
-  sig_cap:      500000
+  sig_cap:      125000
   nu_chunks:    120
   e_chunks:     40
   beam_chunks:  10
@@ -34,7 +37,7 @@ data:
   sigma:
     syst: 0.05                # sigma is 5% of the nominal central value
     mc_term: false            # the MC error is not added to it in quadrature
-    mask_mcfrac: 0.05         # drop bins whose MC error exceeds this fraction of central
+    mask_mcfrac: 0.10         # drop bins whose MC error exceeds this fraction of central
     freeze_at: nominal        # sigma and the mask are fixed at nominal, not recomputed per toy
 
 fit:
@@ -48,10 +51,6 @@ fit:
     ftol: 1.0e-14
     x_scale: jac
     start: nominal
-
-compute:
-  mem_fraction: 0.25
-  hvp_batch: 4
 
 uncertainty:
   - method: gaussian          # (J^T W J)^-1 at the best fit
@@ -77,8 +76,8 @@ uncertainty:
     jacobian: per_node        # recomputed at every node, not frozen at the best fit
 
   - method: nuts
-    chains: 16
-    samples: 1500
+    chains: 20
+    samples: 1250
     warmup: 150
     max_depth: 8
     mass_matrix: fit_V        # the closure covariance, in sigma_post units

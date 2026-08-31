@@ -14,7 +14,7 @@ import numpy as np
 ALTGEN = results_dir()
 from adonis.fit import merge as MG
 
-def main(label="sec4_all16", allow_partial=False):
+def main(label="closure_profile", allow_partial=False):
     fs = sorted(glob.glob(str(ALTGEN / f"{label}_profile_sh*.npz")))
     if not fs:
         raise SystemExit(f"no shards for {label}")

@@ -44,7 +44,7 @@ def main():
     log = timed_log()
 
     from adonis.fit.config import FitConfig
-    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/closure.yaml"))
     st = cfg.stage("profile")
     LABEL = cfg.name
     NG = (int(st["n"]) - 1) // 2

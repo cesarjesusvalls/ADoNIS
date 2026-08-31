@@ -58,7 +58,7 @@ def main(label="multisample_carbon"):
     shape = np.where(rowmax > 0, Sk / rowmax, 0.0)
 
     keep = None
-    _mp = style.ALTGEN / "sec4_live_mask.npz"
+    _mp = style.ALTGEN / "live_mask.npz"
     if _mp.exists():
         _m = np.load(_mp, allow_pickle=True)
         parts = []
@@ -67,7 +67,7 @@ def main(label="multisample_carbon"):
             parts.append(np.asarray(_m[f"{k}_keep"], bool) if f"{k}_keep" in _m.files
                          else np.ones(nb_j, bool))
         keep = np.concatenate(parts)
-        print(f"[sec3] sec4 live-bin mask: {int(keep.sum())}/{len(keep)} bins kept "
+        print(f"[gradients] live-bin mask: {int(keep.sum())}/{len(keep)} bins kept "
               f"(from {_mp.name}, the fit's own statistics)")
 
     sig_all = np.asarray(sigma, float)
@@ -83,7 +83,7 @@ def main(label="multisample_carbon"):
         var = sig_all[sl] ** 2 - (SYST * c0) ** 2
         mc = np.sqrt(np.clip(var, 0.0, None))
         keep[sl] = np.isfinite(sig_all[sl]) & (c0 > 0) & (mc <= MC_CUT * np.where(c0 > 0, c0, 1.0))
-      print(f"[sec3] FALLBACK mask on this Jacobian's own statistics: {int(keep.sum())}/{len(keep)} "
+      print(f"[gradients] FALLBACK mask on this Jacobian's own statistics: {int(keep.sum())}/{len(keep)} "
             f"bins kept -- NOT the fit's mask; run the engine mask dump for that"
             + (f"; no central for {nomc}" if nomc else ""))
 

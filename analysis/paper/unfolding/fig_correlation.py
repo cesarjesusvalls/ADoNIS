@@ -24,7 +24,7 @@ BLOCK_SHORT = {"template": r"$\vec{c}$", "flux": r"$\vec{f}$",
                "xsec": r"$\vec{x}$", "detector": r"$\vec{d}$"}
 
 
-def main(label="sec5", study="asimov"):
+def main(label="t2k_cc0pi", study="asimov"):
     style.use()
     z = np.load(style.ALTGEN / f"{label}_unfold.npz", allow_pickle=True)
     C = np.asarray(z[f"{study}_cov"])

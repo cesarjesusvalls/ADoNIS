@@ -35,7 +35,7 @@ def _beam_spec():
     return d["beams"], int(d["nbins"]), float(d["syst"])
 
 
-def build(fit_config="configs/fits/sec4_P1.yaml", samples=None, beams=None, nbins=None, syst=None,
+def build(fit_config="configs/fits/closure.yaml", samples=None, beams=None, nbins=None, syst=None,
           max_chunks=None, out_label="multisample_carbon"):
     log = timed_log()
 
@@ -84,7 +84,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="analysis.campaign.constrained", description=__doc__.split("\n")[0])
     ap.add_argument("--label", default="multisample_carbon",
                     help="output name: <results>/<label>.npz")
-    ap.add_argument("--fit-config", default="configs/fits/sec4_P1.yaml",
+    ap.add_argument("--fit-config", default="configs/fits/closure.yaml",
                     help="which config names the samples and beams")
     ap.add_argument("--max-chunks", type=int, default=None,
                     help="cap the bank chunks per sample (a minimal run; default: the whole bank)")

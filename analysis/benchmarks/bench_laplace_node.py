@@ -28,7 +28,7 @@ N_NODES_2D = 7938
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--sig-cap", type=int, default=60000)
     ap.add_argument("--nodes", type=int, default=4, help="how many scan nodes to time")
     ap.add_argument("--offset", type=float, default=1.0, help="node offset from the BFP, in sigma_post")

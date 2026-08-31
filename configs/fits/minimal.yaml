@@ -1,5 +1,5 @@
 # Every stage of the inference chain at the smallest size that still exercises it.
-# Physics-identical to sec4_P2, scaled down: use it to check an installation end to end,
+# Physics-identical to closure, scaled down: use it to check an installation end to end,
 # not to produce a result.
 
 name: minimal

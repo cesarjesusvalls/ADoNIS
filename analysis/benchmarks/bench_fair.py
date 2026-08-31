@@ -40,10 +40,10 @@ DIST_TARGETS = (1e-1, 1e-3, 1e-6)
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--sig-cap", type=int, required=True, help="events per sample for this job")
     ap.add_argument("--ndials", default="2,4,8,12,17")
-    ap.add_argument("--ref", default=str(results_dir() / "sec4_P1.npz"),
+    ap.add_argument("--ref", default=str(results_dir() / "closure.npz"),
                     help="run whose sigma + live-bin mask define the sample at EVERY N")
     ap.add_argument("--noise-seeds", default="1,2,3", help="statistical realisations; '' for none")
     ap.add_argument("--asimov", action="store_true", default=True)

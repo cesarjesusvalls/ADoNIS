@@ -1,6 +1,6 @@
 """Entry point for a fit run.
 
-    python -m analysis.campaign.run configs/fits/sec4_P1.yaml --stage profile2d --shard 3/36
+    python -m analysis.campaign.run configs/fits/closure.yaml --stage profile2d --shard 3/36
 
 One config, one command, one stage at a time.  Guarantees: the stage sees only the config (per-job values
 like shard/chain are passed explicitly, not via ad hoc environment variables); a stale S4_*/PHYSFIT_*/
@@ -78,7 +78,7 @@ def _shard(stage, spec, cfg):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="analysis.campaign.run", description=__doc__.split("\n")[0])
-    ap.add_argument("config", help="a fit config, e.g. configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", help="a fit config, e.g. configs/fits/closure.yaml")
     ap.add_argument("--stage", required=True, choices=sorted(STAGE_MODULE))
     ap.add_argument("--shard", default=None, metavar="k/N",
                     help="which slice of the work this process does")

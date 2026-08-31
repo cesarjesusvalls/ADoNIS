@@ -28,7 +28,7 @@ import numpy as np
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P2.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--sig-cap", type=int, default=15000)
     ap.add_argument("--ndials", type=int, required=True)
     ap.add_argument("--dials", default="", help="explicit comma-separated dial NAMES; overrides the "
@@ -48,7 +48,7 @@ def main(argv=None):
                          "MH comparison -- NUTS then acquires geometry MH does not have -- so it is a "
                          "SEPARATE arm answering 'what would production do', not a replacement for the "
                          "matched-geometry run.")
-    ap.add_argument("--ref", default=str(results_dir() / "sec4_P1.npz"))
+    ap.add_argument("--ref", default=str(results_dir() / "closure.npz"))
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
 

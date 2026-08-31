@@ -192,7 +192,7 @@ def _grad_panel(A, G, i, j, sub, pos, pn, bfp, crop=None, xbot=True, yleft=True)
         A.set_ylabel(_lab(pn[sub[pos[j]]]), fontsize=11)
 
 
-def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
+def main(label="closure", nuts_label="closure_nuts", allow_partial=False):
     style.use()
     views, meta = load_views(label, allow_partial)
     pn, sub, bfp, spost, V0, dials = (meta["pn"], meta["sub"], meta["bfp"], meta["spost"],
@@ -412,4 +412,4 @@ def main(label="sec4_A", nuts_label="sec4_B", allow_partial=False):
 
 if __name__ == "__main__":
     p = [a for a in sys.argv[1:] if not a.startswith("--")]
-    main(*(p[:2] or ["sec4_A"]), allow_partial="--allow-partial" in sys.argv)
+    main(*(p[:2] or ["closure"]), allow_partial="--allow-partial" in sys.argv)

@@ -24,7 +24,7 @@ def run_real():
     from adonis.reweight.reweight_model import nominal_knobs
     CH = int(os.environ.get("NUTS_CHAIN", "0"))
     from adonis.fit.config import FitConfig
-    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/closure.yaml"))
     eng = build_multisample_engine(log, cfg)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     sub = [int(i) for i in np.where(g["shrink"] < 0.5)[0]]

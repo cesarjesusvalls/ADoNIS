@@ -25,7 +25,7 @@ BLOCKS = [("stat", "statistical", "#b9c6de"),
           ("det", "detector", "#1a9e57")]
 
 
-def main(label="sec5"):
+def main(label="t2k_cc0pi"):
     style.use()
     z = np.load(style.ALTGEN / f"{label}_unfold.npz", allow_pickle=True)
     e = {k: np.asarray(z[f"budget_{k}"]) for k, _l, _c in BLOCKS}

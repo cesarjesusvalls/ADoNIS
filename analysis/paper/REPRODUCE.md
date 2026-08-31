@@ -154,11 +154,11 @@ Writes `output/results/multisample_carbon.npz`: the stacked per-bin Jacobian ove
 beams, plus the Fisher matrix and the resulting σ_post/σ_prior per parameter.
 
 **The fit** — closure and the four uncertainty constructions.  One stage per command, all
-reading `configs/fits/sec4_P2.yaml`:
+reading `configs/fits/closure.yaml`:
 
 ```bash
 for stage in closure profile profile2d gradient2d toys nuts; do
-    python -m analysis.campaign.run configs/fits/sec4_P2.yaml --stage $stage
+    python -m analysis.campaign.run configs/fits/closure.yaml --stage $stage
 done
 ```
 
@@ -166,8 +166,8 @@ The expensive stages shard. Pass `--shard k/N` to split the work across jobs —
 2000 toys, 20 chains for NUTS, one per parameter for the profile:
 
 ```bash
-python -m analysis.campaign.run configs/fits/sec4_P2.yaml --stage toys --shard 7/40
-python -m analysis.campaign.run configs/fits/sec4_P2.yaml --stage profile --shard 3/17
+python -m analysis.campaign.run configs/fits/closure.yaml --stage toys --shard 7/40
+python -m analysis.campaign.run configs/fits/closure.yaml --stage profile --shard 3/17
 ```
 
 Shard the profile even when the work would fit: it compiles a kernel per parameter and holds them
@@ -178,18 +178,18 @@ runs out of room.
 **The unfolding**:
 
 ```bash
-python -m analysis.campaign.unfold_run configs/fits/sec5_unfold.yaml --label sec5f10
+python -m analysis.campaign.unfold_run configs/fits/unfold.yaml --label t2k_cc0pi
 ```
 
-Runs every study in the config and writes `output/results/sec5f10_unfold.npz`.
+Runs every study in the config and writes `output/results/t2k_cc0pi_unfold.npz`.
 
 ## 4. Figures
 
 ```bash
 python -m analysis.paper.validation.make --no-ratio      # ADoNIS vs ACHILLES, 8 figures
 python -m analysis.paper.grad_info.make                  # gradient information, 2
-python -m analysis.paper.inference.make --label sec4_P2  # fit and uncertainties, 3
-python -m analysis.paper.unfolding.make --label sec5f10  # unfolding, 3
+python -m analysis.paper.inference.make --label closure  # fit and uncertainties, 3
+python -m analysis.paper.unfolding.make --label t2k_cc0pi  # unfolding, 3
 ```
 
 Each renders one figure per subprocess. Name a figure to build only that one

@@ -51,7 +51,7 @@ def main():
     MODE = {"profile2d": "prof", "gradient2d": "grad"}[STAGE]
 
     from adonis.fit.config import FitConfig
-    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/closure.yaml"))
     eng = build_multisample_engine(log, cfg)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     subset = fit_subset(g, eng.pnames, cfg, log)

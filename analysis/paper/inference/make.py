@@ -10,7 +10,7 @@ FIGURES = {
     "corner":  ("analysis.paper.inference.fig_corner_all", "main", lambda a: (a.label, a.label)),
 }
 
-DEFAULT_LABEL = "sec4_P2"
+DEFAULT_LABEL = "closure"
 
 
 if __name__ == "__main__":

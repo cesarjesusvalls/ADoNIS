@@ -1,4 +1,4 @@
-"""Resolve column axes (configs/paper/sec2_subsets.yaml) against a Jacobian npz's `dskeys`, turning
+"""Resolve column axes (configs/paper/fisher_subsets.yaml) against a Jacobian npz's `dskeys`, turning
 declarative groups into concrete bin-row slices.  Degrades gracefully when the sample composition
 changes:
 
@@ -14,8 +14,8 @@ import numpy as np
 import yaml
 
 CONFIG = Path(os.environ.get(
-    "ADONIS_SEC2_CONFIG",
-    Path(__file__).resolve().parents[3] / "configs" / "paper" / "sec2_subsets.yaml"))
+    "ADONIS_FISHER_CONFIG",
+    Path(__file__).resolve().parents[3] / "configs" / "paper" / "fisher_subsets.yaml"))
 
 SCHEMA = ("J", "sigma", "prior", "pnames", "dskeys", "row0")
 

@@ -37,7 +37,7 @@ def _legend():
     return h, lab
 
 
-def main(label="sec5lep"):
+def main(label="t2k_cc0pi_lep"):
     style.use()
     z = np.load(style.ALTGEN / f"{label}_unfold.npz", allow_pickle=True)
     if str(z["true_kind"]) != "staircase":

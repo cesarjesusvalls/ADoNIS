@@ -477,7 +477,7 @@ def main():
     log = timed_log()
 
     from adonis.fit.config import FitConfig
-    cfg = FitConfig.load(sys.argv[1] if len(sys.argv) > 1 else "configs/fits/sec4_P1.yaml")
+    cfg = FitConfig.load(sys.argv[1] if len(sys.argv) > 1 else "configs/fits/closure.yaml")
     LABEL, INJECT = cfg.name, cfg.inject_string()
     NIT = cfg.fit.minimizer.max_nfev
     log(f"config {cfg.path}  digest {cfg.digest()}")

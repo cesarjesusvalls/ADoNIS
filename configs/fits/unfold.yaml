@@ -1,7 +1,7 @@
 # Template-fit unfolding of the T2K CC0pi double-differential cross section in muon momentum and
 # angle, with flux, detector and cross-section nuisance parameters floated simultaneously.
 
-name: sec5_unfold
+name: t2k_cc0pi
 
 # The topological CC0pi signal -- any number of protons, no angular cut -- not the CC0pi-Np TKI signal
 # of t2k_cc0pi.yaml, which additionally requires a leading proton in 450-1000 MeV/c.

@@ -187,7 +187,7 @@ def _hpd_boot(x, mass=0.6827, nboot=400, seed=0):
     return float(lo.std(ddof=1)), float(hi.std(ddof=1))
 
 
-def main(label="sec4_ref", ens="sec4_ens", mass=None):
+def main(label="closure_ref", ens="closure_ens", mass=None):
     global MASS
     if mass is not None:
         MASS = float(mass)

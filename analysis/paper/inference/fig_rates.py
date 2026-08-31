@@ -54,7 +54,7 @@ def _xlab(k):
     return _BEAMX.get(k.split("_", 1)[0], "")
 
 
-def main(label="sec4_P1"):
+def main(label="closure"):
     style.use()
     z = np.load(style.ALTGEN / f"{label}.npz", allow_pickle=True)
     data = np.asarray(z["data"]); sig = np.asarray(z["sigma"])

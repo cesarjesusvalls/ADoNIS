@@ -20,7 +20,7 @@ def _shard(tmp_path, name, *, digest="abc123", rows=None, grid=21, complete=True
     p = tmp_path / f"{name}.npz"
     kw = {}
     if stamped:
-        kw.update({"prov_digest": digest, "prov_config": "sec4_P1.yaml", "prov_git": "deadbee",
+        kw.update({"prov_digest": digest, "prov_config": "closure.yaml", "prov_git": "deadbee",
                    "prov_stage": "profile2d"})
         if rows is not None:
             kw.update({"prov_row_base": rows[0], "prov_n_row": rows[1], "prov_n_grid": grid})
@@ -172,7 +172,7 @@ def test_figure_is_stamped_when_partial(tmp_path, monkeypatch):
 
     monkeypatch.setattr(style, "OUTDIR", tmp_path)
     MG.DEGRADED.clear()
-    MG.DEGRADED.append(("sec4_P1 corner2d", "falling back to N=21"))
+    MG.DEGRADED.append(("closure corner2d", "falling back to N=21"))
     try:
         style.save(plt.figure(), "figtest")
         img = Image.open(tmp_path / "figtest.png")

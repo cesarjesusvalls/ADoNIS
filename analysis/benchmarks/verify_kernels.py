@@ -45,7 +45,7 @@ def _rel(a, b, scale=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--sig-cap", type=int, default=20000, help="events/sample (0 = the config's)")
     ap.add_argument("--tol", type=float, default=1e-9, help="relative tol on the MODEL")
     ap.add_argument("--resid-tol", type=float, default=1e-5, help="absolute tol on residuals, in SIGMA")

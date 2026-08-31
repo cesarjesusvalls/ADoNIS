@@ -1,6 +1,6 @@
 """Fast tests for the section-3 subset resolver (analysis.paper.grad_info.subsets).
 
-The point of the resolver is that sec3 survives a CHANGE of sample composition or binning without a
+The point of the resolver is that the gradient figures survive a CHANGE of sample composition or binning without a
 code edit, so that is what is pinned here: globs that match nothing, groups that vanish, references to
 a vanished group, and datasets no column claims.  Pure numpy/yaml on hand-built npz -- no jax, no bank.
 """
@@ -37,7 +37,7 @@ def _declared_dskeys():
     import pathlib
 
     from adonis.fit.config import FitConfig
-    cfg = FitConfig.load("configs/fits/sec4_P1.yaml")
+    cfg = FitConfig.load("configs/fits/closure.yaml")
     beams = yaml.safe_load(pathlib.Path("configs/samples/beams.yaml").read_text())
     out = []
     for nm in cfg.samples:
@@ -155,9 +155,9 @@ def test_config_file_resolves_against_the_multisample_datasets():
 
 
 def test_all_axes_read_the_shared_multisample_npz():
-    """Every sec2 axis reads the SAME multisample_carbon npz -- the same samples + signal defs the sec1
+    """Every Fisher axis reads the SAME multisample_carbon npz -- the same samples + signal defs the
     validation figures use (T2K keep-filtered to 7).  No per-axis npz override remains after aligning
-    sec2/sec3 to sec2's samples.  Regression guard for the swap."""
+    the Fisher and gradient figures to those samples.  Regression guard for the swap."""
     cfg = SS.load_config()
     assert cfg.get("npz") == "multisample_carbon"
     assert all("npz" not in spec for spec in cfg["axes"].values())

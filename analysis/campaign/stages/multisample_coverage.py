@@ -71,7 +71,7 @@ def main():
     BASE = int(os.environ.get("ADONIS_TOY_BASE", "0"))
 
     from adonis.fit.config import FitConfig
-    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/sec4_P1.yaml"))
+    cfg = FitConfig.load(os.environ.get("ADONIS_FIT_CONFIG", "configs/fits/closure.yaml"))
     eng = build_multisample_engine(log, cfg)
     g = np.load(MULTISAMPLE_NPZ, allow_pickle=True)
     assert [str(x) for x in g["pnames"]] == list(PNAMES)

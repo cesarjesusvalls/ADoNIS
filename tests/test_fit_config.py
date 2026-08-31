@@ -1,10 +1,8 @@
-"""The fit config must describe the sec4 P1 campaign exactly, and must reject a typo.
+"""The closure config states every number the run depends on, and rejects a mistyped key.
 
-The regression this guards: the P1 run's parameters lived only as environment variables spread across
-SLURM submitters, and the one that was missing from one script (ADONIS_PRIOR_SCALE, absent from the corner)
-made that stage run MAP while every other stage ran MLE.  A config is only an improvement if it is
-provably the same numbers -- hence the exact-string check below -- and only safe if a mistyped key is an
-error rather than a silent default.
+Values spread across submitter scripts drift apart silently -- one stage running MAP while the rest
+ran MLE is invisible until the results disagree.  A config replaces that only if it is checked
+against the exact numbers, and only if an unknown key is an error rather than a silent default.
 """
 import pytest
 
@@ -12,7 +10,7 @@ yaml = pytest.importorskip("yaml")
 
 from adonis.fit.config import FitConfig
 
-CFG = "configs/fits/sec4_P1.yaml"
+CFG = "configs/fits/closure.yaml"
 
 CAMPAIGN_INJECT = (
     "M_A_qe=1.12,M_A_res=0.85,axial_strength=1.1,res_axial_strength=0.8,delta_strength=0.9,"
@@ -41,8 +39,8 @@ def test_the_numbers_that_define_the_run(cfg):
     assert cfg.fit.minimizer.xtol == 1e-14 and cfg.fit.minimizer.ftol == 1e-14
     assert cfg.data.sigma.syst == 0.05
     assert cfg.data.sigma.mc_term is False
-    assert cfg.data.sigma.mask_mcfrac == 0.05
-    assert cfg.banks.sig_cap == 250_000
+    assert cfg.data.sigma.mask_mcfrac == 0.10
+    assert cfg.banks.sig_cap == 125_000
     assert len(cfg.samples) == 7 and len(cfg.beams) == 3
 
 
@@ -52,7 +50,7 @@ def test_stages_present_and_shaped(cfg):
     assert cfg.stage("profile2d")["n"] == 41
     assert cfg.stage("profile2d")["dials"] == \
         ["M_A_res", "delta_strength", "res_axial_strength", "Eb_shift"]
-    assert cfg.stage("nuts")["chains"] * cfg.stage("nuts")["samples"] == 24_000
+    assert cfg.stage("nuts")["chains"] * cfg.stage("nuts")["samples"] == 25_000
     assert cfg.stage("toys")["n"] == 2000 and cfg.stage("toys")["fixed_truth"] is True
     with pytest.raises(KeyError):
         cfg.stage("no_such_method")

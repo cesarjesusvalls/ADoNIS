@@ -25,7 +25,7 @@ import numpy as np
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--sig-cap", type=int, default=60000)
     ap.add_argument("--ndials", type=int, default=17)
     ap.add_argument("--nodes", type=int, default=4, help="how many scan nodes to measure")
@@ -34,7 +34,7 @@ def main(argv=None):
     ap.add_argument("--bfp", default="", help="npz written by stage=bfp")
     ap.add_argument("--offset", type=float, default=1.0, help="node offset from the BFP, in sigma_post")
     ap.add_argument("--noise-seed", type=int, default=1, help="0 = Asimov")
-    ap.add_argument("--ref", default=str(results_dir() / "sec4_P1.npz"))
+    ap.add_argument("--ref", default=str(results_dir() / "closure.npz"))
     ap.add_argument("--tol", type=float, default=0.1)
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)

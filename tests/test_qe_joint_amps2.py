@@ -128,7 +128,7 @@ def test_single_knob_matches_legacy():
 
 
 def test_first_order_invariance():
-    """d(sum w)/d(knob) at nominal == the legacy value, per knob -> the Jacobian/Fisher (sec2/sec3) are unchanged."""
+    """d(sum w)/d(knob) at nominal == the legacy value, per knob -> the Jacobian and Fisher figures are unchanged."""
     nom = nominal_knobs(); keep = jnp.asarray(_VALID)
     for fld, _ in _SINGLE:
         x0 = float(getattr(nom, fld))

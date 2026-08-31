@@ -19,7 +19,7 @@ import numpy as np
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--sig-cap", type=int, required=True)
     ap.add_argument("--ndials", type=int, default=17)
     ap.add_argument("--batches", default="1,2,3,4,6,8,12,17")
@@ -43,7 +43,7 @@ def main(argv=None):
     eng = MS.build_multisample_engine(log, cfg)
     g = np.load(MS.MULTISAMPLE_NPZ, allow_pickle=True)
     subset = sorted(_dial_order(g, eng.pnames)[:a.ndials])
-    freeze_sample(eng, np.load(str(results_dir() / "sec4_P1.npz"), allow_pickle=True), log)
+    freeze_sample(eng, np.load(str(results_dir() / "closure.npz"), allow_pickle=True), log)
     truth, _ = parse_inject(cfg.inject_string(), nominal_knobs())
     th0 = np.asarray(eng.th0, float)
     t = th0.copy(); t[np.asarray(subset, int)] = truth[np.asarray(subset, int)]

@@ -4,12 +4,12 @@ Asimov posterior V = (J^T C^-1 J + Pi^-1)^-1; a knob is FIT when shrinkage = sig
 Reports both raw = 1/sqrt(F_kk)/prior (other knobs fixed) and marg = sqrt(V_kk)/prior (other knobs
 free): raw > 0.5 is INVISIBLE, raw < 0.5 with marg > 0.5 is DEGENERATE, both < 0.5 is MEASURABLE.
 
-Column axes are declared in configs/paper/sec2_subsets.yaml and resolved against the npz's `dskeys`
+Column axes are declared in configs/paper/fisher_subsets.yaml and resolved against the npz's `dskeys`
 (see subsets.py).
 
 Usage:
     python -m analysis.paper.grad_info.make [npz_label]     # default: the config's `npz:`
-    ADONIS_SEC2_CONFIG=... ADONIS_SEC2_NPZ=... python -m analysis.paper.grad_info.make
+    ADONIS_FISHER_CONFIG=... ADONIS_FISHER_NPZ=... python -m analysis.paper.grad_info.make
 """
 import os
 import sys
@@ -85,7 +85,7 @@ def fig_shrinkage_grouped(M, pnames, labels, names, figname, fit_cut):
 def main(label=None):
     style.use()
     cfg = SS.load_config()
-    default_label = label or os.environ.get("ADONIS_SEC2_NPZ") or cfg.get("npz", "multisample_carbon")
+    default_label = label or os.environ.get("ADONIS_FISHER_NPZ") or cfg.get("npz", "multisample_carbon")
     fit_cut = float(cfg.get("fit_cut", 0.5))
 
     _cache = {}
@@ -95,14 +95,14 @@ def main(label=None):
         if lbl not in _cache:
             src = style.ALTGEN / f"{lbl}.npz"
             if not src.exists():
-                raise SystemExit(f"[sec3] no Jacobian at {src}\n"
+                raise SystemExit(f"[gradients] no Jacobian at {src}\n"
                                  f"       available: {sorted(p.stem for p in style.ALTGEN.glob('*.npz'))}\n"
                                  f"       pass a label:  python -m analysis.paper.grad_info.make <label>")
             _cache[lbl] = (str(src),) + SS.check_schema(np.load(src, allow_pickle=True), str(src))
         return _cache[lbl]
 
     dsrc, dJ, _ds, prior, pnames, ddk, _dr = load(default_label)
-    print(f"[sec3] default npz {default_label}: {dJ.shape[0]} bins x {dJ.shape[1]} knobs, {len(ddk)} datasets")
+    print(f"[gradients] default npz {default_label}: {dJ.shape[0]} bins x {dJ.shape[1]} knobs, {len(ddk)} datasets")
     print(f"       datasets: {ddk}")
 
     tables = {}
@@ -111,10 +111,10 @@ def main(label=None):
         alabel = axis.get("npz", default_label)
         src, J, sigma, _pr, pn, dskeys, row0 = load(alabel)
         if pn != pnames:
-            raise SystemExit(f"[sec3] axis '{aname}' npz {alabel}: knob basis differs from {default_label}")
+            raise SystemExit(f"[gradients] axis '{aname}' npz {alabel}: knob basis differs from {default_label}")
         groups = SS.resolve_axis(axis, dskeys)
         if not groups:
-            print(f"  [sec3] axis '{aname}': no columns survived — skipped")
+            print(f"  [gradients] axis '{aname}': no columns survived — skipped")
             continue
         M = np.zeros((len(pnames), len(groups)))
         R = np.zeros_like(M)
@@ -130,12 +130,12 @@ def main(label=None):
             print(f"  {s:>10}: {int((M[:, c] < fit_cut).sum()):2d}/{len(pnames)} FIT  "
                   f"[{', '.join(pnames[k] for k in np.where(M[:, c] < fit_cut)[0])}]")
 
-        figname = axis.get("figure", f"sec2_shrinkage_{aname}")
+        figname = axis.get("figure", f"shrinkage_{aname}")
         fig_shrinkage_grouped(M, pnames, [g[1] for g in groups], names, figname, fit_cut)
         tables[aname] = (M, R, names)
 
     if not tables:
-        raise SystemExit("[sec2] no axis resolved against this npz — check configs/paper/sec2_subsets.yaml")
+        raise SystemExit("[fisher] no axis resolved against this npz — check configs/paper/fisher_subsets.yaml")
 
 
 if __name__ == "__main__":

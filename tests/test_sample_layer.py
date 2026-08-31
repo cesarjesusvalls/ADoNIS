@@ -1,4 +1,4 @@
-"""One sample layer: the constrained-set Jacobian and the sec4 engine must describe the same stack.
+"""One sample layer: the constrained-set Jacobian and the closure engine must describe the same stack.
 
 The sample list exists in two places -- SAMPLES in the builder, and the _bank() calls in the engine --
 and the engine asserts its dskeys against the npz the builder produced.  They must be edited in step:
@@ -18,7 +18,7 @@ yaml = pytest.importorskip("yaml")
 
 from adonis.fit.config import FitConfig
 
-FIT_CFG = "configs/fits/sec4_P1.yaml"
+FIT_CFG = "configs/fits/closure.yaml"
 BEAMS_CFG = "configs/samples/beams.yaml"
 JACOBIAN_NPZ = results_dir() / "multisample_carbon.npz"
 
@@ -55,7 +55,7 @@ def test_gate_jacobian_matches_the_fit_config(cfg, beams):
     """The committed Jacobian's dskeys must be exactly what the fit config declares:
     every observable of every sample, in config order, then the beam blocks, in config order.
 
-    This is the check the sec4 engine performs at runtime after minutes of bank loading; doing it here
+    This is the check the closure engine performs at runtime after minutes of bank loading; doing it here
     from declarations alone makes a mismatch a one-second test failure instead."""
     z = np.load(JACOBIAN_NPZ, allow_pickle=True)
     got = [str(x) for x in z["dskeys"]]

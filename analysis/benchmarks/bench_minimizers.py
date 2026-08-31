@@ -38,7 +38,7 @@ from adonis.reweight import knobs as K
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--reps", type=int, default=3, help="timed repeats per method")
     ap.add_argument("--methods", default="gn,migrad+g,migrad")
     ap.add_argument("--tol", type=float, default=0.1, help="iminuit tol (EDM target = tol*errordef*1e-3)")

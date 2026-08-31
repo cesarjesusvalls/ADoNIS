@@ -55,7 +55,7 @@ def _at_bound(name, v, rtol=1e-3):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--toys", type=int, default=30)
     ap.add_argument("--tols", default="0.1,0.01,1e-3,1e-4", help="MIGRAD tol values to scan")
     ap.add_argument("--noise", action="store_true", help="add the per-bin stat throw (expectation != 0)")

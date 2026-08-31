@@ -17,7 +17,7 @@ import numpy as np
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P2.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--sig-cap", type=int, default=25000)
     ap.add_argument("--chunks", default="5000,12500,25000")
     ap.add_argument("--reps", type=int, default=5)

@@ -32,7 +32,7 @@ from analysis.benchmarks._shared import _bounds, _gn, _migrad
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("config", nargs="?", default="configs/fits/sec4_P1.yaml")
+    ap.add_argument("config", nargs="?", default="configs/fits/closure.yaml")
     ap.add_argument("--dials", default="4,8,12,17", help="dial counts to scan (prefix of the constrained-set set)")
     ap.add_argument("--sig-cap", type=int, default=60000, help="events per sample for THIS run")
     ap.add_argument("--reps", type=int, default=2)

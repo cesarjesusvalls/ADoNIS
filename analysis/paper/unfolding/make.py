@@ -10,7 +10,7 @@ FIGURES = {
     "corr":     ("analysis.paper.unfolding.fig_correlation", "main"),
 }
 
-DEFAULT_LABEL = "sec5f10"
+DEFAULT_LABEL = "t2k_cc0pi"
 
 
 if __name__ == "__main__":
