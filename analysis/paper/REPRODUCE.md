@@ -93,11 +93,11 @@ channels, FSI); the command line carries only scale.
 
 ```bash
 python -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml \
-    --out output/banks/nu_T2K_C/part_$TASK --seed0 $TASK --n-per-seed 250000 --n-seeds 1
+    --out output/banks/nu_T2K_C/part_$TASK --seed0 $TASK --n-seeds 1
 ```
 
-`--n-per-seed` is **per channel**, so a two-channel config produces more events than that number.
-One seed produces one chunk. Shards are independent, so run that command as a job array with `$TASK`
+The config sets the events per chunk, and that count is **per channel**, so a two-channel config
+produces more events than the number it names.  One seed produces one chunk. Shards are independent, so run that command as a job array with `$TASK`
 the array index, then merge the shards into one bank:
 
 ```bash
@@ -178,7 +178,7 @@ runs out of room.
 **The unfolding**:
 
 ```bash
-python -m analysis.campaign.unfold_run configs/fits/unfold.yaml --label t2k_cc0pi
+python -m analysis.campaign.unfold_run configs/unfold/t2k_cc0pi.yaml --label t2k_cc0pi
 ```
 
 Runs every study in the config and writes `output/results/t2k_cc0pi_unfold.npz`.

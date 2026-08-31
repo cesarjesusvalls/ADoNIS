@@ -1,0 +1,15 @@
+# The smallest bank that still exercises the whole generation path: flux, nuclear model, both
+# primary channels and the cascade.  Sized so a first run finishes in minutes on one machine, not
+# to produce usable statistics -- the physics samples are the nu_*, nc_* and beam_* configs.
+name: getting_started
+probe: CC
+beam: spectrum
+flux: t2k
+material: C
+channels: [qe, res]
+fsi: true
+# 2,000 events/chunk: small enough that the FSI record costs little, though the calibration pass
+# that sizes it runs over a fixed sample and so dominates a bank this size.
+n_per_seed: 2000
+n_seeds: 1
+seed0: 0

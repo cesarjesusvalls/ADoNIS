@@ -50,7 +50,7 @@ def _budget_sequence(names):
         yield n, dict(state)
 
 
-def main(config="configs/fits/unfold.yaml", label=None, log=print):
+def main(config="configs/unfold/t2k_cc0pi.yaml", label=None, log=print):
     """Run every study in `config` and persist one npz.  Nothing here reads the environment."""
     cfg = UnfoldConfig.load(config)
     label = label or cfg.name
@@ -129,6 +129,6 @@ def main(config="configs/fits/unfold.yaml", label=None, log=print):
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="Run the unfolding studies from a config.")
-    ap.add_argument("config", nargs="?", default="configs/fits/unfold.yaml")
+    ap.add_argument("config", nargs="?", default="configs/unfold/t2k_cc0pi.yaml")
     ap.add_argument("--label", default=None, help="output stem; defaults to the config's name")
     main(**vars(ap.parse_args()))

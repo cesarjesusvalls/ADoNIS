@@ -9,6 +9,7 @@ description = "A differentiable generator of neutrino interaction samples"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "César Jesús-Valls"}]
+urls = {Homepage = "https://github.com/cesarjesusvalls/ADoNIS", Repository = "https://github.com/cesarjesusvalls/ADoNIS"}
 dependencies = [
     "jax>=0.6",
     "jaxlib>=0.6",

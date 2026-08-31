@@ -30,7 +30,7 @@ you need the repository.
 
 ## Install
 
-    git clone <repository-url> && cd ADoNIS
+    git clone https://github.com/cesarjesusvalls/ADoNIS.git && cd ADoNIS
     python -m venv .venv && . .venv/bin/activate
     pip install -e ".[plots,dev]"
 
@@ -49,12 +49,14 @@ ADoNIS reads tabulated inputs that ship with the ACHILLES reference image:
     export ACHILLES_DATA=$PWD/achilles_data
     export JAX_ENABLE_X64=1
 
-Generate a small bank and select a signal over it:
+Generate a small bank and select a signal over it.  `configs/banks/getting_started.yaml` is the
+smallest config that still runs the whole chain; the physics samples are the `nu_*`, `nc_*` and
+`beam_*` configs, and each carries the event count its target needs:
 
-    python -m adonis.workflow.cli configs/banks/nu_T2K_C.yaml \
-        --out output/banks/nu_T2K_C/part_0 --seed0 0 --n-per-seed 2000 --n-seeds 1
+    python -m adonis.workflow.cli configs/banks/getting_started.yaml \
+        --out output/banks/getting_started/part_0 --seed0 0 --n-seeds 1
     python -m adonis.workflow.merge_bank \
-        --parts output/banks/nu_T2K_C --out output/banks/nu_T2K_C/merged
+        --parts output/banks/getting_started --out output/banks/getting_started/merged
 
 Generation first sizes its final-state-interaction buffers from a calibration pass over a fixed
 number of events, per channel.  For a bank this small that calibration, not the bank, is most of
@@ -82,7 +84,19 @@ See REPRODUCE.md for which images are needed and where they come from.
 
 ## Citing
 
-If you use this code, please cite the paper (see CITATION.cff).
+If you use this code, please cite:
+
+```bibtex
+@article{Jesus-Valls:2026nnj,
+    author = "Jes{\'u}s-Valls, C{\'e}sar",
+    title = "{ADoNIS: A Differentiable generatOr of Neutrino Interaction Samples}",
+    eprint = "2608.25107",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ex",
+    month = "8",
+    year = "2026"
+}
+```
 
 ## License
 
