@@ -34,3 +34,17 @@ def test_output_path_ignores_the_working_directory():
         assert str(output_path("/abs/a.npz")) == "/abs/a.npz"
     finally:
         os.environ.pop("ADONIS_OUT") if old is None else os.environ.update(ADONIS_OUT=old)
+
+
+def test_references_are_not_anchored_to_the_repository():
+    """`_rel` anchors a name to the checkout, which is where configs live and references do not."""
+    src = (ROOT / "analysis" / "paper" / "validation" / "helper.py").read_text()
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        if not node.func.attr.endswith("oracle_signal"):
+            continue
+        for arg in node.args:
+            bad = isinstance(arg, ast.Call) and getattr(arg.func, "id", "") == "_rel"
+            assert not bad, f"{node.func.attr} is handed a repository-anchored path"

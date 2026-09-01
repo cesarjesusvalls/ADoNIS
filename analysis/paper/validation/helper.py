@@ -138,7 +138,7 @@ def _compute_ele(spec):
         if keyt not in ref_cache:
             parts = []
             for i, pth in enumerate(refs):
-                r = SG.ele_oracle_signal(_rel(pth), sd)
+                r = SG.ele_oracle_signal(pth, sd)
                 r["chan"] = np.full(len(r["w"]), i, int)
                 parts.append(r)
             ref_cache[keyt] = {k: np.concatenate([r[k] for r in parts]) for k in parts[0]}
