@@ -142,6 +142,24 @@ python -m analysis.oracle_tools.combine "output/achilles/nu_T2K_C/*.npz" \
     output/achilles/fsrich/nu_T2K_C.npz
 ```
 
+`configs/achilles/` holds more cards than the figures need.  Ten produce the `fsrich/` references
+the sample configs name, one per line below, and the figure that compares hadron cross sections
+reads its own cascade runs directly rather than an `fsrich/` file, so those six take no
+`--extract`:
+
+| reference (`--extract fs_rich`) | card |
+| --- | --- |
+| `nu_T2K_C` | `run_T2K_C_fsi_gauss.yml` |
+| `nu_MINERvA_C` | `run_MINERvA_C_fsi.yml` |
+| `nu_uBooNE_Ar` | `run_MicroBooNE_Ar_fsi.yml` |
+| `nc_uBooNE_Ar` | `run_MicroBooNE_Ar_fsi_nc.yml` |
+| `inclusive_ee_C_qe`, `inclusive_ee_C_res` | `run_ee_C_qe_fsi.yml`, `run_ee_C_res_fsi.yml` |
+| `inclusive_ee_Ar_qe`, `inclusive_ee_Ar_res` | `run_ee_Ar_qe_fsi.yml`, `run_ee_Ar_res_fsi.yml` |
+| `ee_C_1159_qe_fsi`, `ee_C_1159_res_fsi` | `run_ee_C_1159_qe_fsi.yml`, `run_ee_C_1159_res_fsi.yml` |
+
+The cascade runs, whose `.hepmc` the hadron-beam figure scans directly:
+`run_cascade_pip_C_broad`, `run_cascade_prot_C`, `run_cascade_neut_C`, and the `_Ar` counterparts.
+
 ## Analysis runs
 
 **The Jacobian** — the gradient-information results, and the parameter selection the fit uses:

@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 
+from adonis.io import output_path
 from adonis.workflow import selection as SG
 from adonis.workflow.data_overlay import load_overlay
 
@@ -39,7 +40,7 @@ def build_reference(cfg):
     if not refs:
         raise ValueError("no ACHILLES reference (expected inputs.reference: [<fs_rich oracle npz>, ...])")
     fn = SG.oracle_signal_nc if cfg.signal.pion_id == "pi0" else SG.oracle_signal
-    return _merge([fn(p, cfg.signal) for p in refs])
+    return _merge([fn(str(output_path(p)), cfg.signal) for p in refs])
 
 
 def run_analysis(cfg, ado_label="ADoNIS", ref_label="ACHILLES", panel_w=3.4, title=None, **style_kw):

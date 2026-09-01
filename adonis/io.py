@@ -65,6 +65,20 @@ def bank_path(name) -> Path:
     return p if p.is_absolute() else bank_root() / p
 
 
+def output_path(name) -> Path:
+    """Resolve a file named by a config: absolute as given, otherwise under output_root().
+
+    Configs name reference files as `output/achilles/...`, which is where they land when the
+    output root is the default.  Taking that literally would ignore $ADONIS_OUT, so a leading
+    `output/` is dropped and the rest joined to the configured root.
+    """
+    p = Path(name)
+    if p.is_absolute():
+        return p
+    parts = p.parts[1:] if p.parts and p.parts[0] == "output" else p.parts
+    return output_root().joinpath(*parts)
+
+
 def achilles_data_root() -> Path:
     """The ACHILLES `data/` directory ($ACHILLES_DATA, else <repo>/data/achilles)."""
     return Path(os.environ.get("ACHILLES_DATA", DEFAULT_ACHILLES_DATA))
