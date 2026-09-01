@@ -19,7 +19,7 @@ event counts and the sharding differ.
 
 ---
 
-## 0. Setup
+## Setup
 
 ```bash
 pip install -e ".[plots]"   # the adonis package, with matplotlib for the figures
@@ -86,7 +86,7 @@ name would be overwritten by the first fit that runs.
 
 ---
 
-## 1. Event banks
+## Event banks
 
 One config per sample in `configs/banks/`. The config carries the physics (probe, beam, target,
 channels, FSI); the command line carries only scale.
@@ -121,7 +121,7 @@ The paper uses 10M events per neutrino sample. The banks the analysis configs ex
 A GPU is not required. The hard vertex runs at the same speed on a CPU core; the cascade is
 10–13× faster on a GPU and is the bottleneck.
 
-## 2. ACHILLES reference
+## ACHILLES reference
 
 One run card per sample in `configs/achilles/`. The runner picks the right image for the card and
 runs it under docker or apptainer.
@@ -142,7 +142,7 @@ python -m analysis.oracle_tools.combine "output/achilles/nu_T2K_C/*.npz" \
     output/achilles/fsrich/nu_T2K_C.npz
 ```
 
-## 3. Analysis runs
+## Analysis runs
 
 **The Jacobian** — the gradient-information results, and the parameter selection the fit uses:
 
@@ -183,7 +183,7 @@ python -m analysis.campaign.unfold_run configs/unfold/t2k_cc0pi.yaml --label t2k
 
 Runs every study in the config and writes `output/results/t2k_cc0pi_unfold.npz`.
 
-## 4. Figures
+## Figures
 
 ```bash
 python -m analysis.paper.validation.make --no-ratio      # ADoNIS vs ACHILLES, 8 figures
