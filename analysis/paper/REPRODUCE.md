@@ -22,7 +22,8 @@ event counts and the sharding differ.
 ## Setup
 
 ```bash
-pip install -e ".[plots]"   # the adonis package, with matplotlib for the figures
+pip install -e ".[plots,minuit]"   # the adonis package, with matplotlib for the figures and
+                                   # iminuit for the optimiser benchmark
 export JAX_ENABLE_X64=1     # required: the FSI nominal reweight is exact only in double precision
 ```
 
