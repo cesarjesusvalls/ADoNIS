@@ -19,8 +19,9 @@ from pathlib import Path
 import numpy as np
 
 from adonis.flux.hadron import BEAMS, PIR2_MB
+from adonis.io import output_path
 
-ACH_DIR = Path(os.environ.get("ACHILLES_BEAM_DIR", "output/achilles"))
+ACH_DIR = Path(os.environ.get("ACHILLES_BEAM_DIR") or output_path("output/achilles"))
 PION_PIDS = (211, 111, -211)
 
 

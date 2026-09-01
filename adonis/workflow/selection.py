@@ -16,6 +16,7 @@ import json
 
 import numpy as np
 
+from adonis.io import output_path
 from adonis.reweight import bank_plot as BP
 from adonis.constants import (PDG_MESONS, mp as _MP, mN as _MN, me as _ME, mpip as _MPIP,
                               MASS_PDG_MUON as _MMU)
@@ -237,6 +238,7 @@ def select_bank(bank_dir, sd, max_chunks=None, cap=None):
 
 
 def oracle_signal(oracle_npz, sd):
+    oracle_npz = output_path(oracle_npz)
     d = np.load(oracle_npz, allow_pickle=True)
     w = np.asarray(d["w"], float) * float(d["weight_to_nb"])
     mu = np.asarray(d["lep"], float)
@@ -311,6 +313,7 @@ def oracle_signal_nc(oracle_npz, sd):
     Uses the n_nonpion_meson field (true non-pion mesons only), never n_other_meson: the latter
     counts pi0 and pi- as "other mesons", which is harmless for CC0pi (both terms are zero on signal)
     and fatal here.  A file predating that field raises rather than silently mis-vetoing."""
+    oracle_npz = output_path(oracle_npz)
     d = np.load(oracle_npz, allow_pickle=True)
     if "n_nonpion_meson" not in d.files:
         raise KeyError(f"{oracle_npz} has no 'n_nonpion_meson' -- re-extract it.  Falling back to "
@@ -435,6 +438,7 @@ def ele_signal(bank_dir, sd):
 
 def ele_oracle_signal(oracle_npz, sd):
     """(e,e') on an ACHILLES fs_rich oracle -- the SAME acceptance + reconstruction as ele_signal."""
+    oracle_npz = output_path(oracle_npz)
     d = np.load(oracle_npz, allow_pickle=True)
     w = np.asarray(d["w"], float) * float(d["weight_to_nb"])
     lep = np.asarray(d["lep"], float); Ee = lep[:, 0]
