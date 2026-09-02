@@ -194,6 +194,13 @@ all, so an unsharded run exhausts a smaller card partway through. One parameter 
 that bounded. `compute.mem_fraction` in the config moves the pool/outside-pool split if a stage still
 runs out of room.
 
+A sharded profile writes one file per parameter. Merge them before `profile2d`, which takes its
+grid from the merged file, and before the figures, which read it:
+
+```bash
+python -m analysis.campaign.stages.multisample_profile_merge closure
+```
+
 **The unfolding**:
 
 ```bash

@@ -108,15 +108,16 @@ def main():
     _PROF_AX = None
     if st.get("axes_from") == "profile":
         _pf = str(results_dir() / f"{LABEL}_profile.npz")
-        if os.path.exists(_pf):
-            _z = np.load(_pf, allow_pickle=True)
-            _gs = np.asarray(_z["grids_sigma"])
-            _PROF_AX = {int(kk): (float(np.nanmin(_gs[cc])), float(np.nanmax(_gs[cc])))
-                        for cc, kk in enumerate([int(q) for q in _z["subset"]])
-                        if np.isfinite(_gs[cc]).any()}
-            log(f"axes from {_pf}")
-        else:
-            log(f"[warn] {_pf} missing -- falling back to +-{RANGE} sigma")
+        if not os.path.exists(_pf):
+            raise SystemExit(
+                f"axes_from: profile, but {_pf} does not exist.  Run the profile stage, then merge "
+                f"its shards with analysis.campaign.stages.multisample_profile_merge.")
+        _z = np.load(_pf, allow_pickle=True)
+        _gs = np.asarray(_z["grids_sigma"])
+        _PROF_AX = {int(kk): (float(np.nanmin(_gs[cc])), float(np.nanmax(_gs[cc])))
+                    for cc, kk in enumerate([int(q) for q in _z["subset"]])
+                    if np.isfinite(_gs[cc]).any()}
+        log(f"axes from {_pf}")
 
     def _axis(kk, cc):
         """Grid for one dial: PHYSICAL range in grad mode, else the profile's adaptive span (or +-RANGE)."""
