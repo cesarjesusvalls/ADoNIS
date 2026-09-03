@@ -57,7 +57,7 @@ def test_factorization():
 
 
 def test_nucleon_granular_backcompat_equals_legacy():
-    """fsi_nucleon_reweight with s_el=s_inel=sscat (all iso) == legacy nucleon_scat_reweight(., sscat)."""
+    """fsi_nucleon_reweight with s_el=s_inel=sscat (all isotropic) equals nucleon_scat_reweight(., sscat)."""
     r = _record(7)
     srec = (r["hh"], r["a"], r["iso"], r["finel"], r["inel"], r["ns"])
     s3 = jnp.full((3,), 0.75)
@@ -98,7 +98,7 @@ def test_nucleon_granular_autodiff_equals_fd():
 
 
 def test_backcompat_default_equals_explicit():
-    """pool_fsi_reweight(r,sabs,sscat) == explicit s_piN_elastic=s_piN_cex=sscat (defaults reproduce legacy)."""
+    """pool_fsi_reweight(r,sabs,sscat) equals passing s_piN_elastic=s_piN_cex=sscat explicitly."""
     r = _record(4)
     w0 = np.asarray(pool_fsi_reweight(r, 1.2, 0.8))
     w1 = np.asarray(pool_fsi_reweight(r, 1.2, 0.8, s_piN_elastic=0.8, s_piN_cex=0.8, s_conv=1.0))

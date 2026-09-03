@@ -67,5 +67,5 @@ def test_no_avg_mass_at_threshold(relpath):
             offenders.append(f"{relpath}:{i}: {line.strip()}")
     assert not offenders, (
         "avg nucleon mass used at a threshold/clip-floor (the recurring bug class). Use the PHYSICAL "
-        "per-pair mass, or add to the whitelist ONLY after verifying ACHILLES itself uses the average "
+        "per-pair mass, or add to the whitelist only after verifying ACHILLES itself uses the average "
         "there.\n" + "\n".join(offenders))

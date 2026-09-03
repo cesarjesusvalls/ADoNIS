@@ -75,7 +75,7 @@ def hepmc_norm(path):
 
 
 def weight_to_nb_of(npz):
-    """Read the nb-per-weight factor an extractor stored in an ACHILLES npz (the ONLY way figures should
+    """Read the nb-per-weight factor an extractor stored in an ACHILLES npz (the only way figures should
     convert ACHILLES event weights to nb -- no hardcoded constants)."""
     if "weight_to_nb" not in npz.files:
         raise KeyError("ACHILLES npz lacks 'weight_to_nb' (GenCrossSection/sum_w from the hepmc header); "

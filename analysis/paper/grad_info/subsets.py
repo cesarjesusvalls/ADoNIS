@@ -85,7 +85,7 @@ def resolve_axis(axis, dskeys, log=print):
         if dropped:
             log(f"  [subsets] {axis.get('_name', '?')}/{name}: no dskey matches {dropped}")
         if not keys:
-            log(f"  [subsets] {axis.get('_name', '?')}/{name}: DROPPED (no datasets present)")
+            log(f"  [subsets] {axis.get('_name', '?')}/{name}: dropped (no datasets present)")
             continue
         by_name[name] = keys
         out.append((name, spec.get("label", name), keys))

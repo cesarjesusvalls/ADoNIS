@@ -42,8 +42,8 @@ def _qe_hv(qa, **kw):
 
 def _qe_records(qa, probe, isp, qe_joint):
     """The QE slice of HV.  qe_joint=True (default): the exact reduced-quadratic record (one 4x4 M
-    covering all cross terms; _hv_qe -> qe_reduced_reweight).  qe_joint=False: the legacy per-knob
-    (a,b,c) records (product; exact only to first order), kept until every bank carries M."""
+    covering all cross terms; _hv_qe -> qe_reduced_reweight).  qe_joint=False: per-knob (a,b,c) records
+    taken as a product, which is exact only to first order; it reads banks that carry no M."""
     if qe_joint:
         from adonis.reweight.reduced_amps2 import build_qe_reduced
         return {"qe_reduced": build_qe_reduced(*qa, probe=probe, is_proton=isp), "qe_probe": probe, "qe_isp": isp}
@@ -52,8 +52,8 @@ def _qe_records(qa, probe, isp, qe_joint):
 
 def _res_records(ra, ip, pp, with_pw, res_joint):
     """The RES slice of HV.  res_joint=True (default): the exact reduced-quadratic record (6x6 M over
-    the {V,A,P}x{rest,wave5} atoms; _hv_res -> res_reduced_reweight).  res_joint=False: the legacy
-    per-knob records (product; pw_norm loop lives here, dormant, so the reduced form omits it)."""
+    the {V,A,P}x{rest,wave5} atoms; _hv_res -> res_reduced_reweight).  res_joint=False: per-knob records
+    taken as a product; the dormant pw_norm loop lives on that branch, so the reduced form omits it."""
     if res_joint:
         from adonis.reweight.reduced_amps2 import build_res_reduced
         return {"res_reduced": build_res_reduced(*ra, ip, pp)}

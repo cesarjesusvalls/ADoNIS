@@ -115,7 +115,7 @@ def load_views(label, allow_partial=False):
             rep.error(f"{key[0]} x {key[1]}: falling back to N={len(ok[0]['axi'])} because the "
                       f"preferred N={len(ranked[0]['axi'])} scan is incomplete -- " + " | ".join(why))
     if drop:
-        print(f"[warn] {len(drop)} view(s) DROPPED, no complete grid: {drop}")
+        print(f"[warn] {len(drop)} view(s) dropped, no complete grid: {drop}")
     rep.raise_if_bad(allow_partial)
     for key, w in views.items():
         n_part = len(cands[key]) - 1

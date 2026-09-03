@@ -1,5 +1,5 @@
 """NUMPY VALIDATION REFERENCE -- frozen scalar-loop twin of the LIVE jax NN->NDelta code in
-adonis/fsi/nn_inelastic.py.  Exercised ONLY by tests/test_nn_delta.py (as the oracle the jax path is
+adonis/fsi/nn_inelastic.py.  Exercised only by tests/test_nn_delta.py (as the oracle the jax path is
 checked against).  Do NOT modify, wire into production, or consolidate its Kallen/CDF helpers -- its
 value is being an independent re-derivation.
 

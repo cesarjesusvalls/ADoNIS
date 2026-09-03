@@ -103,7 +103,7 @@ def test_absent_sample_drops_its_column_but_keeps_the_rest():
     """), ["pmu", "cosmu"], log=logs.append)
     assert [n for n, _l, _k in got] == ["t2k", "all"]
     assert got[-1][2] == ["pmu", "cosmu"]
-    assert any("DROPPED" in m for m in logs)
+    assert any("dropped" in m for m in logs)
 
 
 def test_reference_to_undeclared_group_is_an_error():

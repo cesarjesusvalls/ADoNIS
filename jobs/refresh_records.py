@@ -1,11 +1,12 @@
 """Refresh a CC bank's QE+RES hard-vertex records to the exact reduced-quadratic form (docs/joint_amps2_plan.md).
 
-Per chunk, rebuild from STORED kinematics (no event regeneration):
+Per chunk, rebuild from the stored kinematics, without regenerating events:
   QE  (channel==0): M from k_nu, k_lep, p_struck, p_out = k_nu + p_struck - k_lep (2-body conservation).
   RES (channel==1): M from k_nu, k_lep, p_struck, res_p_N, res_p_pi, res_ipid, res_ppid (vertex momenta,
                     verified to reproduce the stored records to float32).
-The legacy per-knob QE+RES records are DROPPED; hv_qe_mij/hv_qe_Q2 (N,4,4) and hv_res_mij/hv_res_Q2 (N,6,6)
-are written (the OTHER channel's rows are 0 -> reduced reweight == 1).  Everything else copied verbatim.
+The per-knob QE+RES records are dropped; hv_qe_mij/hv_qe_Q2 (N,4,4) and hv_res_mij/hv_res_Q2 (N,6,6)
+are written, with the other channel's rows zero so its reduced reweight is 1.  Everything else is copied
+verbatim.
 
     python -m jobs.refresh_records <src merged dir> <dst dir>        # CC banks only (nu_*)
 """

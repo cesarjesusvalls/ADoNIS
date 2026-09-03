@@ -112,7 +112,7 @@ class SpectrumFlux:
         """Map the single beam uniform u[:,4] -> (E_GeV, J_beam), in one of two modes that estimate
         the same flux-weighted integral (unbiased, equal in expectation):
 
-          'flat' (legacy ACHILLES BeamMapper): E ~ Uniform[minE, maxE]; J_beam = dE * f(E) /
+          'flat' (the ACHILLES BeamMapper): E ~ Uniform[minE, maxE]; J_beam = dE * f(E) /
                  flux_integral.  Most draws land in the high-E flux tail with near-zero weight, so
                  effective sample size is small.
 

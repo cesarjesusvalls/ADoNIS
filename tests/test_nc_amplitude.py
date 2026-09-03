@@ -6,7 +6,7 @@ written from the source and cannot be tuned to whatever the implementation happe
   * two `sw2` limits that collapse the NC vector coupling onto forms we already trust;
   * the axial is present for NC and absent for EM;
   * the pion pole is CC-only, so its knob must move NC by EXACTLY zero;
-  * proton and neutron differ ONLY by the VVFAC sign on the I=1/2 isoscalar term;
+  * proton and neutron differ only by the VVFAC sign on the I=1/2 isoscalar term;
   * `_NORM_NC/_NORM_EM` equals (2 sw cw)^2, which follows from the couplings and not from any fit.
 
 The form under test (amp_dcc_sl_module.f, read directly).  The step that matters is NOT in the

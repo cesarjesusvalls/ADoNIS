@@ -100,7 +100,7 @@ def dsigma_dOmega(W, cos_theta, cg={3: 1.0}, i=0, f=0):
     P33 (L=1, J=3/2=L+1/2) dominates -> the classic 1 + 3 cos^2(theta) shape.
 
     (i, f) select the ANL channel table load_anl(i, f); the default (0, 0) is elastic piN, the
-    ONLY case this f/g construction is validated for -- off-diagonal (i != f) is not supported.
+    only case this f/g construction is validated for -- off-diagonal (i != f) is not supported.
     """
     from numpy.polynomial.legendre import Legendre
     Wt, amps = load_anl(i, f)
@@ -266,7 +266,7 @@ _MM_ETA, _MB_ETA = 548.0, 938.5
 
 
 def eta_production_sigma_grid():
-    """W grid + piN -> etaN production sigma [mb] ONLY (the eta piece of the total conversion), shape
+    """W grid + piN -> etaN production sigma [mb] only (the eta piece of the total conversion), shape
     (3 pion, 2 nucleon, nW).  This is the fraction of a pion conversion that produces an eta (which is
     then propagated & can back-convert), as opposed to the KLambda/KSigma finals (terminal).  Same
     piN-initial PF (Mass_m[0]/Mass_b[0]) as conversion_sigma_grid, restricted to the eta final."""

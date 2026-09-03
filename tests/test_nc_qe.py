@@ -110,7 +110,7 @@ def test_fa_flips_sign_between_proton_and_neutron():
 
 
 def test_no_strange_form_factors_reach_the_nc_current():
-    """ACHILLES computes FormFactors::FAs (FormFactor.cc:92,123) and NEVER consumes it:
+    """ACHILLES computes FormFactors::FAs (FormFactor.cc:92,123) and never consumes it:
     FormFactorInfo::Type (FormFactor.hh:22-48) has no strange entry, so CouplingsFF cannot dispatch
     on one.  Including F1s/F2s/G_A^s would make ADoNIS more physically complete and fail every gate
     here by construction, because every gate is an ACHILLES comparison.  Pinned, not left to a

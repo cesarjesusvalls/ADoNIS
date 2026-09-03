@@ -106,7 +106,7 @@ _FF = {k: build_qe_ff_records(_KN, _KM, _PS, _PO, k) for k in ("gmp", "gmn", "ge
 
 
 def _old_hv_qe(k):
-    """The legacy per-knob product (reweight_model._hv_qe, qe_joint=False)."""
+    """The per-knob product (reweight_model._hv_qe, qe_joint=False)."""
     return (ma_reweight(_MAREC, k.M_A_qe) * strength_reweight(_MAREC, k.axial_strength)
             * strength_reweight(_VREC, k.vector_strength) * strength_reweight(_FF["gmp"], k.mu_p)
             * strength_reweight(_FF["gmn"], k.mu_n) * strength_reweight(_FF["gep"], k.gep)
@@ -128,7 +128,7 @@ def test_single_knob_matches_legacy():
 
 
 def test_first_order_invariance():
-    """d(sum w)/d(knob) at nominal == the legacy value, per knob -> the Jacobian and Fisher figures are unchanged."""
+    """d(sum w)/d(knob) at nominal matches the per-knob value, so the Jacobian and Fisher figures hold."""
     nom = nominal_knobs(); keep = jnp.asarray(_VALID)
     for fld, _ in _SINGLE:
         x0 = float(getattr(nom, fld))

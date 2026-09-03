@@ -246,7 +246,7 @@ def _match_dtype(a, g):
 
 
 def _dense_prod(per, count):
-    """Per-event product of a DENSE (n, K) slot factor, masking the unused tail slots."""
+    """Per-event product of a dense (n, K) slot factor, masking the unused tail slots."""
     valid = jnp.arange(per.shape[1])[None, :] < count[:, None]
     return jnp.prod(jnp.where(valid, per, 1.0), axis=1)
 
@@ -1251,7 +1251,7 @@ def compact_fsi_record(rec):
         gp = int(_np.asarray(rec["gc_p"])); gn = int(_np.asarray(rec["gc_n"]))
         Tp = len(_np.asarray(rec["bc"])); Tn = len(_np.asarray(rec["hh"]))
         if gp > Tp or gn > Tn:
-            raise ValueError(f"FLAT FSI record overflow: pion {gp}/{Tp}, nucleon {gn}/{Tn}. Raise the flat "
+            raise ValueError(f"flat FSI record overflow: pion {gp}/{Tp}, nucleon {gn}/{Tn}. Raise the flat "
                              f"TOTAL budget (rec_caps) -- it must be >= the batch's total interaction count.")
         out = {f: _np.asarray(rec[f])[:gp] for f in _P_SLOT}
         out.update({f: _np.asarray(rec[f])[:gn] for f in _N_SLOT})
@@ -1285,7 +1285,7 @@ def pool_fsi_reweight_flat(record, sabs, sscat, *, s_piN_elastic=None, s_piN_cex
         gp = int(jnp.asarray(R["gc_p"])); gn = int(jnp.asarray(R["gc_n"]))
         Tp = len(jnp.asarray(R["bc"])); Tn = len(jnp.asarray(R["hh"]))
         if gp > Tp or gn > Tn:
-            raise ValueError(f"FLAT FSI record overflow on reweight: pion {gp}/{Tp}, nucleon {gn}/{Tn}. "
+            raise ValueError(f"flat FSI record overflow on reweight: pion {gp}/{Tp}, nucleon {gn}/{Tn}. "
                              f"Raise the flat TOTAL budget (rec_caps) above the batch total interaction count.")
     n = int(R["n_events"])
     s_el = sscat if s_piN_elastic is None else s_piN_elastic

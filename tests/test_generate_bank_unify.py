@@ -1,12 +1,10 @@
-"""Regression guard for the ONE bank generator, adonis.workflow.generate_bank.generate_bank(cfg).
+"""The bank schema, across every probe adonis.workflow.generate_bank.generate_bank(cfg) writes.
 
-generate_bank replaced the three legacy drivers (reweight/event_bank + ee_event_bank -> reweight_bank,
-and beams/beam_bank) with ONE GenConfig-driven backbone dispatched by adonis.workflow.cli.  Byte-for-byte
-equality to every legacy generator was proven at unification time (P2/P3); this test guards the SCHEMA +
-basic sanity across ALL THREE probes so a future edit can't silently drop a record type or a probe -- and
-guards the ground-truth contract: banks store ONLY prim_fate + nsc_prim, with reacted/absorbed DERIVED.
+One GenConfig-driven backbone serves all three probes, so a single edit can drop a record type or a
+whole probe.  This checks the schema and basic sanity for each of them, and the ground-truth contract:
+a bank stores prim_fate and nsc_prim, and reacted/absorbed are derived from those rather than stored.
 
-Gated behind --runslow (builds real cascades at import -> JIT compile).  N is tiny.
+Gated behind --runslow: it builds real cascades at import, so it pays a jit compile.  N is tiny.
 """
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))

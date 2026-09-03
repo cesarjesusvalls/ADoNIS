@@ -55,7 +55,7 @@ def _bounds(eng, subset):
     return lo, hi
 
 def _migrad(eng, subset, x0, lo, hi, use_grad, tol, max_calls, f, vg):
-    """One MIGRAD fit.  Returns (x, (nvalue, nderiv), chi2, seconds) with ONLY migrad() in the clock.
+    """One MIGRAD fit.  Returns (x, (nvalue, nderiv), chi2, seconds) with only migrad() in the clock.
 
     `f` and `vg` must be the ALREADY-COMPILED objectives, passed in rather than built here: eng.chi2_fn()
     returns a FRESH jax.jit wrapper on each call, with an empty compilation cache, so building them

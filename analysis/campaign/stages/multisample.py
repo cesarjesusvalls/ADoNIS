@@ -168,7 +168,7 @@ class BankSample:
             subset, call, lambda g: np.concatenate([IC.bin_w0(d, g) for d in self.ds])))
 
     def jac_blocks_ref(self, theta, subset):
-        """Reference: one jvp per dial in a Python loop.  Kept ONLY so the vmapped path above can be
+        """Reference: one jvp per dial in a Python loop.  Kept only so the vmapped path above can be
         validated element-wise against it; not used by the fit."""
         th = jnp.asarray(theta); cols = []
         for k in subset:

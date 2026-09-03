@@ -1,9 +1,10 @@
-"""End-to-end: the T2K CC0pi dsigma/dx distribution is DIFFERENTIABLE in the exposed knobs.
-Builds a frozen QE+RES proposal + pool walk + hard-vertex amps2 records + SF points, then checks
-autodiff == finite-difference of an actual dsigma/dx bin (and the total) w.r.t. a representative knob
-from each mechanism: hard-vertex amps2 (vector_strength, pion_pole), FSI kind-1 (s_piN_cex,
-s_NN_inelastic), branch (f_NN_cex), spectral function (kF_sf).  Also: nominal model_hist_full reproduces
-the legacy FSI-only model_hist (sabs/sscat/MA) -> the new path is a faithful superset."""
+"""End to end: the T2K CC0pi dsigma/dx distribution is differentiable in the exposed knobs.
+
+Builds a frozen QE+RES proposal, pool walk, hard-vertex amps2 records and SF points, then checks that
+autodiff matches the finite difference of a real dsigma/dx bin (and of the total) with respect to one
+knob per mechanism: hard-vertex amps2 (vector_strength, pion_pole), FSI kind-1 (s_piN_cex,
+s_NN_inelastic), branch (f_NN_cex), spectral function (kF_sf).  Also that at nominal knobs
+model_hist_full reproduces the FSI-only model_hist (sabs/sscat/MA), which it must contain."""
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _os.environ["CC0PI_N"] = "5000"
@@ -31,13 +32,13 @@ def _hist(knobs):
     return model_hist_full(knobs, _R, _HV, _SF, _EDGES, _CONV)
 
 
-def test_nominal_matches_legacy_model_hist():
-    """All knobs nominal -> identical to the legacy FSI+MA model_hist at theta=(1,1,1).
-    Eb_shift is overridden to 0 here: the legacy model has no SF knob (== no removal-energy shift), so the
-    bit-identity comparison is against the unshifted SF.  The full-model NOMINAL Eb_shift is a deliberate
-    epsilon (_EB_EPS=1e-2 MeV, full_knobs) that anchors the gradient off the Eb=0 corner; it deforms the SF
-    by a negligible ~6e-5 (verified in test_sf_reweight), which is exactly the (intended) difference from
-    the legacy here -- not a bit-identity failure of the reweight machinery."""
+def test_nominal_matches_the_fsi_ma_model_hist():
+    """At nominal knobs the full model is identical to the FSI+MA model_hist at theta=(1,1,1).
+
+    Eb_shift is set to 0 for the comparison: model_hist carries no SF knob, so there is no removal-energy
+    shift on that side.  The full model's nominal Eb_shift is a deliberate epsilon (_EB_EPS=1e-2 MeV,
+    full_knobs) that anchors the gradient away from the Eb=0 corner, and it deforms the SF by ~6e-5
+    (test_sf_reweight); leaving it in would show up here as a difference in the SF, not in the reweight."""
     h_full = np.asarray(_hist(_NOM._replace(Eb_shift=0.0)))
     h_leg = np.asarray(T.model_hist(jnp.array([1.0, 1.0, 1.0]), _R, _M))
     assert np.allclose(h_full, h_leg, rtol=1e-10, atol=1e-30), (h_full[:5], h_leg[:5])

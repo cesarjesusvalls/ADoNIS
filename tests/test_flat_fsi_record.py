@@ -1,9 +1,9 @@
-"""FLAT/streaming FSI record == DENSE per-event record, through the ACTUAL pool cascade.
+"""The two FSI record layouts give the same reweight, through the pool cascade rather than a stand-in.
 
-The flat layout (adonis/fsi/cascade.py) streams the FSI
-reweight record into one flat (TOTAL,) buffer sized by n*E[interactions] (tail-free), instead of the
-legacy per-event (n, K_max) dense buffer.  The reweight is a scatter-add by event index, so the two must
-agree to float64 precision at any knob vector.  This runs a real QE cascade both ways and compares.
+The flat layout streams the record into one (TOTAL,) buffer sized by n*E[interactions], with no
+per-event tail; the per-event layout holds a dense (n, K_max) buffer.  The reweight is a scatter-add
+by event index, so the two must agree to float64 precision at any knob vector.  This runs a real QE
+cascade both ways and compares.
 """
 import numpy as np
 import pytest

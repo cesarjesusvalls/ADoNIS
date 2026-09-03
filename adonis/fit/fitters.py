@@ -174,7 +174,7 @@ def lm_fit(eng, subset, tag, huber=False, nit=NIT, mask=None, record=None, tol=1
             where a relative-chi2 test can stall with theta still off the minimum.  Full Gauss-Newton
             steps (STEP_SCALE=1, the default) converge quadratically; use <1 only to force a slow,
             smooth trajectory for a convergence demo.
-    th_init: start point (default eng.th0).  The prior is ALWAYS centred at eng.th0 -- th_init only warm-
+    th_init: start point (default eng.th0).  The prior stays centred at eng.th0 -- th_init only warm-
             starts the walk (e.g. profile scans re-minimising from the BFP), it does not move the prior."""
     data, sigma = eng.data_sigma()
     if mask is None:

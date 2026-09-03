@@ -3,10 +3,9 @@
 `lepton_current(..., anti=True)` has no production caller for any probe.  An implemented but
 unvalidated path is worse than a raise, because it looks available; it is therefore gated.
 
-What is NOT here, stated plainly rather than omitted: the nubar flux plumbing (`_PROBE_BEAMS` /
-a nubar spectrum table) and a nubar free-nucleon ACHILLES card.  Those are the rest of P9.  They
-cannot affect figures 11 and 12 either way -- `flux/microboone_numu.dat` is numu-only -- which is
-exactly why P9 sits off the critical path.
+Not covered here, stated plainly rather than omitted: the nubar flux plumbing (`_PROBE_BEAMS` and a
+nubar spectrum table) and a nubar free-nucleon ACHILLES card.  Neither can affect figures 11 and 12,
+because `flux/microboone_numu.dat` is numu-only.
 
 The hadronic side needs nothing: `currents_pi_dcc.f90:71-101` maps BOTH nu and nubar NC to
 DCC_mode = -1, so only the leptonic current differs.  That is asserted below rather than assumed,

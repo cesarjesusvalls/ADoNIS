@@ -41,8 +41,8 @@ def test_em_axial_collapses_but_vector_carries_gradient():
 
 
 def test_em_res_hard_vertex_is_identity_by_design():
-    """RES hard-vertex EM records are identity for now (the EM-Delta handle is a v2 item); confirm so a
-    future accidental change is caught, and delta_strength has no EM gradient as documented."""
+    """The EM probe carries no RES hard-vertex handle, so its RES records are the identity and
+    delta_strength has no EM gradient.  Asserted so a change to either shows up here."""
     HV, _ = build_hv_sf(_qe, _res, _sf, with_pw=False, probe="EM", qe_joint=False, res_joint=False)
     for key in ("res_ma", "res_pp", "res_delta"):
         a, b, c, q2 = (np.asarray(x) for x in HV[key])

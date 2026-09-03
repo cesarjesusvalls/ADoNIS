@@ -89,7 +89,7 @@ def test_the_propagator_runs_with_q2_exactly_as_the_z_pole_demands():
     propagator; the ratio cancels that growth and isolates the coupling and propagator content.
 
     The decisive statement takes the NC/CC ratio at each Q^2, where the spinor content cancels
-    identically, leaving ONLY the couplings and the two propagators:
+    identically, leaving only the couplings and the two propagators:
 
         |L_NC|^2/|L_CC|^2 = |c_NC/c_CC|^4 * |(q^2 - M_W^2 - i M_W G_W)/(q^2 - M_Z^2 - i M_Z G_Z)|^4
 

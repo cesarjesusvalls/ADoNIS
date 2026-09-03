@@ -1,10 +1,9 @@
-"""FAST analog of test_full_knobs_grad (gated behind --runslow).
+"""The two checks of test_full_knobs_grad that hold at any statistics, at a size that runs in seconds.
 
-Small-N (800) + with_pw=False so it builds in seconds.  The two checks it keeps are
-STATISTICS-INDEPENDENT, so they hold at any N: (1) nominal model_hist_full reproduces the legacy
-FSI+MA model_hist bit-for-bit; (2) autodiff == finite-difference of a real dsigma/dx quantity w.r.t.
-one knob per mechanism (this validates the gradient wiring, not physics accuracy).  The full 27-knob
-sweep at N=5000 lives in test_full_knobs_grad (run with `pytest --runslow`)."""
+Small N (800) and with_pw=False keep the build cheap.  Both checks are statistics-independent:
+(1) at nominal knobs, model_hist_full equals the FSI+MA model_hist bit-for-bit; (2) autodiff equals
+the finite difference of a real dsigma/dx with respect to one knob per mechanism, which exercises the
+gradient wiring rather than the accuracy of the physics."""
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 _os.environ["CC0PI_N"] = "800"
@@ -33,7 +32,7 @@ def _hist(knobs):
 
 
 def test_nominal_matches_legacy():
-    """Nominal full model == legacy FSI+MA model_hist (bit-identity; N-independent)."""
+    """At nominal knobs the full model equals the FSI+MA model_hist bit for bit, at any N."""
     h_full = np.asarray(_hist(_NOM._replace(Eb_shift=0.0)))
     h_leg = np.asarray(T.model_hist(jnp.array([1.0, 1.0, 1.0]), _R, _M))
     assert np.allclose(h_full, h_leg, rtol=1e-10, atol=1e-30), (h_full[:5], h_leg[:5])
