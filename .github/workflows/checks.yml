@@ -50,4 +50,5 @@ jobs:
             tests/test_nc_selection.py \
             tests/test_constant_duplication.py \
             tests/test_fsi_record_layout.py \
-            tests/test_ci_gate.py
+            tests/test_ci_gate.py \
+            tests/test_documented_commands.py
