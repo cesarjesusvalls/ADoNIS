@@ -30,7 +30,11 @@ def main(argv=None):
     ap.add_argument("config", help="a GenConfig YAML; the repository ships a set under configs/banks/")
     ap.add_argument("--out", default=None,
                     help="bank output dir (default: <config out_dir>/<prefix>_<material><tag>)")
-    ap.add_argument("--n-per-seed", type=int, default=None, help="events per chunk (one seed = one chunk)")
+    ap.add_argument("--n-per-seed", type=int, default=None,
+                    help="events per chunk (one seed = one chunk).  Each config already carries the "
+                         "value its target can hold: the FSI record scales with this, and argon "
+                         "needs four times carbon's slots for the same count.  Raising it is how a "
+                         "run runs out of device memory.")
     ap.add_argument("--n-seeds", type=int, default=None, help="number of chunks (seeds) this shard runs")
     ap.add_argument("--seed0", type=int, default=None, help="first seed (shard offset; e.g. $SLURM_ARRAY_TASK_ID)")
     ap.add_argument("--chunk", type=int, default=None, help="override events/chunk (dense FSI buffers scale w/ this)")
