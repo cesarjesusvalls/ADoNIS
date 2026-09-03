@@ -35,16 +35,19 @@ HADRONS = {
     "pi_pid":       ("(n, m)",    "PDG code per pion slot, 0 where empty"),
 }
 
+NC_MESONS = {
+    "n_nonpion_meson":  ("(n,)", "mesons that are not pions; counting pi0 here would veto the signal"),
+}
+
 OPTIONAL = {
     "n_other_meson":    ("(n,)", "non-pion mesons per event; absent is treated as none"),
-    "n_nonpion_meson":  ("(n,)", "non-pion mesons, excluding pi0 and pi-; required by the NC path"),
     "proc":             ("(n,)", "generator process code; absent means every event is signal"),
     "n_pi_out":         ("(n,)", "outgoing pion multiplicity"),
 }
 
 KINDS = {
     "cc":  {**COMMON, **CHARGED_LEPTON, **HADRONS},
-    "nc":  {**COMMON, **HADRONS},
+    "nc":  {**COMMON, **HADRONS, **NC_MESONS},
     "ele": {**COMMON, **CHARGED_LEPTON},
 }
 
