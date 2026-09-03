@@ -1,4 +1,4 @@
-# Single-pion-production (RES_Spectral_Func) ONLY reference config for the oracle.
+# Single-pion-production (RES_Spectral_Func) only reference config for the oracle.
 # Run from the Achilles root:  ./build/bin/achilles <path>/res_1pi_12C.yml
 Main:
   NEvents: 20000

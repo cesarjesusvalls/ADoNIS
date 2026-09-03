@@ -4,7 +4,7 @@
 # sampler produces, before any FSI (which is shared/validated separately).
 #
 # Derived from run_inclusive_ee_C_qe.yml (the EM analog) and run_freenucleon_nc_qe_N.yml (the NC vertex).
-# The ONLY physics changes vs the inclusive (e,e') card are `Leptons: [14, [14]]` (incoming numu ->
+# The only physics changes vs the inclusive (e,e') card are `Leptons: [14, [14]]` (incoming numu ->
 # outgoing numu, a NEUTRAL current) and a numu beam; the QE_Spectral_Func model, 12C nucleus, cascade-off
 # and SF config are deliberately identical, so any ADoNIS/ACHILLES difference is the NC vertex and nothing
 # else.  No HardCuts: a polar-angle cut on the INVISIBLE outgoing neutrino is meaningless (and would bias

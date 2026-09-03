@@ -5,10 +5,10 @@
 # coupling or normalisation error and an energy slope is a propagator error, which is why this card
 # must never be normalised to ADoNIS.
 #
-# NC vs the CC free-nucleon cards this was derived from: ONLY `Leptons: [14, [14]]` (outgoing
+# NC vs the CC free-nucleon cards this was derived from: only `Leptons: [14, [14]]` (outgoing
 # neutrino, not a mu-).  Everything else -- beam, nuclear model, cascade-off, cuts -- is deliberately
 # identical, so any ACH(NC)/ACH(CC) difference is the current and nothing else.
-# Monochromatic beam: the sigma(E) CURVE is a SCAN over `Energy`, overridden per point by the runner.
+# Monochromatic beam: the sigma(E) curve is a scan over `Energy`, overridden per point by the runner.
 # No cascade => run_achilles.py routes this to the amd64 :oracle default (no 'run_cascade'/'*_fsi'
 # prefix), which is correct: emulation only SIGSEGVs with the cascade on.
 #   python -m analysis.oracle_tools.run_achilles configs/achilles/run_freenucleon_nc_res_N.yml

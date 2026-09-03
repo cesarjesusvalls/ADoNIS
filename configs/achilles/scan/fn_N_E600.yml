@@ -1,7 +1,7 @@
 # ACHILLES free-nucleon RES single-pion sigma(E_nu) -- nu_mu CC on a FREE NEUTRON (Name: 1N => Z=0,A=1
 # via ZToName; n -> n pi+ and n -> p pi0, split by final-state pion charge downstream).
 # Paper Fig. anl_bnl / pion_prod_validation (ADoNIS reproduces ACHILLES; data overlay = ANL/BNL in
-# data/experiment/anl_bnl_cc1pi).  Monochromatic beam: the sigma(E) CURVE is a SCAN over `Energy` --
+# data/experiment/anl_bnl_cc1pi).  Monochromatic beam: the sigma(E) curve is a scan over `Energy` --
 # the runner overrides it per point.  achilles:oracle image, Cascade OFF (free nucleon, no FSI).
 #   python -m analysis.oracle_tools.run_achilles configs/achilles/fn_N_E600.yml
 Main:
