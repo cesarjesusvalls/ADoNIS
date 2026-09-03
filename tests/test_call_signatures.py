@@ -12,9 +12,9 @@ import pathlib
 
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-FILES = sorted(p for p in ROOT.rglob("*.py")
-               if "__pycache__" not in str(p) and not str(p.relative_to(ROOT)).startswith("output/"))
+from tests._sources import ROOT, python_files
+
+FILES = python_files()
 OURS = ("adonis", "analysis")
 _CACHE: dict[str, dict] = {}
 
