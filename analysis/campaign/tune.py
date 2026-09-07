@@ -55,9 +55,6 @@ def _dat(kmu, lead):
     return jnp.arccos(jnp.clip(num / den, -1.0, 1.0))
 
 
-_set_obs("dpt")
-
-
 def _sel(kmu, lead):
     pmu = jnp.linalg.norm(kmu[:, 1:], axis=1); cmu = kmu[:, 3] / jnp.clip(pmu, 1e-9, None)
     pl = jnp.linalg.norm(lead[:, 1:], axis=1); cl = lead[:, 3] / jnp.clip(pl, 1e-9, None)
