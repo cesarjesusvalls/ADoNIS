@@ -262,7 +262,7 @@ def _joint_records(HV, nq, nr, res_identity=False):
     isp = HV.get("qe_isp")
     if isp is not None:
         out["hv_qe_isp"] = np.concatenate([np.asarray(isp, bool), np.zeros(nr, bool)])
-        out["qe_probe_em"] = np.int32(1 if HV.get("qe_probe") == "EM" else 0)
+        out["hv_qe_probe_em"] = np.int32(1 if HV.get("qe_probe") == "EM" else 0)
     return out
 
 

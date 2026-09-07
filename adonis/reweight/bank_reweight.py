@@ -32,7 +32,8 @@ def bank_weight(B, knobs, grids):
             "regenerate it. NC banks carry no hard-vertex records at all (see the NC selection "
             "helpers in adonis/workflow).")
     from adonis.reweight.reduced_amps2 import qe_reduced_reweight, res_reduced_reweight
-    probe = "EM" if int(np.asarray(B.get("qe_probe_em", 0)).item() if "qe_probe_em" in B else 0) else "CC"
+    _em = "hv_qe_probe_em" in B and int(np.asarray(B["hv_qe_probe_em"]).item())
+    probe = "EM" if _em else "CC"
     qe = qe_reduced_reweight({"M": B["hv_qe_mij"], "Q2": B["hv_qe_Q2"]}, k,
                              probe=probe, is_proton=B.get("hv_qe_isp"))
     res = res_reduced_reweight({"M": B["hv_res_mij"], "Q2": B["hv_res_Q2"]}, k)
