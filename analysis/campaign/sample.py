@@ -170,6 +170,13 @@ class AnaSample:
             del Bc, JBc
             if log:
                 log(f"  [{self.name}{tag}] chunk {ci + 1}/{len(files)}")
+        # Every chunk's w0 already carries the full cross section, so chunks average rather than add.
+        # Summing them would scale a component by how many chunks it happens to have -- harmless as an
+        # overall factor, but for a mixed target it silently reweights one element against the other.
+        n_ch = max(len(files), 1)
+        J /= n_ch
+        sumw = [x / n_ch for x in sumw]
+        sumw2 = [x / n_ch ** 2 for x in sumw2]
         return J, row0, sumw, sumw2
 
     def _gradient(self, max_chunks=None, log=print):
