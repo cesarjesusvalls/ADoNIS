@@ -16,8 +16,6 @@ import numpy as np
 from adonis.workflow import records as REC
 
 
-def _idma(n):
-    return [np.ones(n, np.float32), np.zeros(n, np.float32), np.zeros(n, np.float32), np.ones(n, np.float32)]
 
 
 def _lepton_theta_deg(k_lep):
@@ -213,14 +211,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
             if do_qe and do_res:
                 from adonis.reweight.reweight_model import build_hv_sf
                 nq = ns[0]; nr = ns[-1]; qraw = evs[0][1]["_raw"]; rraw = evs[-1][1]["_raw"]
-                HV, _SF = build_hv_sf(qraw, rraw, sf, with_pw=False, probe="EM", qe_joint=False, res_joint=False)
-                hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
-                hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
-                hv = dict(qe_ma=hv_q(HV["qe_ma"]), res_ma=hv_r(HV["res_ma"]), qe_vec=hv_q(HV["qe_vec"]),
-                          qe_gmp=hv_q(HV["qe_gmp"]), qe_gmn=hv_q(HV["qe_gmn"]), qe_gep=hv_q(HV["qe_gep"]),
-                          qe_gen=hv_q(HV["qe_gen"]), res_pp=hv_r(HV["res_pp"]), res_delta=hv_r(HV["res_delta"]))
-                save.update({f"hv_{nm}_{abc}": comp[i].astype(np.float32) for nm, comp in hv.items()
-                             for i, abc in enumerate(["a", "b", "c", "Q2"][:len(comp)])})
+                HV, _SF = build_hv_sf(qraw, rraw, sf, probe="EM")
+                save.update(_joint_records(HV, nq, nr, res_identity=True))
                 save.update(w0=cat("c").astype(np.float64),
                             p_struck=np.concatenate([np.asarray(qraw["p_struck"]),
                                                      np.asarray(rraw["p_struck"])]).astype(np.float32))
@@ -233,16 +225,8 @@ def _generate_hardvertex(cfg, outdir, log, t0):
                         p_struck=np.concatenate([e[1]["p_struck"] for e in evs]).astype(np.float32),
                         k_lep=np.concatenate([e[1]["k_lep"] for e in evs]).astype(np.float32))
             if do_qe and do_res and not NC:
-                HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf, with_pw=False, qe_joint=False, res_joint=False)
-                hv_q = lambda r: [np.concatenate([np.asarray(r[i], np.float32), _idma(nr)[i]]) for i in range(4)]
-                hv_r = lambda r: [np.concatenate([_idma(nq)[i], np.asarray(r[i], np.float32)]) for i in range(4)]
-                qe_ma = [np.concatenate([np.asarray(HV["qe_ma"][i], np.float32), _idma(nr)[i]]) for i in range(4)]
-                res_ma = [np.concatenate([_idma(nq)[i], np.asarray(HV["res_ma"][i], np.float32)]) for i in range(4)]
-                hv = dict(qe_ma=qe_ma, res_ma=res_ma, qe_vec=hv_q(HV["qe_vec"]), qe_gmp=hv_q(HV["qe_gmp"]),
-                          qe_gmn=hv_q(HV["qe_gmn"]), qe_gep=hv_q(HV["qe_gep"]), qe_gen=hv_q(HV["qe_gen"]),
-                          res_pp=hv_r(HV["res_pp"]), res_delta=hv_r(HV["res_delta"]))
-                save.update({f"hv_{nm}_{abc}": comp[i].astype(np.float32) for nm, comp in hv.items()
-                             for i, abc in enumerate(["a", "b", "c", "Q2"][:len(comp)])})
+                HV, _SF = build_hv_sf(qref["_raw"], rref["_raw"], sf)
+                save.update(_joint_records(HV, nq, nr))
                 save.update(res_p_N=np.concatenate([np.zeros((nq, 4), np.float32), np.asarray(rref["p_N"], np.float32)]),
                             res_p_pi=np.concatenate([np.zeros((nq, 4), np.float32), np.asarray(rref["p_pi"], np.float32)]),
                             res_ipid=np.concatenate([np.zeros(nq, np.int32), np.asarray(rref["ipid"], np.int32)]),
@@ -257,6 +241,29 @@ def _generate_hardvertex(cfg, outdir, log, t0):
     json.dump(manifest, open(f"{outdir}/manifest.json", "w"), indent=2)
     log(f"DONE: {cfg.probe} bank in {outdir}/ ({n_chunks} chunks)")
     return outdir
+
+
+def _joint_records(HV, nq, nr, res_identity=False):
+    """Bank fields for the reduced-quadratic hard-vertex records.
+
+    A chunk holds the QE events first and the RES events after, so each channel's M is padded with
+    zeros over the other's rows: a zero M gives a zero-over-zero guarded ratio of 1, i.e. that channel
+    contributes no reweight for events it does not own.
+    """
+    qe_M = np.zeros((nq + nr, 4, 4), np.float64); qe_Q2 = np.zeros(nq + nr, np.float32)
+    res_M = np.zeros((nq + nr, 6, 6), np.float64); res_Q2 = np.zeros(nq + nr, np.float32)
+    if nq:
+        qe_M[:nq] = np.asarray(HV["qe_reduced"]["M"], np.float64)
+        qe_Q2[:nq] = np.asarray(HV["qe_reduced"]["Q2"], np.float32)
+    if nr and not res_identity:
+        res_M[nq:] = np.asarray(HV["res_reduced"]["M"], np.float64)
+        res_Q2[nq:] = np.asarray(HV["res_reduced"]["Q2"], np.float32)
+    out = dict(hv_qe_mij=qe_M, hv_qe_Q2=qe_Q2, hv_res_mij=res_M, hv_res_Q2=res_Q2)
+    isp = HV.get("qe_isp")
+    if isp is not None:
+        out["hv_qe_isp"] = np.concatenate([np.asarray(isp, bool), np.zeros(nr, bool)])
+        out["qe_probe_em"] = np.int32(1 if HV.get("qe_probe") == "EM" else 0)
+    return out
 
 
 def _generate_hadron(cfg, outdir, log, t0):

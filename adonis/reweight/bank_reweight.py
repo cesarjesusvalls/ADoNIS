@@ -8,7 +8,6 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from adonis.reweight.amps2_records import ma_reweight, strength_reweight
 from adonis.reweight.sf_reweight import sf_grids, sf_reweight, removal_from_struck
 from adonis.fsi.cascade import pool_fsi_reweight
 from adonis.nuclear.spectral import SpectralFunction
@@ -25,30 +24,18 @@ def default_grids():
 def bank_weight(B, knobs, grids):
     """Exact per-event weight w(theta) (N,).  knobs: a PhysicsParams (adonis.core.params); grids: sf_grids output."""
     k = knobs
-    if "hv_qe_ma_a" not in B and "hv_qe_mij" not in B:
-        raise KeyError("bank_weight: bank carries no hard-vertex (hv_*) records; NC banks are not "
-                       "reweightable through this path (see adonis/workflow NC selection helpers).")
-    def ma(name): return (B[f"hv_{name}_a"], B[f"hv_{name}_b"], B[f"hv_{name}_c"], B[f"hv_{name}_Q2"])
-    if "hv_qe_mij" in B:
-        from adonis.reweight.reduced_amps2 import qe_reduced_reweight
-        probe = "EM" if int(np.asarray(B.get("qe_probe_em", 0)).item() if "qe_probe_em" in B else 0) else "CC"
-        qe = qe_reduced_reweight({"M": B["hv_qe_mij"], "Q2": B["hv_qe_Q2"]}, k,
-                                 probe=probe, is_proton=B.get("hv_qe_isp"))
-    else:
-        qe_ma = ma("qe_ma")
-        qe = (ma_reweight(qe_ma, k.M_A_qe) * strength_reweight(qe_ma, k.axial_strength)
-              * strength_reweight(ma("qe_vec"), k.vector_strength)
-              * strength_reweight(ma("qe_gmp"), k.mu_p) * strength_reweight(ma("qe_gmn"), k.mu_n)
-              * strength_reweight(ma("qe_gep"), k.gep) * strength_reweight(ma("qe_gen"), k.gen))
-    if "hv_res_mij" in B:
-        from adonis.reweight.reduced_amps2 import res_reduced_reweight
-        res = res_reduced_reweight({"M": B["hv_res_mij"], "Q2": B["hv_res_Q2"]}, k)
-    else:
-        res_ma = ma("res_ma")
-        res = (ma_reweight(res_ma, k.M_A_res) * strength_reweight(res_ma, k.res_axial_strength)
-               * strength_reweight(ma("res_pp"), k.pion_pole))
-        if "hv_res_delta_a" in B:
-            res = res * strength_reweight(ma("res_delta"), k.delta_strength)
+    if "hv_qe_mij" not in B or "hv_res_mij" not in B:
+        raise KeyError(
+            "bank_weight: bank carries no reduced-quadratic hard-vertex records (hv_qe_mij / "
+            "hv_res_mij). A bank holding only per-knob (a,b,c) records drops the cross terms between "
+            "correlated knobs and understates their degeneracy, so it is not reweightable here; "
+            "regenerate it. NC banks carry no hard-vertex records at all (see the NC selection "
+            "helpers in adonis/workflow).")
+    from adonis.reweight.reduced_amps2 import qe_reduced_reweight, res_reduced_reweight
+    probe = "EM" if int(np.asarray(B.get("qe_probe_em", 0)).item() if "qe_probe_em" in B else 0) else "CC"
+    qe = qe_reduced_reweight({"M": B["hv_qe_mij"], "Q2": B["hv_qe_Q2"]}, k,
+                             probe=probe, is_proton=B.get("hv_qe_isp"))
+    res = res_reduced_reweight({"M": B["hv_res_mij"], "Q2": B["hv_res_Q2"]}, k)
     hv = qe * res
     rec = {f: jnp.asarray(B[f"f_{f}"]) for f in _FSI_F}
     rec["n_events"] = len(B["w0"])
