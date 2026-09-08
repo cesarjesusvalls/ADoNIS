@@ -204,7 +204,7 @@ def _concat_compact(parts):
             acc[k].append(v.astype(_np.int64) + ev_off if k in _EIDX_FAM else v)
         fs_off.append(fs_off[-1][-1] + _np.asarray(p["fs_off"])[1:])
         ev_off += len(p["w0"])
-    out = {k: _np.concatenate(acc[k]) for k in keys}
+    out = {k: BP.stack_bank_field(k, acc[k]) for k in keys}
     out["fs_off"] = _np.concatenate(fs_off); out["n_chunks"] = parts[0].get("n_chunks", 1)
     n = len(out["w0"]); out["_eidx"] = _np.repeat(_np.arange(n), _np.diff(out["fs_off"]))
     return out

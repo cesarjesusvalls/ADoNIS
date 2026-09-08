@@ -17,6 +17,19 @@ PION_PIDS = (211, 111, -211)
 _FS = ("fs_off", "fs_pid", "fs_chg", "fs_p4")
 
 
+def stack_bank_field(key, vals):
+    """Combine one bank field across chunks.
+
+    Per-event fields concatenate.  A bank-level field -- the EM/CC probe flag -- is stored once per
+    chunk as a 0-d array, so it is carried through instead, and every chunk has to agree on it."""
+    v0 = np.asarray(vals[0])
+    if v0.ndim:
+        return np.concatenate([np.asarray(v) for v in vals])
+    if any(np.asarray(v) != v0 for v in vals[1:]):
+        raise ValueError(f"chunks disagree on the bank-level field {key!r}")
+    return v0
+
+
 def load_bank(outdir, max_chunks=None):
     """Concatenate all chunks into one in-memory full-record bank (kinematics + ragged final state +
     bare w0 + hard-vertex amps2 records + FSI kind-1 record).  Only w0 is divided by n_chunks (-> sum
@@ -46,16 +59,7 @@ def load_bank(outdir, max_chunks=None):
         fs_pid.append(d["fs_pid"]); fs_chg.append(d["fs_chg"]); fs_p4.append(d["fs_p4"])
         offs.append(offs[-1][-1] + d["fs_off"][1:])
         ev_off += len(d["w0"])
-    B = {}
-    for k, v in perev.items():
-        if v[0].ndim == 0:
-            # A bank-level flag (the EM/CC probe), stored once per chunk rather than per event, so it
-            # is carried through rather than concatenated -- and every chunk has to agree on it.
-            if any(x != v[0] for x in v[1:]):
-                raise ValueError(f"load_bank: chunks disagree on the bank-level field {k!r}")
-            B[k] = v[0]
-        else:
-            B[k] = np.concatenate(v)
+    B = {k: stack_bank_field(k, v) for k, v in perev.items()}
     B["w0"] = B["w0"] / nchunks
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)

@@ -85,3 +85,27 @@ def test_jitted_bank_dict_keeps_the_probe_static():
         return jnp.float64(1.0) if "hv_qe_em" in bank else jnp.float64(0.0)
 
     assert float(probe_of(B)) == 1.0
+
+
+def test_every_bank_record_merge_uses_the_helper():
+    """Both places that combine bank records across chunks go through stack_bank_field."""
+    import inspect
+    from adonis.reweight import bank_plot
+    from adonis.workflow import selection
+    for mod, fn in ((bank_plot, "load_bank"), (selection, "_concat_compact")):
+        src = inspect.getsource(getattr(mod, fn))
+        assert "stack_bank_field" in src, f"{fn} combines fields without the bank-level guard"
+
+
+def test_select_bank_keeps_the_probe():
+    import numpy as np, tempfile, pathlib, json
+    from adonis.workflow.selection import _concat_compact
+    parts = []
+    for n in (3, 2):
+        parts.append(dict(w0=np.ones(n), channel=np.zeros(n, np.int32),
+                          fs_off=np.arange(n + 1, dtype=np.int64),
+                          fs_pid=np.full(n, 2212, np.int32), fs_chg=np.ones(n, np.int32),
+                          fs_p4=np.zeros((n, 4)), hv_qe_probe_em=np.int32(1)))
+    out = _concat_compact(parts)
+    assert len(out["w0"]) == 5
+    assert int(np.asarray(out["hv_qe_probe_em"])) == 1
