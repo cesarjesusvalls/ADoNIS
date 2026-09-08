@@ -32,8 +32,7 @@ def bank_weight(B, knobs, grids):
             "regenerate it. NC banks carry no hard-vertex records at all (see the NC selection "
             "helpers in adonis/workflow).")
     from adonis.reweight.reduced_amps2 import qe_reduced_reweight, res_reduced_reweight
-    _em = "hv_qe_probe_em" in B and int(np.asarray(B["hv_qe_probe_em"]).item())
-    probe = "EM" if _em else "CC"
+    probe = "EM" if "hv_qe_em" in B else "CC"
     qe = qe_reduced_reweight({"M": B["hv_qe_mij"], "Q2": B["hv_qe_Q2"]}, k,
                              probe=probe, is_proton=B.get("hv_qe_isp"))
     res = res_reduced_reweight({"M": B["hv_res_mij"], "Q2": B["hv_res_Q2"]}, k)
@@ -52,9 +51,16 @@ def bank_weight(B, knobs, grids):
 
 def to_jax(B):
     """One-time conversion of the fields bank_weight reads to on-device jnp arrays (avoids re-converting
-    the FSI records on every reweight call)."""
-    keys = [k for k in B if k.startswith("hv_") or k.startswith("f_")] + ["p_struck", "channel", "w0"]
-    return {k: jnp.asarray(B[k]) for k in keys}
+    the FSI records on every reweight call).
+
+    The EM/CC probe picks a branch rather than entering the arithmetic, so it travels as the presence
+    of `hv_qe_em` and never as a value: callers pass this dict as a jitted argument, where every value
+    in it is a tracer that cannot be branched on, while the key set is static pytree structure."""
+    keys = [k for k in B if (k.startswith("hv_") or k.startswith("f_")) and k != "hv_qe_probe_em"]
+    out = {k: jnp.asarray(B[k]) for k in keys + ["p_struck", "channel", "w0"]}
+    if "hv_qe_probe_em" in B and int(np.asarray(B["hv_qe_probe_em"])):
+        out["hv_qe_em"] = jnp.asarray(True)
+    return out
 
 
 weight_jit = jax.jit(bank_weight)
