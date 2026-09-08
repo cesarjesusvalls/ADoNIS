@@ -46,7 +46,16 @@ def load_bank(outdir, max_chunks=None):
         fs_pid.append(d["fs_pid"]); fs_chg.append(d["fs_chg"]); fs_p4.append(d["fs_p4"])
         offs.append(offs[-1][-1] + d["fs_off"][1:])
         ev_off += len(d["w0"])
-    B = {k: np.concatenate(v) for k, v in perev.items()}
+    B = {}
+    for k, v in perev.items():
+        if v[0].ndim == 0:
+            # A bank-level flag (the EM/CC probe), stored once per chunk rather than per event, so it
+            # is carried through rather than concatenated -- and every chunk has to agree on it.
+            if any(x != v[0] for x in v[1:]):
+                raise ValueError(f"load_bank: chunks disagree on the bank-level field {k!r}")
+            B[k] = v[0]
+        else:
+            B[k] = np.concatenate(v)
     B["w0"] = B["w0"] / nchunks
     B["fs_pid"] = np.concatenate(fs_pid); B["fs_chg"] = np.concatenate(fs_chg)
     B["fs_p4"] = np.concatenate(fs_p4); B["fs_off"] = np.concatenate(offs)
