@@ -125,21 +125,32 @@ def build_walk(kcasc, qe, qw, res, rw):
 
 def bin_walk(W, edges=None, obs=None):
     """Bin a build_walk output into an R (idx/keep/w0/rec) for a given observable.  Defaults to this
-    module's OBS (EDGES, _obs); pass edges/obs to bin the SAME walk for a different observable."""
-    edges = EDGES if edges is None else np.asarray(edges)
-    obs = _obs if obs is None else obs
+    module's OBS (EDGES, _obs), which only exists once an entry point has called _set_obs; pass
+    edges/obs to bin the SAME walk for a different observable, or to bin without a data release."""
+    if edges is None:
+        if "EDGES" not in globals():
+            raise RuntimeError("bin_walk: no binning -- pass edges=, or call _set_obs(obs) first "
+                               "(it reads the data release that defines EDGES).")
+        edges = EDGES
+    else:
+        edges = np.asarray(edges)
+    if obs is None:
+        if "_obs" not in globals():
+            raise RuntimeError("bin_walk: no observable -- pass obs=, or call _set_obs(obs) first.")
+        obs = _obs
     ej = jnp.asarray(edges); nbm = len(edges) - 2
     q_x = obs(W["q_kmu"], W["q_lead"]); q_keep = _sel(W["q_kmu"], W["q_lead"])
     r_x = obs(W["r_kmu"], W["r_lead"]); r_keep = _sel(W["r_kmu"], W["r_lead"])
     return dict(q_idx=jnp.clip(jnp.searchsorted(ej, q_x) - 1, 0, nbm), q_keep=q_keep,
                 q_w0=W["q_w0"], q_rec=W["q_rec"],
                 r_idx=jnp.clip(jnp.searchsorted(ej, r_x) - 1, 0, nbm), r_keep=r_keep,
-                r_w0=W["r_w0"], r_rec=W["r_rec"])
+                r_w0=W["r_w0"], r_rec=W["r_rec"],
+                edges=ej)                       # the binning travels with the binned walk
 
 
-def build_replica(kcasc, qe, qw, res, rw):
-    """Walk one replica and bin it for this module's observable (build_walk -> bin_walk)."""
-    return jax.block_until_ready(bin_walk(build_walk(kcasc, qe, qw, res, rw)))
+def build_replica(kcasc, qe, qw, res, rw, edges=None, obs=None):
+    """Walk one replica and bin it (build_walk -> bin_walk).  edges/obs default to this module's."""
+    return jax.block_until_ready(bin_walk(build_walk(kcasc, qe, qw, res, rw), edges=edges, obs=obs))
 
 
 @jax.jit
@@ -150,10 +161,10 @@ def model_hist(theta, R, M=None):
     w_ma_r = ma_reweight(M["res"], theta[2]) if M is not None else 1.0
     q_w = R["q_w0"] * w_ma_q * _CF.pool_fsi_reweight(R["q_rec"], sabs, sscat)
     r_w = R["r_w0"] * w_ma_r * _CF.pool_fsi_reweight(R["r_rec"], sabs, sscat)
-    nb = len(EDGES) - 1
+    edges = R["edges"]; nb = len(edges) - 1
     h = (jax.ops.segment_sum(q_w * R["q_keep"], R["q_idx"], num_segments=nb)
          + jax.ops.segment_sum(r_w * R["r_keep"], R["r_idx"], num_segments=nb))
-    return h / jnp.diff(jnp.asarray(EDGES)) * CONV
+    return h / jnp.diff(edges) * CONV
 
 
 def main():

@@ -20,11 +20,14 @@ from adonis.nuclear.spectral import SpectralFunction
 
 T.NQE = T.NRES = 5000
 _qe, _qw, _res, _rw = T.build_proposal()
-_R = T.build_replica(jax.random.PRNGKey(0), _qe, _qw, _res, _rw)
+# Its own binning and observable: these are knob-gradient tests, so they must not drag the
+# NUISANCE ROOT release (and uproot) in just to fix bin edges.
+_EDGES = np.asarray([0.0, 80.0, 120.0, 155.0, 200.0, 260.0, 360.0, 510.0, 1100.0])
+_R = T.build_replica(jax.random.PRNGKey(0), _qe, _qw, _res, _rw, edges=_EDGES, obs=T._dpt)
 _M = T.build_ma_records(_qe, _res)
 _sf = SpectralFunction(resolve_targets("C")[0][0].spectral_n)
 _HV, _SF = build_hv_sf(_qe, _res, _sf)
-_EDGES = np.asarray(T.EDGES); _CONV = T.CONV
+_CONV = T.CONV
 _NOM = nominal_knobs()
 
 

@@ -16,6 +16,10 @@ import jax.numpy as jnp
 _FAST = bool(_os.environ.get("ADONIS_CI_FAST"))
 hs = HadronStructure(n_theta=16, n_phi=16, spline=False)
 n = 100_000 if _FAST else 200_000
+# Both paths are Monte Carlo estimates of the same spectrum, so the residual scatter between
+# them goes as 1/sqrt(n).  The gates below are quoted at the full sample; scale them up when
+# the run uses fewer events.
+TOL = np.sqrt(200_000 / n)
 CHUNK = 5_000
 key = jax.random.PRNGKey(7)
 
@@ -73,8 +77,8 @@ def test_unintegration_unbiased():
     for dm, df in ((dWm, dWf), (dQm, dQf)):
         sel = df > 0.10 * df.max()
         rel = np.abs(dm - df)[sel] / df[sel]
-        assert np.median(rel) < 0.08, np.median(rel)
-        assert np.percentile(rel, 90) < 0.20, np.percentile(rel, 90)
+        assert np.median(rel) < 0.08 * TOL, np.median(rel)
+        assert np.percentile(rel, 90) < 0.20 * TOL, np.percentile(rel, 90)
 
 
 def test_final_state_onshell():

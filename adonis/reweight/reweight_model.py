@@ -22,11 +22,6 @@ from adonis.core.params import PhysicsParams, nominal_knobs, knob_specs, _EB_EPS
 
 
 
-def _ident_rec(n):
-    """Identity (a,b,c,Q2) = (1,0,0,1) record: ma_reweight/strength_reweight == 1, gradient 0."""
-    return (np.ones(n, np.float32), np.zeros(n, np.float32), np.zeros(n, np.float32), np.ones(n, np.float32))
-
-
 def _qe_records(qa, probe, isp):
     """The QE slice of HV: the exact reduced-quadratic record, one 4x4 M covering every cross term
     between the form-factor atoms (_hv_qe -> qe_reduced_reweight)."""
@@ -40,6 +35,13 @@ def _res_records(ra, ip, pp):
     wave-split atoms here rather than a second reweight path."""
     from adonis.reweight.reduced_amps2 import build_res_reduced
     return {"res_reduced": build_res_reduced(*ra, ip, pp)}
+
+
+def _res_identity(n):
+    """The RES slice for a probe with no RES hard vertex: a zero M.  res_reduced_reweight guards the
+    zero-over-zero ratio to 1, so the channel contributes no reweight and no gradient -- the same
+    convention the bank uses for the events a channel does not own."""
+    return {"M": np.zeros((n, 6, 6), np.float64), "Q2": np.zeros(n, np.float32)}
 
 
 def build_hv_sf(qe, res, sf, probe="CC"):
@@ -57,8 +59,7 @@ def build_hv_sf(qe, res, sf, probe="CC"):
     if probe == "EM":
         qa = (qe["k_e"], qe["k_lep"], qe["p_struck"], qe["p_out"]); isp = np.asarray(qe["is_p"])
         nres = len(np.asarray(res["p_N"]))
-        HV = dict(**_qe_records(qa, "EM", isp),
-                  res_ma=_ident_rec(nres), res_pp=_ident_rec(nres), res_delta=_ident_rec(nres))
+        HV = dict(**_qe_records(qa, "EM", isp), res_reduced=_res_identity(nres))
         return HV, SF
 
     qa = (qe["k_nu"], qe["k_lep"], qe["p_struck"], qe["p_out"])

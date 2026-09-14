@@ -1,6 +1,6 @@
 """The two checks of test_full_knobs_grad that hold at any statistics, at a size that runs in seconds.
 
-Small N (800) and with_pw=False keep the build cheap.  Both checks are statistics-independent:
+Small N (800) keeps the build cheap.  Both checks are statistics-independent:
 (1) at nominal knobs, model_hist_full equals the FSI+MA model_hist bit-for-bit; (2) autodiff equals
 the finite difference of a real dsigma/dx with respect to one knob per mechanism, which exercises the
 gradient wiring rather than the accuracy of the physics."""
@@ -19,11 +19,14 @@ from adonis.nuclear.spectral import SpectralFunction
 
 T.NQE = T.NRES = 800
 _qe, _qw, _res, _rw = T.build_proposal()
-_R = T.build_replica(jax.random.PRNGKey(0), _qe, _qw, _res, _rw)
+# Its own binning and observable: these are knob-gradient tests, so they must not drag the
+# NUISANCE ROOT release (and uproot) in just to fix bin edges.
+_EDGES = np.asarray([0.0, 80.0, 120.0, 155.0, 200.0, 260.0, 360.0, 510.0, 1100.0])
+_R = T.build_replica(jax.random.PRNGKey(0), _qe, _qw, _res, _rw, edges=_EDGES, obs=T._dpt)
 _M = T.build_ma_records(_qe, _res)
 _sf = SpectralFunction(resolve_targets("C")[0][0].spectral_n)
-_HV, _SF = build_hv_sf(_qe, _res, _sf, with_pw=False)
-_EDGES = np.asarray(T.EDGES); _CONV = T.CONV
+_HV, _SF = build_hv_sf(_qe, _res, _sf)
+_CONV = T.CONV
 _NOM = nominal_knobs()
 
 

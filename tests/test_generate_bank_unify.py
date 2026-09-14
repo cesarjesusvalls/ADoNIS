@@ -41,7 +41,7 @@ _HAD = _build("hadron")
 _FSI = {f"f_{k}" for k in ("p_eidx", "n_eidx", "bc", "sa", "ss_el", "ss", "si", "pi_hh", "hh", "a",
                            "iso", "finel", "inel", "swap")}
 _FS = {"fs_off", "fs_pid", "fs_chg", "fs_p4"}
-_HV = {"hv_qe_ma_a", "hv_res_ma_a", "hv_qe_vec_a", "hv_qe_gmp_a", "hv_res_pp_a", "hv_res_delta_a"}
+_HV = {"hv_qe_mij", "hv_qe_Q2", "hv_res_mij", "hv_res_Q2"}
 _GROUND = {"prim_fate", "nsc_prim"}
 _DERIVED = {"reacted", "absorbed", "captured"}
 
@@ -91,7 +91,7 @@ def test_hadron_schema():
 def test_finite_records():
     """The stored weights + amps2 + FSI slot arrays are finite (a usable reweight bank)."""
     assert np.isfinite(_CC["w0"]).all()
-    assert np.isfinite(_CC["hv_qe_ma_a"]).all() and np.isfinite(_CC["hv_res_pp_a"]).all()
+    assert np.isfinite(_CC["hv_qe_mij"]).all() and np.isfinite(_CC["hv_res_mij"]).all()
     assert np.isfinite(_EM["c"]).all()
     for b in (_CC, _EM, _HAD):
         assert np.isfinite(np.asarray(b["f_sa"], np.float64)).all()
